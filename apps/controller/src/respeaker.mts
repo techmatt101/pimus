@@ -22,6 +22,7 @@ export type CommandName =
   | 'LED_SPEED'
   | 'LED_COLOR'
   | 'LED_DOA_COLOR'
+  | 'LED_RING_COLOR'
 
 /** XVF3800 vendor controls as [resourceId, command, payload type]. */
 export const COMMANDS: Readonly<Record<CommandName, readonly [number, number, DataType]>> =
@@ -31,6 +32,7 @@ export const COMMANDS: Readonly<Record<CommandName, readonly [number, number, Da
     LED_SPEED: [20, 15, 'uint8'],
     LED_COLOR: [20, 16, 'uint32'],
     LED_DOA_COLOR: [20, 17, 'uint32'],
+    LED_RING_COLOR: [20, 19, 'uint32'],
   } as const)
 
 const CRITICAL_STATES = new Set(['muted', 'disconnected', 'pipeline_error', 'timer_ringing'])
@@ -151,6 +153,10 @@ export class Xvf3800Device implements LedDevice {
     await this.write('LED_COLOR', [rgb(spec.color || '#000000')])
     if (effect === 'doa') {
       await this.write('LED_DOA_COLOR', [rgb(spec.color || '#000000'), rgb(spec.accent || '#00bcd4')])
+    } else if (effect === 'ring') {
+      // XVF3800 ring mode reads a separate colour for each of its 12 LEDs.
+      // The current config exposes one colour, so fill the entire ring with it.
+      await this.write('LED_RING_COLOR', Array(12).fill(rgb(spec.color || '#000000')))
     }
     await this.write('LED_EFFECT', [EFFECTS[effect]])
   }

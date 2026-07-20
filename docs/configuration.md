@@ -42,6 +42,9 @@ listening:
   accent: "#00e5ff" # DOA highlight
 ```
 
+The `ring` effect writes all 12 XVF3800 ring-colour slots using `color`.
+The `doa` effect uses `color` for the base plus `accent` for its highlight.
+
 Home Assistant receives an RGB light entity through LVA's peripheral API. Its **Voice Assistant** effect returns control to state feedback. Critical mute, disconnect, error and ringing-timer indications override a decorative local mode.
 
 The same Node controller handles the HA light command, ReSpeaker USB transfer,

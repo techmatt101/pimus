@@ -208,6 +208,20 @@ test('XVF3800 commands use vendor transfers and little-endian payloads', async (
     [0x40, 0, 12, 20],
   ])
   assert.deepEqual([...(transfers[3]?.[4] as Buffer)], [0x30, 0x20, 0x10, 0, 0xc0, 0xb0, 0xa0, 0])
+
+  transfers.length = 0
+  await device.apply({ effect: 'ring', color: '#010203' }, 32, 1)
+  assert.deepEqual(transfers.map((entry) => entry.slice(0, 4)), [
+    [0x40, 0, 13, 20],
+    [0x40, 0, 15, 20],
+    [0x40, 0, 16, 20],
+    [0x40, 0, 19, 20],
+    [0x40, 0, 12, 20],
+  ])
+  assert.deepEqual(
+    [...(transfers[3]?.[4] as Buffer)],
+    Array(12).fill([0x03, 0x02, 0x01, 0]).flat(),
+  )
   assert.equal(rgb('#abcdef'), 0xabcdef)
   assert.deepEqual([...encodePayload('uint8', [-1, 256])], [0, 255])
 })
