@@ -35,6 +35,8 @@ export function applyLvaEvent(state: ControlState, message: LvaMessage): Control
     state.volume = Number(data.volume)
   } else if (message.event === 'media_player_playing') {
     state.media = true
+  } else if (message.event === 'media_player_paused' || message.event === 'media_player_idle') {
+    state.media = false
   } else if (message.event === 'idle' || message.event === 'tts_finished') {
     state.assist = 'IDLE'
   } else if (message.event === 'disconnected') {
