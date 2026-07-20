@@ -16,6 +16,14 @@
     name: systemd-journald.service
     state: restarted
 
+# Re-run the one-shot mixer setup whenever its script or unit changes. This
+# applies new ADC routing and amplifier gain immediately instead of waiting for
+# the next reboot.
+- name: Restart HiFiBerry
+  ansible.builtin.systemd_service:
+    name: smartamp-hifiberry.service
+    state: restarted
+
 - name: Restart audio manager
   ansible.builtin.systemd_service:
     name: smartamp-audio-manager.service

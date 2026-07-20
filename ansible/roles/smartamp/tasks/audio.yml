@@ -53,6 +53,7 @@
     owner: root
     group: root
     mode: "0755"
+  notify: Restart HiFiBerry
 
 # A separate early service ensures ALSA has detected the HAT before mixer
 # settings are applied and before PipeWire begins routing sound.
@@ -63,7 +64,9 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Reload systemd
+  notify:
+    - Reload systemd
+    - Restart HiFiBerry
 
 # systemd restarts the router if a USB device is re-enumerated or the process
 # fails, keeping the headless amp self-healing.
