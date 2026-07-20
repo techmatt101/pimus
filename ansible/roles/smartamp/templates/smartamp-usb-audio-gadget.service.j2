@@ -8,17 +8,14 @@ Type=oneshot
 ExecStart={{ smartamp_app_dir }}/usb-audio-gadget.sh start
 ExecStop={{ smartamp_app_dir }}/usb-audio-gadget.sh stop
 RemainAfterExit=yes
-# Gadget setup deliberately needs module-loading/mount capabilities and configfs
-# writes, but it does not need home directories or writable installed config.
+# Apply the same small isolation baseline while leaving the root service's
+# module-loading, mount, and configfs access available for USB gadget setup.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=full
-ProtectControlGroups=true
-RestrictAddressFamilies=AF_UNIX
-RestrictSUIDSGID=true
-LockPersonality=true
-SystemCallArchitectures=native
+# This is the only root service; retain just the two capabilities used by
+# modprobe and the optional configfs mount.
 CapabilityBoundingSet=CAP_SYS_ADMIN CAP_SYS_MODULE
 UMask=0027
 

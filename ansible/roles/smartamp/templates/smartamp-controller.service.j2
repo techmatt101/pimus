@@ -19,20 +19,12 @@ WorkingDirectory={{ smartamp_app_dir }}/controller
 ExecStart=/usr/bin/node {{ smartamp_app_dir }}/controller/src/index.mjs
 Restart=always
 RestartSec=3
-# Node needs network sockets for LVA/webhooks and USB device files for the two
-# control surfaces, but it never needs to modify the installed application.
+# Apply a small, predictable isolation baseline while leaving the network, USB,
+# and local audio APIs available to the controller's existing features.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
-ProtectSystem=strict
-ReadWritePaths={{ smartamp_state_dir }} /run/user/{{ smartamp_uid }}
-ProtectControlGroups=true
-ProtectKernelModules=true
-ProtectKernelTunables=true
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-RestrictSUIDSGID=true
-LockPersonality=true
-SystemCallArchitectures=native
+ProtectSystem=full
 UMask=0027
 
 [Install]

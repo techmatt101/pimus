@@ -7,46 +7,8 @@ import type { AudioState, ControlState } from './types.mjs'
 
 const execFileAsync = promisify(execFile)
 
-const lockWait = new Int32Array(new SharedArrayBuffer(4))
-
-/**
- * The audio manager also reads and rewrites the audio state file, so writes
- * use the same .lock-directory protocol as the Python side: atomic mkdir,
- * 30 s stale-lock recovery, unique temp file, rename.
- */
-function withStateLock<T>(stateFile: string, callback: () => T): T {
-  fs.mkdirSync(path.dirname(stateFile), { recursive: true })
-  const lockPath = `${stateFile}.lock`
-  const deadline = Date.now() + 2000
-  while (true) {
-    try {
-      fs.mkdirSync(lockPath, { mode: 0o700 })
-      break
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-      try {
-        if (Date.now() - fs.statSync(lockPath).mtimeMs > 30_000) {
-          fs.rmdirSync(lockPath)
-          continue
-        }
-      } catch (statError) {
-        if ((statError as NodeJS.ErrnoException).code === 'ENOENT') continue
-        throw statError
-      }
-      if (Date.now() >= deadline) throw new Error(`Timed out waiting for state lock ${lockPath}`)
-      Atomics.wait(lockWait, 0, 0, 10)
-    }
-  }
-  try {
-    return callback()
-  } finally {
-    try { fs.rmdirSync(lockPath) } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-    }
-  }
-}
-
 function writeFileAtomic(stateFile: string, serialized: string): void {
+  fs.mkdirSync(path.dirname(stateFile), { recursive: true })
   const temporary = `${stateFile}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`
   try {
     const descriptor = fs.openSync(temporary, 'wx', 0o640)
@@ -87,15 +49,13 @@ export function readAudioState(path: string): AudioState {
  * next poll; returns the route's new desired state.
  */
 export function setSourceState(stateFile: string, name: string, command: string): boolean {
-  return withStateLock(stateFile, () => {
-    const current = readAudioState(stateFile)
-    const enabled = command === 'toggle' ? !current.sources[name] : command === 'on'
-    if (current.sources[name] !== enabled) {
-      const next: AudioState = { ...current, sources: { ...current.sources, [name]: enabled } }
-      writeFileAtomic(stateFile, `${JSON.stringify(next, null, 2)}\n`)
-    }
-    return enabled
-  })
+  const current = readAudioState(stateFile)
+  const enabled = command === 'toggle' ? !current.sources[name] : command === 'on'
+  if (current.sources[name] !== enabled) {
+    const next: AudioState = { ...current, sources: { ...current.sources, [name]: enabled } }
+    writeFileAtomic(stateFile, `${JSON.stringify(next, null, 2)}\n`)
+  }
+  return enabled
 }
 
 // Volume goes straight to the PipeWire default sink; -l 1.0 caps "up" at 100%.

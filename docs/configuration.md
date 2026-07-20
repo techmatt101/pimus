@@ -28,14 +28,13 @@ lease, audio status) live under `/run`, which is RAM-backed.
 ## Voice
 
 `voice_assistant_version` names the upstream release, while
-`voice_assistant_commit` pins its immutable source revision. A checked-in pip
-constraints file also pins the complete Python dependency set installed into
+`voice_assistant_commit` pins its immutable source revision. The upstream setup
+script installs its declared Python dependencies into
 `/opt/smartamp/linux-voice-assistant/.venv`; no container runtime is used.
-Increment `voice_assistant_lock_revision` whenever that constraints file is
-regenerated. `voice_assistant_wake_model` defaults to `okay_nabu`. Custom
-OpenWakeWord model files can be placed in `/var/lib/smartamp/lva/wakewords` and
-selected by name. The remote Home Assistant Assist pipeline supplies
-speech-to-text, conversation handling, and text-to-speech.
+`voice_assistant_wake_model` defaults to `okay_nabu`. Custom OpenWakeWord model
+files can be placed in `/var/lib/smartamp/lva/wakewords` and selected by name.
+The remote Home Assistant Assist pipeline supplies speech-to-text,
+conversation handling, and text-to-speech.
 
 The XVF3800 already performs AEC, beamforming, dereverberation, noise suppression and gain control. Leave LVA software noise suppression and auto-gain disabled initially to avoid processing the signal twice.
 

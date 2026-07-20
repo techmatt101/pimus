@@ -61,7 +61,6 @@ voice_assistant_version: "1.1.13"
 # The immutable commit is verified after checkout; the friendly release remains
 # above for operator-facing documentation and versioned state.
 voice_assistant_commit: "a66c0e4f289f196da35e24ae186bc03ecef972f9"
-voice_assistant_lock_revision: 1
 voice_assistant_name: "Office Amp Voice"
 voice_assistant_wake_model: okay_nabu
 voice_assistant_stop_model: stop

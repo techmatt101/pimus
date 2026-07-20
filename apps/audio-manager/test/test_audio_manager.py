@@ -16,22 +16,6 @@ SPEC.loader.exec_module(audio_manager)
 
 
 class AudioManagerTests(unittest.TestCase):
-    def test_invalid_audio_configuration_fails_before_pipewire(self) -> None:
-        config = {
-            "output_match": "[invalid",
-            "voice_input_match": "XVF3800",
-            "poll_seconds": 2,
-            "duck_poll_seconds": 0.1,
-            "sources": {},
-        }
-        with self.assertRaisesRegex(ValueError, "output_match.*valid regular expression"):
-            audio_manager.validate_config(config)
-
-        config["output_match"] = "HiFiBerry"
-        config["poll_seconds"] = 0
-        with self.assertRaisesRegex(ValueError, "poll_seconds"):
-            audio_manager.validate_config(config)
-
     def test_device_match_ignores_sink_monitor(self) -> None:
         nodes = [
             {

@@ -58,9 +58,11 @@ completion events missing from the pinned upstream peripheral protocol. This
 keeps the Stream Deck play/pause state accurate without modifying the verified
 upstream checkout.
 
-The service units make installed code and system configuration read-only, hide
-home directories, block privilege escalation, and allow writes only to Smart
-Amp state/runtime paths. The root USB-gadget unit retains only the kernel
-capabilities its configfs setup requires.
+The service units use a compact isolation baseline: core system configuration is
+read-only, home directories are hidden, temporary directories are private, and
+privilege escalation is blocked. File ownership protects application and state
+paths, while USB, network, PipeWire, and configfs APIs remain available to the
+hardware features that need them. The root USB-gadget service retains only its
+mount and module-loading capabilities.
 
 Home Assistant and Music Assistant/LMS are not part of this image. The Pi is a client endpoint: ESPHome protocol connects voice to the remote HA instance, while SlimProto connects Squeezelite to the remote music server.

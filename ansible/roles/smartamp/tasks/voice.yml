@@ -18,12 +18,11 @@
       - python3-venv
     state: present
 
-# Building wake-word dependencies is comparatively expensive. A commit and
-# lock-revision marker skips healthy re-runs while rebuilding whenever either
-# the reviewed source or dependency lock changes.
+# Building wake-word dependencies is comparatively expensive. A commit marker
+# skips healthy re-runs while rebuilding when the reviewed source changes.
 - name: Check native Linux Voice Assistant installation
   ansible.builtin.stat:
-    path: "{{ smartamp_app_dir }}/linux-voice-assistant/.smartamp-setup-{{ voice_assistant_commit }}-lock{{ voice_assistant_lock_revision }}"
+    path: "{{ smartamp_app_dir }}/linux-voice-assistant/.smartamp-setup-{{ voice_assistant_commit }}"
   register: voice_assistant_setup_marker
 
 # Use the immutable commit behind the documented release. A shallow checkout
@@ -58,16 +57,12 @@
       {{ voice_assistant_checked_out_commit.stdout }}, expected
       {{ voice_assistant_commit }}.
 
-# PIP_CONSTRAINT applies these exact direct and transitive versions while the
-# upstream setup script installs the editable LVA package into its virtualenv.
-- name: Install Linux Voice Assistant dependency constraints
-  ansible.builtin.copy:
-    src: linux-voice-assistant-constraints.txt
-    dest: "{{ smartamp_app_dir }}/linux-voice-assistant/.smartamp-constraints.txt"
-    owner: root
-    group: root
-    mode: "0644"
-  register: voice_assistant_constraints
+# Older revisions installed a pip constraints file. Upstream's own dependency
+# ranges now drive setup, so remove the retired file to avoid implying otherwise.
+- name: Remove retired Linux Voice Assistant constraints
+  ansible.builtin.file:
+    path: "{{ smartamp_app_dir }}/linux-voice-assistant/.smartamp-constraints.txt"
+    state: absent
 
 # A release marker alone does not prove that the virtual environment survived
 # an interrupted setup or later SD-card damage. Import the core runtime modules
@@ -91,7 +86,6 @@
         voice_assistant_checkout.changed
         or not voice_assistant_setup_marker.stat.exists
         or voice_assistant_runtime.rc != 0
-        or voice_assistant_constraints.changed
       }}
 
 # Upstream's setup script owns creation of .venv and its Python dependencies.
@@ -100,8 +94,6 @@
   ansible.builtin.command:
     cmd: script/setup
     chdir: "{{ smartamp_app_dir }}/linux-voice-assistant"
-  environment:
-    PIP_CONSTRAINT: "{{ smartamp_app_dir }}/linux-voice-assistant/.smartamp-constraints.txt"
   when: voice_assistant_needs_setup | bool
   notify: Restart voice assistant
 
@@ -109,7 +101,7 @@
 # retried on the next provisioning run.
 - name: Record installed Linux Voice Assistant release
   ansible.builtin.file:
-    path: "{{ smartamp_app_dir }}/linux-voice-assistant/.smartamp-setup-{{ voice_assistant_commit }}-lock{{ voice_assistant_lock_revision }}"
+    path: "{{ smartamp_app_dir }}/linux-voice-assistant/.smartamp-setup-{{ voice_assistant_commit }}"
     state: touch
     owner: root
     group: root

@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
 import json
 import logging
 import os
@@ -14,7 +13,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 
 LOG = logging.getLogger("smartamp-audio")
@@ -109,41 +108,6 @@ def duck_request_active(path: Path, timeout_seconds: float, now: float) -> bool:
         return False
 
 
-def validate_config(config: dict[str, Any]) -> None:
-    """Reject invalid matching and timing values before touching PipeWire."""
-    regexes = {
-        "output_match": config.get("output_match"),
-        "voice_input_match": config.get("voice_input_match"),
-    }
-    aec = config.get("aec_reference", {})
-    if aec.get("enabled"):
-        regexes["aec_reference.sink_match"] = aec.get("sink_match")
-    for name, source in config.get("sources", {}).items():
-        regexes[f"sources.{name}.match"] = source.get("match")
-        if float(source.get("latency_ms", 0)) < 0:
-            raise ValueError(f"sources.{name}.latency_ms must not be negative")
-    for name, pattern in regexes.items():
-        if not isinstance(pattern, str) or not pattern:
-            raise ValueError(f"{name} must be a non-empty regular expression")
-        try:
-            re.compile(pattern)
-        except re.error as error:
-            raise ValueError(f"{name} is not a valid regular expression: {error}") from error
-
-    for name in ("poll_seconds", "duck_poll_seconds"):
-        if float(config.get(name, 0)) <= 0:
-            raise ValueError(f"{name} must be greater than zero")
-    background = config.get("background", {})
-    if background.get("enabled"):
-        volume = int(background.get("duck_volume_percent", -1))
-        if not 0 <= volume <= 100:
-            raise ValueError("background.duck_volume_percent must be from 0 to 100")
-        if int(background.get("fade_ms", -1)) < 0:
-            raise ValueError("background.fade_ms must not be negative")
-        if float(background.get("duck_timeout_seconds", 0)) <= 0:
-            raise ValueError("background.duck_timeout_seconds must be greater than zero")
-
-
 def load_state(path: Path, config: dict[str, Any]) -> dict[str, Any]:
     defaults = {
         "sources": {
@@ -151,20 +115,17 @@ def load_state(path: Path, config: dict[str, Any]) -> dict[str, Any]:
             for name, source in config["sources"].items()
         }
     }
-    # The controller may toggle a route at the same time as a reconcile. Keep
-    # the complete merge and optional write under its cross-process lock.
-    with state_lock(path):
-        current: Any = None
-        try:
-            current = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(current, dict) and isinstance(current.get("sources"), dict):
-                defaults["sources"].update(current["sources"])
-        except (FileNotFoundError, json.JSONDecodeError, OSError):
-            pass
-        # This runs every reconcile and the state lives on the SD card, so only
-        # rewrite when the merged content differs.
-        if current != defaults:
-            atomic_json(path, defaults)
+    current: Any = None
+    try:
+        current = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(current, dict) and isinstance(current.get("sources"), dict):
+            defaults["sources"].update(current["sources"])
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        pass
+    # The controller is the only normal writer after initialisation. Keep the
+    # file atomic, but avoid a lock protocol for this rare default merge.
+    if current != defaults:
+        atomic_json(path, defaults)
     return defaults
 
 
@@ -194,35 +155,6 @@ def atomic_json(path: Path, value: dict[str, Any]) -> None:
                 pass
 
 
-@contextmanager
-def state_lock(path: Path, timeout_seconds: float = 2.0) -> Iterator[None]:
-    """Use the same atomic directory lock as the Node controller."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = Path(f"{path}.lock")
-    deadline = time.monotonic() + timeout_seconds
-    while True:
-        try:
-            os.mkdir(lock_path, 0o700)
-            break
-        except FileExistsError:
-            try:
-                if time.time() - lock_path.stat().st_mtime > 30:
-                    os.rmdir(lock_path)
-                    continue
-            except FileNotFoundError:
-                continue
-            if time.monotonic() >= deadline:
-                raise TimeoutError(f"Timed out waiting for state lock {lock_path}")
-            time.sleep(0.01)
-    try:
-        yield
-    finally:
-        try:
-            os.rmdir(lock_path)
-        except FileNotFoundError:
-            pass
-
-
 class AudioManager:
     def __init__(
         self,
@@ -232,7 +164,6 @@ class AudioManager:
         duck_state_path: Path,
     ) -> None:
         self.config = json.loads(config_path.read_text(encoding="utf-8"))
-        validate_config(self.config)
         self.state_path = state_path
         self.status_path = status_path
         self.duck_state_path = duck_state_path

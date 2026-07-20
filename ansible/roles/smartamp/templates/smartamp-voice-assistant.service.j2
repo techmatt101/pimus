@@ -39,20 +39,12 @@ Restart=always
 RestartSec=5
 TimeoutStartSec=75
 TimeoutStopSec=20
-# Voice needs network discovery/ESPHome plus its LVA data and PipeWire runtime;
-# protect the checkout, system configuration, and kernel controls from writes.
+# Apply a small, predictable isolation baseline without restricting the network
+# discovery, ESPHome, and local PipeWire APIs used by voice features.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
-ProtectSystem=strict
-ReadWritePaths={{ smartamp_state_dir }} /run/user/{{ smartamp_uid }}
-ProtectControlGroups=true
-ProtectKernelModules=true
-ProtectKernelTunables=true
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-RestrictSUIDSGID=true
-LockPersonality=true
-SystemCallArchitectures=native
+ProtectSystem=full
 UMask=0027
 
 [Install]

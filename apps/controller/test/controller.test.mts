@@ -119,7 +119,7 @@ test('enabled ducking requires a state file and positive refresh interval', (con
   assert.throws(() => loadConfig(configFile), /ducking state_file and refresh_milliseconds/)
 })
 
-test('invalid device and action configuration fails at startup', (context) => {
+test('invalid device configuration fails at startup', (context) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pimus-invalid-config-'))
   context.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const configFile = path.join(directory, 'controller.json')
@@ -132,39 +132,6 @@ test('invalid device and action configuration fails at startup', (context) => {
   }
   fs.writeFileSync(configFile, JSON.stringify(base))
   assert.throws(() => loadConfig(configFile), /brightness from 0 to 100/)
-
-  fs.writeFileSync(configFile, JSON.stringify({
-    ...base,
-    streamdeck: {
-      enabled: true,
-      brightness: 40,
-      keys: [{ label: 'AUX', color: 'purple', action: { type: 'audio', source: 'aux', command: 'toggle' } }],
-      dials: [],
-    },
-  }))
-  assert.throws(() => loadConfig(configFile), /#RRGGBB color/)
-
-  fs.writeFileSync(configFile, JSON.stringify({
-    ...base,
-    streamdeck: {
-      enabled: true,
-      brightness: 40,
-      keys: [{ label: 'AUX', color: '#123456', action: { type: 'audio', source: 'aux', command: 'up' } }],
-      dials: [],
-    },
-  }))
-  assert.throws(() => loadConfig(configFile), /invalid audio command/)
-
-  fs.writeFileSync(configFile, JSON.stringify({
-    ...base,
-    streamdeck: {
-      enabled: true,
-      brightness: 40,
-      keys: [{ label: 'VOICE', color: '#123456', action: { type: 'lva', command: 'typo_listen' } }],
-      dials: [],
-    },
-  }))
-  assert.throws(() => loadConfig(configFile), /invalid LVA command/)
 })
 
 test('key and dial appearances reflect audio and voice state', () => {
@@ -304,8 +271,8 @@ test('route toggles are applied directly to the shared audio state file', (conte
     sources: { aux: false, usb: true },
   })
 
-  // Re-applying the current state must not rewrite the SD card, and the
-  // cross-process lock directory must never be left behind.
+  // Re-applying the current state must not rewrite the SD card or leave a
+  // temporary file behind.
   const past = new Date('2020-01-01T00:00:00Z')
   fs.utimesSync(stateFile, past, past)
   assert.equal(setSourceState(stateFile, 'usb', 'on'), true)

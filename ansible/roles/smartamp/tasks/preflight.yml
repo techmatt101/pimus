@@ -121,6 +121,7 @@
       - item.type in ['noop', 'lva', 'audio', 'webhook']
       - item.type in ['noop', 'webhook'] or (item.command is defined and item.command is string)
       - item.type != 'webhook' or (item.id is defined and item.id is string and item.id | length > 0)
+      - item.type != 'webhook' or home_assistant_webhook_base is match('^https?://')
       - >-
         item.type != 'audio' or
         ((item.source is defined and item.source in ['aux', 'usb'] and item.command in ['on', 'off', 'toggle']) or
@@ -138,6 +139,29 @@
   loop: "{{ smartamp_streamdeck_actions }}"
   loop_control:
     label: "{{ item.type | default('missing type') }}:{{ item.command | default(item.id | default('')) }}"
+  when: streamdeck_enabled | bool
+
+# Labels and colours affect only rendering, so validate them once at provision
+# time rather than carrying the same schema checks in the long-running process.
+- name: Validate configured Stream Deck keys
+  ansible.builtin.assert:
+    that:
+      - item.label is defined and item.label is string
+      - item.color is defined and item.color is match('^#[0-9A-Fa-f]{6}$')
+    fail_msg: "Each Stream Deck key requires a text label and #RRGGBB colour."
+  loop: "{{ streamdeck_keys }}"
+  loop_control:
+    label: "{{ item.label | default('missing label') }}"
+  when: streamdeck_enabled | bool
+
+- name: Validate configured Stream Deck dial labels
+  ansible.builtin.assert:
+    that:
+      - item.label is defined and item.label is string
+    fail_msg: "Each Stream Deck dial requires a text label."
+  loop: "{{ streamdeck_dials }}"
+  loop_control:
+    label: "{{ item.label | default('missing label') }}"
   when: streamdeck_enabled | bool
 
 # The XVF3800 protocol accepts only the documented effects and byte brightness.
