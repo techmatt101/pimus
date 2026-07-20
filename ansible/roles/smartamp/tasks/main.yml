@@ -34,6 +34,19 @@
   failed_when: false
   when: not (usb_audio_gadget_enabled | bool)
 
+# Without this, dwc2/libcomposite would still load at every boot and a stale
+# unit and script would remain, contradicting the reversible-flag rule.
+- name: Remove USB audio gadget artifacts when disabled
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/modules-load.d/smartamp-usb-gadget.conf
+    - /etc/systemd/system/smartamp-usb-audio-gadget.service
+    - "{{ smartamp_app_dir }}/usb-audio-gadget.sh"
+  notify: Reload systemd
+  when: not (usb_audio_gadget_enabled | bool)
+
 - name: Configure Squeezelite
   ansible.builtin.import_tasks: squeezelite.yml
   when: squeezelite_enabled | bool
