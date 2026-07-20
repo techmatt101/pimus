@@ -392,7 +392,7 @@ class AudioManager:
             )
             if created:
                 LOG.info("Enabled XVF3800 AEC far-end reference")
-        elif not aec_ready:
+        else:
             self.unload("_aec")
 
         for name, source_config in self.config["sources"].items():
@@ -418,7 +418,7 @@ class AudioManager:
                 )
                 if created:
                     LOG.info("Enabled %s input monitor", name)
-            elif not should_run:
+            else:
                 self.unload(name)
 
         atomic_json(self.status_path, status)

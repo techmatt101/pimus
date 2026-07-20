@@ -115,6 +115,7 @@ test('webhook actions encode their identifier', async () => {
     state: createState(),
     lva: { send: () => {} },
     control: () => {},
+    lights: () => {},
     webhookBase: 'http://homeassistant.local:8123/api/webhook/',
     request: async (...args: unknown[]) => { requests.push(args) },
   })
