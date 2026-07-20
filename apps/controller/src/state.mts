@@ -1,5 +1,17 @@
 import type { ControlState, LvaMessage } from './types.mjs'
 
+// Pipeline states shown on the assist dial. The LVA socket also carries
+// non-pipeline traffic (light_command, zeroconf, media and volume updates)
+// that must not clobber the displayed state.
+const ASSIST_EVENTS = new Set([
+  'wake_word_detected',
+  'listening',
+  'thinking',
+  'tts_speaking',
+  'timer_ringing',
+  'pipeline_error',
+])
+
 export function createState(overrides: Partial<ControlState> = {}): ControlState {
   return {
     assist: 'DISCONNECTED',
@@ -27,8 +39,10 @@ export function applyLvaEvent(state: ControlState, message: LvaMessage): Control
     state.assist = 'IDLE'
   } else if (message.event === 'disconnected') {
     state.assist = 'DISCONNECTED'
-  } else if (message.event) {
-    state.assist = String(message.event).toUpperCase()
+  } else if (message.event === 'timer_updated') {
+    state.assist = 'TIMER_TICKING'
+  } else if (message.event && ASSIST_EVENTS.has(message.event)) {
+    state.assist = message.event.toUpperCase()
   }
   return state
 }

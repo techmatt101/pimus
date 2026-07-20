@@ -31,6 +31,15 @@ test('LVA snapshots and events update shared display state', () => {
   assert.equal(state.media, true)
 })
 
+test('non-pipeline events leave the assist display state alone', () => {
+  const state = createState({ assist: 'LISTENING' })
+  applyLvaEvent(state, { event: 'light_command', data: { object_id: 'led_ring' } })
+  applyLvaEvent(state, { event: 'zeroconf', data: { status: 'connected' } })
+  assert.equal(state.assist, 'LISTENING')
+  applyLvaEvent(state, { event: 'timer_updated' })
+  assert.equal(state.assist, 'TIMER_TICKING')
+})
+
 test('enabled ducking requires a state file and positive refresh interval', (context) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pimus-config-'))
   context.after(() => fs.rmSync(directory, { recursive: true, force: true }))
