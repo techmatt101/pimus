@@ -37,6 +37,11 @@ The same Node controller handles the HA light command, ReSpeaker USB transfer,
 and Stream Deck **Lights** action. `smartampctl lights ...` remains available to
 shell automation; it updates the shared LED state watched by the controller.
 
+The state files and PipeWire session belong to the `smartamp` service account,
+so run shell automation as that user, for example
+`sudo -u smartamp smartampctl lights cycle`. Invoked as another user,
+`smartampctl` explains this instead of failing with a traceback.
+
 ## Stream Deck+
 
 Supported action objects are:

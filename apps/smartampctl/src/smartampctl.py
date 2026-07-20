@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,17 @@ from typing import Any
 STATE_DIR = Path(os.environ.get("SMARTAMP_STATE_DIR", "/var/lib/smartamp"))
 AUDIO_STATE = STATE_DIR / "audio-state.json"
 LED_STATE = STATE_DIR / "led-state.json"
+
+
+def status_path() -> Path:
+    # The audio manager writes status into the smartamp service account's
+    # runtime directory. Derive that account's UID from the state directory
+    # owner so status also works when invoked by another (sudo-capable) user.
+    try:
+        uid = STATE_DIR.stat().st_uid
+    except OSError:
+        return Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "smartamp-audio-status.json"
+    return Path(f"/run/user/{uid}") / "smartamp-audio-status.json"
 
 
 def read_json(path: Path, default: dict[str, Any]) -> dict[str, Any]:
@@ -73,15 +85,25 @@ def main() -> int:
     lights_parser.add_argument("command", choices=["cycle", "voice", "off", "single", "breath", "rainbow", "doa", "ring"])
     subparsers.add_parser("status")
     args = parser.parse_args()
-    if args.area == "source":
-        return source(args.name, args.command)
-    if args.area == "volume":
-        return volume(args.command)
-    if args.area == "lights":
-        return lights(args.command)
-    status_path = Path(os.environ.get("XDG_RUNTIME_DIR", "/run/user/0")) / "smartamp-audio-status.json"
-    print(json.dumps(read_json(status_path, {}), indent=2))
-    return 0
+    try:
+        if args.area == "source":
+            return source(args.name, args.command)
+        if args.area == "volume":
+            return volume(args.command)
+        if args.area == "lights":
+            return lights(args.command)
+        print(json.dumps(read_json(status_path(), {}), indent=2))
+        return 0
+    except PermissionError as error:
+        # State and status files belong to the smartamp service account; a
+        # traceback here would hide the actual remedy from SSH users.
+        print(f"smartampctl: {error}", file=sys.stderr)
+        print(
+            "State files belong to the smartamp service user; retry as, for "
+            "example: sudo -u smartamp smartampctl ...",
+            file=sys.stderr,
+        )
+        return 1
 
 
 if __name__ == "__main__":
