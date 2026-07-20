@@ -9,9 +9,7 @@ An idempotent Raspberry Pi 5 build recipe for:
 - Home Assistant Assist, local wake word, voice responses, timers, and announcements
 - configurable ReSpeaker LEDs and Stream Deck+ keys, dials, and touch strip
 
-The recipe targets a fresh 64-bit Raspberry Pi OS Lite Bookworm or Trixie install. It provisions the Pi over SSH instead of baking credentials into a disk image; running it again produces the same configuration and applies upgrades safely.
-
-A flashable Raspberry Pi OS Trixie image path is also included using Raspberry Pi's official `rpi-image-gen`; see [image building](image/README.md). The SSH provisioning route is faster for the fresh Lite install you already have.
+The recipe targets a fresh 64-bit Raspberry Pi OS Lite Bookworm or Trixie install. It provisions the Pi directly over SSH; running it again produces the same configuration and safely applies later changes.
 
 ## Read this before powering the stack
 

@@ -40,10 +40,9 @@
     state: restarted
   when: streamdeck_enabled | bool
 
-# Device-tree overlays and modules-load changes only take effect at boot. The
-# switch allows image builds/tests to suppress a reboot when required.
+# Device-tree overlays and modules-load changes only take effect at boot, so a
+# changed hardware configuration needs one controlled reboot before use.
 - name: Reboot Smart Amp
   ansible.builtin.reboot:
     msg: "Rebooting to activate Smart Amp boot configuration"
     reboot_timeout: 300
-  when: smartamp_reboot_allowed | bool
