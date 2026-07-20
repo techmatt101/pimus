@@ -32,7 +32,10 @@ export function applyLvaEvent(state: ControlState, message: LvaMessage): Control
   } else if (message.event === 'muted') {
     state.muted = Boolean(data.muted)
   } else if (message.event === 'volume_changed') {
-    state.volume = Number(data.volume)
+    // A malformed payload must not put NaN on the volume dial; the output
+    // monitor poll remains the authoritative writer while the deck is up.
+    const volume = Number(data.volume)
+    if (Number.isFinite(volume)) state.volume = volume
   } else if (message.event === 'media_player_playing') {
     state.media = true
   } else if (message.event === 'media_player_paused' || message.event === 'media_player_idle') {

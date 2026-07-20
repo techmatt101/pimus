@@ -31,6 +31,10 @@ test('LVA snapshots and events update shared display state', () => {
   assert.equal(state.media, true)
   applyLvaEvent(state, { event: 'media_player_paused' })
   assert.equal(state.media, false)
+  applyLvaEvent(state, { event: 'volume_changed', data: { volume: 0.8 } })
+  assert.equal(state.volume, 0.8)
+  applyLvaEvent(state, { event: 'volume_changed' })
+  assert.equal(state.volume, 0.8)
 })
 
 test('non-pipeline events leave the assist display state alone', () => {
