@@ -34,3 +34,31 @@
     state: absent
   notify: Restart journald
   when: not (smartamp_journal_in_ram | bool)
+
+# Swapping to the SD card is the fastest way to wear it out, and this stack
+# fits in Pi 5 RAM. Without swap, true memory exhaustion means the kernel
+# OOM-kills the largest process and systemd restarts it, which is preferable
+# to silently grinding the card. Stopping dphys-swapfile also runs swapoff;
+# failed_when tolerates images that never shipped the package.
+- name: Disable the SD-card swapfile
+  ansible.builtin.systemd_service:
+    name: dphys-swapfile.service
+    enabled: false
+    state: stopped
+  failed_when: false
+  when: not (smartamp_swapfile_enabled | bool)
+
+- name: Remove the swapfile when disabled
+  ansible.builtin.file:
+    path: /var/swap
+    state: absent
+  when: not (smartamp_swapfile_enabled | bool)
+
+# Re-enabling the service recreates and activates the stock swapfile.
+- name: Enable the SD-card swapfile when configured
+  ansible.builtin.systemd_service:
+    name: dphys-swapfile.service
+    enabled: true
+    state: started
+  failed_when: false
+  when: smartamp_swapfile_enabled | bool

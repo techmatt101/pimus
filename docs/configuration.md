@@ -14,6 +14,17 @@ Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Squeezelite and US
 
 Aux is deliberately not on the duckable bus. It continues at its selected level during voice interactions. Set the generated source target to `background` as a code-level extension if aux should follow the same policy.
 
+## SD-card endurance
+
+The image is tuned for minimal flash writes. `smartamp_journal_in_ram` keeps
+systemd logs for the current boot in RAM (see the troubleshooting note about
+logs not surviving reboots), and `smartamp_swapfile_enabled: false` removes the
+stock dphys-swapfile so memory pressure cannot grind the card — if RAM is ever
+exhausted, the kernel OOM-kills the largest process and systemd restarts it.
+Application state that must survive reboots (route toggles, LED mode) is
+written only when its content changes; frequently refreshed files (ducking
+lease, audio status) live under `/run`, which is RAM-backed.
+
 ## Voice
 
 `voice_assistant_version` pins the upstream Git release installed into `/opt/smartamp/linux-voice-assistant/.venv`; no container runtime is used. `voice_assistant_wake_model` defaults to `okay_nabu`. Custom OpenWakeWord model files can be placed in `/var/lib/smartamp/lva/wakewords` and selected by name. The remote Home Assistant Assist pipeline supplies speech-to-text, conversation handling, and text-to-speech.

@@ -7,6 +7,9 @@ smartamp_service_user: smartamp
 # SD-card endurance. Keeps systemd logs for the current boot in RAM only;
 # logs do not survive a reboot. Set to false to restore persistent journals.
 smartamp_journal_in_ram: true
+# The stock SD swapfile is removed; memory exhaustion then OOM-kills and
+# restarts a service instead of wearing the card. Set to true to restore it.
+smartamp_swapfile_enabled: false
 
 # HiFiBerry DAC2 ADC Pro + AAmp60
 hifiberry_overlay: hifiberry-dacplusadcpro
