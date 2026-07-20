@@ -101,8 +101,9 @@ streamdeck_keys:
   - { label: "LIGHTS", color: "#37474f", action: { type: led, command: cycle } }
 streamdeck_dials:
   - { label: "VOLUME", left: { type: audio, command: down }, right: { type: audio, command: up }, press: { type: audio, command: mute } }
-  - { label: "AUX", left: { type: audio, source: aux, command: off }, right: { type: audio, source: aux, command: on }, press: { type: audio, source: aux, command: toggle } }
-  - { label: "USB", left: { type: audio, source: usb, command: off }, right: { type: audio, source: usb, command: on }, press: { type: audio, source: usb, command: toggle } }
+  # Quote YAML's boolean-like on/off words so controller.json receives strings.
+  - { label: "AUX", left: { type: audio, source: aux, command: "off" }, right: { type: audio, source: aux, command: "on" }, press: { type: audio, source: aux, command: toggle } }
+  - { label: "USB", left: { type: audio, source: usb, command: "off" }, right: { type: audio, source: usb, command: "on" }, press: { type: audio, source: usb, command: toggle } }
   - { label: "VOICE", left: { type: noop }, right: { type: noop }, press: { type: lva, command: start_listening } }
 
 # Optional Home Assistant webhook base URL. A Stream Deck action of type

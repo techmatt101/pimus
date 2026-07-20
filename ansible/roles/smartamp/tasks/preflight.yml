@@ -102,6 +102,45 @@
       Hardware/controller inventory contains an out-of-range value, conflicting
       voice ports, too many Stream Deck controls, or an invalid webhook URL.
 
+# YAML 1.1 treats unquoted on/off as booleans. Flatten every configured gesture
+# and require string commands here before it can become broken controller JSON.
+- name: Collect configured Stream Deck actions
+  ansible.builtin.set_fact:
+    smartamp_streamdeck_actions: >-
+      {{
+        (streamdeck_keys | map(attribute='action', default={'type': 'noop'}) | list)
+        + (streamdeck_dials | map(attribute='left', default={'type': 'noop'}) | list)
+        + (streamdeck_dials | map(attribute='right', default={'type': 'noop'}) | list)
+        + (streamdeck_dials | map(attribute='press', default={'type': 'noop'}) | list)
+      }}
+  when: streamdeck_enabled | bool
+
+- name: Validate configured Stream Deck actions
+  ansible.builtin.assert:
+    that:
+      - item.type in ['noop', 'lva', 'audio', 'led', 'webhook']
+      - item.type in ['noop', 'webhook'] or (item.command is defined and item.command is string)
+      - item.type != 'webhook' or (item.id is defined and item.id is string and item.id | length > 0)
+      - >-
+        item.type != 'audio' or
+        ((item.source is defined and item.source in ['aux', 'usb'] and item.command in ['on', 'off', 'toggle']) or
+         (item.source is not defined and item.command in ['up', 'down', 'mute']))
+      - item.type != 'led' or item.command in ['cycle', 'voice', 'off', 'single', 'breath', 'rainbow', 'doa', 'ring']
+      - >-
+        item.type != 'lva' or item.command in
+        ['start_listening', 'stop_pipeline', 'mute_mic', 'unmute_mic', 'mute_toggle',
+         'volume_up', 'volume_down', 'stop_timer_ringing', 'pause_media_player',
+         'resume_media_player', 'stop_media_player', 'media_toggle',
+         'button_single_press', 'button_double_press', 'button_triple_press',
+         'button_long_press', 'stop']
+    fail_msg: >-
+      Stream Deck action {{ item }} has an invalid type, source, command, or
+      webhook identifier. Quote YAML commands such as "on" and "off".
+  loop: "{{ smartamp_streamdeck_actions }}"
+  loop_control:
+    label: "{{ item.type | default('missing type') }}:{{ item.command | default(item.id | default('')) }}"
+  when: streamdeck_enabled | bool
+
 # The XVF3800 protocol accepts only the documented effects and byte brightness.
 # Check every state colour here so a typo cannot turn into an unintended LED.
 - name: Validate ReSpeaker LED states
