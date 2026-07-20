@@ -1,62 +1,14 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { promisify } from 'node:util'
 
-import type { AudioState, ControlState } from './types.mjs'
+import type { ControlState } from './types.mjs'
 
 const execFileAsync = promisify(execFile)
-
-function writeFileAtomic(stateFile: string, serialized: string): void {
-  fs.mkdirSync(path.dirname(stateFile), { recursive: true })
-  const temporary = `${stateFile}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`
-  try {
-    const descriptor = fs.openSync(temporary, 'wx', 0o640)
-    try {
-      fs.writeFileSync(descriptor, serialized)
-      fs.fsyncSync(descriptor)
-    } finally {
-      fs.closeSync(descriptor)
-    }
-    fs.renameSync(temporary, stateFile)
-  } finally {
-    try { fs.unlinkSync(temporary) } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-    }
-  }
-}
 
 export type CommandRunner = (
   file: string,
   args: string[],
 ) => Promise<{ stdout: string; stderr: string }>
-
-export function readAudioState(path: string): AudioState {
-  try {
-    const value: unknown = JSON.parse(fs.readFileSync(path, 'utf8'))
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) return { sources: {} }
-    const sources = (value as { sources?: unknown }).sources
-    if (typeof sources !== 'object' || sources === null || Array.isArray(sources)) return { sources: {} }
-    return value as AudioState
-  } catch {
-    return { sources: {} }
-  }
-}
-
-/**
- * Applies an on/off/toggle command to a named route in the shared audio state
- * file. The audio manager reconciles PipeWire loopbacks from this file on its
- * next poll; returns the route's new desired state.
- */
-export function setSourceState(stateFile: string, name: string, command: string): boolean {
-  const current = readAudioState(stateFile)
-  const enabled = command === 'toggle' ? !current.sources[name] : command === 'on'
-  if (current.sources[name] !== enabled) {
-    const next: AudioState = { ...current, sources: { ...current.sources, [name]: enabled } }
-    writeFileAtomic(stateFile, `${JSON.stringify(next, null, 2)}\n`)
-  }
-  return enabled
-}
 
 // Volume goes straight to the PipeWire default sink; -l 1.0 caps "up" at 100%.
 const VOLUME_OPERATIONS: Readonly<Record<string, readonly string[]>> = Object.freeze({

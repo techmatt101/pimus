@@ -34,16 +34,17 @@
     mode: "0755"
   notify: Restart audio manager
 
-# The controller acts on wpctl and the audio state file directly; the retired
-# smartampctl helper must not linger as a stale command on upgraded devices.
+# The controller acts on wpctl and the audio manager's control socket
+# directly; the retired smartampctl helper must not linger as a stale command
+# on upgraded devices.
 - name: Remove retired smartampctl command
   ansible.builtin.file:
     path: /usr/local/bin/smartampctl
     state: absent
 
-# Route state moved to the RAM-backed /run/user runtime directory so toggles
-# reset to inventory defaults at boot and never wear the SD card. The old
-# on-disk copy must not linger where it looks authoritative.
+# Route state moved from an on-disk file to the manager's memory, controlled
+# over its runtime Unix socket. The old copy must not linger where it looks
+# authoritative.
 - name: Remove legacy on-disk audio state
   ansible.builtin.file:
     path: "{{ smartamp_state_dir }}/audio-state.json"

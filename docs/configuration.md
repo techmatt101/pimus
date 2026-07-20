@@ -21,9 +21,10 @@ systemd logs for the current boot in RAM (see the troubleshooting note about
 logs not surviving reboots), and `smartamp_swapfile_enabled: false` removes the
 stock dphys-swapfile so memory pressure cannot grind the card — if RAM is ever
 exhausted, the kernel OOM-kills the largest process and systemd restarts it.
-All audio runtime files (route toggles, ducking lease, audio status) live
-under `/run`, which is RAM-backed, so routine operation never writes to the
-card and route toggles reset to inventory defaults at boot.
+Route toggles live in the audio manager's memory and travel over a Unix
+socket in the runtime directory; the ducking lease and audio status files
+live under `/run`, which is RAM-backed. Routine operation therefore never
+writes to the card, and route toggles reset to inventory defaults at boot.
 
 ## Voice
 

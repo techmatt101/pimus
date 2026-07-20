@@ -63,7 +63,8 @@ export interface DuckingConfig {
 export interface ControllerConfig {
   voice_enabled: boolean
   lva_uri: string
-  audio_state_file: string
+  /** Unix control socket of the audio manager daemon. */
+  audio_socket: string
   webhook_base?: string
   ducking?: DuckingConfig
   streamdeck?: StreamDeckConfig
@@ -101,7 +102,7 @@ export interface ControlState {
   media: boolean
 }
 
-/** Route enablement published by the audio manager. */
+/** Route enablement mirrored from the audio manager's control socket. */
 export interface AudioState {
   sources: Record<string, boolean | undefined>
 }

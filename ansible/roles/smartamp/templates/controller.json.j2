@@ -2,7 +2,7 @@
 {
   "voice_enabled": {{ voice_assistant_enabled | bool | to_json }},
   "lva_uri": "ws://127.0.0.1:{{ voice_assistant_peripheral_port }}",
-  "audio_state_file": "/run/user/{{ smartamp_uid }}/smartamp-audio-state.json",
+  "audio_socket": "/run/user/{{ smartamp_uid }}/smartamp-audio.sock",
   "ducking": {
     "enabled": {{ voice_ducking_enabled | to_json }},
     "state_file": "/run/user/{{ smartamp_uid }}/smartamp-audio-duck.json",

@@ -15,8 +15,8 @@ function validateControllerConfig(value: unknown, configPath: string): asserts v
       throw new Error(`Controller configuration at ${configPath} must define a WebSocket lva_uri`)
     }
   }
-  if (typeof value.audio_state_file !== 'string' || value.audio_state_file.length === 0) {
-    throw new Error(`Controller configuration at ${configPath} must define audio_state_file`)
+  if (typeof value.audio_socket !== 'string' || value.audio_socket.length === 0) {
+    throw new Error(`Controller configuration at ${configPath} must define audio_socket`)
   }
 
   if (isRecord(value.streamdeck) && value.streamdeck.enabled) {

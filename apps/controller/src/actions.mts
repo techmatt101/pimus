@@ -3,7 +3,7 @@ import type { Action, ControlState, LvaSender } from './types.mjs'
 export interface ActionHandlerOptions {
   state: ControlState
   lva: LvaSender
-  /** Applies on/off/toggle to a named audio route in the shared state file. */
+  /** Applies on/off/toggle to a named audio route via the audio manager socket. */
   setSource: (name: string, command: string) => unknown
   /** Applies up/down/mute to the PipeWire default sink. */
   setVolume: (command: string) => unknown

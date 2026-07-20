@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import selectors
+import socket
 import tempfile
 import unittest
 from pathlib import Path
@@ -37,22 +39,97 @@ class AudioManagerTests(unittest.TestCase):
         selected = audio_manager.find_node(nodes, "HiFiBerry")
         self.assertEqual(selected["name"], "source.1")
 
-    def test_state_defaults_are_persisted(self) -> None:
+    def test_route_state_defaults_follow_config(self) -> None:
         config = {"sources": {"aux": {"enabled": True}, "usb": {"enabled": False}}}
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "audio-state.json"
-            state = audio_manager.load_state(path, config)
-            self.assertEqual(state, {"sources": {"aux": True, "usb": False}})
-            self.assertEqual(json.loads(path.read_text()), state)
+        self.assertEqual(
+            audio_manager.default_sources(config), {"aux": True, "usb": False}
+        )
 
-    def test_unchanged_state_is_not_rewritten(self) -> None:
-        config = {"sources": {"aux": {"enabled": True}}}
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "audio-state.json"
-            audio_manager.load_state(path, config)
-            with mock.patch.object(audio_manager, "atomic_json") as write:
-                audio_manager.load_state(path, config)
-            write.assert_not_called()
+    def test_route_commands_update_memory_state(self) -> None:
+        manager = audio_manager.AudioManager.__new__(audio_manager.AudioManager)
+        manager.sources = {"aux": True, "usb": False}
+
+        reply, reconcile = manager.apply_command(
+            {"command": "set-source", "name": "usb", "state": "toggle"}
+        )
+        self.assertEqual(
+            reply, {"event": "state", "sources": {"aux": True, "usb": True}}
+        )
+        self.assertTrue(reconcile)
+
+        # Re-applying the current state must not trigger graph work.
+        _, reconcile = manager.apply_command(
+            {"command": "set-source", "name": "usb", "state": "on"}
+        )
+        self.assertFalse(reconcile)
+
+        reply, reconcile = manager.apply_command(
+            {"command": "set-source", "name": "phono", "state": "on"}
+        )
+        self.assertEqual(reply["event"], "error")
+        self.assertFalse(reconcile)
+
+    def test_reconnect_sync_adopts_only_configured_boolean_sources(self) -> None:
+        manager = audio_manager.AudioManager.__new__(audio_manager.AudioManager)
+        manager.sources = {"aux": True, "usb": False}
+        reply, reconcile = manager.apply_command(
+            {
+                "command": "set-sources",
+                "sources": {"aux": False, "usb": "yes", "bogus": True},
+            }
+        )
+        # Unknown routes and non-boolean values are ignored, not coerced.
+        self.assertEqual(
+            reply, {"event": "state", "sources": {"aux": False, "usb": False}}
+        )
+        self.assertTrue(reconcile)
+
+    def test_subscribe_lines_filter_out_self_inflicted_noise(self) -> None:
+        self.assertTrue(audio_manager.is_relevant_event("Event 'change' on sink #43"))
+        self.assertTrue(audio_manager.is_relevant_event("Event 'remove' on module #7"))
+        # pactl invocations from our own reconcile emit client events; reacting
+        # to them would reconcile forever.
+        self.assertFalse(audio_manager.is_relevant_event("Event 'new' on client #99"))
+        self.assertFalse(audio_manager.is_relevant_event("garbage"))
+
+    def test_socket_commands_reconcile_and_answer_with_live_state(self) -> None:
+        manager = audio_manager.AudioManager.__new__(audio_manager.AudioManager)
+        manager.sources = {"aux": False}
+        manager.selector = selectors.DefaultSelector()
+        manager.safe_reconcile = mock.Mock()
+        left, right = socket.socketpair()
+        self.addCleanup(left.close)
+        self.addCleanup(right.close)
+        left.setblocking(False)
+        manager.clients = {left: b""}
+        manager.selector.register(left, selectors.EVENT_READ, lambda: None)
+
+        right.sendall(b'{"command": "set-source", "name": "aux", "state": "on"}\n')
+        manager.read_client(left)
+
+        self.assertEqual(
+            json.loads(right.recv(4096)),
+            {"event": "state", "sources": {"aux": True}},
+        )
+        manager.safe_reconcile.assert_called_once()
+
+        right.sendall(b"not json\n")
+        manager.read_client(left)
+        self.assertEqual(json.loads(right.recv(4096))["event"], "error")
+
+    def test_flooding_client_is_dropped(self) -> None:
+        manager = audio_manager.AudioManager.__new__(audio_manager.AudioManager)
+        manager.selector = selectors.DefaultSelector()
+        left, right = socket.socketpair()
+        self.addCleanup(left.close)
+        self.addCleanup(right.close)
+        left.setblocking(False)
+        manager.clients = {left: b"x" * audio_manager.MAX_CLIENT_BUFFER_BYTES}
+        manager.selector.register(left, selectors.EVENT_READ, lambda: None)
+
+        right.sendall(b"y")
+        manager.read_client(left)
+        self.assertEqual(manager.clients, {})
 
     def test_owned_stream_matches_numeric_or_string_module_id(self) -> None:
         streams = [

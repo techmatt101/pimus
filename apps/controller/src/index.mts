@@ -1,4 +1,5 @@
 import { createActionHandler } from './actions.mjs'
+import { AudioManagerClient } from './audio-manager-client.mjs'
 import { loadConfig } from './config.mjs'
 import { runDeckLoop } from './deck-controller.mjs'
 import { DeckRenderer } from './display.mjs'
@@ -6,7 +7,7 @@ import { VoiceDucker } from './ducking.mjs'
 import { LvaClient } from './lva-client.mjs'
 import { ReSpeakerController } from './respeaker.mjs'
 import { createState } from './state.mjs'
-import { readAudioState, runVolumeCommand, setSourceState, startOutputMonitor } from './system-control.mjs'
+import { runVolumeCommand, startOutputMonitor } from './system-control.mjs'
 
 const config = loadConfig()
 const state = createState()
@@ -27,10 +28,15 @@ if (ducker) {
   process.once('SIGINT', releaseAndExit)
 }
 
+const audio = new AudioManagerClient({
+  socketPath: config.audio_socket,
+  onStateChange: () => renderer.schedule(),
+})
+
 const renderer = new DeckRenderer({
   config: config.streamdeck,
   state,
-  readAudioState: () => readAudioState(config.audio_state_file),
+  readAudioState: () => audio.state,
 })
 
 const respeaker = config.respeaker?.enabled
@@ -55,8 +61,7 @@ const handleAction = createActionHandler({
   state,
   lva,
   setSource: (name, command) => {
-    setSourceState(config.audio_state_file, name, command)
-    renderer.schedule()
+    audio.setSource(name, command)
   },
   setVolume: (command) => runVolumeCommand(command, { onExit: () => renderer.schedule() }),
   webhookBase: config.webhook_base,
@@ -64,6 +69,7 @@ const handleAction = createActionHandler({
 })
 
 respeaker?.start()
+audio.connect()
 if (config.voice_enabled) lva.connect()
 
 if (config.streamdeck?.enabled) {

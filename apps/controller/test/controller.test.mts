@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
+import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
 import { createActionHandler } from '../src/actions.mjs'
+import { AudioManagerClient } from '../src/audio-manager-client.mjs'
 import { color, createImage } from '../src/bitmap.mjs'
 import { loadConfig } from '../src/config.mjs'
 import { createActionDispatcher, findStreamDeckPlus } from '../src/deck-controller.mjs'
@@ -14,7 +16,7 @@ import { duckingForEvent, VoiceDucker, writeDuckRequest } from '../src/ducking.m
 import { LvaClient } from '../src/lva-client.mjs'
 import { encodePayload, ReSpeakerController, rgb, Xvf3800Device } from '../src/respeaker.mjs'
 import { applyLvaEvent, createState } from '../src/state.mjs'
-import { parseOutputState, readAudioState, runVolumeCommand, setSourceState } from '../src/system-control.mjs'
+import { parseOutputState, runVolumeCommand } from '../src/system-control.mjs'
 import type { ChildProcess, spawn } from 'node:child_process'
 import type { StreamDeckDeviceInfo } from '@elgato-stream-deck/node'
 import type WebSocket from 'ws'
@@ -111,7 +113,7 @@ test('enabled ducking requires a state file and positive refresh interval', (con
   context.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const configFile = path.join(directory, 'controller.json')
   fs.writeFileSync(configFile, JSON.stringify({
-    audio_state_file: '/state/audio.json',
+    audio_socket: '/run/smartamp/audio.sock',
     ducking: { enabled: true, refresh_milliseconds: 0 },
     streamdeck: { enabled: false },
     respeaker: { enabled: false },
@@ -125,7 +127,7 @@ test('invalid device configuration fails at startup', (context) => {
   const configFile = path.join(directory, 'controller.json')
   const base = {
     voice_enabled: false,
-    audio_state_file: '/state/audio.json',
+    audio_socket: '/run/smartamp/audio.sock',
     ducking: { enabled: false },
     streamdeck: { enabled: true, brightness: 101, keys: [], dials: [] },
     respeaker: { enabled: false },
@@ -250,34 +252,115 @@ test('bitmap and PipeWire parsers produce deterministic values', () => {
   assert.deepEqual(parseOutputState('Volume: 0.55 [MUTED]'), { volume: 0.55, outputMuted: true })
 })
 
-test('malformed persistent state falls back safely', (context) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pimus-malformed-state-'))
+async function waitFor(condition: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 500 && !condition(); attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 2))
+  }
+  assert.ok(condition())
+}
+
+test('route toggles travel over the audio manager socket and survive reconnects', async (context) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pimus-audio-sock-'))
   context.after(() => fs.rmSync(directory, { recursive: true, force: true }))
-  const stateFile = path.join(directory, 'audio-state.json')
-  fs.writeFileSync(stateFile, 'null')
-  assert.deepEqual(readAudioState(stateFile), { sources: {} })
+  const socketPath = path.join(directory, 'audio.sock')
+  const received: string[] = []
+  const connections: net.Socket[] = []
+  const server = net.createServer((connection) => {
+    connections.push(connection)
+    connection.setEncoding('utf8')
+    connection.on('data', (chunk) => received.push(...String(chunk).split('\n').filter(Boolean)))
+    connection.on('error', () => {})
+  })
+  await new Promise<void>((resolve) => server.listen(socketPath, resolve))
+  context.after(() => server.close())
+
+  let changes = 0
+  const client = new AudioManagerClient({
+    socketPath,
+    reconnectMilliseconds: 1,
+    onStateChange: () => { changes += 1 },
+    logger: { log: () => {}, error: () => {} },
+  })
+  context.after(() => client.close())
+  client.connect()
+
+  // A client with no cache adopts the manager's state.
+  await waitFor(() => received.length >= 1)
+  assert.deepEqual(JSON.parse(received[0] ?? ''), { command: 'get-state' })
+  connections[0]?.write(`${JSON.stringify({ event: 'state', sources: { aux: true, usb: false } })}\n`)
+  await waitFor(() => client.state.sources.aux === true)
+
+  // Toggles update the cache immediately and send an absolute state.
+  client.setSource('usb', 'toggle')
+  assert.equal(client.state.sources.usb, true)
+  await waitFor(() => received.length >= 2)
+  assert.deepEqual(JSON.parse(received[1] ?? ''), { command: 'set-source', name: 'usb', state: 'on' })
+
+  // After a manager restart the client re-asserts its cached toggles.
+  const changesBeforeDrop = changes
+  connections[0]?.destroy()
+  await waitFor(() => received.length >= 3)
+  assert.deepEqual(JSON.parse(received[2] ?? ''), {
+    command: 'set-sources',
+    sources: { aux: true, usb: true },
+  })
+  assert.ok(changes > changesBeforeDrop)
 })
 
-test('route toggles are applied directly to the shared audio state file', (context) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pimus-source-state-'))
-  context.after(() => fs.rmSync(directory, { recursive: true, force: true }))
-  const stateFile = path.join(directory, 'audio-state.json')
-
-  assert.equal(setSourceState(stateFile, 'aux', 'toggle'), true)
-  assert.deepEqual(JSON.parse(fs.readFileSync(stateFile, 'utf8')), { sources: { aux: true } })
-  assert.equal(setSourceState(stateFile, 'aux', 'toggle'), false)
-  assert.equal(setSourceState(stateFile, 'usb', 'on'), true)
-  assert.deepEqual(JSON.parse(fs.readFileSync(stateFile, 'utf8')), {
-    sources: { aux: false, usb: true },
+test('toggles before the first state sync defer to the manager', () => {
+  class FakeSocket extends EventEmitter {
+    readonly written: string[] = []
+    write(value: string): void { this.written.push(value) }
+    destroy(): void { this.emit('close') }
+  }
+  const fake = new FakeSocket()
+  const client = new AudioManagerClient({
+    socketPath: '/nowhere/audio.sock',
+    connectSocket: () => fake as unknown as net.Socket,
+    logger: { log: () => {}, error: () => {} },
   })
+  client.connect()
+  fake.emit('connect')
 
-  // Re-applying the current state must not rewrite the SD card or leave a
-  // temporary file behind.
-  const past = new Date('2020-01-01T00:00:00Z')
-  fs.utimesSync(stateFile, past, past)
-  assert.equal(setSourceState(stateFile, 'usb', 'on'), true)
-  assert.equal(fs.statSync(stateFile).mtimeMs, past.getTime())
-  assert.deepEqual(fs.readdirSync(directory), ['audio-state.json'])
+  // With no authoritative state yet, an empty cache would resolve any toggle
+  // to "on"; the raw command must go to the manager instead.
+  client.setSource('aux', 'toggle')
+  assert.deepEqual(JSON.parse(fake.written.at(-1) ?? ''), {
+    command: 'set-source',
+    name: 'aux',
+    state: 'toggle',
+  })
+  assert.deepEqual(client.state, { sources: {} })
+
+  // Once synced, toggles resolve locally and travel as absolute states.
+  fake.emit('data', '{"event":"state","sources":{"aux":true}}\n')
+  client.setSource('aux', 'toggle')
+  assert.deepEqual(JSON.parse(fake.written.at(-1) ?? ''), {
+    command: 'set-source',
+    name: 'aux',
+    state: 'off',
+  })
+  assert.deepEqual(client.state, { sources: { aux: false } })
+  client.close()
+})
+
+test('malformed audio manager events are ignored', () => {
+  class FakeSocket extends EventEmitter {
+    readonly written: string[] = []
+    write(value: string): void { this.written.push(value) }
+    destroy(): void { this.emit('close') }
+  }
+  const fake = new FakeSocket()
+  const client = new AudioManagerClient({
+    socketPath: '/nowhere/audio.sock',
+    connectSocket: () => fake as unknown as net.Socket,
+    logger: { log: () => {}, error: () => {} },
+  })
+  client.connect()
+  fake.emit('connect')
+  fake.emit('data', 'garbage\n{"event":"state","sources":{"aux":true}}\n{"event":"state","sources":null}\n')
+  assert.deepEqual(client.state, { sources: { aux: true } })
+  client.close()
 })
 
 test('volume commands run wpctl directly and log failures', () => {

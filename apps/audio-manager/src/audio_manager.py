@@ -4,11 +4,14 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import logging
 import os
 import re
+import selectors
 import signal
+import socket
 import subprocess
 import tempfile
 import time
@@ -108,25 +111,32 @@ def duck_request_active(path: Path, timeout_seconds: float, now: float) -> bool:
         return False
 
 
-def load_state(path: Path, config: dict[str, Any]) -> dict[str, Any]:
-    defaults = {
-        "sources": {
-            name: bool(source.get("enabled", False))
-            for name, source in config["sources"].items()
-        }
+def default_sources(config: dict[str, Any]) -> dict[str, bool]:
+    return {
+        name: bool(source.get("enabled", False))
+        for name, source in config["sources"].items()
     }
-    current: Any = None
-    try:
-        current = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(current, dict) and isinstance(current.get("sources"), dict):
-            defaults["sources"].update(current["sources"])
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        pass
-    # The controller is the only normal writer after initialisation. Keep the
-    # file atomic, but avoid a lock protocol for this rare default merge.
-    if current != defaults:
-        atomic_json(path, defaults)
-    return defaults
+
+
+# A burst of pactl subscribe events (device hotplug, PipeWire restart) settles
+# into one reconcile scheduled this far ahead of the first event.
+EVENT_DEBOUNCE_SECONDS = 0.3
+
+# Control-socket commands are tiny; a client that streams this much without a
+# newline is broken and must not grow the buffer without limit.
+MAX_CLIENT_BUFFER_BYTES = 64 * 1024
+
+# Facilities whose subscribe events can invalidate the reconciled graph.
+# `client` is deliberately excluded: every pactl invocation this process makes
+# emits client events, which would schedule reconciles forever.
+RELEVANT_FACILITIES = frozenset(
+    {"sink", "source", "sink-input", "module", "server", "card"}
+)
+
+
+def is_relevant_event(line: str) -> bool:
+    match = re.match(r"Event '[\w-]+' on ([\w-]+)", line)
+    return match is not None and match.group(1) in RELEVANT_FACILITIES
 
 
 def atomic_json(path: Path, value: dict[str, Any]) -> None:
@@ -159,12 +169,12 @@ class AudioManager:
     def __init__(
         self,
         config_path: Path,
-        state_path: Path,
+        socket_path: Path,
         status_path: Path,
         duck_state_path: Path,
     ) -> None:
         self.config = json.loads(config_path.read_text(encoding="utf-8"))
-        self.state_path = state_path
+        self.socket_path = socket_path
         self.status_path = status_path
         self.duck_state_path = duck_state_path
         self.modules: dict[str, int] = {}
@@ -172,6 +182,17 @@ class AudioManager:
         self.background_stream_index: int | None = None
         self.background_ducked: bool | None = None
         self.running = True
+        # Desired route state lives in memory; the controller owns it through
+        # the control socket and re-asserts it after either process restarts.
+        self.sources = default_sources(self.config)
+        self.selector = selectors.DefaultSelector()
+        self.server: socket.socket | None = None
+        self.clients: dict[socket.socket, bytes] = {}
+        self.subscribe_process: subprocess.Popen[bytes] | None = None
+        self.subscribe_buffer = b""
+        self.subscribe_retry_at = 0.0
+        self.pending_reconcile: float | None = None
+        self.next_resync = 0.0
 
     def stop(self, *_args: object) -> None:
         self.running = False
@@ -371,7 +392,6 @@ class AudioManager:
         sink = find_node(sinks, self.config["output_match"])
         background_sink, sinks, sources = self.ensure_background(sinks, sources, sink)
         voice = find_node(sources, self.config["voice_input_match"])
-        state = load_state(self.state_path, self.config)
         ducked = self.reconcile_ducking()
         status: dict[str, Any] = {
             "sink": sink.get("name") if sink else None,
@@ -386,9 +406,12 @@ class AudioManager:
             "sources": {},
         }
 
-        if sink:
+        # Only set defaults that are wrong: an unconditional set-default emits
+        # a subscribe event on every reconcile, which would echo into another
+        # scheduled reconcile and never quiesce.
+        if sink and run("pactl", "get-default-sink", check=False).stdout.strip() != sink["name"]:
             run("pactl", "set-default-sink", sink["name"], check=False)
-        if voice:
+        if voice and run("pactl", "get-default-source", check=False).stdout.strip() != voice["name"]:
             run("pactl", "set-default-source", voice["name"], check=False)
 
         aec_config = self.config.get("aec_reference", {})
@@ -415,7 +438,7 @@ class AudioManager:
 
         for name, source_config in self.config["sources"].items():
             node = find_node(sources, source_config["match"])
-            enabled = bool(state["sources"].get(name, False))
+            enabled = self.sources.get(name, False)
             status["sources"][name] = {
                 "enabled": enabled,
                 "available": node is not None,
@@ -441,38 +464,237 @@ class AudioManager:
 
         atomic_json(self.status_path, status)
 
+    def state_event(self) -> dict[str, Any]:
+        return {"event": "state", "sources": dict(self.sources)}
+
+    def apply_command(self, message: Any) -> tuple[dict[str, Any], bool]:
+        """Apply one socket command; returns (reply, reconcile needed)."""
+        if not isinstance(message, dict):
+            return {"event": "error", "error": "message must be a JSON object"}, False
+        command = message.get("command")
+        if command == "get-state":
+            return self.state_event(), False
+        if command == "resync":
+            return self.state_event(), True
+        if command == "set-source":
+            name = message.get("name")
+            requested = message.get("state")
+            if name not in self.sources or requested not in ("on", "off", "toggle"):
+                return {"event": "error", "error": "unknown source or state"}, False
+            enabled = not self.sources[name] if requested == "toggle" else requested == "on"
+            changed = self.sources[name] != enabled
+            self.sources[name] = enabled
+            return self.state_event(), changed
+        if command == "set-sources":
+            requested = message.get("sources")
+            if not isinstance(requested, dict):
+                return {"event": "error", "error": "set-sources needs a sources object"}, False
+            changed = False
+            for name in self.sources:
+                enabled = requested.get(name)
+                if isinstance(enabled, bool):
+                    changed = changed or self.sources[name] != enabled
+                    self.sources[name] = enabled
+            return self.state_event(), changed
+        return {"event": "error", "error": f"unknown command {command!r}"}, False
+
+    def start_server(self) -> None:
+        self.socket_path.parent.mkdir(parents=True, exist_ok=True)
+        self.socket_path.unlink(missing_ok=True)
+        server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        server.setblocking(False)
+        server.bind(str(self.socket_path))
+        server.listen()
+        self.selector.register(server, selectors.EVENT_READ, self.accept_client)
+        self.server = server
+        LOG.info("Listening on %s", self.socket_path)
+
+    def accept_client(self) -> None:
+        if self.server is None:
+            return
+        try:
+            connection, _ = self.server.accept()
+        except OSError:
+            return
+        connection.setblocking(False)
+        self.clients[connection] = b""
+        self.selector.register(
+            connection,
+            selectors.EVENT_READ,
+            functools.partial(self.read_client, connection),
+        )
+
+    def drop_client(self, connection: socket.socket) -> None:
+        if connection not in self.clients:
+            return
+        del self.clients[connection]
+        try:
+            self.selector.unregister(connection)
+        except (KeyError, ValueError):
+            pass
+        connection.close()
+
+    def send_to(self, connection: socket.socket, event: dict[str, Any]) -> None:
+        try:
+            connection.sendall(json.dumps(event).encode("utf-8") + b"\n")
+        except OSError:
+            self.drop_client(connection)
+
+    def broadcast_state(self) -> None:
+        for connection in list(self.clients):
+            self.send_to(connection, self.state_event())
+
+    def read_client(self, connection: socket.socket) -> None:
+        try:
+            data = connection.recv(4096)
+        except BlockingIOError:
+            return
+        except OSError:
+            self.drop_client(connection)
+            return
+        if not data:
+            self.drop_client(connection)
+            return
+        self.clients[connection] = self.clients.get(connection, b"") + data
+        if len(self.clients[connection]) > MAX_CLIENT_BUFFER_BYTES:
+            LOG.warning("Dropping control client flooding the socket")
+            self.drop_client(connection)
+            return
+        while connection in self.clients and b"\n" in self.clients[connection]:
+            line, _, self.clients[connection] = self.clients[connection].partition(b"\n")
+            if not line.strip():
+                continue
+            try:
+                message = json.loads(line)
+            except json.JSONDecodeError:
+                self.send_to(connection, {"event": "error", "error": "invalid JSON"})
+                continue
+            reply, needs_reconcile = self.apply_command(message)
+            if needs_reconcile:
+                # Apply the change before answering so the state every client
+                # receives is already live in the graph.
+                self.safe_reconcile()
+                self.broadcast_state()
+            else:
+                self.send_to(connection, reply)
+
+    def start_subscribe(self) -> None:
+        try:
+            self.subscribe_process = subprocess.Popen(
+                ["pactl", "subscribe"], stdout=subprocess.PIPE
+            )
+        except OSError as error:
+            LOG.warning("pactl subscribe failed to start: %s", error)
+            self.subscribe_process = None
+            self.subscribe_retry_at = time.monotonic() + 1.0
+            return
+        stdout = self.subscribe_process.stdout
+        assert stdout is not None
+        os.set_blocking(stdout.fileno(), False)
+        self.subscribe_buffer = b""
+        self.selector.register(stdout, selectors.EVENT_READ, self.read_subscribe)
+
+    def stop_subscribe(self) -> None:
+        process = self.subscribe_process
+        if process is None:
+            return
+        self.subscribe_process = None
+        self.subscribe_retry_at = time.monotonic() + 1.0
+        if process.stdout is not None:
+            try:
+                self.selector.unregister(process.stdout)
+            except (KeyError, ValueError):
+                pass
+            process.stdout.close()
+        process.terminate()
+        try:
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            process.kill()
+
+    def read_subscribe(self) -> None:
+        process = self.subscribe_process
+        if process is None or process.stdout is None:
+            return
+        try:
+            data = os.read(process.stdout.fileno(), 4096)
+        except (BlockingIOError, OSError):
+            return
+        if not data:
+            self.stop_subscribe()
+            return
+        self.subscribe_buffer += data
+        while b"\n" in self.subscribe_buffer:
+            line, _, self.subscribe_buffer = self.subscribe_buffer.partition(b"\n")
+            if self.pending_reconcile is None and is_relevant_event(
+                line.decode("utf-8", "replace")
+            ):
+                self.pending_reconcile = time.monotonic() + EVENT_DEBOUNCE_SECONDS
+
+    def safe_reconcile(self) -> None:
+        try:
+            self.reconcile()
+        except (
+            subprocess.SubprocessError,
+            json.JSONDecodeError,
+            RuntimeError,
+            OSError,
+        ) as error:
+            LOG.warning("Audio reconciliation failed: %s", error)
+        self.pending_reconcile = None
+        self.next_resync = time.monotonic() + float(
+            self.config.get("resync_seconds", 900)
+        )
+
     def execute(self) -> int:
         self.wait_for_pulse()
-        next_reconcile = 0.0
+        self.start_server()
+        self.start_subscribe()
+        self.safe_reconcile()
+        duck_poll = float(self.config.get("duck_poll_seconds", 0.1))
         while self.running:
             now = time.monotonic()
-            if now >= next_reconcile:
-                try:
-                    self.reconcile()
-                except (
-                    subprocess.SubprocessError,
-                    json.JSONDecodeError,
-                    RuntimeError,
-                ) as error:
-                    LOG.warning("Audio reconciliation failed: %s", error)
-                next_reconcile = time.monotonic() + float(
-                    self.config.get("poll_seconds", 2)
-                )
-            else:
-                try:
-                    self.reconcile_ducking()
-                except (
-                    subprocess.SubprocessError,
-                    json.JSONDecodeError,
-                    RuntimeError,
-                ) as error:
-                    LOG.warning("Audio ducking failed: %s", error)
-                time.sleep(
-                    min(
-                        float(self.config.get("duck_poll_seconds", 0.1)),
-                        max(0, next_reconcile - time.monotonic()),
-                    )
-                )
+            deadline = min(
+                now + duck_poll,
+                self.next_resync,
+                self.pending_reconcile
+                if self.pending_reconcile is not None
+                else self.next_resync,
+            )
+            for key, _ in self.selector.select(max(0.0, deadline - now)):
+                key.data()
+            if self.subscribe_process is not None and self.subscribe_process.poll() is not None:
+                self.stop_subscribe()
+            if self.subscribe_process is None and time.monotonic() >= self.subscribe_retry_at:
+                LOG.info("Restarting pactl subscribe")
+                self.start_subscribe()
+                # Graph events may have been missed while the stream was down.
+                if self.pending_reconcile is None:
+                    self.pending_reconcile = time.monotonic()
+            try:
+                self.reconcile_ducking()
+            except (
+                subprocess.SubprocessError,
+                json.JSONDecodeError,
+                RuntimeError,
+            ) as error:
+                LOG.warning("Audio ducking failed: %s", error)
+            now = time.monotonic()
+            if now >= self.next_resync or (
+                self.pending_reconcile is not None and now >= self.pending_reconcile
+            ):
+                self.safe_reconcile()
+        self.stop_subscribe()
+        for connection in list(self.clients):
+            self.drop_client(connection)
+        if self.server is not None:
+            try:
+                self.selector.unregister(self.server)
+            except (KeyError, ValueError):
+                pass
+            self.server.close()
+            self.socket_path.unlink(missing_ok=True)
+        self.selector.close()
         for name in reversed(list(self.modules)):
             self.unload(name)
         return 0
@@ -481,12 +703,12 @@ class AudioManager:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=Path, required=True)
-    parser.add_argument("--state", type=Path, required=True)
+    parser.add_argument("--socket", type=Path, required=True)
     parser.add_argument("--status", type=Path, required=True)
     parser.add_argument("--duck-state", type=Path, required=True)
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    manager = AudioManager(args.config, args.state, args.status, args.duck_state)
+    manager = AudioManager(args.config, args.socket, args.status, args.duck_state)
     signal.signal(signal.SIGTERM, manager.stop)
     signal.signal(signal.SIGINT, manager.stop)
     return manager.execute()
