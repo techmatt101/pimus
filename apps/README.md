@@ -43,4 +43,5 @@ PipeWire routes. Its unit tests are colocated in `audio-manager/test/`.
 The Python program in `smartampctl/src/` is a short-lived command, not a daemon.
 It changes PipeWire volume or persistent aux/USB/LED state and exits. The Node
 controller watches the LED state file, so shell commands and Stream Deck actions
-converge on the same ReSpeaker behavior.
+converge on the same ReSpeaker behavior. Its unit tests are colocated in
+`smartampctl/test/`.

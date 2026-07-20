@@ -47,6 +47,7 @@ apps/
     test/                Python unit tests
   smartampctl/
     src/                 One-shot command-line utility
+    test/                Python unit tests
 ansible/
   inventory/             User-editable device configuration
   playbooks/             Provisioning and verification entry points

@@ -27,6 +27,7 @@ check: build ## Run an Ansible dry run (hardware/service tasks may be skipped)
 test: build ## Run local source and Ansible checks without contacting the Pi
 	python3 -m compileall -q apps/audio-manager/src apps/smartampctl/src
 	python3 -m unittest discover -s apps/audio-manager/test
+	python3 -m unittest discover -s apps/smartampctl/test
 	node --test apps/controller/dist/test/*.test.mjs
 	ansible-playbook ansible/playbooks/site.yml --syntax-check
 
