@@ -5,4 +5,4 @@ smartamp_app_dir: /opt/smartamp
 # Runtime applications live outside the Ansible role so they can be developed
 # and tested as normal source code. Override this only when embedding the role
 # in a different repository layout.
-smartamp_source_dir: "{{ playbook_dir }}/../../src"
+smartamp_source_dir: "{{ playbook_dir }}/../../apps"

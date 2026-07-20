@@ -11,8 +11,7 @@ Then inspect a specific service:
 ```sh
 sudo journalctl -b -u smartamp-audio-manager
 sudo journalctl -b -u smartamp-voice-assistant
-sudo journalctl -b -u smartamp-peripherals
-sudo journalctl -b -u smartamp-streamdeck
+sudo journalctl -b -u smartamp-controller
 ```
 
 ## HiFiBerry is missing
@@ -33,7 +32,7 @@ Run `vcgencmd get_throttled`. Any non-zero under-voltage bits indicate a power p
 
 ## Stream Deck is dark
 
-Unplug/replug it once after the initial udev rule installation, then check `lsusb | grep 0fd9` and the Stream Deck service log. The Node dependency may compile `node-hid` locally on Raspberry Pi; the playbook installs its compiler and `libudev` prerequisites.
+Unplug/replug it once after the initial udev rule installation, then check `lsusb | grep 0fd9` and the controller service log. The Node dependency may compile `node-hid` locally on Raspberry Pi; the playbook installs its compiler and `libudev` prerequisites.
 
 ## Home Assistant does not discover voice
 

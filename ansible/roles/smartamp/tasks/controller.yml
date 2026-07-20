@@ -1,0 +1,182 @@
+---
+# Earlier releases used separate Python ReSpeaker and Node Stream Deck units.
+# Stop them before removing their files so an upgraded Pi runs only the unified
+# controller and does not process voice events or button presses twice.
+- name: Stop legacy hardware controller services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+  loop:
+    - smartamp-peripherals.service
+    - smartamp-streamdeck.service
+  failed_when: false
+
+- name: Remove legacy hardware controller units
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}"
+    state: absent
+  loop:
+    - smartamp-peripherals.service
+    - smartamp-streamdeck.service
+  notify: Reload systemd
+
+# These paths are no longer deployed. Removing them keeps /opt and /etc aligned
+# with the repository layout and avoids mistaking dead files for active code.
+- name: Remove legacy hardware controller files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ smartamp_app_dir }}/peripheral.py"
+    - "{{ smartamp_app_dir }}/streamdeck"
+    - "{{ smartamp_config_dir }}/peripherals.yml"
+    - "{{ smartamp_config_dir }}/streamdeck.json"
+
+# The Node usb library sends XVF3800 vendor-control transfers directly. Grant
+# only the service account's plugdev group instead of running the app as root.
+- name: Install ReSpeaker USB permissions
+  ansible.builtin.copy:
+    dest: /etc/udev/rules.d/60-smartamp-respeaker.rules
+    content: |
+      SUBSYSTEM=="usb", ATTR{idVendor}=="2886", ATTR{idProduct}=="001a", MODE:="0660", GROUP="plugdev"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload udev
+  when: respeaker_led_enabled | bool
+
+# Remove a stale permission rule when LED support is disabled later.
+- name: Remove ReSpeaker USB permissions when disabled
+  ansible.builtin.file:
+    path: /etc/udev/rules.d/60-smartamp-respeaker.rules
+    state: absent
+  notify: Reload udev
+  when: not (respeaker_led_enabled | bool)
+
+# Stream Deck+ is exposed as hidraw. Group-scoped access lets the controller
+# open it without broad root privileges or the Elgato desktop application.
+- name: Install Stream Deck USB permissions
+  ansible.builtin.copy:
+    dest: /etc/udev/rules.d/60-smartamp-streamdeck.rules
+    content: |
+      KERNEL=="hidraw*", ATTRS{idVendor}=="0fd9", MODE:="0660", GROUP="plugdev"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload udev
+  when: streamdeck_enabled | bool
+
+# Remove a stale hidraw permission rule when Stream Deck support is disabled.
+- name: Remove Stream Deck USB permissions when disabled
+  ansible.builtin.file:
+    path: /etc/udev/rules.d/60-smartamp-streamdeck.rules
+    state: absent
+  notify: Reload udev
+  when: not (streamdeck_enabled | bool)
+
+# Keep the app, its src directory, and node_modules together under /opt rather
+# than installing project-specific npm packages globally.
+- name: Create hardware controller directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ smartamp_app_dir }}/controller"
+    - "{{ smartamp_app_dir }}/controller/src"
+  when: (streamdeck_enabled | bool) or (respeaker_led_enabled | bool)
+
+# package.json lists direct modules; the lockfile pins every transitive version
+# so a fresh Pi receives the same controller dependency tree as a tested build.
+- name: Install hardware controller manifests
+  ansible.builtin.copy:
+    src: "{{ smartamp_source_dir }}/controller/{{ item }}"
+    dest: "{{ smartamp_app_dir }}/controller/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - package.json
+    - package-lock.json
+  register: controller_manifests
+  when: (streamdeck_enabled | bool) or (respeaker_led_enabled | bool)
+
+# npm writes its hidden lock only after creating the production dependency tree,
+# making it a reliable completion marker for both USB controller libraries.
+- name: Check installed hardware controller dependencies
+  ansible.builtin.stat:
+    path: "{{ smartamp_app_dir }}/controller/node_modules/.package-lock.json"
+  register: controller_dependencies
+  when: (streamdeck_enabled | bool) or (respeaker_led_enabled | bool)
+
+# Omit development tooling and the optional native JPEG peer. Elgato falls back
+# to jpeg-js, avoiding an unnecessary native image build chain on the Pi.
+- name: Install hardware controller dependencies
+  ansible.builtin.command: npm ci --omit=dev --omit=peer --no-audit --no-fund
+  args:
+    chdir: "{{ smartamp_app_dir }}/controller"
+  when:
+    - (streamdeck_enabled | bool) or (respeaker_led_enabled | bool)
+    - >-
+      (controller_manifests.changed | default(false)) or
+      not (controller_dependencies.stat.exists | default(false))
+  notify: Restart controller
+
+# Deploy each small module into src so the installed layout mirrors the app
+# boundary in Git and makes runtime ownership clear during troubleshooting.
+- name: Install hardware controller modules
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ smartamp_app_dir }}/controller/src/{{ item | basename }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ query('ansible.builtin.fileglob', smartamp_source_dir + '/controller/src/*.mjs') }}"
+  loop_control:
+    label: "{{ item | basename }}"
+  notify: Restart controller
+  when: (streamdeck_enabled | bool) or (respeaker_led_enabled | bool)
+
+# Generate physical controls and LED state colours from inventory variables so
+# both devices can be customised without changing application source.
+- name: Install hardware controller configuration
+  ansible.builtin.template:
+    src: controller.json.j2
+    dest: "{{ smartamp_config_dir }}/controller.json"
+    owner: root
+    group: "{{ smartamp_service_user }}"
+    mode: "0640"
+  notify: Restart controller
+  when: (streamdeck_enabled | bool) or (respeaker_led_enabled | bool)
+
+# One systemd unit now owns the LVA WebSocket and both USB control surfaces,
+# giving shared state and reconnect behavior a single lifecycle.
+- name: Install hardware controller service
+  ansible.builtin.template:
+    src: smartamp-controller.service.j2
+    dest: /etc/systemd/system/smartamp-controller.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart controller
+  when: (streamdeck_enabled | bool) or (respeaker_led_enabled | bool)
+
+- name: Enable hardware controller service
+  ansible.builtin.systemd_service:
+    name: smartamp-controller.service
+    enabled: true
+  when: (streamdeck_enabled | bool) or (respeaker_led_enabled | bool)
+
+# Stop an existing controller when both of its hardware features are disabled.
+- name: Disable hardware controller service when unused
+  ansible.builtin.systemd_service:
+    name: smartamp-controller.service
+    enabled: false
+    state: stopped
+  failed_when: false
+  when: not ((streamdeck_enabled | bool) or (respeaker_led_enabled | bool))

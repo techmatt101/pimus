@@ -1,7 +1,10 @@
 [Unit]
-Description=Smart Amp Stream Deck+ controller
-After=smartamp-audio-manager.service smartamp-voice-assistant.service
+Description=Smart Amp USB hardware controller
+After=smartamp-audio-manager.service
+{% if voice_assistant_enabled %}
+After=smartamp-voice-assistant.service
 Wants=smartamp-voice-assistant.service
+{% endif %}
 Requires=smartamp-audio-manager.service
 
 [Service]
@@ -9,11 +12,11 @@ Type=simple
 User={{ smartamp_service_user }}
 Group={{ smartamp_service_user }}
 Environment=NODE_ENV=production
-Environment=SMARTAMP_CONFIG={{ smartamp_config_dir }}/streamdeck.json
+Environment=SMARTAMP_CONFIG={{ smartamp_config_dir }}/controller.json
 Environment=XDG_RUNTIME_DIR=/run/user/{{ smartamp_uid }}
 Environment=PULSE_SERVER=/run/user/{{ smartamp_uid }}/pulse/native
-WorkingDirectory={{ smartamp_app_dir }}/streamdeck
-ExecStart=/usr/bin/node {{ smartamp_app_dir }}/streamdeck/index.mjs
+WorkingDirectory={{ smartamp_app_dir }}/controller
+ExecStart=/usr/bin/node {{ smartamp_app_dir }}/controller/src/index.mjs
 Restart=always
 RestartSec=3
 

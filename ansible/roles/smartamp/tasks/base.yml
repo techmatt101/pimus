@@ -44,13 +44,13 @@
       - libasound2-plugins
       # Headers needed by native HID/USB Node modules used for Stream Deck+.
       - libudev-dev
-      # Runtime backend used by PyUSB to control the ReSpeaker LEDs.
+      # Runtime backend used by the Node controller for ReSpeaker USB transfers.
       - libusb-1.0-0
-      # Headers needed when USB-dependent Python or Node modules are compiled.
+      # Headers used if a compatible prebuilt USB Node module is unavailable.
       - libusb-1.0-0-dev
-      # Runs the local, headless Stream Deck+ controller.
+      # Runs the local, headless Stream Deck+ and ReSpeaker controller.
       - nodejs
-      # Installs the pinned Stream Deck controller dependencies.
+      # Installs the controller's exactly pinned USB and WebSocket dependencies.
       - npm
       # Core audio server that mixes aux, USB, Squeezelite, and voice playback.
       - pipewire
@@ -63,14 +63,8 @@
       # Supplies pactl, which the audio router uses to select devices, create
       # loopbacks, and adjust volume.
       - pulseaudio-utils
-      # Runs the audio router, ReSpeaker controller, and smartampctl utilities.
+      # Runs the audio router and smartampctl utility; hardware control is Node.
       - python3
-      # Provides the PyUSB bindings used for XVF3800 LED/control transfers.
-      - python3-usb
-      # Connects the ReSpeaker LED service to LVA's peripheral WebSocket API.
-      - python3-websockets
-      # Parses the generated ReSpeaker peripheral configuration file.
-      - python3-yaml
       # Lets PipeWire request safe real-time scheduling for glitch-free audio.
       - rtkit
       # Supplies lsusb for device discovery and smartamp-doctor diagnostics.

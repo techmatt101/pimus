@@ -47,10 +47,13 @@ This project installs no Home Assistant, Music Assistant, or LMS server componen
 
 ## Project layout
 
-- `src/python`: PipeWire routing, ReSpeaker LED integration, and the local control command.
-- `src/streamdeck`: the headless Stream Deck+ application and locked Node dependencies.
+- `apps/controller`: one Node daemon for Stream Deck+, ReSpeaker LEDs, voice-state events, and HA light commands.
+- `apps/audio-manager`: the Python PipeWire reconciliation daemon and its colocated tests.
+- `apps/smartampctl`: the one-shot Python command used from SSH and by local automation.
 - `ansible`: inventory, playbooks, deployment tasks, generated configuration, and systemd templates.
-- `tests`: source-level tests that run without provisioning a Pi.
+
+Each app owns its `src/` directory and, where applicable, a sibling `test/`
+directory. See [`apps/README.md`](apps/README.md) for the module boundaries.
 
 ## Everyday control
 
@@ -81,7 +84,7 @@ sudo smartamp-doctor
 
 ## What gets installed
 
-PipeWire owns the HiFiBerry output and mixes all clients. The aux and USB-gadget inputs are low-latency loopbacks that can be switched independently. Squeezelite uses PipeWire's PulseAudio compatibility layer. Linux Voice Assistant is installed directly into a pinned Python virtual environment and presents an ESPHome voice satellite/media player to the remote Home Assistant. Separate local services consume its peripheral WebSocket API to drive hardware feedback. Docker is not installed.
+PipeWire owns the HiFiBerry output and mixes all clients. The aux and USB-gadget inputs are low-latency loopbacks that can be switched independently. Squeezelite uses PipeWire's PulseAudio compatibility layer. Linux Voice Assistant is installed directly into a pinned Python virtual environment and presents an ESPHome voice satellite/media player to the remote Home Assistant. One local Node controller consumes its peripheral WebSocket API and coordinates the Stream Deck+ and ReSpeaker LEDs. Docker is not installed.
 
 See [architecture](docs/architecture.md), [configuration](docs/configuration.md), and [troubleshooting](docs/troubleshooting.md) for details.
 

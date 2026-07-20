@@ -2,6 +2,7 @@ export function createActionHandler({
   state,
   lva,
   control,
+  lights = (command) => control(['lights', command]),
   webhookBase = '',
   request = globalThis.fetch,
   onStateChange = () => {},
@@ -36,7 +37,7 @@ export function createActionHandler({
     }
 
     if (action.type === 'led') {
-      control(['lights', action.command])
+      await lights(action.command)
       return
     }
 

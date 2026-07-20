@@ -1,7 +1,8 @@
 # Architecture
 
-Runtime logic is kept under `src/`; Ansible under `ansible/` only installs that
-code, renders device configuration, and manages operating-system services.
+Runtime logic is grouped by deployable component under `apps/`; each app owns
+its `src/` and tests. Ansible only installs that code, renders configuration,
+and manages operating-system services.
 
 ```text
                                       +--------------------------+
@@ -9,9 +10,11 @@ XVF3800 microphones --USB/PipeWire--->| Linux Voice Assistant    |--ESPHome API-
                                       | local wake word + media  |
                                       +------------+-------------+
                                                    | peripheral WebSocket
-                                        +----------+-----------+
-                                        |                      |
-                                XVF3800 LED service    Stream Deck+ service
+                                      +------------+-------------+
+                                      | Node hardware controller |
+                                      +------+---------------+---+
+                                             | USB           | HID
+                                      XVF3800 LEDs       Stream Deck+
 
 DAC2 ADC Pro aux --PipeWire loopback--+
 Computer --USB-C UAC2--PipeWire--------+--> HiFiBerry DAC --> AAmp60 --> speakers
@@ -34,9 +37,14 @@ The initialisation service selects the DAC2 ADC Pro unbalanced line inputs, sets
 - `smartamp-audio-manager`: maintains PipeWire defaults and switchable aux/USB routes.
 - `smartamp-squeezelite`: advertises a SlimProto player to Music Assistant or LMS.
 - `smartamp-voice-assistant`: pinned OHF Linux Voice Assistant checkout and Python virtual environment.
-- `smartamp-peripherals`: maps Assist states and the HA light entity to XVF3800 effects.
-- `smartamp-streamdeck`: renders and handles all Stream Deck+ controls without Elgato desktop software.
+- `smartamp-controller`: maps Assist/HA light state to XVF3800 effects and renders/handles Stream Deck+ controls without Elgato desktop software.
 
-The Stream Deck driver uses `@elgato-stream-deck/node`, which supports the Plus model's eight key LCDs, four rotary encoders, and 800×100 touch strip. Images are rendered by the local service without a desktop environment.
+The controller is one long-running Node process because both control surfaces
+consume the same voice, mute, media, audio-route, and LED-mode state. The audio
+manager remains a separate Python daemon because it continuously reconciles the
+PipeWire graph. `smartampctl` remains a short-lived CLI so SSH and automation can
+change state without needing a second control protocol.
+
+The Stream Deck driver uses `@elgato-stream-deck/node`, which supports the Plus model's eight key LCDs, four rotary encoders, and 800×100 touch strip. The ReSpeaker module uses USB vendor-control transfers for XVF3800 LED effects. Everything runs headlessly.
 
 Home Assistant and Music Assistant/LMS are not part of this image. The Pi is a client endpoint: ESPHome protocol connects voice to the remote HA instance, while SlimProto connects Squeezelite to the remote music server.

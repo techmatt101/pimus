@@ -21,6 +21,5 @@
       + (['smartamp-usb-audio-gadget.service'] if usb_audio_gadget_enabled else [])
       + (['smartamp-squeezelite.service'] if squeezelite_enabled else [])
       + (['smartamp-voice-assistant.service'] if voice_assistant_enabled else [])
-      + (['smartamp-peripherals.service'] if respeaker_led_enabled else [])
-      + (['smartamp-streamdeck.service'] if streamdeck_enabled else [])
+      + (['smartamp-controller.service'] if (respeaker_led_enabled or streamdeck_enabled) else [])
     }}

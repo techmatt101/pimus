@@ -1,8 +1,0 @@
-{
-  "lva_uri": "ws://127.0.0.1:{{ voice_assistant_peripheral_port }}",
-  "brightness": {{ streamdeck_brightness | int }},
-  "audio_state_file": "{{ smartamp_state_dir }}/audio-state.json",
-  "webhook_base": {{ home_assistant_webhook_base | to_json }},
-  "keys": {{ streamdeck_keys | to_nice_json }},
-  "dials": {{ streamdeck_dials | to_nice_json }}
-}

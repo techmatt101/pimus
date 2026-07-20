@@ -43,11 +43,8 @@ heading 'Services'
 {% for service in doctor_services %}
 systemctl is-active --quiet {{ service }}.service && pass '{{ service }} is active' || fail '{{ service }} is not active'
 {% endfor %}
-{% if respeaker_led_enabled %}
-systemctl is-active --quiet smartamp-peripherals.service && pass 'smartamp-peripherals is active' || warn 'smartamp-peripherals is not active'
-{% endif %}
-{% if streamdeck_enabled %}
-systemctl is-active --quiet smartamp-streamdeck.service && pass 'smartamp-streamdeck is active' || warn 'smartamp-streamdeck is not active'
+{% if respeaker_led_enabled or streamdeck_enabled %}
+systemctl is-active --quiet smartamp-controller.service && pass 'smartamp-controller is active' || warn 'smartamp-controller is not active'
 {% endif %}
 
 heading 'Recent errors'
@@ -55,7 +52,6 @@ journalctl -p warning -b --no-pager -n 30 \
     -u smartamp-hifiberry \
     -u smartamp-audio-manager \
     -u smartamp-voice-assistant \
-    -u smartamp-peripherals \
-    -u smartamp-streamdeck || true
+    -u smartamp-controller || true
 
 exit "$FAILED"

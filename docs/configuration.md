@@ -29,6 +29,10 @@ listening:
 
 Home Assistant receives an RGB light entity through LVA's peripheral API. Its **Voice Assistant** effect returns control to state feedback. Critical mute, disconnect, error and ringing-timer indications override a decorative local mode.
 
+The same Node controller handles the HA light command, ReSpeaker USB transfer,
+and Stream Deck **Lights** action. `smartampctl lights ...` remains available to
+shell automation; it updates the shared LED state watched by the controller.
+
 ## Stream Deck+
 
 Supported action objects are:

@@ -61,8 +61,8 @@
   failed_when: false
   when: not (voice_assistant_enabled | bool)
 
-- name: Configure peripherals
-  ansible.builtin.import_tasks: peripherals.yml
+- name: Configure the local hardware controller
+  ansible.builtin.import_tasks: controller.yml
 
 - name: Install diagnostics
   ansible.builtin.import_tasks: diagnostics.yml

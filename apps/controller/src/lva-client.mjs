@@ -7,6 +7,9 @@ export class LvaClient {
     uri,
     state,
     onStateChange = () => {},
+    onOpen = () => {},
+    onEvent = () => {},
+    onDisconnect = () => {},
     reconnectMilliseconds = 3000,
     WebSocketImpl = WebSocket,
     logger = console,
@@ -14,6 +17,9 @@ export class LvaClient {
     this.uri = uri
     this.state = state
     this.onStateChange = onStateChange
+    this.onOpen = onOpen
+    this.onEvent = onEvent
+    this.onDisconnect = onDisconnect
     this.reconnectMilliseconds = reconnectMilliseconds
     this.WebSocketImpl = WebSocketImpl
     this.logger = logger
@@ -24,12 +30,16 @@ export class LvaClient {
   connect() {
     const socket = new this.WebSocketImpl(this.uri)
     this.socket = socket
-    socket.on('open', () => this.logger.log('connected to voice assistant'))
+    socket.on('open', () => {
+      this.logger.log('connected to voice assistant')
+      Promise.resolve(this.onOpen()).catch((error) => this.logger.error('voice connection hook failed', error))
+    })
     socket.on('message', (raw) => this.receive(raw))
     socket.on('close', () => {
       if (this.socket !== socket) return
       this.socket = null
       this.state.assist = 'DISCONNECTED'
+      Promise.resolve(this.onDisconnect()).catch((error) => this.logger.error('voice disconnect hook failed', error))
       this.onStateChange()
       this.scheduleReconnect()
     })
@@ -38,7 +48,9 @@ export class LvaClient {
 
   receive(raw) {
     try {
-      applyLvaEvent(this.state, JSON.parse(raw.toString()))
+      const message = JSON.parse(raw.toString())
+      applyLvaEvent(this.state, message)
+      Promise.resolve(this.onEvent(message)).catch((error) => this.logger.error('voice event hook failed', error))
       this.onStateChange()
     } catch (error) {
       this.logger.error('invalid voice event', error)

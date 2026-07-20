@@ -28,17 +28,11 @@
     state: restarted
   when: squeezelite_enabled | bool
 
-- name: Restart peripherals
+- name: Restart controller
   ansible.builtin.systemd_service:
-    name: smartamp-peripherals.service
+    name: smartamp-controller.service
     state: restarted
-  when: respeaker_led_enabled | bool
-
-- name: Restart streamdeck
-  ansible.builtin.systemd_service:
-    name: smartamp-streamdeck.service
-    state: restarted
-  when: streamdeck_enabled | bool
+  when: (streamdeck_enabled | bool) or (respeaker_led_enabled | bool)
 
 # Device-tree overlays and modules-load changes only take effect at boot, so a
 # changed hardware configuration needs one controlled reboot before use.
