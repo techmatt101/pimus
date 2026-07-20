@@ -18,25 +18,56 @@
       - python3-venv
     state: present
 
-# Building wake-word dependencies is comparatively expensive. A per-version
-# marker lets normal Ansible re-runs skip setup while still rebuilding on an
-# explicit voice_assistant_version change.
+# Building wake-word dependencies is comparatively expensive. A commit and
+# lock-revision marker skips healthy re-runs while rebuilding whenever either
+# the reviewed source or dependency lock changes.
 - name: Check native Linux Voice Assistant installation
   ansible.builtin.stat:
-    path: "{{ smartamp_app_dir }}/linux-voice-assistant/.smartamp-setup-v{{ voice_assistant_version }}"
+    path: "{{ smartamp_app_dir }}/linux-voice-assistant/.smartamp-setup-{{ voice_assistant_commit }}-lock{{ voice_assistant_lock_revision }}"
   register: voice_assistant_setup_marker
 
-# Pinning a release makes rebuilds repeatable; a shallow checkout avoids keeping
-# the full upstream history on the SD card.
+# Use the immutable commit behind the documented release. A shallow checkout
+# avoids keeping unrelated upstream history on the SD card.
 - name: Check out pinned Linux Voice Assistant release
   ansible.builtin.git:
     repo: https://github.com/OHF-Voice/linux-voice-assistant.git
     dest: "{{ smartamp_app_dir }}/linux-voice-assistant"
-    version: "v{{ voice_assistant_version }}"
+    version: "{{ voice_assistant_commit }}"
+    # Fetch only the release ref that reaches the pinned commit; supplying it
+    # explicitly lets Ansible keep a SHA checkout shallow.
+    refspec: "+refs/tags/v{{ voice_assistant_version }}:refs/tags/v{{ voice_assistant_version }}"
     depth: 1
     single_branch: true
     update: true
   register: voice_assistant_checkout
+
+# Fail closed if the remote ref or checkout behavior ever resolves to different
+# code than the commit reviewed with this project.
+- name: Read checked out Linux Voice Assistant commit
+  ansible.builtin.command: git rev-parse HEAD
+  args:
+    chdir: "{{ smartamp_app_dir }}/linux-voice-assistant"
+  register: voice_assistant_checked_out_commit
+  changed_when: false
+
+- name: Verify Linux Voice Assistant commit
+  ansible.builtin.assert:
+    that: voice_assistant_checked_out_commit.stdout == voice_assistant_commit
+    fail_msg: >-
+      Linux Voice Assistant resolved to
+      {{ voice_assistant_checked_out_commit.stdout }}, expected
+      {{ voice_assistant_commit }}.
+
+# PIP_CONSTRAINT applies these exact direct and transitive versions while the
+# upstream setup script installs the editable LVA package into its virtualenv.
+- name: Install Linux Voice Assistant dependency constraints
+  ansible.builtin.copy:
+    src: linux-voice-assistant-constraints.txt
+    dest: "{{ smartamp_app_dir }}/linux-voice-assistant/.smartamp-constraints.txt"
+    owner: root
+    group: root
+    mode: "0644"
+  register: voice_assistant_constraints
 
 # A release marker alone does not prove that the virtual environment survived
 # an interrupted setup or later SD-card damage. Import the core runtime modules
@@ -60,6 +91,7 @@
         voice_assistant_checkout.changed
         or not voice_assistant_setup_marker.stat.exists
         or voice_assistant_runtime.rc != 0
+        or voice_assistant_constraints.changed
       }}
 
 # Upstream's setup script owns creation of .venv and its Python dependencies.
@@ -68,6 +100,8 @@
   ansible.builtin.command:
     cmd: script/setup
     chdir: "{{ smartamp_app_dir }}/linux-voice-assistant"
+  environment:
+    PIP_CONSTRAINT: "{{ smartamp_app_dir }}/linux-voice-assistant/.smartamp-constraints.txt"
   when: voice_assistant_needs_setup | bool
   notify: Restart voice assistant
 
@@ -75,7 +109,7 @@
 # retried on the next provisioning run.
 - name: Record installed Linux Voice Assistant release
   ansible.builtin.file:
-    path: "{{ smartamp_app_dir }}/linux-voice-assistant/.smartamp-setup-v{{ voice_assistant_version }}"
+    path: "{{ smartamp_app_dir }}/linux-voice-assistant/.smartamp-setup-{{ voice_assistant_commit }}-lock{{ voice_assistant_lock_revision }}"
     state: touch
     owner: root
     group: root
