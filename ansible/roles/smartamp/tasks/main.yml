@@ -1,8 +1,11 @@
 ---
 # Order matters: validate first, create the persistent audio user, configure the
 # physical audio graph, and only then add clients and controllers.
+# Always run validation, even in tag-limited runs such as "make deploy-controller",
+# so a targeted update cannot deploy inventory values a full provision would reject.
 - name: Run preflight checks
   ansible.builtin.import_tasks: preflight.yml
+  tags: [always]
 
 - name: Configure the base system
   ansible.builtin.import_tasks: base.yml
@@ -106,13 +109,20 @@
   notify: Reload systemd
   when: not (voice_assistant_enabled | bool)
 
+# The controller changes far more often than the rest of the system. The tag
+# lets "make deploy-controller" push a rebuilt controller to an already
+# provisioned Pi without walking the audio, voice, and boot configuration.
 - name: Configure the local hardware controller
   ansible.builtin.import_tasks: controller.yml
+  tags: [controller]
 
 - name: Install diagnostics
   ansible.builtin.import_tasks: diagnostics.yml
 
 # Apply deferred daemon reloads and restarts before Ansible reports success. This
 # also surfaces service-start problems during provisioning rather than later.
+# "always" keeps this flush active during tag-limited runs; an untagged meta
+# task would be skipped under --tags and defer restarts to the end of play.
 - name: Flush configuration handlers
   ansible.builtin.meta: flush_handlers
+  tags: [always]

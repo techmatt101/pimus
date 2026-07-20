@@ -49,6 +49,21 @@ For Music Assistant, add the Squeezelite player named **Office Amp**. Discovery 
 
 This project installs no Home Assistant, Music Assistant, or LMS server components. `office-amp` is only a network audio/voice endpoint; the server and media library remain on your other machine.
 
+### Updating the controller
+
+The Node controller changes more often than the rest of the system. After a Pi
+has been fully provisioned once, deploy controller changes on their own:
+
+```sh
+make deploy-controller
+```
+
+This recompiles the TypeScript, validates the inventory, copies the compiled
+modules, dependencies, and generated `controller.json` to the Pi, and restarts
+`smartamp-controller` — without touching audio, voice, or boot configuration.
+Use the full `make provision` after changing anything outside
+`apps/controller` or its inventory settings.
+
 ## Project layout
 
 - `apps/controller`: one TypeScript/Node daemon for Stream Deck+, ReSpeaker LEDs, and voice-state events. `make provision` compiles it here and deploys the resulting JavaScript.

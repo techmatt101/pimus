@@ -90,22 +90,27 @@
     system: true
 
 # The numeric UID/GIDs are embedded in runtime socket paths and systemd units;
-# looking them up avoids assuming a particular value on a fresh image.
+# looking them up avoids assuming a particular value on a fresh image. The
+# controller templates use these facts, so a tag-limited controller deploy must
+# also run these read-only lookups (the account already exists on such a Pi).
 - name: Read service account information
   ansible.builtin.getent:
     database: passwd
     key: "{{ smartamp_service_user }}"
+  tags: [controller]
 
 - name: Read audio group information
   ansible.builtin.getent:
     database: group
     key: audio
+  tags: [controller]
 
 - name: Set service account IDs
   ansible.builtin.set_fact:
     smartamp_uid: "{{ ansible_facts.getent_passwd[smartamp_service_user][1] }}"
     smartamp_gid: "{{ ansible_facts.getent_passwd[smartamp_service_user][2] }}"
     smartamp_audio_gid: "{{ ansible_facts.getent_group.audio[1] }}"
+  tags: [controller]
 
 # Pi OS Lite has no desktop login to keep a user session alive. Linger makes the
 # smartamp user manager (and therefore PipeWire) survive SSH logout and reboots.

@@ -3,7 +3,7 @@
 ANSIBLE_CONFIG := $(CURDIR)/ansible/ansible.cfg
 export ANSIBLE_CONFIG
 
-.PHONY: help install build provision check test verify doctor
+.PHONY: help install build provision deploy-controller check test verify doctor
 
 help:
 	@awk 'BEGIN {FS = ":.*## "; printf "Usage: make <target>\n\n"} /^[a-zA-Z_-]+:.*## / {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -20,6 +20,11 @@ build: ## Compile the TypeScript controller to apps/controller/dist
 
 provision: build ## Configure the Pi and reboot when boot settings change
 	ansible-playbook ansible/playbooks/site.yml
+
+# Runs only the controller-tagged tasks (plus preflight validation), so it needs
+# a Pi that has already completed a full "make provision" at least once.
+deploy-controller: build ## Rebuild and push only the controller to a provisioned Pi
+	ansible-playbook ansible/playbooks/site.yml --tags controller
 
 check: build ## Run an Ansible dry run (hardware/service tasks may be skipped)
 	ansible-playbook ansible/playbooks/site.yml --check --diff
