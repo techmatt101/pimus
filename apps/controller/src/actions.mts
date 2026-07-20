@@ -3,7 +3,10 @@ import type { Action, ControlState, LvaSender } from './types.mjs'
 export interface ActionHandlerOptions {
   state: ControlState
   lva: LvaSender
-  control: (args: string[]) => unknown
+  /** Applies on/off/toggle to a named audio route in the shared state file. */
+  setSource: (name: string, command: string) => unknown
+  /** Applies up/down/mute to the PipeWire default sink. */
+  setVolume: (command: string) => unknown
   webhookBase?: string
   /** Only the request is meaningful here; the response body is ignored. */
   request?: (url: string, init?: { method: string }) => unknown
@@ -15,7 +18,8 @@ export type ActionHandler = (action: Action | undefined) => Promise<void>
 export function createActionHandler({
   state,
   lva,
-  control,
+  setSource,
+  setVolume,
   webhookBase = '',
   request = globalThis.fetch,
   onStateChange = () => {},
@@ -43,9 +47,8 @@ export function createActionHandler({
     }
 
     if (action.type === 'audio' && action.command) {
-      control(action.source
-        ? ['source', action.source, action.command]
-        : ['volume', action.command])
+      if (action.source) setSource(action.source, action.command)
+      else setVolume(action.command)
       return
     }
 

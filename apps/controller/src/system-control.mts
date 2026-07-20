@@ -1,10 +1,68 @@
 import fs from 'node:fs'
+import path from 'node:path'
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { promisify } from 'node:util'
 
 import type { AudioState, ControlState } from './types.mjs'
 
 const execFileAsync = promisify(execFile)
+
+const lockWait = new Int32Array(new SharedArrayBuffer(4))
+
+/**
+ * The audio state file is shared with smartampctl and read by the audio
+ * manager, so writes use the same .lock-directory protocol as the Python
+ * side: atomic mkdir, 30 s stale-lock recovery, unique temp file, rename.
+ */
+function withStateLock<T>(stateFile: string, callback: () => T): T {
+  fs.mkdirSync(path.dirname(stateFile), { recursive: true })
+  const lockPath = `${stateFile}.lock`
+  const deadline = Date.now() + 2000
+  while (true) {
+    try {
+      fs.mkdirSync(lockPath, { mode: 0o700 })
+      break
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      try {
+        if (Date.now() - fs.statSync(lockPath).mtimeMs > 30_000) {
+          fs.rmdirSync(lockPath)
+          continue
+        }
+      } catch (statError) {
+        if ((statError as NodeJS.ErrnoException).code === 'ENOENT') continue
+        throw statError
+      }
+      if (Date.now() >= deadline) throw new Error(`Timed out waiting for state lock ${lockPath}`)
+      Atomics.wait(lockWait, 0, 0, 10)
+    }
+  }
+  try {
+    return callback()
+  } finally {
+    try { fs.rmdirSync(lockPath) } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+  }
+}
+
+function writeFileAtomic(stateFile: string, serialized: string): void {
+  const temporary = `${stateFile}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`
+  try {
+    const descriptor = fs.openSync(temporary, 'wx', 0o640)
+    try {
+      fs.writeFileSync(descriptor, serialized)
+      fs.fsyncSync(descriptor)
+    } finally {
+      fs.closeSync(descriptor)
+    }
+    fs.renameSync(temporary, stateFile)
+  } finally {
+    try { fs.unlinkSync(temporary) } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+  }
+}
 
 export type CommandRunner = (
   file: string,
@@ -23,17 +81,46 @@ export function readAudioState(path: string): AudioState {
   }
 }
 
-export interface SmartampctlOptions {
+/**
+ * Applies an on/off/toggle command to a named route in the shared audio state
+ * file. The audio manager reconciles PipeWire loopbacks from this file on its
+ * next poll; returns the route's new desired state.
+ */
+export function setSourceState(stateFile: string, name: string, command: string): boolean {
+  return withStateLock(stateFile, () => {
+    const current = readAudioState(stateFile)
+    const enabled = command === 'toggle' ? !current.sources[name] : command === 'on'
+    if (current.sources[name] !== enabled) {
+      const next: AudioState = { ...current, sources: { ...current.sources, [name]: enabled } }
+      writeFileAtomic(stateFile, `${JSON.stringify(next, null, 2)}\n`)
+    }
+    return enabled
+  })
+}
+
+// Volume goes straight to the PipeWire default sink; -l 1.0 caps "up" at 100%.
+const VOLUME_OPERATIONS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  up: ['set-volume', '-l', '1.0', '@DEFAULT_AUDIO_SINK@', '5%+'],
+  down: ['set-volume', '@DEFAULT_AUDIO_SINK@', '5%-'],
+  mute: ['set-mute', '@DEFAULT_AUDIO_SINK@', 'toggle'],
+})
+
+export interface VolumeCommandOptions {
   onExit?: () => void
   spawnProcess?: typeof spawn
   logger?: Pick<Console, 'error'>
 }
 
-export function runSmartampctl(
-  args: string[],
-  { onExit = () => {}, spawnProcess = spawn, logger = console }: SmartampctlOptions = {},
-): ChildProcess {
-  const child = spawnProcess('/usr/local/bin/smartampctl', args, { stdio: 'inherit' })
+export function runVolumeCommand(
+  command: string,
+  { onExit = () => {}, spawnProcess = spawn, logger = console }: VolumeCommandOptions = {},
+): ChildProcess | null {
+  const args = VOLUME_OPERATIONS[command]
+  if (!args) {
+    logger.error(`unknown volume command ${command}`)
+    return null
+  }
+  const child = spawnProcess('wpctl', [...args], { stdio: 'inherit' })
   let finished = false
   const finish = (): void => {
     if (finished) return
@@ -41,12 +128,12 @@ export function runSmartampctl(
     onExit()
   }
   child.on('error', (error) => {
-    logger.error(`smartampctl ${args.join(' ')} failed to start`, error)
+    logger.error(`wpctl volume ${command} failed to start`, error)
     finish()
   })
   child.on('exit', (code, signal) => {
     if (code !== 0) {
-      logger.error(`smartampctl ${args.join(' ')} exited ${code ?? `after ${signal}`}`)
+      logger.error(`wpctl volume ${command} exited ${code ?? `after ${signal}`}`)
     }
     finish()
   })

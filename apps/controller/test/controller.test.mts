@@ -14,7 +14,7 @@ import { duckingForEvent, VoiceDucker, writeDuckRequest } from '../src/ducking.m
 import { LvaClient } from '../src/lva-client.mjs'
 import { encodePayload, ReSpeakerController, rgb, Xvf3800Device } from '../src/respeaker.mjs'
 import { applyLvaEvent, createState } from '../src/state.mjs'
-import { parseOutputState, readAudioState, runSmartampctl } from '../src/system-control.mjs'
+import { parseOutputState, readAudioState, runVolumeCommand, setSourceState } from '../src/system-control.mjs'
 import type { ChildProcess, spawn } from 'node:child_process'
 import type { StreamDeckDeviceInfo } from '@elgato-stream-deck/node'
 import type WebSocket from 'ws'
@@ -237,23 +237,25 @@ test('Stream Deck actions are serialized and the Plus model is selected', async 
 test('action handler routes device and LVA commands', async () => {
   const state = createState({ muted: false, media: true })
   const lvaCommands: string[] = []
-  const controlCommands: string[][] = []
+  const sourceCommands: [string, string][] = []
+  const volumeCommands: string[] = []
   let changes = 0
   const handle = createActionHandler({
     state,
     lva: { send: (command) => { lvaCommands.push(command) } },
-    control: (args) => controlCommands.push(args),
+    setSource: (name, command) => sourceCommands.push([name, command]),
+    setVolume: (command) => volumeCommands.push(command),
     onStateChange: () => { changes += 1 },
   })
 
   await handle({ type: 'lva', command: 'mute_toggle' })
   await handle({ type: 'lva', command: 'stop' })
   await handle({ type: 'audio', source: 'usb', command: 'toggle' })
+  await handle({ type: 'audio', command: 'up' })
 
   assert.deepEqual(lvaCommands, ['mute_mic', 'stop_timer_ringing', 'stop_pipeline', 'stop_media_player'])
-  assert.deepEqual(controlCommands, [
-    ['source', 'usb', 'toggle'],
-  ])
+  assert.deepEqual(sourceCommands, [['usb', 'toggle']])
+  assert.deepEqual(volumeCommands, ['up'])
   assert.equal(state.media, false)
   assert.equal(changes, 1)
 })
@@ -263,7 +265,8 @@ test('webhook actions encode their identifier', async () => {
   const handle = createActionHandler({
     state: createState(),
     lva: { send: () => {} },
-    control: () => {},
+    setSource: () => {},
+    setVolume: () => {},
     webhookBase: 'http://homeassistant.local:8123/api/webhook/',
     request: async (...args: unknown[]) => { requests.push(args) },
   })
@@ -288,21 +291,53 @@ test('malformed persistent state falls back safely', (context) => {
   assert.deepEqual(readAudioState(stateFile), { sources: {} })
 })
 
-test('smartampctl process failures are logged and still refresh state', () => {
+test('route toggles are applied directly to the shared audio state file', (context) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pimus-source-state-'))
+  context.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const stateFile = path.join(directory, 'audio-state.json')
+
+  assert.equal(setSourceState(stateFile, 'aux', 'toggle'), true)
+  assert.deepEqual(JSON.parse(fs.readFileSync(stateFile, 'utf8')), { sources: { aux: true } })
+  assert.equal(setSourceState(stateFile, 'aux', 'toggle'), false)
+  assert.equal(setSourceState(stateFile, 'usb', 'on'), true)
+  assert.deepEqual(JSON.parse(fs.readFileSync(stateFile, 'utf8')), {
+    sources: { aux: false, usb: true },
+  })
+
+  // Re-applying the current state must not rewrite the SD card, and the
+  // cross-process lock directory must never be left behind.
+  const past = new Date('2020-01-01T00:00:00Z')
+  fs.utimesSync(stateFile, past, past)
+  assert.equal(setSourceState(stateFile, 'usb', 'on'), true)
+  assert.equal(fs.statSync(stateFile).mtimeMs, past.getTime())
+  assert.deepEqual(fs.readdirSync(directory), ['audio-state.json'])
+})
+
+test('volume commands run wpctl directly and log failures', () => {
+  const spawned: [string, string[]][] = []
   const child = new EventEmitter() as ChildProcess
   const errors: unknown[][] = []
   let exits = 0
-  runSmartampctl(['source', 'aux', 'toggle'], {
-    spawnProcess: (() => child) as typeof spawn,
+  runVolumeCommand('up', {
+    spawnProcess: ((file: string, args: string[]) => {
+      spawned.push([file, args])
+      return child
+    }) as unknown as typeof spawn,
     onExit: () => { exits += 1 },
     logger: { error: (...args: unknown[]) => { errors.push(args) } },
   })
+  assert.deepEqual(spawned, [['wpctl', ['set-volume', '-l', '1.0', '@DEFAULT_AUDIO_SINK@', '5%+']]])
   child.emit('error', new Error('spawn failed'))
   child.emit('exit', 1, null)
   assert.equal(exits, 1)
   assert.equal(errors.length, 2)
   assert.match(String(errors[0]?.[0]), /failed to start/)
   assert.match(String(errors[1]?.[0]), /exited 1/)
+
+  assert.equal(runVolumeCommand('sideways', {
+    spawnProcess: (() => child) as typeof spawn,
+    logger: { error: () => {} },
+  }), null)
 })
 
 test('voice pipeline events duck and safely restore background audio', () => {

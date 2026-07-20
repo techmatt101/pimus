@@ -34,8 +34,9 @@
     mode: "0755"
   notify: Restart audio manager
 
-# smartampctl provides the same source, volume, and LED controls to SSH scripts
-# that the Stream Deck exposes physically.
+# smartampctl gives SSH scripts the same source and volume controls the Stream
+# Deck exposes physically; the controller itself acts on wpctl and the state
+# file directly.
 - name: Install Smart Amp control command
   ansible.builtin.copy:
     src: "{{ smartamp_source_dir }}/smartampctl/src/smartampctl.py"

@@ -6,7 +6,7 @@ import { VoiceDucker } from './ducking.mjs'
 import { LvaClient } from './lva-client.mjs'
 import { ReSpeakerController } from './respeaker.mjs'
 import { createState } from './state.mjs'
-import { readAudioState, runSmartampctl, startOutputMonitor } from './system-control.mjs'
+import { readAudioState, runVolumeCommand, setSourceState, startOutputMonitor } from './system-control.mjs'
 
 const config = loadConfig()
 const state = createState()
@@ -51,14 +51,14 @@ const lva = new LvaClient({
   },
 })
 
-const control = (args: string[]) => runSmartampctl(args, {
-  onExit: () => setTimeout(() => renderer.schedule(), 300),
-})
-
 const handleAction = createActionHandler({
   state,
   lva,
-  control,
+  setSource: (name, command) => {
+    setSourceState(config.audio_state_file, name, command)
+    renderer.schedule()
+  },
+  setVolume: (command) => runVolumeCommand(command, { onExit: () => renderer.schedule() }),
   webhookBase: config.webhook_base,
   onStateChange: () => renderer.schedule(),
 })

@@ -16,7 +16,8 @@ policy and shares voice/audio state between both USB control surfaces:
 - `deck-controller.mts` owns Stream Deck discovery, reconnects, and input events.
 - `display.mts`, `bitmap.mts`, and `state.mts` render the Stream Deck display.
 - `actions.mts` dispatches voice, audio, and webhook actions.
-- `system-control.mts` invokes `smartampctl` for audio and reads PipeWire state.
+- `system-control.mts` runs `wpctl` volume commands, applies route toggles to
+  the shared audio state file, and polls PipeWire output state.
 - `types.mts` declares the configuration, voice-event, and device interfaces
   shared across modules; its config types mirror `controller.json.j2`.
 
