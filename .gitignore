@@ -1,6 +1,7 @@
 .ansible/
 *.retry
-inventory/host_vars/*.vault.yml
+ansible/inventory/host_vars/*.vault.yml
+ansible/inventory/group_vars/*.vault.yml
 node_modules/
 dist/
 __pycache__/

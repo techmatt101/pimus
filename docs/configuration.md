@@ -69,3 +69,8 @@ Supported action objects are:
 LVA commands include `start_listening`, `volume_up`, `volume_down`, `stop_timer_ringing`, `pause_media_player`, and `resume_media_player`. The local `mute_toggle`, `media_toggle`, and `stop` helpers are also supported.
 
 Webhook actions POST to `home_assistant_webhook_base/<id>`. Configure a Home Assistant webhook trigger and set the base to `http://homeassistant.local:8123/api/webhook`. Treat webhook IDs as secrets if the endpoint is reachable outside a trusted LAN.
+
+Put private host or group overrides in files ending in `.vault.yml` under
+`ansible/inventory/host_vars` or `ansible/inventory/group_vars`, and encrypt
+them with Ansible Vault before keeping them locally. Those filenames are
+ignored by Git so an unencrypted working copy is not committed accidentally.
