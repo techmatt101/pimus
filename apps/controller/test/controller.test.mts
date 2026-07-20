@@ -76,6 +76,15 @@ test('key and dial appearances reflect audio and voice state', () => {
     action: { type: 'lva', command: 'mute_toggle' },
   }
   assert.deepEqual(keyAppearance(muteKey, state), { label: 'MIC OFF', background: '#d50000' })
+
+  const voiceKey: StreamDeckKey = {
+    label: 'VOICE',
+    color: '#006064',
+    action: { type: 'lva', command: 'start_listening' },
+  }
+  const active = createState({ assist: 'WAKE_WORD_DETECTED' })
+  assert.equal(keyAppearance(voiceKey, active).background, '#00b8d4')
+
   assert.equal(dialDetail(0, state), '67%')
   state.outputMuted = true
   assert.equal(dialDetail(0, state), 'MUTED')

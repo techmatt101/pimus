@@ -22,7 +22,8 @@ export function keyAppearance(
   } else if (key.action?.command === 'mute_toggle' && state.muted) {
     label = 'MIC OFF'
     background = '#d50000'
-  } else if (key.action?.command === 'start_listening' && ['LISTENING', 'THINKING'].includes(state.assist)) {
+  } else if (key.action?.command === 'start_listening'
+      && ['WAKE_WORD_DETECTED', 'LISTENING', 'THINKING', 'TTS_SPEAKING'].includes(state.assist)) {
     background = '#00b8d4'
   } else if (key.action?.command === 'media_toggle' && state.media) {
     label = 'PAUSE'
