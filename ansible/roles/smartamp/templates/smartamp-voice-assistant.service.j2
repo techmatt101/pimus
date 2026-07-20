@@ -27,7 +27,7 @@ ExecStart={{ smartamp_app_dir }}/linux-voice-assistant/script/run \
   --mic-volume {{ voice_assistant_mic_volume }} \
   --wake-model {{ voice_assistant_wake_model | quote }} \
   --stop-model {{ voice_assistant_stop_model | quote }} \
-  --peripheral-host 0.0.0.0 \
+  --peripheral-host 127.0.0.1 \
   --peripheral-port {{ voice_assistant_peripheral_port }} \
   --peripheral-volume-step 0.05 \
 {% if voice_assistant_debug | bool %}
