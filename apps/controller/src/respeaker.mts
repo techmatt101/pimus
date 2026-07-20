@@ -166,6 +166,8 @@ export interface ReSpeakerControllerOptions {
   config: ReSpeakerConfig
   device?: LedDevice
   voiceEnabled?: boolean
+  now?: () => number
+  warningIntervalMilliseconds?: number
   logger?: Pick<Console, 'warn'>
 }
 
@@ -173,20 +175,33 @@ export class ReSpeakerController {
   readonly config: ReSpeakerConfig
   readonly device: LedDevice
   private readonly logger: Pick<Console, 'warn'>
+  private readonly now: () => number
+  private readonly warningIntervalMilliseconds: number
   private readonly stateFile: string
   private assistState = 'disconnected'
   private muted = false
   private lastSignature = ''
+  private lastWarningAt = Number.NEGATIVE_INFINITY
+  private lastWarningSignature = ''
   private renderQueue: Promise<void> = Promise.resolve()
   private watchTimer: NodeJS.Timeout | null = null
 
-  constructor({ config, device, voiceEnabled = true, logger = console }: ReSpeakerControllerOptions) {
+  constructor({
+    config,
+    device,
+    voiceEnabled = true,
+    now = Date.now,
+    warningIntervalMilliseconds = 30_000,
+    logger = console,
+  }: ReSpeakerControllerOptions) {
     this.config = config
     this.device = device ?? new Xvf3800Device({
       vendorId: Number(config.vendor_id),
       productId: Number(config.product_id),
     })
     this.logger = logger
+    this.now = now
+    this.warningIntervalMilliseconds = warningIntervalMilliseconds
     this.stateFile = config.state_file
     // An LED-only installation has no LVA socket to transition away from the
     // disconnected state, so begin at the normal idle appearance instead.
@@ -259,10 +274,19 @@ export class ReSpeakerController {
           clampByte(this.config.speed ?? 2),
         )
         this.lastSignature = signature
+        this.lastWarningSignature = ''
+        this.lastWarningAt = Number.NEGATIVE_INFINITY
       } catch (error) {
         // USB devices can be unplugged or re-enumerated; the next watch tick
         // retries and Xvf3800Device opens a fresh handle.
-        this.logger.warn('Unable to update ReSpeaker LEDs', error)
+        const warningSignature = String(error)
+        const now = this.now()
+        if (warningSignature !== this.lastWarningSignature
+            || now - this.lastWarningAt >= this.warningIntervalMilliseconds) {
+          this.logger.warn('Unable to update ReSpeaker LEDs', error)
+          this.lastWarningSignature = warningSignature
+          this.lastWarningAt = now
+        }
       }
     })
     return this.renderQueue

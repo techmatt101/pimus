@@ -412,3 +412,34 @@ test('LED-only mode does not force a disconnected warning', (context) => {
     brightness: 64,
   })
 })
+
+test('ReSpeaker USB failures are retried without flooding the journal', async (context) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pimus-led-warning-'))
+  context.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  let now = 0
+  const warnings: unknown[][] = []
+  const controller = new ReSpeakerController({
+    now: () => now,
+    warningIntervalMilliseconds: 30_000,
+    logger: { warn: (...args: unknown[]) => { warnings.push(args) } },
+    config: {
+      enabled: true,
+      vendor_id: 0x2886,
+      product_id: 0x001a,
+      state_file: path.join(directory, 'led-state.json'),
+      brightness: 64,
+      speed: 2,
+      light_name: 'Office Amp LED Ring',
+      light_object_id: 'led_ring',
+      states: { idle: { effect: 'doa', color: '#001018' } },
+    },
+    device: { apply: async () => { throw new Error('not connected') } },
+  })
+
+  await controller.render(true)
+  now = 500
+  await controller.render(true)
+  now = 30_000
+  await controller.render(true)
+  assert.equal(warnings.length, 2)
+})
