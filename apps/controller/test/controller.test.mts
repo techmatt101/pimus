@@ -58,11 +58,49 @@ test('enabled ducking requires a state file and positive refresh interval', (con
   context.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const configFile = path.join(directory, 'controller.json')
   fs.writeFileSync(configFile, JSON.stringify({
+    audio_state_file: '/state/audio.json',
     ducking: { enabled: true, refresh_milliseconds: 0 },
     streamdeck: { enabled: false },
     respeaker: { enabled: false },
   }))
   assert.throws(() => loadConfig(configFile), /ducking state_file and refresh_milliseconds/)
+})
+
+test('invalid device and action configuration fails at startup', (context) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pimus-invalid-config-'))
+  context.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const configFile = path.join(directory, 'controller.json')
+  const base = {
+    voice_enabled: false,
+    audio_state_file: '/state/audio.json',
+    ducking: { enabled: false },
+    streamdeck: { enabled: true, brightness: 101, keys: [], dials: [] },
+    respeaker: { enabled: false },
+  }
+  fs.writeFileSync(configFile, JSON.stringify(base))
+  assert.throws(() => loadConfig(configFile), /brightness from 0 to 100/)
+
+  fs.writeFileSync(configFile, JSON.stringify({
+    ...base,
+    streamdeck: {
+      enabled: true,
+      brightness: 40,
+      keys: [{ label: 'AUX', color: 'purple', action: { type: 'audio', source: 'aux', command: 'toggle' } }],
+      dials: [],
+    },
+  }))
+  assert.throws(() => loadConfig(configFile), /#RRGGBB color/)
+
+  fs.writeFileSync(configFile, JSON.stringify({
+    ...base,
+    streamdeck: {
+      enabled: true,
+      brightness: 40,
+      keys: [{ label: 'AUX', color: '#123456', action: { type: 'audio', source: 'aux', command: 'up' } }],
+      dials: [],
+    },
+  }))
+  assert.throws(() => loadConfig(configFile), /invalid audio command/)
 })
 
 test('key and dial appearances reflect audio and voice state', () => {

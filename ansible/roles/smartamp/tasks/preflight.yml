@@ -54,3 +54,65 @@
       from 0 to 100 percent, non-negative fade time, and a timeout longer than
       the refresh interval.
   when: smartamp_voice_ducking_enabled | bool
+
+# Invalid regular expressions otherwise leave the audio manager restarting in
+# a loop. Compile every hardware matcher before any configuration is changed.
+- name: Validate PipeWire device matching expressions
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "import re, sys; [re.compile(value) for value in sys.argv[1:]]"
+      - "{{ smartamp_output_match }}"
+      - "{{ smartamp_aux_match }}"
+      - "{{ smartamp_voice_input_match }}"
+      - "{{ smartamp_aec_reference_match }}"
+      - "{{ smartamp_usb_gadget_match }}"
+  changed_when: false
+
+# These ranges come from ALSA controls, USB Audio descriptors, the ESPHome
+# socket, and the physical LED/deck APIs. Failing here is safer than silently
+# clipping or ignoring inventory values in a running service.
+- name: Validate hardware and controller ranges
+  ansible.builtin.assert:
+    that:
+      - (hifiberry_output_volume_percent | int) >= 0
+      - (hifiberry_output_volume_percent | int) <= 100
+      - (smartamp_aux_latency_ms | int) >= 0
+      - (usb_audio_sample_rate | int) >= 8000
+      - (usb_audio_sample_rate | int) <= 192000
+      - (usb_audio_sample_size_bytes | int) in [2, 3, 4]
+      - (voice_assistant_mic_channels | int) >= 1
+      - (voice_assistant_mic_channels | int) <= 8
+      - (voice_assistant_mic_volume | int) >= 0
+      - (voice_assistant_mic_volume | int) <= 100
+      - (voice_assistant_port | int) >= 1
+      - (voice_assistant_port | int) <= 65535
+      - (voice_assistant_peripheral_port | int) >= 1
+      - (voice_assistant_peripheral_port | int) <= 65535
+      - (voice_assistant_port | int) != (voice_assistant_peripheral_port | int)
+      - (respeaker_led_brightness | int) >= 0
+      - (respeaker_led_brightness | int) <= 255
+      - (streamdeck_brightness | int) >= 0
+      - (streamdeck_brightness | int) <= 100
+      - (streamdeck_keys | length) <= 8
+      - (streamdeck_dials | length) <= 4
+      - home_assistant_webhook_base == '' or home_assistant_webhook_base is match('^https?://')
+    fail_msg: >-
+      Hardware/controller inventory contains an out-of-range value, conflicting
+      voice ports, too many Stream Deck controls, or an invalid webhook URL.
+
+# The XVF3800 protocol accepts only the documented effects and byte brightness.
+# Check every state colour here so a typo cannot turn into an unintended LED.
+- name: Validate ReSpeaker LED states
+  ansible.builtin.assert:
+    that:
+      - item.value.effect in ['off', 'breath', 'rainbow', 'single', 'doa', 'ring']
+      - item.value.color is match('^#[0-9A-Fa-f]{6}$')
+      - item.value.accent is not defined or item.value.accent is match('^#[0-9A-Fa-f]{6}$')
+      - item.value.brightness is not defined or ((item.value.brightness | int) >= 0 and (item.value.brightness | int) <= 255)
+    fail_msg: "ReSpeaker state {{ item.key }} has an invalid effect, colour, or brightness."
+  loop: "{{ respeaker_led_states | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when: respeaker_led_enabled | bool

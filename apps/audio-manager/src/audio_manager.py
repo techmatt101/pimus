@@ -109,6 +109,41 @@ def duck_request_active(path: Path, timeout_seconds: float, now: float) -> bool:
         return False
 
 
+def validate_config(config: dict[str, Any]) -> None:
+    """Reject invalid matching and timing values before touching PipeWire."""
+    regexes = {
+        "output_match": config.get("output_match"),
+        "voice_input_match": config.get("voice_input_match"),
+    }
+    aec = config.get("aec_reference", {})
+    if aec.get("enabled"):
+        regexes["aec_reference.sink_match"] = aec.get("sink_match")
+    for name, source in config.get("sources", {}).items():
+        regexes[f"sources.{name}.match"] = source.get("match")
+        if float(source.get("latency_ms", 0)) < 0:
+            raise ValueError(f"sources.{name}.latency_ms must not be negative")
+    for name, pattern in regexes.items():
+        if not isinstance(pattern, str) or not pattern:
+            raise ValueError(f"{name} must be a non-empty regular expression")
+        try:
+            re.compile(pattern)
+        except re.error as error:
+            raise ValueError(f"{name} is not a valid regular expression: {error}") from error
+
+    for name in ("poll_seconds", "duck_poll_seconds"):
+        if float(config.get(name, 0)) <= 0:
+            raise ValueError(f"{name} must be greater than zero")
+    background = config.get("background", {})
+    if background.get("enabled"):
+        volume = int(background.get("duck_volume_percent", -1))
+        if not 0 <= volume <= 100:
+            raise ValueError("background.duck_volume_percent must be from 0 to 100")
+        if int(background.get("fade_ms", -1)) < 0:
+            raise ValueError("background.fade_ms must not be negative")
+        if float(background.get("duck_timeout_seconds", 0)) <= 0:
+            raise ValueError("background.duck_timeout_seconds must be greater than zero")
+
+
 def load_state(path: Path, config: dict[str, Any]) -> dict[str, Any]:
     defaults = {
         "sources": {
@@ -197,6 +232,7 @@ class AudioManager:
         duck_state_path: Path,
     ) -> None:
         self.config = json.loads(config_path.read_text(encoding="utf-8"))
+        validate_config(self.config)
         self.state_path = state_path
         self.status_path = status_path
         self.duck_state_path = duck_state_path
