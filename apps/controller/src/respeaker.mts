@@ -1,12 +1,7 @@
-import fs from 'node:fs'
-import path from 'node:path'
-
 import type {
   LedDevice,
-  LedLocalState,
   LedStateSpec,
   LvaMessage,
-  LvaSender,
   ReSpeakerConfig,
   UsbControlDevice,
   UsbDeviceFinder,
@@ -35,49 +30,9 @@ export const COMMANDS: Readonly<Record<CommandName, readonly [number, number, Da
     LED_RING_COLOR: [20, 19, 'uint32'],
   } as const)
 
-const CRITICAL_STATES = new Set(['muted', 'disconnected', 'pipeline_error', 'timer_ringing'])
-// Keep these two lists and the smartampctl lights choices aligned: they are
-// the Home Assistant and local views of the same EFFECTS table.
-const LIGHT_EFFECTS = ['Voice Assistant', 'Off', 'Breath', 'Rainbow', 'Single', 'DOA', 'Ring']
-const LOCAL_MODES = ['voice', 'off', 'single', 'breath', 'rainbow', 'doa', 'ring']
-
 const clampByte = (value: number): number => Math.max(0, Math.min(255, Math.round(Number(value))))
 
 const isEffectName = (value: string): value is EffectName => Object.hasOwn(EFFECTS, value)
-
-const lockWait = new Int32Array(new SharedArrayBuffer(4))
-
-function withStateLock<T>(stateFile: string, callback: () => T): T {
-  fs.mkdirSync(path.dirname(stateFile), { recursive: true })
-  const lockPath = `${stateFile}.lock`
-  const deadline = Date.now() + 2000
-  while (true) {
-    try {
-      fs.mkdirSync(lockPath, { mode: 0o700 })
-      break
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-      try {
-        if (Date.now() - fs.statSync(lockPath).mtimeMs > 30_000) {
-          fs.rmdirSync(lockPath)
-          continue
-        }
-      } catch (statError) {
-        if ((statError as NodeJS.ErrnoException).code === 'ENOENT') continue
-        throw statError
-      }
-      if (Date.now() >= deadline) throw new Error(`Timed out waiting for state lock ${lockPath}`)
-      Atomics.wait(lockWait, 0, 0, 10)
-    }
-  }
-  try {
-    return callback()
-  } finally {
-    try { fs.rmdirSync(lockPath) } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-    }
-  }
-}
 
 export function rgb(value: string): number {
   const parsed = Number.parseInt(String(value).replace(/^#/, ''), 16)
@@ -177,7 +132,6 @@ export class ReSpeakerController {
   private readonly logger: Pick<Console, 'warn'>
   private readonly now: () => number
   private readonly warningIntervalMilliseconds: number
-  private readonly stateFile: string
   private assistState = 'disconnected'
   private muted = false
   private lastSignature = ''
@@ -202,68 +156,14 @@ export class ReSpeakerController {
     this.logger = logger
     this.now = now
     this.warningIntervalMilliseconds = warningIntervalMilliseconds
-    this.stateFile = config.state_file
     // An LED-only installation has no LVA socket to transition away from the
     // disconnected state, so begin at the normal idle appearance instead.
     if (!voiceEnabled) this.assistState = 'idle'
   }
 
-  readLocal(): LedLocalState {
-    try {
-      const value: unknown = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'))
-      if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-        throw new SyntaxError('LED state must be a JSON object')
-      }
-      return value as LedLocalState
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code
-      if (code !== 'ENOENT' && !(error instanceof SyntaxError)) {
-        this.logger.warn('Unable to read LED state', error)
-      }
-      return { mode: 'voice', color: '#00bcd4' }
-    }
-  }
-
-  writeLocal(state: LedLocalState): void {
-    const serialized = `${JSON.stringify(state, null, 2)}\n`
-    withStateLock(this.stateFile, () => {
-      // Home Assistant light transitions stream light_command events; skip the
-      // SD-card write when the persisted state already matches.
-      try {
-        if (fs.readFileSync(this.stateFile, 'utf8') === serialized) return
-      } catch {}
-      const temporary = `${this.stateFile}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`
-      try {
-        const descriptor = fs.openSync(temporary, 'wx', 0o640)
-        try {
-          fs.writeFileSync(descriptor, serialized)
-          fs.fsyncSync(descriptor)
-        } finally {
-          fs.closeSync(descriptor)
-        }
-        fs.renameSync(temporary, this.stateFile)
-      } finally {
-        try { fs.unlinkSync(temporary) } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-        }
-      }
-    })
-  }
-
   desired(): LedStateSpec {
-    const local = this.readLocal()
     const current = this.muted ? 'muted' : this.assistState
-    if (CRITICAL_STATES.has(current) || (local.mode || 'voice') === 'voice') {
-      const spec: LedStateSpec = { ...(this.config.states[current] ?? this.config.states.idle) }
-      if (local.brightness !== undefined) spec.brightness = local.brightness
-      return spec
-    }
-    return {
-      effect: String(local.mode || 'off'),
-      color: local.color || '#00bcd4',
-      accent: '#ffffff',
-      brightness: local.brightness ?? this.config.brightness ?? 64,
-    }
+    return { ...(this.config.states[current] ?? this.config.states.idle) }
   }
 
   render(force = false): Promise<void> {
@@ -298,6 +198,8 @@ export class ReSpeakerController {
 
   start(): void {
     void this.render(true)
+    // State changes arrive through handleEvent; this tick exists to retry USB
+    // delivery after an unplug or enumeration failure.
     this.watchTimer = setInterval(() => void this.render(), 500)
   }
 
@@ -306,31 +208,9 @@ export class ReSpeakerController {
     this.watchTimer = null
   }
 
-  register(lva: LvaSender): void {
-    lva.send('register_light', {
-      name: this.config.light_name,
-      object_id: this.config.light_object_id,
-      effects: LIGHT_EFFECTS,
-      supports_rgb: true,
-      supports_brightness: true,
-    })
-  }
-
   setDisconnected(): Promise<void> {
     this.assistState = 'disconnected'
     return this.render(true)
-  }
-
-  async command(command: string): Promise<void> {
-    const state = this.readLocal()
-    if (command === 'cycle') {
-      const index = LOCAL_MODES.indexOf(state.mode || 'voice')
-      state.mode = LOCAL_MODES[(index < 0 ? 0 : index + 1) % LOCAL_MODES.length]
-    } else {
-      state.mode = command
-    }
-    this.writeLocal(state)
-    await this.render(true)
   }
 
   async handleEvent(message: LvaMessage | undefined): Promise<void> {
@@ -344,19 +224,6 @@ export class ReSpeakerController {
       if (!this.muted) this.assistState = 'idle'
     } else if (event === 'zeroconf' && data.status === 'connected') {
       this.assistState = 'idle'
-    } else if (event === 'light_command' && data.object_id === this.config.light_object_id) {
-      const effect = String(data.effect || 'Single')
-      let mode = effect === 'Voice Assistant' ? 'voice' : effect.toLowerCase()
-      if (data.state === false) mode = 'off'
-      const red = clampByte(Number(data.red ?? 0) * 255)
-      const green = clampByte(Number(data.green ?? 0.74) * 255)
-      const blue = clampByte(Number(data.blue ?? 0.83) * 255)
-      const brightness = clampByte(Number(data.brightness ?? 1) * 255)
-      this.writeLocal({
-        mode,
-        color: `#${red.toString(16).padStart(2, '0')}${green.toString(16).padStart(2, '0')}${blue.toString(16).padStart(2, '0')}`,
-        brightness,
-      })
     } else if (event && Object.hasOwn(this.config.states, event)) {
       this.assistState = String(event)
     } else if ((event === 'media_player_paused' || event === 'media_player_idle')

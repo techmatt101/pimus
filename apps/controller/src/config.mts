@@ -4,10 +4,9 @@ import type { ControllerConfig } from './types.mjs'
 
 export const DEFAULT_CONFIG_PATH = '/etc/smartamp/controller.json'
 const HEX_COLOR = /^#[0-9a-f]{6}$/i
-const ACTION_TYPES = new Set(['noop', 'lva', 'audio', 'led', 'webhook'])
+const ACTION_TYPES = new Set(['noop', 'lva', 'audio', 'webhook'])
 const SOURCE_COMMANDS = new Set(['on', 'off', 'toggle'])
 const VOLUME_COMMANDS = new Set(['up', 'down', 'mute'])
-const LED_COMMANDS = new Set(['cycle', 'voice', 'off', 'single', 'breath', 'rainbow', 'doa', 'ring'])
 const LED_EFFECTS = new Set(['off', 'breath', 'rainbow', 'single', 'doa', 'ring'])
 const LVA_COMMANDS = new Set([
   'start_listening', 'stop_pipeline',
@@ -46,8 +45,6 @@ function validateAction(value: unknown, location: string, webhookBase: unknown):
     }
     const commands = value.source === undefined ? VOLUME_COMMANDS : SOURCE_COMMANDS
     if (!commands.has(value.command)) throw new Error(`${location} has an invalid audio command`)
-  } else if (value.type === 'led' && !LED_COMMANDS.has(value.command)) {
-    throw new Error(`${location} has an invalid LED command`)
   } else if (value.type === 'lva' && !LVA_COMMANDS.has(value.command)) {
     throw new Error(`${location} has an invalid LVA command`)
   }
@@ -97,10 +94,6 @@ function validateControllerConfig(value: unknown, configPath: string): asserts v
       if (!Number.isInteger(led[field]) || Number(led[field]) < 0 || Number(led[field]) > maximum) {
         throw new Error(`ReSpeaker ${field} must be an integer from 0 to ${maximum}`)
       }
-    }
-    if (typeof led.state_file !== 'string' || typeof led.light_name !== 'string'
-        || typeof led.light_object_id !== 'string' || !/^[a-z0-9_]+$/.test(led.light_object_id)) {
-      throw new Error('ReSpeaker state_file, light_name, and lowercase light_object_id are required')
     }
     if (!isRecord(led.states) || !isRecord(led.states.idle)) {
       throw new Error(`Controller configuration at ${configPath} must define an idle ReSpeaker state`)

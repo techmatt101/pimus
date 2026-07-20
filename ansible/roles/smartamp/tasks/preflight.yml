@@ -118,14 +118,13 @@
 - name: Validate configured Stream Deck actions
   ansible.builtin.assert:
     that:
-      - item.type in ['noop', 'lva', 'audio', 'led', 'webhook']
+      - item.type in ['noop', 'lva', 'audio', 'webhook']
       - item.type in ['noop', 'webhook'] or (item.command is defined and item.command is string)
       - item.type != 'webhook' or (item.id is defined and item.id is string and item.id | length > 0)
       - >-
         item.type != 'audio' or
         ((item.source is defined and item.source in ['aux', 'usb'] and item.command in ['on', 'off', 'toggle']) or
          (item.source is not defined and item.command in ['up', 'down', 'mute']))
-      - item.type != 'led' or item.command in ['cycle', 'voice', 'off', 'single', 'breath', 'rainbow', 'doa', 'ring']
       - >-
         item.type != 'lva' or item.command in
         ['start_listening', 'stop_pipeline', 'mute_mic', 'unmute_mic', 'mute_toggle',

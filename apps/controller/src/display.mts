@@ -88,9 +88,14 @@ export class DeckRenderer {
     if (!deck || !config) return
     try {
       const audioState = this.readAudioState()
-      for (let index = 0; index < Math.min(8, config.keys.length); index += 1) {
+      // Draw all eight keys: the deck retains its last image, so slots without
+      // a configured key must be blanked rather than skipped.
+      for (let index = 0; index < 8; index += 1) {
         const key = config.keys[index]
-        if (!key) continue
+        if (!key) {
+          await deck.fillKeyBuffer(index, createImage(120, 120, '#000000').buffer, { format: 'rgb' })
+          continue
+        }
         const appearance = keyAppearance(key, this.state, audioState)
         const target = createImage(120, 120, appearance.background)
         drawRectangle(target, 0, 94, 120, 26, '#000000')

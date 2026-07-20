@@ -4,7 +4,6 @@ export interface ActionHandlerOptions {
   state: ControlState
   lva: LvaSender
   control: (args: string[]) => unknown
-  lights: (command: string) => unknown
   webhookBase?: string
   /** Only the request is meaningful here; the response body is ignored. */
   request?: (url: string, init?: { method: string }) => unknown
@@ -17,7 +16,6 @@ export function createActionHandler({
   state,
   lva,
   control,
-  lights,
   webhookBase = '',
   request = globalThis.fetch,
   onStateChange = () => {},
@@ -48,11 +46,6 @@ export function createActionHandler({
       control(action.source
         ? ['source', action.source, action.command]
         : ['volume', action.command])
-      return
-    }
-
-    if (action.type === 'led' && action.command) {
-      await lights(action.command)
       return
     }
 

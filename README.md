@@ -43,7 +43,7 @@ Boot configuration changes trigger one reboot. When provisioning finishes:
 make doctor
 ```
 
-In Home Assistant, open **Settings → Devices & services**. The device named **Office Amp Voice** should be discovered by the ESPHome integration. Add it, select the desired Assist pipeline, and enable the LED-ring light entity if you want Home Assistant to override the default voice-state effects.
+In Home Assistant, open **Settings → Devices & services**. The device named **Office Amp Voice** should be discovered by the ESPHome integration. Add it and select the desired Assist pipeline. The ReSpeaker LED ring is purely reactive — it reflects voice, media, timer, mute, and error states configured in the Ansible variables.
 
 For Music Assistant, add the Squeezelite player named **Office Amp**. Discovery normally works on the local network; otherwise set `squeezelite_server` to the Music Assistant host IP and provision again.
 
@@ -51,7 +51,7 @@ This project installs no Home Assistant, Music Assistant, or LMS server componen
 
 ## Project layout
 
-- `apps/controller`: one TypeScript/Node daemon for Stream Deck+, ReSpeaker LEDs, voice-state events, and HA light commands. `make provision` compiles it here and deploys the resulting JavaScript.
+- `apps/controller`: one TypeScript/Node daemon for Stream Deck+, ReSpeaker LEDs, and voice-state events. `make provision` compiles it here and deploys the resulting JavaScript.
 - `apps/audio-manager`: the Python PipeWire reconciliation daemon and its colocated tests.
 - `apps/smartampctl`: the one-shot Python command used from SSH and by local automation.
 - `ansible`: inventory, playbooks, deployment tasks, generated configuration, and systemd templates.
@@ -72,7 +72,6 @@ The default Stream Deck+ layout is:
 | Play | Pause/resume the LVA media player |
 | Stop | Stop voice, ringing timer, and LVA media |
 | Timer | Dismiss a ringing timer |
-| Lights | Cycle voice/off/single/breath/rainbow/DOA modes |
 
 Dial 1 controls volume. Dials 2 and 3 control aux and USB routes. Dial 4 starts a voice conversation. The JSON configuration is generated from `streamdeck_keys` and `streamdeck_dials` in the Ansible variables.
 The controller opens the Stream Deck+ model specifically, queues rapid encoder
@@ -84,7 +83,6 @@ The same controls are available on the Pi:
 sudo -u smartamp smartampctl source aux toggle
 sudo -u smartamp smartampctl source usb toggle
 sudo -u smartamp smartampctl volume up
-sudo -u smartamp smartampctl lights cycle
 sudo smartamp-doctor
 ```
 

@@ -47,7 +47,7 @@ The initialisation service selects the DAC2 ADC Pro unbalanced line inputs, sets
 - `smartamp-controller`: maps Assist events to background ducking and XVF3800 effects, and renders/handles Stream Deck+ controls without Elgato desktop software.
 
 The controller is one long-running Node process because ducking and both control
-surfaces consume the same voice, mute, media, audio-route, and LED-mode state.
+surfaces consume the same voice, mute, media, and audio-route state.
 The audio manager remains a separate Python daemon because it continuously
 reconciles the PipeWire graph and owns its gain nodes. `smartampctl` remains a
 short-lived CLI so SSH and automation can change persistent state without

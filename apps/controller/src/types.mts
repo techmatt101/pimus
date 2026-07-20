@@ -3,7 +3,7 @@
 
 /** A configured control-surface action, as generated into controller.json. */
 export interface Action {
-  type: 'noop' | 'lva' | 'audio' | 'led' | 'webhook'
+  type: 'noop' | 'lva' | 'audio' | 'webhook'
   command?: string
   /** Named audio route for `audio` actions; absent means the master volume. */
   source?: string
@@ -51,17 +51,7 @@ export interface ReSpeakerConfig {
   product_id: number
   brightness: number
   speed: number
-  state_file: string
-  light_name: string
-  light_object_id: string
   states: ReSpeakerStates
-}
-
-/** Operator-controlled LED override persisted next to the runtime state. */
-export interface LedLocalState {
-  mode?: string
-  color?: string
-  brightness?: number
 }
 
 export interface DuckingConfig {
@@ -86,13 +76,6 @@ export interface LvaEventData {
   volume?: number
   ha_connected?: boolean
   status?: string
-  object_id?: string
-  effect?: string
-  state?: boolean
-  red?: number
-  green?: number
-  blue?: number
-  brightness?: number
 }
 
 export interface LvaMessage {
@@ -101,9 +84,9 @@ export interface LvaMessage {
 }
 
 /**
- * The subset of the LVA client the action handler and ReSpeaker controller
- * need. Depending on this instead of LvaClient keeps those modules free of a
- * circular import and lets tests pass a plain recording object.
+ * The subset of the LVA client the action handler needs. Depending on this
+ * instead of LvaClient keeps the module free of a circular import and lets
+ * tests pass a plain recording object.
  */
 export interface LvaSender {
   send(command: string, data?: Record<string, unknown>): void

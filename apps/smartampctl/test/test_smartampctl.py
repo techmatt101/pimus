@@ -46,23 +46,6 @@ class SmartampctlTests(unittest.TestCase):
                 self.assertEqual(list(Path(directory).glob("*.lock")), [])
                 self.assertEqual(list(Path(directory).glob("*.tmp")), [])
 
-    def test_lights_cycle_wraps_and_recovers_unknown_modes(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            led_state = Path(directory) / "led-state.json"
-            with mock.patch.object(smartampctl, "LED_STATE", led_state):
-                led_state.write_text(json.dumps({"mode": "doa", "color": "#00bcd4"}))
-                smartampctl.lights("cycle")
-                self.assertEqual(json.loads(led_state.read_text())["mode"], "ring")
-                smartampctl.lights("cycle")
-                self.assertEqual(json.loads(led_state.read_text())["mode"], "voice")
-
-                led_state.write_text(json.dumps({"mode": "bogus"}))
-                smartampctl.lights("cycle")
-                self.assertEqual(json.loads(led_state.read_text())["mode"], "voice")
-
-                smartampctl.lights("breath")
-                self.assertEqual(json.loads(led_state.read_text())["mode"], "breath")
-
     def test_status_path_follows_the_state_directory_owner(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             with mock.patch.object(smartampctl, "STATE_DIR", Path(directory)):

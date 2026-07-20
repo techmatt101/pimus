@@ -21,7 +21,7 @@ systemd logs for the current boot in RAM (see the troubleshooting note about
 logs not surviving reboots), and `smartamp_swapfile_enabled: false` removes the
 stock dphys-swapfile so memory pressure cannot grind the card — if RAM is ever
 exhausted, the kernel OOM-kills the largest process and systemd restarts it.
-Application state that must survive reboots (route toggles, LED mode) is
+Application state that must survive reboots (aux/USB route toggles) is
 written only when its content changes; frequently refreshed files (ducking
 lease, audio status) live under `/run`, which is RAM-backed.
 
@@ -53,15 +53,14 @@ listening:
 The `ring` effect writes all 12 XVF3800 ring-colour slots using `color`.
 The `doa` effect uses `color` for the base plus `accent` for its highlight.
 
-Home Assistant receives an RGB light entity through LVA's peripheral API. Its **Voice Assistant** effect returns control to state feedback. Critical mute, disconnect, error and ringing-timer indications override a decorative local mode.
-
-The same Node controller handles the HA light command, ReSpeaker USB transfer,
-and Stream Deck **Lights** action. `smartampctl lights ...` remains available to
-shell automation; it updates the shared LED state watched by the controller.
+The ring is purely reactive: it renders the configured appearance for the
+current voice, media, timer, mute, or error state and nothing else. There is
+no separately controllable lamp mode, no persisted LED state, and no Home
+Assistant light entity.
 
 The state files and PipeWire session belong to the `smartamp` service account,
 so run shell automation as that user, for example
-`sudo -u smartamp smartampctl lights cycle`. Invoked as another user,
+`sudo -u smartamp smartampctl source aux toggle`. Invoked as another user,
 `smartampctl` explains this instead of failing with a traceback.
 
 Feature flags are reversible: disabling voice, Squeezelite, USB gadget audio,
@@ -77,7 +76,6 @@ Supported action objects are:
 { type: lva, command: start_listening }
 { type: audio, source: aux, command: toggle }
 { type: audio, command: mute }
-{ type: led, command: cycle }
 { type: webhook, id: movie_mode }
 { type: noop }
 ```

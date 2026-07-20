@@ -16,13 +16,13 @@ Keep these boundaries clear:
 
 - `smartamp-controller` is the long-running Node app. It owns Stream Deck input
   and rendering, ReSpeaker LED USB commands, the Linux Voice Assistant peripheral
-  WebSocket, Home Assistant light commands, and shared control-surface state.
+  WebSocket, and shared control-surface state.
 - `smartamp-audio-manager` is a separate long-running Python daemon. It
   continuously reconciles the PipeWire graph, default devices, aux/USB
   loopbacks, the duckable Squeezelite/USB background bus, and the XVF3800
   acoustic-echo-cancellation reference.
 - `smartampctl` is a short-lived Python CLI, not a daemon. It changes volume or
-  persistent route/LED state and exits.
+  persistent route state and exits.
 - Linux Voice Assistant and Squeezelite are external upstream applications
   installed and configured by Ansible; do not duplicate their logic locally.
 

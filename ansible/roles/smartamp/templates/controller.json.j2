@@ -21,9 +21,6 @@
     "product_id": 26,
     "brightness": {{ respeaker_led_brightness | int }},
     "speed": 2,
-    "state_file": "{{ smartamp_state_dir }}/led-state.json",
-    "light_name": "Office Amp LED Ring",
-    "light_object_id": "led_ring",
     "states": {{ respeaker_led_states | to_nice_json }}
   }
 }

@@ -18,7 +18,7 @@ import { parseOutputState, readAudioState, runSmartampctl } from '../src/system-
 import type { ChildProcess, spawn } from 'node:child_process'
 import type { StreamDeckDeviceInfo } from '@elgato-stream-deck/node'
 import type WebSocket from 'ws'
-import type { Action, LedLocalState, LedStateSpec, StreamDeckKey, UsbControlDevice } from '../src/types.mjs'
+import type { Action, LedStateSpec, StreamDeckKey, UsbControlDevice } from '../src/types.mjs'
 
 test('LVA snapshots and events update shared display state', () => {
   const state = createState()
@@ -45,7 +45,7 @@ test('LVA snapshots and events update shared display state', () => {
 
 test('non-pipeline events leave the assist display state alone', () => {
   const state = createState({ assist: 'LISTENING' })
-  applyLvaEvent(state, { event: 'light_command', data: { object_id: 'led_ring' } })
+  applyLvaEvent(state, { event: 'light_command' })
   applyLvaEvent(state, { event: 'zeroconf', data: { status: 'connected' } })
   assert.equal(state.assist, 'LISTENING')
   applyLvaEvent(state, { event: 'timer_ticking' })
@@ -238,26 +238,22 @@ test('action handler routes device and LVA commands', async () => {
   const state = createState({ muted: false, media: true })
   const lvaCommands: string[] = []
   const controlCommands: string[][] = []
-  const lightCommands: string[] = []
   let changes = 0
   const handle = createActionHandler({
     state,
     lva: { send: (command) => { lvaCommands.push(command) } },
     control: (args) => controlCommands.push(args),
-    lights: (command) => lightCommands.push(command),
     onStateChange: () => { changes += 1 },
   })
 
   await handle({ type: 'lva', command: 'mute_toggle' })
   await handle({ type: 'lva', command: 'stop' })
   await handle({ type: 'audio', source: 'usb', command: 'toggle' })
-  await handle({ type: 'led', command: 'cycle' })
 
   assert.deepEqual(lvaCommands, ['mute_mic', 'stop_timer_ringing', 'stop_pipeline', 'stop_media_player'])
   assert.deepEqual(controlCommands, [
     ['source', 'usb', 'toggle'],
   ])
-  assert.deepEqual(lightCommands, ['cycle'])
   assert.equal(state.media, false)
   assert.equal(changes, 1)
 })
@@ -268,7 +264,6 @@ test('webhook actions encode their identifier', async () => {
     state: createState(),
     lva: { send: () => {} },
     control: () => {},
-    lights: () => {},
     webhookBase: 'http://homeassistant.local:8123/api/webhook/',
     request: async (...args: unknown[]) => { requests.push(args) },
   })
@@ -291,24 +286,6 @@ test('malformed persistent state falls back safely', (context) => {
   const stateFile = path.join(directory, 'audio-state.json')
   fs.writeFileSync(stateFile, 'null')
   assert.deepEqual(readAudioState(stateFile), { sources: {} })
-
-  const ledFile = path.join(directory, 'led-state.json')
-  fs.writeFileSync(ledFile, 'null')
-  const controller = new ReSpeakerController({
-    config: {
-      enabled: true,
-      vendor_id: 0x2886,
-      product_id: 0x001a,
-      state_file: ledFile,
-      brightness: 64,
-      speed: 2,
-      light_name: 'Office Amp LED Ring',
-      light_object_id: 'led_ring',
-      states: { idle: { effect: 'doa', color: '#001018' } },
-    },
-    device: { apply: async () => {} },
-  })
-  assert.deepEqual(controller.readLocal(), { mode: 'voice', color: '#00bcd4' })
 })
 
 test('smartampctl process failures are logged and still refresh state', () => {
@@ -410,25 +387,20 @@ test('XVF3800 commands use vendor transfers and little-endian payloads', async (
   assert.deepEqual([...encodePayload('uint8', [-1, 256])], [0, 255])
 })
 
-test('ReSpeaker state follows voice events and Home Assistant light commands', async (context) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pimus-controller-'))
-  context.after(() => fs.rmSync(directory, { recursive: true, force: true }))
-  const stateFile = path.join(directory, 'led-state.json')
+test('ReSpeaker LEDs follow voice, media, and mute state', async () => {
   const rendered: [LedStateSpec, number, number][] = []
   const controller = new ReSpeakerController({
     config: {
       enabled: true,
       vendor_id: 0x2886,
       product_id: 0x001a,
-      state_file: stateFile,
       brightness: 64,
       speed: 2,
-      light_name: 'Office Amp LED Ring',
-      light_object_id: 'led_ring',
       states: {
         idle: { effect: 'doa', color: '#102030', accent: '#00bcd4' },
         listening: { effect: 'breath', color: '#00e5ff' },
         media_player_playing: { effect: 'single', color: '#1565c0' },
+        muted: { effect: 'single', color: '#d50000' },
         disconnected: { effect: 'single', color: '#d50000' },
       },
     },
@@ -445,53 +417,22 @@ test('ReSpeaker state follows voice events and Home Assistant light commands', a
   await controller.handleEvent({ event: 'media_player_idle' })
   assert.deepEqual(rendered.at(-1), [{ effect: 'doa', color: '#102030', accent: '#00bcd4' }, 64, 2])
 
-  await controller.handleEvent({
-    event: 'light_command',
-    data: {
-      object_id: 'led_ring',
-      effect: 'Rainbow',
-      red: 1,
-      green: 0.5,
-      blue: 0,
-      brightness: 0.25,
-    },
-  })
-  assert.deepEqual(JSON.parse(fs.readFileSync(stateFile, 'utf8')), {
-    mode: 'rainbow',
-    color: '#ff8000',
-    brightness: 64,
-  })
-
-  await controller.command('cycle')
-  assert.equal(JSON.parse(fs.readFileSync(stateFile, 'utf8')).mode, 'doa')
-
-  // Unchanged state must not rewrite the file: pin the mtime into the past
-  // and confirm an identical write leaves it alone while a real change moves it.
-  const past = new Date('2020-01-01T00:00:00Z')
-  const persisted = JSON.parse(fs.readFileSync(stateFile, 'utf8')) as LedLocalState
-  fs.utimesSync(stateFile, past, past)
-  controller.writeLocal(persisted)
-  assert.equal(fs.statSync(stateFile).mtimeMs, past.getTime())
-  controller.writeLocal({ ...persisted, mode: 'off' })
-  assert.notEqual(fs.statSync(stateFile).mtimeMs, past.getTime())
+  // Mute overrides whatever voice state is active until it is lifted.
+  await controller.handleEvent({ event: 'muted', data: { muted: true } })
+  assert.deepEqual(rendered.at(-1)?.[0], { effect: 'single', color: '#d50000' })
+  await controller.handleEvent({ event: 'muted', data: { muted: false } })
+  assert.deepEqual(rendered.at(-1)?.[0], { effect: 'doa', color: '#102030', accent: '#00bcd4' })
 })
 
-test('LED-only mode does not force a disconnected warning', (context) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pimus-led-only-'))
-  context.after(() => fs.rmSync(directory, { recursive: true, force: true }))
-  const stateFile = path.join(directory, 'led-state.json')
-  fs.writeFileSync(stateFile, JSON.stringify({ mode: 'single', color: '#123456' }))
+test('LED-only mode does not force a disconnected warning', () => {
   const controller = new ReSpeakerController({
     voiceEnabled: false,
     config: {
       enabled: true,
       vendor_id: 0x2886,
       product_id: 0x001a,
-      state_file: stateFile,
       brightness: 64,
       speed: 2,
-      light_name: 'Office Amp LED Ring',
-      light_object_id: 'led_ring',
       states: {
         idle: { effect: 'doa', color: '#001018' },
         disconnected: { effect: 'breath', color: '#d50000' },
@@ -500,17 +441,10 @@ test('LED-only mode does not force a disconnected warning', (context) => {
     device: { apply: async () => {} },
   })
 
-  assert.deepEqual(controller.desired(), {
-    effect: 'single',
-    color: '#123456',
-    accent: '#ffffff',
-    brightness: 64,
-  })
+  assert.deepEqual(controller.desired(), { effect: 'doa', color: '#001018' })
 })
 
-test('ReSpeaker USB failures are retried without flooding the journal', async (context) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pimus-led-warning-'))
-  context.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+test('ReSpeaker USB failures are retried without flooding the journal', async () => {
   let now = 0
   const warnings: unknown[][] = []
   const controller = new ReSpeakerController({
@@ -521,11 +455,8 @@ test('ReSpeaker USB failures are retried without flooding the journal', async (c
       enabled: true,
       vendor_id: 0x2886,
       product_id: 0x001a,
-      state_file: path.join(directory, 'led-state.json'),
       brightness: 64,
       speed: 2,
-      light_name: 'Office Amp LED Ring',
-      light_object_id: 'led_ring',
       states: { idle: { effect: 'doa', color: '#001018' } },
     },
     device: { apply: async () => { throw new Error('not connected') } },

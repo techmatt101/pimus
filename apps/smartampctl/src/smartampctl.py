@@ -17,7 +17,6 @@ from typing import Any, Callable, Iterator
 
 STATE_DIR = Path(os.environ.get("SMARTAMP_STATE_DIR", "/var/lib/smartamp"))
 AUDIO_STATE = STATE_DIR / "audio-state.json"
-LED_STATE = STATE_DIR / "led-state.json"
 
 
 def status_path() -> Path:
@@ -131,21 +130,6 @@ def volume(command: str) -> int:
     return subprocess.run(operations[command], check=False).returncode
 
 
-def lights(command: str) -> int:
-    # Mirrors LOCAL_MODES in the controller's respeaker.mts; keep both aligned.
-    modes = ["voice", "off", "single", "breath", "rainbow", "doa", "ring"]
-    def update(state: dict[str, Any]) -> None:
-        if command == "cycle":
-            current = state.get("mode", "voice")
-            state["mode"] = modes[(modes.index(current) + 1) % len(modes)] if current in modes else "voice"
-        else:
-            state["mode"] = command
-
-    state = update_json(LED_STATE, {"mode": "voice", "color": "#00bcd4"}, update)
-    print(f"lights={state['mode']}")
-    return 0
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(prog="smartampctl")
     subparsers = parser.add_subparsers(dest="area", required=True)
@@ -154,8 +138,6 @@ def main() -> int:
     source_parser.add_argument("command", choices=["on", "off", "toggle"])
     volume_parser = subparsers.add_parser("volume")
     volume_parser.add_argument("command", choices=["up", "down", "mute"])
-    lights_parser = subparsers.add_parser("lights")
-    lights_parser.add_argument("command", choices=["cycle", "voice", "off", "single", "breath", "rainbow", "doa", "ring"])
     subparsers.add_parser("status")
     args = parser.parse_args()
     try:
@@ -163,8 +145,6 @@ def main() -> int:
             return source(args.name, args.command)
         if args.area == "volume":
             return volume(args.command)
-        if args.area == "lights":
-            return lights(args.command)
         print(json.dumps(read_json(status_path(), {}), indent=2))
         return 0
     except PermissionError as error:

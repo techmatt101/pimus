@@ -87,7 +87,7 @@ respeaker_led_states:
   disconnected: { effect: breath, color: "#d50000" }
   pipeline_error: { effect: breath, color: "#ff1744" }
 
-# Stream Deck+ controls. Each key supports lva, audio, led, webhook and noop.
+# Stream Deck+ controls. Each key supports lva, audio, webhook and noop.
 streamdeck_enabled: true
 streamdeck_brightness: 40
 streamdeck_keys:
@@ -98,7 +98,6 @@ streamdeck_keys:
   - { label: "PLAY", color: "#1b5e20", action: { type: lva, command: media_toggle } }
   - { label: "STOP", color: "#b71c1c", action: { type: lva, command: stop } }
   - { label: "TIMER", color: "#e65100", action: { type: lva, command: stop_timer_ringing } }
-  - { label: "LIGHTS", color: "#37474f", action: { type: led, command: cycle } }
 streamdeck_dials:
   - { label: "VOLUME", left: { type: audio, command: down }, right: { type: audio, command: up }, press: { type: audio, command: mute } }
   # Quote YAML's boolean-like on/off words so controller.json receives strings.

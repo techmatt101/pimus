@@ -37,12 +37,10 @@ const respeaker = config.respeaker?.enabled
   ? new ReSpeakerController({ config: config.respeaker, voiceEnabled: config.voice_enabled })
   : null
 
-// Annotated because onOpen refers back to this binding while constructing it.
-const lva: LvaClient = new LvaClient({
+const lva = new LvaClient({
   uri: config.lva_uri,
   state,
   onStateChange: () => renderer.schedule(),
-  onOpen: () => respeaker?.register(lva),
   onEvent: async (message) => {
     ducker?.handleEvent(message)
     await respeaker?.handleEvent(message)
@@ -61,7 +59,6 @@ const handleAction = createActionHandler({
   state,
   lva,
   control,
-  lights: (command: string) => respeaker?.command(command),
   webhookBase: config.webhook_base,
   onStateChange: () => renderer.schedule(),
 })

@@ -32,6 +32,8 @@
     - "{{ smartamp_app_dir }}/streamdeck"
     - "{{ smartamp_config_dir }}/peripherals.yml"
     - "{{ smartamp_config_dir }}/streamdeck.json"
+    # The LED lamp-override feature was removed; the ring is reactive only.
+    - "{{ smartamp_state_dir }}/led-state.json"
 
 # Voice ducking consumes the same LVA event stream as the physical feedback
 # devices, so it also needs the controller when both USB surfaces are disabled.
