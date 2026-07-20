@@ -41,6 +41,14 @@
     path: /usr/local/bin/smartampctl
     state: absent
 
+# Route state moved to the RAM-backed /run/user runtime directory so toggles
+# reset to inventory defaults at boot and never wear the SD card. The old
+# on-disk copy must not linger where it looks authoritative.
+- name: Remove legacy on-disk audio state
+  ansible.builtin.file:
+    path: "{{ smartamp_state_dir }}/audio-state.json"
+    state: absent
+
 # ALSA mixer defaults are not guaranteed after a clean image. Apply the chosen
 # ADC pins/gain and a conservative amplifier level on every boot.
 - name: Install HiFiBerry mixer initialisation

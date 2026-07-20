@@ -8,7 +8,7 @@ All supported settings live in `ansible/inventory/group_vars/all.yml`. Re-run `m
 
 Device match expressions search every PipeWire/Pulse node property. Use `pactl list sinks` and `pactl list sources` on the Pi if your firmware exposes different names.
 
-Set `smartamp_aux_enabled` to choose whether aux monitoring starts on boot. USB monitoring is initially enabled when `usb_audio_gadget_enabled` is true. The Stream Deck persists subsequent route state.
+Set `smartamp_aux_enabled` to choose whether aux monitoring starts on boot. USB monitoring is initially enabled when `usb_audio_gadget_enabled` is true. Stream Deck route toggles last until the next reboot; every boot starts from these inventory defaults.
 
 Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Squeezelite and USB computer audio share the `smartamp_background_sink_name` bus and fade to `smartamp_voice_duck_volume_percent` during an Assist interaction. `smartamp_voice_duck_fade_ms` controls the transition. The controller refreshes a runtime lease every `smartamp_voice_duck_refresh_seconds`; the audio manager restores full background volume after `smartamp_voice_duck_timeout_seconds` if that lease becomes stale.
 
@@ -21,9 +21,9 @@ systemd logs for the current boot in RAM (see the troubleshooting note about
 logs not surviving reboots), and `smartamp_swapfile_enabled: false` removes the
 stock dphys-swapfile so memory pressure cannot grind the card — if RAM is ever
 exhausted, the kernel OOM-kills the largest process and systemd restarts it.
-Application state that must survive reboots (aux/USB route toggles) is
-written only when its content changes; frequently refreshed files (ducking
-lease, audio status) live under `/run`, which is RAM-backed.
+All audio runtime files (route toggles, ducking lease, audio status) live
+under `/run`, which is RAM-backed, so routine operation never writes to the
+card and route toggles reset to inventory defaults at boot.
 
 ## Voice
 
