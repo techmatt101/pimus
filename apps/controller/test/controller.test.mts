@@ -286,3 +286,35 @@ test('ReSpeaker state follows voice events and Home Assistant light commands', a
   controller.writeLocal({ ...persisted, mode: 'off' })
   assert.notEqual(fs.statSync(stateFile).mtimeMs, past.getTime())
 })
+
+test('LED-only mode does not force a disconnected warning', (context) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pimus-led-only-'))
+  context.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const stateFile = path.join(directory, 'led-state.json')
+  fs.writeFileSync(stateFile, JSON.stringify({ mode: 'single', color: '#123456' }))
+  const controller = new ReSpeakerController({
+    voiceEnabled: false,
+    config: {
+      enabled: true,
+      vendor_id: 0x2886,
+      product_id: 0x001a,
+      state_file: stateFile,
+      brightness: 64,
+      speed: 2,
+      light_name: 'Office Amp LED Ring',
+      light_object_id: 'led_ring',
+      states: {
+        idle: { effect: 'doa', color: '#001018' },
+        disconnected: { effect: 'breath', color: '#d50000' },
+      },
+    },
+    device: { apply: async () => {} },
+  })
+
+  assert.deepEqual(controller.desired(), {
+    effect: 'single',
+    color: '#123456',
+    accent: '#ffffff',
+    brightness: 64,
+  })
+})

@@ -165,6 +165,7 @@ export class Xvf3800Device implements LedDevice {
 export interface ReSpeakerControllerOptions {
   config: ReSpeakerConfig
   device?: LedDevice
+  voiceEnabled?: boolean
   logger?: Pick<Console, 'warn'>
 }
 
@@ -179,7 +180,7 @@ export class ReSpeakerController {
   private renderQueue: Promise<void> = Promise.resolve()
   private watchTimer: NodeJS.Timeout | null = null
 
-  constructor({ config, device, logger = console }: ReSpeakerControllerOptions) {
+  constructor({ config, device, voiceEnabled = true, logger = console }: ReSpeakerControllerOptions) {
     this.config = config
     this.device = device ?? new Xvf3800Device({
       vendorId: Number(config.vendor_id),
@@ -187,6 +188,9 @@ export class ReSpeakerController {
     })
     this.logger = logger
     this.stateFile = config.state_file
+    // An LED-only installation has no LVA socket to transition away from the
+    // disconnected state, so begin at the normal idle appearance instead.
+    if (!voiceEnabled) this.assistState = 'idle'
   }
 
   readLocal(): LedLocalState {

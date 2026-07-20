@@ -34,7 +34,7 @@ const renderer = new DeckRenderer({
 })
 
 const respeaker = config.respeaker?.enabled
-  ? new ReSpeakerController({ config: config.respeaker })
+  ? new ReSpeakerController({ config: config.respeaker, voiceEnabled: config.voice_enabled })
   : null
 
 // Annotated because onOpen refers back to this binding while constructing it.
