@@ -12,11 +12,9 @@
     "sink_name": {{ smartamp_background_sink_name | to_json }},
     "latency_ms": 40,
     "duck_volume_percent": {{ smartamp_voice_duck_volume_percent | int }},
-    "fade_ms": {{ smartamp_voice_duck_fade_ms | int }},
-    "duck_timeout_seconds": {{ smartamp_voice_duck_timeout_seconds | int }}
+    "fade_ms": {{ smartamp_voice_duck_fade_ms | int }}
   },
   "resync_seconds": 900,
-  "duck_poll_seconds": 0.1,
   "sources": {
     "aux": {
       "match": {{ smartamp_aux_match | to_json }},

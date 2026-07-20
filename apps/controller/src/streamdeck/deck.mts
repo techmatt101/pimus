@@ -6,9 +6,9 @@ import {
   type StreamDeckDeviceInfo,
 } from '@elgato-stream-deck/node'
 
-import type { DeckRenderer } from './display.mjs'
-import type { ActionHandler } from './actions.mjs'
-import type { StreamDeckConfig } from './types.mjs'
+import type { DeckRenderer } from './renderer.mjs'
+import type { ActionHandler } from '../actions/handler.mjs'
+import type { StreamDeckConfig } from '../types.mjs'
 
 const sleep = (milliseconds: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, milliseconds))

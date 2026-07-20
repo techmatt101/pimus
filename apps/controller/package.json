@@ -10,7 +10,7 @@
     "build": "npm run clean && tsc",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "test": "npm run build && node --test dist/test/*.test.mjs"
+    "test": "npm run build && node --test $(find dist/test -name '*.test.mjs' | sort)"
   },
   "dependencies": {
     "@elgato-stream-deck/node": "7.6.3",

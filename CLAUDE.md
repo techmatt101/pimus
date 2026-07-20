@@ -35,7 +35,11 @@ Each deployable app owns its source and tests:
 apps/
   controller/
     src/                 TypeScript controller modules (.mts)
-    test/                Hardware-free Node tests (.mts)
+      actions/           Action catalog and dispatch
+      audio/             Audio manager socket, volume, ducking
+      streamdeck/        Stream Deck lifecycle and rendering
+      voice/             LVA WebSocket and ReSpeaker LEDs
+    test/                Hardware-free Node tests (.mts), mirroring src/
     dist/                Compiled .mjs output; build artifact, not tracked
     package.json
     package-lock.json
@@ -82,12 +86,22 @@ runtime validation, and relevant documentation together.
   circular imports and tests can inject plain objects.
 - Keep `index.mts` as composition/root wiring; put device or domain logic in a
   focused module.
-- Route configured actions through `actions.mts` and keep shared display/voice
-  state in `state.mts`.
+- Group modules by the boundary they own: `actions/`, `audio/`, `streamdeck/`,
+  and `voice/`, with `index.mts`, `config.mts`, `state.mts`, and `types.mts` at
+  the root. Mirror the same folders under `test/`.
+- `actions/catalog.mts` is the single source of truth for the control surface.
+  Declare a new action there, give it a runner in `actions/handler.mts`, add it
+  to `docs/controls.md` and the comment block in `all.yml`, then bind it. Key
+  colour and label feedback belongs in the catalog entry's `indicator`, not in
+  the renderer.
+- Keep shared display/voice state in `state.mts`.
 - Treat USB and WebSocket disconnects as normal. Log, retain useful state, and
   reconnect without terminating the daemon.
 - Keep hardware access injectable so tests run without a Stream Deck or
   ReSpeaker attached.
+- Keep `voice/xvf3800-device.mts` limited to the vendor protocol and USB
+  transport; which appearance a voice state should show belongs in
+  `voice/respeaker.mts`.
 - Preserve the XVF3800 vendor-control protocol and the `2886:001a` device match
   when changing LED behavior.
 
@@ -110,10 +124,10 @@ runtime validation, and relevant documentation together.
   what it provides and why this project needs it.
 - Avoid global npm installs. Deploy the controller under `/opt/smartamp/controller`
   and install its lockfile with `npm ci --omit=dev --omit=peer`.
-- Deploy the compiled `controller/dist/src/*.mjs`, never the `.mts` sources. The
-  Pi gets no TypeScript toolchain; `make build` compiles on the control
-  computer, and provisioning fails with an instruction if that output is
-  missing.
+- Deploy the compiled `controller/dist/src/` tree, never the `.mts` sources, and
+  preserve its folders on the Pi so import specifiers stay valid. The Pi gets no
+  TypeScript toolchain; `make build` compiles on the control computer, and
+  provisioning fails with an instruction if that output is missing.
 - Preserve the migration cleanup for the legacy `smartamp-peripherals` and
   `smartamp-streamdeck` units.
 

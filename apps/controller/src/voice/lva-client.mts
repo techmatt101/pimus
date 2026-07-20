@@ -1,7 +1,7 @@
 import WebSocket, { type RawData } from 'ws'
 
-import { applyLvaEvent } from './state.mjs'
-import type { ControlState, LvaMessage, LvaSender } from './types.mjs'
+import { applyLvaEvent } from '../state.mjs'
+import type { ControlState, LvaMessage, LvaSender } from '../types.mjs'
 
 export interface LvaClientOptions {
   uri: string

@@ -1,11 +1,45 @@
 import fs from 'node:fs'
 
+import { describeActionProblem } from './actions/catalog.mjs'
 import type { ControllerConfig } from './types.mjs'
 
 export const DEFAULT_CONFIG_PATH = '/etc/smartamp/controller.json'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/**
+ * Checks every action bound to a key or dial against actions/catalog.mts. A
+ * mistyped command would otherwise produce a key that looks configured but
+ * does nothing when pressed, which is hard to diagnose on the device itself.
+ */
+function validateControls(deck: Record<string, unknown>, configPath: string): void {
+  const problems: string[] = []
+  const check = (action: unknown, where: string): void => {
+    const problem = describeActionProblem(action)
+    if (problem) problems.push(`${where}: ${problem}`)
+  }
+
+  const keys = Array.isArray(deck.keys) ? deck.keys : []
+  keys.forEach((key: unknown, index) => {
+    if (isRecord(key)) check(key.action, `key ${index} (${String(key.label ?? 'unlabelled')})`)
+  })
+
+  const dials = Array.isArray(deck.dials) ? deck.dials : []
+  dials.forEach((dial: unknown, index) => {
+    if (!isRecord(dial)) return
+    const label = String(dial.label ?? 'unlabelled')
+    for (const binding of ['left', 'right', 'press'] as const) {
+      check(dial[binding], `dial ${index} (${label}) ${binding}`)
+    }
+  })
+
+  if (problems.length > 0) {
+    throw new Error(
+      `Controller configuration at ${configPath} has invalid Stream Deck actions:\n  ${problems.join('\n  ')}`,
+    )
+  }
+}
 
 function validateControllerConfig(value: unknown, configPath: string): asserts value is ControllerConfig {
   if (!isRecord(value)) throw new Error(`Controller configuration at ${configPath} must be a JSON object`)
@@ -28,6 +62,7 @@ function validateControllerConfig(value: unknown, configPath: string): asserts v
         || !Array.isArray(deck.dials) || deck.dials.length > 4) {
       throw new Error(`Controller configuration at ${configPath} supports at most 8 keys and 4 dials`)
     }
+    validateControls(deck, configPath)
   }
 
   if (isRecord(value.respeaker) && value.respeaker.enabled) {
@@ -36,13 +71,6 @@ function validateControllerConfig(value: unknown, configPath: string): asserts v
     }
   }
 
-  if (isRecord(value.ducking) && value.ducking.enabled
-      && (typeof value.ducking.state_file !== 'string'
-        || !(Number(value.ducking.refresh_milliseconds) > 0))) {
-    throw new Error(
-      `Controller configuration at ${configPath} must define ducking state_file and refresh_milliseconds`,
-    )
-  }
 }
 
 export function loadConfig(

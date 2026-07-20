@@ -4,7 +4,6 @@ import importlib.util
 import json
 import selectors
 import socket
-import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -46,41 +45,45 @@ class AudioManagerTests(unittest.TestCase):
         )
 
     def test_route_commands_update_memory_state(self) -> None:
-        manager = audio_manager.AudioManager.__new__(audio_manager.AudioManager)
+        manager = self._duckable_manager()
         manager.sources = {"aux": True, "usb": False}
+        connection = mock.Mock()
 
         reply, reconcile = manager.apply_command(
-            {"command": "set-source", "name": "usb", "state": "toggle"}
+            connection, {"command": "set-source", "name": "usb", "state": "toggle"}
         )
         self.assertEqual(
-            reply, {"event": "state", "sources": {"aux": True, "usb": True}}
+            reply,
+            {"event": "state", "sources": {"aux": True, "usb": True}, "ducked": False},
         )
         self.assertTrue(reconcile)
 
         # Re-applying the current state must not trigger graph work.
         _, reconcile = manager.apply_command(
-            {"command": "set-source", "name": "usb", "state": "on"}
+            connection, {"command": "set-source", "name": "usb", "state": "on"}
         )
         self.assertFalse(reconcile)
 
         reply, reconcile = manager.apply_command(
-            {"command": "set-source", "name": "phono", "state": "on"}
+            connection, {"command": "set-source", "name": "phono", "state": "on"}
         )
         self.assertEqual(reply["event"], "error")
         self.assertFalse(reconcile)
 
     def test_reconnect_sync_adopts_only_configured_boolean_sources(self) -> None:
-        manager = audio_manager.AudioManager.__new__(audio_manager.AudioManager)
+        manager = self._duckable_manager()
         manager.sources = {"aux": True, "usb": False}
         reply, reconcile = manager.apply_command(
+            mock.Mock(),
             {
                 "command": "set-sources",
                 "sources": {"aux": False, "usb": "yes", "bogus": True},
-            }
+            },
         )
         # Unknown routes and non-boolean values are ignored, not coerced.
         self.assertEqual(
-            reply, {"event": "state", "sources": {"aux": False, "usb": False}}
+            reply,
+            {"event": "state", "sources": {"aux": False, "usb": False}, "ducked": False},
         )
         self.assertTrue(reconcile)
 
@@ -93,7 +96,7 @@ class AudioManagerTests(unittest.TestCase):
         self.assertFalse(audio_manager.is_relevant_event("garbage"))
 
     def test_socket_commands_reconcile_and_answer_with_live_state(self) -> None:
-        manager = audio_manager.AudioManager.__new__(audio_manager.AudioManager)
+        manager = self._duckable_manager()
         manager.sources = {"aux": False}
         manager.selector = selectors.DefaultSelector()
         manager.safe_reconcile = mock.Mock()
@@ -109,7 +112,7 @@ class AudioManagerTests(unittest.TestCase):
 
         self.assertEqual(
             json.loads(right.recv(4096)),
-            {"event": "state", "sources": {"aux": True}},
+            {"event": "state", "sources": {"aux": True}, "ducked": False},
         )
         manager.safe_reconcile.assert_called_once()
 
@@ -118,7 +121,7 @@ class AudioManagerTests(unittest.TestCase):
         self.assertEqual(json.loads(right.recv(4096))["event"], "error")
 
     def test_flooding_client_is_dropped(self) -> None:
-        manager = audio_manager.AudioManager.__new__(audio_manager.AudioManager)
+        manager = self._duckable_manager()
         manager.selector = selectors.DefaultSelector()
         left, right = socket.socketpair()
         self.addCleanup(left.close)
@@ -164,15 +167,62 @@ class AudioManagerTests(unittest.TestCase):
         )
         self.assertEqual(selected["index"], 12)
 
-    def test_duck_request_has_a_fail_safe_expiry(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "duck.json"
-            path.write_text(json.dumps({"active": True, "updated_at": 100.0}))
-            self.assertTrue(audio_manager.duck_request_active(path, 120, 150.0))
-            self.assertFalse(audio_manager.duck_request_active(path, 120, 221.0))
+    @staticmethod
+    def _duckable_manager() -> audio_manager.AudioManager:
+        manager = audio_manager.AudioManager.__new__(audio_manager.AudioManager)
+        manager.config = {"background": {"enabled": True}}
+        manager.duck_requests = set()
+        manager.sources = {}
+        manager.clients = {}
+        manager.running = True
+        manager.background_stream_index = None
+        manager.background_ducked = None
+        return manager
 
-            path.write_text(json.dumps({"active": False, "updated_at": 220.0}))
-            self.assertFalse(audio_manager.duck_request_active(path, 120, 221.0))
+    def test_duck_requests_are_held_against_the_requesting_connection(self) -> None:
+        manager = self._duckable_manager()
+        connection = mock.Mock()
+
+        reply, needs_reconcile = manager.apply_command(
+            connection, {"command": "set-duck", "active": True}
+        )
+        self.assertTrue(reply["ducked"])
+        # Ducking only changes one stream volume, so it must not force a full
+        # graph reconcile.
+        self.assertFalse(needs_reconcile)
+        self.assertTrue(manager.desired_ducking())
+
+        manager.apply_command(connection, {"command": "set-duck", "active": False})
+        self.assertFalse(manager.desired_ducking())
+
+    def test_a_disconnecting_controller_releases_its_duck_request(self) -> None:
+        manager = self._duckable_manager()
+        manager.selector = mock.Mock()
+        connection = mock.Mock()
+        manager.clients[connection] = b""
+
+        manager.apply_command(connection, {"command": "set-duck", "active": True})
+        self.assertTrue(manager.desired_ducking())
+
+        # Losing the socket is the liveness signal: a controller that crashes
+        # mid-conversation must not leave background audio ducked.
+        manager.drop_client(connection)
+        self.assertFalse(manager.desired_ducking())
+        self.assertEqual(manager.duck_requests, set())
+
+    def test_ducking_stays_off_when_the_background_path_is_disabled(self) -> None:
+        manager = self._duckable_manager()
+        manager.config = {"background": {"enabled": False}}
+        manager.duck_requests = {mock.Mock()}
+        self.assertFalse(manager.desired_ducking())
+
+    def test_set_duck_rejects_a_non_boolean_request(self) -> None:
+        manager = self._duckable_manager()
+        reply, _ = manager.apply_command(
+            mock.Mock(), {"command": "set-duck", "active": "yes"}
+        )
+        self.assertEqual(reply["event"], "error")
+        self.assertFalse(manager.desired_ducking())
 
     def test_background_bridge_fades_without_changing_client_volumes(self) -> None:
         manager = audio_manager.AudioManager.__new__(audio_manager.AudioManager)

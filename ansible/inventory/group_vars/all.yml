@@ -37,8 +37,6 @@ smartamp_voice_ducking_enabled: true
 smartamp_background_sink_name: smartamp_background
 smartamp_voice_duck_volume_percent: 15
 smartamp_voice_duck_fade_ms: 250
-smartamp_voice_duck_timeout_seconds: 120
-smartamp_voice_duck_refresh_seconds: 30
 
 # Make the Pi appear as a 48 kHz stereo USB sound card to a computer connected
 # to the Pi 5 USB-C port. The AAmp60/DAC stack must power the Pi through GPIO.
@@ -86,7 +84,42 @@ respeaker_led_states:
   disconnected: { effect: breath, color: "#d50000" }
   pipeline_error: { effect: breath, color: "#ff1744" }
 
-# Stream Deck+ controls. Each key supports lva, audio, webhook and noop.
+# Stream Deck+ controls: 8 keys and 4 dials. Each dial binds three actions --
+# left (counter-clockwise), right (clockwise), and press. Pressing the LCD strip
+# above a dial triggers that dial's press action.
+#
+# Every available action, from apps/controller/src/actions/catalog.mts. A typo
+# here fails at controller startup naming the key or dial, so a mistyped binding
+# never becomes a key that silently does nothing. See docs/controls.md.
+#
+#   Voice          { type: lva, command: ... }
+#     start_listening      start a pipeline, same as the wake word
+#     mute_toggle          toggle the microphone mute
+#     media_toggle         play or pause the media player
+#     stop                 stop timer ringing, the pipeline, and media
+#     stop_timer_ringing   silence a ringing timer, leave media playing
+#     <anything else>      forwarded to LVA as-is, no key feedback
+#
+#   Master volume  { type: audio, command: ... }   (no source)
+#     up                   raise the default sink by 5%, capped at 100%
+#     down                 lower the default sink by 5%
+#     mute                 toggle mute on the default sink
+#
+#   Audio route    { type: audio, source: aux|usb, command: ... }
+#     "on"                 enable the route
+#     "off"                disable the route
+#     toggle               flip the route
+#
+#   Webhook        { type: webhook, id: my_automation }
+#                          POST to <home_assistant_webhook_base>/<id>
+#
+#   Nothing        { type: noop }
+#                          bind a dial direction you do not want used
+#
+# Keys bound to mute_toggle, media_toggle, start_listening, or an audio route
+# recolour and relabel themselves while active; everything else keeps the label
+# and colour set here. A dial's readout follows the actions bound to it, so
+# reordering streamdeck_dials keeps each readout correct.
 streamdeck_enabled: true
 streamdeck_brightness: 40
 streamdeck_keys:

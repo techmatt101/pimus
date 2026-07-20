@@ -1,6 +1,6 @@
 import net from 'node:net'
 
-import type { AudioState } from './types.mjs'
+import type { AudioState } from '../types.mjs'
 
 /** One newline-delimited JSON message from the audio manager's socket. */
 interface ManagerEvent {
@@ -27,6 +27,7 @@ export class AudioManagerClient {
   state: AudioState = { sources: {} }
   connected = false
 
+  private duckActive = false
   private synced = false
   private buffer = ''
   private lastErrorMessage: string | null = null
@@ -67,6 +68,10 @@ export class AudioManagerClient {
       this.write(this.synced
         ? { command: 'set-sources', sources: this.state.sources }
         : { command: 'get-state' })
+      // The manager ties a duck request to the connection that made it, so a
+      // reconnect during a conversation has to ask again or background audio
+      // would stay at full volume while the assistant speaks.
+      if (this.duckActive) this.write({ command: 'set-duck', active: true })
       this.onStateChange()
     })
     socket.on('data', (chunk) => this.receive(String(chunk)))
@@ -112,6 +117,17 @@ export class AudioManagerClient {
       this.onStateChange()
     }
     this.write({ command: 'set-source', name, state: enabled ? 'on' : 'off' })
+  }
+
+  /**
+   * Requests or releases ducking of the background bus. The manager releases
+   * the request by itself if this socket closes, so a crash cannot leave
+   * Squeezelite and USB audio stuck at the duck level.
+   */
+  setDuck(active: boolean): void {
+    if (this.duckActive === active) return
+    this.duckActive = active
+    this.write({ command: 'set-duck', active })
   }
 
   close(): void {

@@ -102,15 +102,6 @@ def find_loaded_module(
     )
 
 
-def duck_request_active(path: Path, timeout_seconds: float, now: float) -> bool:
-    try:
-        request = json.loads(path.read_text(encoding="utf-8"))
-        updated_at = float(request.get("updated_at", 0))
-        return bool(request.get("active", False)) and now <= updated_at + timeout_seconds
-    except (FileNotFoundError, json.JSONDecodeError, OSError, TypeError, ValueError):
-        return False
-
-
 def default_sources(config: dict[str, Any]) -> dict[str, bool]:
     return {
         name: bool(source.get("enabled", False))
@@ -171,12 +162,10 @@ class AudioManager:
         config_path: Path,
         socket_path: Path,
         status_path: Path,
-        duck_state_path: Path,
     ) -> None:
         self.config = json.loads(config_path.read_text(encoding="utf-8"))
         self.socket_path = socket_path
         self.status_path = status_path
-        self.duck_state_path = duck_state_path
         self.modules: dict[str, int] = {}
         self.bindings: dict[str, tuple[str, str]] = {}
         self.background_stream_index: int | None = None
@@ -188,6 +177,12 @@ class AudioManager:
         self.selector = selectors.DefaultSelector()
         self.server: socket.socket | None = None
         self.clients: dict[socket.socket, bytes] = {}
+        # Connections currently asking for ducked background audio. Holding the
+        # request against the connection makes the socket itself the liveness
+        # signal: if the controller crashes mid-conversation the kernel closes
+        # its socket and background audio restores immediately, with no
+        # timestamped lease file to expire.
+        self.duck_requests: set[socket.socket] = set()
         self.subscribe_process: subprocess.Popen[bytes] | None = None
         self.subscribe_buffer = b""
         self.subscribe_retry_at = 0.0
@@ -270,11 +265,7 @@ class AudioManager:
         background_config = self.config.get("background", {})
         if not background_config.get("enabled", False):
             return False
-        return duck_request_active(
-            self.duck_state_path,
-            float(background_config.get("duck_timeout_seconds", 120)),
-            time.time(),
-        )
+        return bool(self.duck_requests)
 
     def set_background_ducking(self, ducked: bool) -> None:
         if self.background_stream_index is None or self.background_ducked == ducked:
@@ -312,6 +303,13 @@ class AudioManager:
         ducked = self.desired_ducking()
         self.set_background_ducking(ducked)
         return ducked
+
+    def safe_reconcile_ducking(self) -> None:
+        """Apply the duck level, logging rather than dying on a pactl failure."""
+        try:
+            self.reconcile_ducking()
+        except (subprocess.SubprocessError, json.JSONDecodeError, RuntimeError) as error:
+            LOG.warning("Audio ducking failed: %s", error)
 
     def ensure_background(
         self,
@@ -465,13 +463,31 @@ class AudioManager:
         atomic_json(self.status_path, status)
 
     def state_event(self) -> dict[str, Any]:
-        return {"event": "state", "sources": dict(self.sources)}
+        return {
+            "event": "state",
+            "sources": dict(self.sources),
+            "ducked": self.desired_ducking(),
+        }
 
-    def apply_command(self, message: Any) -> tuple[dict[str, Any], bool]:
+    def apply_command(
+        self, connection: socket.socket, message: Any
+    ) -> tuple[dict[str, Any], bool]:
         """Apply one socket command; returns (reply, reconcile needed)."""
         if not isinstance(message, dict):
             return {"event": "error", "error": "message must be a JSON object"}, False
         command = message.get("command")
+        if command == "set-duck":
+            active = message.get("active")
+            if not isinstance(active, bool):
+                return {"event": "error", "error": "set-duck needs a boolean active"}, False
+            if active:
+                self.duck_requests.add(connection)
+            else:
+                self.duck_requests.discard(connection)
+            # Ducking only touches the background stream volume, so apply it
+            # directly instead of asking for a full graph reconcile.
+            self.safe_reconcile_ducking()
+            return self.state_event(), False
         if command == "get-state":
             return self.state_event(), False
         if command == "resync":
@@ -533,6 +549,13 @@ class AudioManager:
         except (KeyError, ValueError):
             pass
         connection.close()
+        # A controller that crashes or restarts mid-conversation must not leave
+        # background audio stuck at the duck level. Releasing its request here
+        # is what makes the connection the lease.
+        if connection in self.duck_requests:
+            self.duck_requests.discard(connection)
+            if self.running:
+                self.safe_reconcile_ducking()
 
     def send_to(self, connection: socket.socket, event: dict[str, Any]) -> None:
         try:
@@ -569,7 +592,7 @@ class AudioManager:
             except json.JSONDecodeError:
                 self.send_to(connection, {"event": "error", "error": "invalid JSON"})
                 continue
-            reply, needs_reconcile = self.apply_command(message)
+            reply, needs_reconcile = self.apply_command(connection, message)
             if needs_reconcile:
                 # Apply the change before answering so the state every client
                 # receives is already live in the graph.
@@ -651,11 +674,12 @@ class AudioManager:
         self.start_server()
         self.start_subscribe()
         self.safe_reconcile()
-        duck_poll = float(self.config.get("duck_poll_seconds", 0.1))
         while self.running:
             now = time.monotonic()
+            # Ducking is applied when a set-duck arrives, when a client holding
+            # a request disconnects, and at the end of every reconcile, so the
+            # loop no longer needs a poll interval to notice a duck request.
             deadline = min(
-                now + duck_poll,
                 self.next_resync,
                 self.pending_reconcile
                 if self.pending_reconcile is not None
@@ -671,14 +695,6 @@ class AudioManager:
                 # Graph events may have been missed while the stream was down.
                 if self.pending_reconcile is None:
                     self.pending_reconcile = time.monotonic()
-            try:
-                self.reconcile_ducking()
-            except (
-                subprocess.SubprocessError,
-                json.JSONDecodeError,
-                RuntimeError,
-            ) as error:
-                LOG.warning("Audio ducking failed: %s", error)
             now = time.monotonic()
             if now >= self.next_resync or (
                 self.pending_reconcile is not None and now >= self.pending_reconcile
@@ -705,10 +721,9 @@ def main() -> int:
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--socket", type=Path, required=True)
     parser.add_argument("--status", type=Path, required=True)
-    parser.add_argument("--duck-state", type=Path, required=True)
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    manager = AudioManager(args.config, args.socket, args.status, args.duck_state)
+    manager = AudioManager(args.config, args.socket, args.status)
     signal.signal(signal.SIGTERM, manager.stop)
     signal.signal(signal.SIGINT, manager.stop)
     return manager.execute()

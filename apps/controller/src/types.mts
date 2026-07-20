@@ -54,10 +54,13 @@ export interface ReSpeakerConfig {
   states: ReSpeakerStates
 }
 
+/**
+ * Ducking needs no tuning here: the level and fade live in the audio manager's
+ * own configuration, and the request travels over the control socket in
+ * `audio_socket`.
+ */
 export interface DuckingConfig {
   enabled: boolean
-  state_file: string
-  refresh_milliseconds: number
 }
 
 export interface ControllerConfig {

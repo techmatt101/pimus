@@ -146,18 +146,32 @@
 # Pi needs no build tooling and keeps running plain ESM under the Debian nodejs
 # package. "make provision" builds first; check the output before copying so a
 # missing build fails here instead of leaving a stale controller on the Pi.
+# The compiled tree is nested (actions/, audio/, streamdeck/, voice/), so search
+# recursively and track each module by its path relative to dist/src. That
+# relative path is what the Pi mirrors, keeping import specifiers valid.
 - name: Find compiled hardware controller modules
+  ansible.builtin.find:
+    paths: "{{ smartamp_source_dir }}/controller/dist/src"
+    patterns: "*.mjs"
+    file_type: file
+    recurse: true
+  delegate_to: localhost
+  become: false
+  register: compiled_controller_modules
+  when: smartamp_controller_enabled | bool
+
+- name: Record compiled hardware controller modules
   ansible.builtin.set_fact:
     smartamp_controller_modules: >-
-      {{ query('ansible.builtin.fileglob', smartamp_source_dir + '/controller/dist/src/*.mjs') }}
-    smartamp_controller_entrypoint: "{{ smartamp_source_dir }}/controller/dist/src/index.mjs"
+      {{ compiled_controller_modules.files | default([]) | map(attribute='path')
+         | map('relpath', smartamp_source_dir + '/controller/dist/src') | list }}
   when: smartamp_controller_enabled | bool
 
 - name: Require a compiled hardware controller
   ansible.builtin.assert:
     that:
       - smartamp_controller_modules | length > 0
-      - smartamp_controller_entrypoint in smartamp_controller_modules
+      - "'index.mjs' in smartamp_controller_modules"
     fail_msg: >-
       The compiled controller entrypoint is missing from
       apps/controller/dist/src. Run "make build" on this computer before
@@ -166,12 +180,14 @@
 
 # TypeScript no longer emits a module after its source is deleted. Remove any
 # corresponding old file on the Pi so Node cannot load code from a prior build.
+# This also clears the flat layout left by releases before the modules moved
+# into folders.
 - name: Find deployed hardware controller modules
   ansible.builtin.find:
     paths: "{{ smartamp_app_dir }}/controller/src"
     patterns: "*.mjs"
     file_type: file
-    recurse: false
+    recurse: true
   register: deployed_controller_modules
   when: smartamp_controller_enabled | bool
 
@@ -181,24 +197,34 @@
     state: absent
   loop: "{{ deployed_controller_modules.files | default([]) }}"
   loop_control:
-    label: "{{ item.path | basename }}"
+    label: "{{ item.path | relpath(smartamp_app_dir + '/controller/src') }}"
   when:
     - smartamp_controller_enabled | bool
-    - item.path | basename not in (smartamp_controller_modules | map('basename') | list)
+    - item.path | relpath(smartamp_app_dir + '/controller/src') not in smartamp_controller_modules
   notify: Restart controller
 
-# Deploy each small module into src so the installed layout mirrors the app
-# boundary in Git and makes runtime ownership clear during troubleshooting.
+# Deploy the modules into src so the installed layout mirrors the app boundary
+# in Git and makes runtime ownership clear during troubleshooting. copy does not
+# create intermediate directories, so make the subfolders first.
+- name: Create hardware controller module directories
+  ansible.builtin.file:
+    path: "{{ smartamp_app_dir }}/controller/src/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: >-
+    {{ smartamp_controller_modules | map('dirname') | reject('equalto', '') | unique | sort | list }}
+  when: smartamp_controller_enabled | bool
+
 - name: Install hardware controller modules
   ansible.builtin.copy:
-    src: "{{ item }}"
-    dest: "{{ smartamp_app_dir }}/controller/src/{{ item | basename }}"
+    src: "{{ smartamp_source_dir }}/controller/dist/src/{{ item }}"
+    dest: "{{ smartamp_app_dir }}/controller/src/{{ item }}"
     owner: root
     group: root
     mode: "0644"
   loop: "{{ smartamp_controller_modules }}"
-  loop_control:
-    label: "{{ item | basename }}"
   notify: Restart controller
   when: smartamp_controller_enabled | bool
 

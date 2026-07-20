@@ -1,7 +1,7 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { promisify } from 'node:util'
 
-import type { ControlState } from './types.mjs'
+import type { ControlState } from '../types.mjs'
 
 const execFileAsync = promisify(execFile)
 

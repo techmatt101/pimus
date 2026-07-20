@@ -38,8 +38,8 @@
     that: boot_config.stat.exists
     fail_msg: "Expected /boot/firmware/config.txt; Raspberry Pi OS older than Bookworm is unsupported."
 
-# These values become PipeWire node names, gain levels, and a cross-process
-# lease. Validate them before provisioning can restart any live audio service.
+# These values become PipeWire node names and gain levels. Validate them before
+# provisioning can restart any live audio service.
 - name: Validate voice ducking settings
   ansible.builtin.assert:
     that:
@@ -47,12 +47,9 @@
       - (smartamp_voice_duck_volume_percent | int) >= 0
       - (smartamp_voice_duck_volume_percent | int) <= 100
       - (smartamp_voice_duck_fade_ms | int) >= 0
-      - (smartamp_voice_duck_refresh_seconds | int) > 0
-      - (smartamp_voice_duck_timeout_seconds | int) > (smartamp_voice_duck_refresh_seconds | int)
     fail_msg: >-
       Voice ducking requires a PipeWire-safe background sink name, a volume
-      from 0 to 100 percent, non-negative fade time, and a timeout longer than
-      the refresh interval.
+      from 0 to 100 percent, and a non-negative fade time.
   when: smartamp_voice_ducking_enabled | bool
 
 # Invalid regular expressions otherwise leave the audio manager restarting in

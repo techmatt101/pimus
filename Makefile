@@ -32,7 +32,7 @@ check: build ## Run an Ansible dry run (hardware/service tasks may be skipped)
 test: build ## Run local source and Ansible checks without contacting the Pi
 	python3 -m compileall -q apps/audio-manager/src
 	python3 -m unittest discover -s apps/audio-manager/test
-	node --test apps/controller/dist/test/*.test.mjs
+	node --test $$(find apps/controller/dist/test -name '*.test.mjs' | sort)
 	ansible-playbook ansible/playbooks/site.yml --syntax-check
 
 verify: test ## Run local checks, then inspect the configured Pi

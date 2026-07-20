@@ -1,37 +1,27 @@
-import { createActionHandler } from './actions.mjs'
-import { AudioManagerClient } from './audio-manager-client.mjs'
+import { createActionHandler } from './actions/handler.mjs'
+import { VoiceDucker } from './audio/ducking.mjs'
+import { AudioManagerClient } from './audio/manager-client.mjs'
+import { runVolumeCommand, startOutputMonitor } from './audio/volume.mjs'
 import { loadConfig } from './config.mjs'
-import { runDeckLoop } from './deck-controller.mjs'
-import { DeckRenderer } from './display.mjs'
-import { VoiceDucker } from './ducking.mjs'
-import { LvaClient } from './lva-client.mjs'
-import { ReSpeakerController } from './respeaker.mjs'
 import { createState } from './state.mjs'
-import { runVolumeCommand, startOutputMonitor } from './system-control.mjs'
+import { runDeckLoop } from './streamdeck/deck.mjs'
+import { DeckRenderer } from './streamdeck/renderer.mjs'
+import { LvaClient } from './voice/lva-client.mjs'
+import { ReSpeakerController } from './voice/respeaker.mjs'
 
 const config = loadConfig()
 const state = createState()
-
-const ducker = config.ducking?.enabled
-  ? new VoiceDucker({
-      stateFile: config.ducking.state_file,
-      refreshMilliseconds: config.ducking.refresh_milliseconds,
-    })
-  : null
-ducker?.release()
-if (ducker) {
-  const releaseAndExit = (): void => {
-    ducker.release()
-    process.exit(0)
-  }
-  process.once('SIGTERM', releaseAndExit)
-  process.once('SIGINT', releaseAndExit)
-}
 
 const audio = new AudioManagerClient({
   socketPath: config.audio_socket,
   onStateChange: () => renderer.schedule(),
 })
+
+// No exit handler releases the duck: the manager holds the request against this
+// socket, so the kernel closing it on exit or crash restores background audio.
+const ducker = config.ducking?.enabled
+  ? new VoiceDucker({ setDuck: (active) => audio.setDuck(active) })
+  : null
 
 const renderer = new DeckRenderer({
   config: config.streamdeck,

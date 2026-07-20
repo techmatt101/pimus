@@ -1,4 +1,4 @@
-import type { Bitmap } from './types.mjs'
+import type { Bitmap } from '../types.mjs'
 
 const BLANK = ['00000', '00000', '00000', '00000', '00000', '00000', '00000']
 

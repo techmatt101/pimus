@@ -10,7 +10,7 @@ Device match expressions search every PipeWire/Pulse node property. Use `pactl l
 
 Set `smartamp_aux_enabled` to choose whether aux monitoring starts on boot. USB monitoring is initially enabled when `usb_audio_gadget_enabled` is true. Stream Deck route toggles last until the next reboot; every boot starts from these inventory defaults.
 
-Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Squeezelite and USB computer audio share the `smartamp_background_sink_name` bus and fade to `smartamp_voice_duck_volume_percent` during an Assist interaction. `smartamp_voice_duck_fade_ms` controls the transition. The controller refreshes a runtime lease every `smartamp_voice_duck_refresh_seconds`; the audio manager restores full background volume after `smartamp_voice_duck_timeout_seconds` if that lease becomes stale.
+Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Squeezelite and USB computer audio share the `smartamp_background_sink_name` bus and fade to `smartamp_voice_duck_volume_percent` during an Assist interaction. `smartamp_voice_duck_fade_ms` controls the transition. The controller requests ducking over the audio manager's control socket, which releases the request automatically if the controller disconnects.
 
 Aux is deliberately not on the duckable bus. It continues at its selected level during voice interactions. Set the generated source target to `background` as a code-level extension if aux should follow the same policy.
 
@@ -21,10 +21,10 @@ systemd logs for the current boot in RAM (see the troubleshooting note about
 logs not surviving reboots), and `smartamp_swapfile_enabled: false` removes the
 stock dphys-swapfile so memory pressure cannot grind the card — if RAM is ever
 exhausted, the kernel OOM-kills the largest process and systemd restarts it.
-Route toggles live in the audio manager's memory and travel over a Unix
-socket in the runtime directory; the ducking lease and audio status files
-live under `/run`, which is RAM-backed. Routine operation therefore never
-writes to the card, and route toggles reset to inventory defaults at boot.
+Route toggles and duck requests live in the audio manager's memory and travel
+over a Unix socket in the runtime directory; the audio status file lives under
+`/run`, which is RAM-backed. Routine operation therefore never writes to the
+card, and route toggles reset to inventory defaults at boot.
 
 ## Voice
 
@@ -65,17 +65,14 @@ models under `/var/lib/smartamp` are retained for a later re-enable.
 
 ## Stream Deck+
 
-Supported action objects are:
+`streamdeck_enabled` turns the control surface on or off, and
+`streamdeck_brightness` sets the panel brightness from 0 to 100.
 
-```yaml
-{ type: lva, command: start_listening }
-{ type: audio, source: aux, command: toggle }
-{ type: audio, command: mute }
-{ type: webhook, id: movie_mode }
-{ type: noop }
-```
-
-LVA commands include `start_listening`, `volume_up`, `volume_down`, `stop_timer_ringing`, `pause_media_player`, and `resume_media_player`. The local `mute_toggle`, `media_toggle`, and `stop` helpers are also supported.
+Bindings live in `streamdeck_keys` and `streamdeck_dials`. Every available
+action, with examples and the key feedback each one produces, is listed in
+[controls](controls.md) and repeated as a comment block directly above those
+variables in the inventory. A mistyped action fails at controller startup with
+the offending key or dial named.
 
 Webhook actions POST to `home_assistant_webhook_base/<id>`. Configure a Home Assistant webhook trigger and set the base to `http://homeassistant.local:8123/api/webhook`. Treat webhook IDs as secrets if the endpoint is reachable outside a trusted LAN.
 

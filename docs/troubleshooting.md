@@ -33,9 +33,9 @@ The XVF3800's acoustic echo cancellation requires the far-end playback reference
 
 ## Background audio does not duck or restore
 
-Check the `background` section in `/run/user/*/smartamp-audio-status.json`. `available` confirms that the background sink and HiFiBerry bridge exist; `ducked` reports the current lease state. Squeezelite should have `PULSE_SINK=smartamp_background` in `systemctl cat smartamp-squeezelite`, and an enabled USB route should target the same sink in `pactl list sink-inputs`.
+Check the `background` section in `/run/user/*/smartamp-audio-status.json`. `available` confirms that the background sink and HiFiBerry bridge exist; `ducked` reports whether any connected controller is currently requesting a duck. Squeezelite should have `PULSE_SINK=smartamp_background` in `systemctl cat smartamp-squeezelite`, and an enabled USB route should target the same sink in `pactl list sink-inputs`.
 
-The controller writes `/run/user/*/smartamp-audio-duck.json` from LVA events. A stale active request is safe: the audio manager restores full volume when `smartamp_voice_duck_timeout_seconds` elapses. Check both `smartamp-controller` and `smartamp-audio-manager` logs if the file is not being refreshed or the gain does not change.
+The controller sends `set-duck` over the audio manager's control socket from LVA events. The manager holds that request against the controller's connection, so a controller crash or restart releases it immediately and background audio returns to full volume; there is no lease file to inspect or expire. If the gain does not change, check that the controller is connected to the socket in the `smartamp-controller` log, then look for `Ducked`/`Restored` lines in `smartamp-audio-manager`.
 
 ## USB audio device does not appear on the computer
 

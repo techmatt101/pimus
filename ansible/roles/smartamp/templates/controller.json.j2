@@ -4,9 +4,7 @@
   "lva_uri": "ws://127.0.0.1:{{ voice_assistant_peripheral_port }}",
   "audio_socket": "/run/user/{{ smartamp_uid }}/smartamp-audio.sock",
   "ducking": {
-    "enabled": {{ voice_ducking_enabled | to_json }},
-    "state_file": "/run/user/{{ smartamp_uid }}/smartamp-audio-duck.json",
-    "refresh_milliseconds": {{ (smartamp_voice_duck_refresh_seconds | int) * 1000 }}
+    "enabled": {{ voice_ducking_enabled | to_json }}
   },
   "webhook_base": {{ home_assistant_webhook_base | to_json }},
   "streamdeck": {

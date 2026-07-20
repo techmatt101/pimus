@@ -16,7 +16,7 @@ Environment=LC_ALL=C
 # Remove the previous process's readiness file before starting. Consumers must
 # wait for a fresh hardware scan instead of trusting stale device names.
 ExecStartPre=/usr/bin/rm -f /run/user/{{ smartamp_uid }}/smartamp-audio-status.json
-ExecStart={{ smartamp_app_dir }}/audio_manager.py --config {{ smartamp_config_dir }}/audio.json --socket /run/user/{{ smartamp_uid }}/smartamp-audio.sock --status /run/user/{{ smartamp_uid }}/smartamp-audio-status.json --duck-state /run/user/{{ smartamp_uid }}/smartamp-audio-duck.json
+ExecStart={{ smartamp_app_dir }}/audio_manager.py --config {{ smartamp_config_dir }}/audio.json --socket /run/user/{{ smartamp_uid }}/smartamp-audio.sock --status /run/user/{{ smartamp_uid }}/smartamp-audio-status.json
 Restart=always
 RestartSec=3
 # Apply a small, predictable isolation baseline without restricting the local

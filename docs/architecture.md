@@ -31,7 +31,7 @@ The voice service waits for a fresh audio-manager status file containing both
 devices. It then lets the audio library resolve PipeWire's selected defaults;
 `default` is not passed as a literal hardware-device name.
 
-Squeezelite and the USB computer input feed a named background sink. Its monitor is bridged to HiFiBerry through one gain-controlled loopback; Linux Voice Assistant and aux bypass it. The controller requests ducking on wake/listen/think/TTS, announcement, and timer events. Requests are refreshed while active and expire automatically if the controller stops unexpectedly, so background audio cannot remain quiet indefinitely.
+Squeezelite and the USB computer input feed a named background sink. Its monitor is bridged to HiFiBerry through one gain-controlled loopback; Linux Voice Assistant and aux bypass it. The controller requests ducking on wake/listen/think/TTS, announcement, and timer events by sending `set-duck` over the audio manager's control socket. The manager holds the request against that connection, so background audio cannot remain quiet indefinitely: if the controller stops unexpectedly the socket closes and the duck is released at once.
 
 It also mirrors the HiFiBerry output monitor into the XVF3800 USB playback endpoint. Nothing is connected to the ReSpeaker speaker jack; the stream exists to give the XMOS DSP the far-end reference required for acoustic echo cancellation.
 
@@ -51,13 +51,18 @@ surfaces consume the same voice, mute, media, and audio-route state.
 The audio manager remains a separate Python daemon because it continuously
 reconciles the PipeWire graph and owns its gain nodes.
 
-The controller switches routes by sending commands over the audio manager's
-Unix control socket in the runtime directory and mirrors the state events it
-receives back onto the Stream Deck. The manager reconciles immediately on
-`pactl subscribe` events and on route commands, with a 15-minute safety-net
-resync in case an event is missed. Route state lives in memory: the controller
-re-asserts its cached toggles when it reconnects after a manager restart, and
-a reboot returns every route to its configured default.
+The controller switches routes and requests ducking by sending commands over
+the audio manager's Unix control socket in the runtime directory, and mirrors
+the state events it receives back onto the Stream Deck. The manager reconciles
+immediately on `pactl subscribe` events and on route commands, with a 15-minute
+safety-net resync in case an event is missed. Route state lives in memory: the
+controller re-asserts its cached toggles when it reconnects after a manager
+restart, and a reboot returns every route to its configured default.
+
+A duck request is scoped to the connection that made it, so the socket doubles
+as the liveness check. The controller re-asserts an active duck on reconnect,
+and the manager releases it the moment the connection drops, which is what
+keeps a controller crash from leaving background audio quiet.
 
 The Stream Deck driver uses `@elgato-stream-deck/node`, which supports the Plus model's eight key LCDs, four rotary encoders, and 800×100 touch strip. The ReSpeaker module uses USB vendor-control transfers for XVF3800 LED effects. Everything runs headlessly.
 
