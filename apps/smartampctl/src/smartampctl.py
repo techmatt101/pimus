@@ -48,7 +48,8 @@ def volume(command: str) -> int:
 
 
 def lights(command: str) -> int:
-    modes = ["voice", "off", "single", "breath", "rainbow", "doa"]
+    # Mirrors LOCAL_MODES in the controller's respeaker.mts; keep both aligned.
+    modes = ["voice", "off", "single", "breath", "rainbow", "doa", "ring"]
     state = read_json(LED_STATE, {"mode": "voice", "color": "#00bcd4"})
     if command == "cycle":
         current = state.get("mode", "voice")
@@ -69,7 +70,7 @@ def main() -> int:
     volume_parser = subparsers.add_parser("volume")
     volume_parser.add_argument("command", choices=["up", "down", "mute"])
     lights_parser = subparsers.add_parser("lights")
-    lights_parser.add_argument("command", choices=["cycle", "voice", "off", "single", "breath", "rainbow", "doa"])
+    lights_parser.add_argument("command", choices=["cycle", "voice", "off", "single", "breath", "rainbow", "doa", "ring"])
     subparsers.add_parser("status")
     args = parser.parse_args()
     if args.area == "source":

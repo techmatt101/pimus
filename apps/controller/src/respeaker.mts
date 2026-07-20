@@ -33,8 +33,10 @@ export const COMMANDS: Readonly<Record<CommandName, readonly [number, number, Da
   } as const)
 
 const CRITICAL_STATES = new Set(['muted', 'disconnected', 'pipeline_error', 'timer_ringing'])
-const LIGHT_EFFECTS = ['Voice Assistant', 'Off', 'Breath', 'Rainbow', 'Single', 'DOA']
-const LOCAL_MODES = ['voice', 'off', 'single', 'breath', 'rainbow', 'doa']
+// Keep these two lists and the smartampctl lights choices aligned: they are
+// the Home Assistant and local views of the same EFFECTS table.
+const LIGHT_EFFECTS = ['Voice Assistant', 'Off', 'Breath', 'Rainbow', 'Single', 'DOA', 'Ring']
+const LOCAL_MODES = ['voice', 'off', 'single', 'breath', 'rainbow', 'doa', 'ring']
 
 const clampByte = (value: number): number => Math.max(0, Math.min(255, Math.round(Number(value))))
 
