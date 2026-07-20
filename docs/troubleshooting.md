@@ -6,6 +6,10 @@ Start with:
 sudo smartamp-doctor
 ```
 
+The command exits non-zero when required hardware, an enabled service, or an
+enabled audio path is unavailable. Power-throttle history remains a warning so
+you can distinguish a past transient from a currently broken endpoint.
+
 Then inspect a specific service:
 
 ```sh

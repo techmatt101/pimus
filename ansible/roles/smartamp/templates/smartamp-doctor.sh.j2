@@ -23,8 +23,16 @@ aplay -l || true
 arecord -l || true
 aplay -l 2>/dev/null | grep -q {{ hifiberry_card_name | quote }} && pass 'HiFiBerry playback found' || fail 'HiFiBerry playback missing'
 arecord -l 2>/dev/null | grep -q {{ hifiberry_card_name | quote }} && pass 'HiFiBerry aux capture found' || fail 'HiFiBerry aux capture missing'
-lsusb 2>/dev/null | grep -qi '2886:001a' && pass 'ReSpeaker XVF3800 connected' || warn 'ReSpeaker XVF3800 not connected'
-lsusb 2>/dev/null | grep -qi '0fd9:' && pass 'Elgato Stream Deck connected' || warn 'Elgato Stream Deck not connected'
+{% if voice_assistant_enabled or respeaker_led_enabled or smartamp_aec_reference_enabled %}
+lsusb 2>/dev/null | grep -qi '2886:001a' && pass 'ReSpeaker XVF3800 connected' || fail 'Required ReSpeaker XVF3800 is not connected'
+{% else %}
+lsusb 2>/dev/null | grep -qi '2886:001a' && pass 'ReSpeaker XVF3800 connected' || warn 'Optional ReSpeaker XVF3800 is not connected'
+{% endif %}
+{% if streamdeck_enabled %}
+lsusb 2>/dev/null | grep -qi '0fd9:' && pass 'Elgato Stream Deck connected' || fail 'Required Elgato Stream Deck is not connected'
+{% else %}
+lsusb 2>/dev/null | grep -qi '0fd9:' && pass 'Elgato Stream Deck connected' || warn 'Optional Elgato Stream Deck is not connected'
+{% endif %}
 
 heading 'PipeWire'
 if runuser -u {{ smartamp_service_user | quote }} -- env XDG_RUNTIME_DIR=/run/user/{{ smartamp_uid }} PULSE_SERVER=/run/user/{{ smartamp_uid }}/pulse/native pactl info; then
@@ -32,10 +40,39 @@ if runuser -u {{ smartamp_service_user | quote }} -- env XDG_RUNTIME_DIR=/run/us
 else
     fail 'PipeWire Pulse is not reachable by {{ smartamp_service_user }}'
 fi
-if [ -f /run/user/{{ smartamp_uid }}/smartamp-audio-status.json ]; then
-    jq . /run/user/{{ smartamp_uid }}/smartamp-audio-status.json
+STATUS_FILE=/run/user/{{ smartamp_uid }}/smartamp-audio-status.json
+if [ -r "$STATUS_FILE" ] && jq -e 'type == "object"' "$STATUS_FILE" >/dev/null 2>&1; then
+    jq . "$STATUS_FILE"
+    jq -e '.sink | type == "string" and length > 0' "$STATUS_FILE" >/dev/null 2>&1 \
+        && pass 'HiFiBerry is selected as the output sink' \
+        || fail 'Audio status has no selected output sink'
+{% if voice_assistant_enabled %}
+    jq -e '.voice_input | type == "string" and length > 0' "$STATUS_FILE" >/dev/null 2>&1 \
+        && pass 'ReSpeaker is selected as the voice input' \
+        || fail 'Audio status has no selected voice input'
+{% endif %}
+{% if voice_assistant_enabled and smartamp_voice_ducking_enabled %}
+    jq -e '.background.available == true and (.background.sink | type == "string" and length > 0)' "$STATUS_FILE" >/dev/null 2>&1 \
+        && pass 'Background ducking path is available' \
+        || fail 'Background ducking path is unavailable'
+{% endif %}
+{% if smartamp_aec_reference_enabled %}
+    jq -e '.aec_reference.available == true and (.aec_reference.sink | type == "string" and length > 0)' "$STATUS_FILE" >/dev/null 2>&1 \
+        && pass 'ReSpeaker AEC reference path is available' \
+        || fail 'ReSpeaker AEC reference path is unavailable'
+{% endif %}
+{% if smartamp_aux_enabled %}
+    jq -e '.sources.aux.available == true' "$STATUS_FILE" >/dev/null 2>&1 \
+        && pass 'Aux input source is available' \
+        || fail 'Aux input source is unavailable'
+{% endif %}
+{% if usb_audio_gadget_enabled %}
+    jq -e '.sources.usb.available == true' "$STATUS_FILE" >/dev/null 2>&1 \
+        && pass 'USB gadget input source is available' \
+        || fail 'USB gadget input source is unavailable'
+{% endif %}
 else
-    warn 'Audio router has not written status yet'
+    fail 'Audio router status is missing or invalid JSON'
 fi
 
 heading 'Services'
@@ -44,7 +81,7 @@ heading 'Services'
 systemctl is-active --quiet {{ service }}.service && pass '{{ service }} is active' || fail '{{ service }} is not active'
 {% endfor %}
 {% if smartamp_controller_enabled | bool %}
-systemctl is-active --quiet smartamp-controller.service && pass 'smartamp-controller is active' || warn 'smartamp-controller is not active'
+systemctl is-active --quiet smartamp-controller.service && pass 'smartamp-controller is active' || fail 'smartamp-controller is not active'
 {% endif %}
 
 heading 'Recent errors'
