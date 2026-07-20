@@ -76,6 +76,12 @@ class SmartampctlTests(unittest.TestCase):
             smartampctl.read_json(Path("/nonexistent/status.json"), {}), {}
         )
 
+    def test_non_object_state_uses_safe_default(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            path.write_text("null")
+            self.assertEqual(smartampctl.read_json(path, {"sources": {}}), {"sources": {}})
+
 
 if __name__ == "__main__":
     unittest.main()

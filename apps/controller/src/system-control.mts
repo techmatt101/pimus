@@ -13,7 +13,11 @@ export type CommandRunner = (
 
 export function readAudioState(path: string): AudioState {
   try {
-    return JSON.parse(fs.readFileSync(path, 'utf8')) as AudioState
+    const value: unknown = JSON.parse(fs.readFileSync(path, 'utf8'))
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return { sources: {} }
+    const sources = (value as { sources?: unknown }).sources
+    if (typeof sources !== 'object' || sources === null || Array.isArray(sources)) return { sources: {} }
+    return value as AudioState
   } catch {
     return { sources: {} }
   }

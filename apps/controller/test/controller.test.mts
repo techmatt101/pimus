@@ -14,7 +14,7 @@ import { duckingForEvent, VoiceDucker, writeDuckRequest } from '../src/ducking.m
 import { LvaClient } from '../src/lva-client.mjs'
 import { encodePayload, ReSpeakerController, rgb, Xvf3800Device } from '../src/respeaker.mjs'
 import { applyLvaEvent, createState } from '../src/state.mjs'
-import { parseOutputState, runSmartampctl } from '../src/system-control.mjs'
+import { parseOutputState, readAudioState, runSmartampctl } from '../src/system-control.mjs'
 import type { ChildProcess, spawn } from 'node:child_process'
 import type { StreamDeckDeviceInfo } from '@elgato-stream-deck/node'
 import type WebSocket from 'ws'
@@ -272,6 +272,32 @@ test('bitmap and PipeWire parsers produce deterministic values', () => {
   assert.deepEqual(color('#102030'), [16, 32, 48])
   assert.deepEqual([...createImage(1, 1, '#010203').buffer], [1, 2, 3])
   assert.deepEqual(parseOutputState('Volume: 0.55 [MUTED]'), { volume: 0.55, outputMuted: true })
+})
+
+test('malformed persistent state falls back safely', (context) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pimus-malformed-state-'))
+  context.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const stateFile = path.join(directory, 'audio-state.json')
+  fs.writeFileSync(stateFile, 'null')
+  assert.deepEqual(readAudioState(stateFile), { sources: {} })
+
+  const ledFile = path.join(directory, 'led-state.json')
+  fs.writeFileSync(ledFile, 'null')
+  const controller = new ReSpeakerController({
+    config: {
+      enabled: true,
+      vendor_id: 0x2886,
+      product_id: 0x001a,
+      state_file: ledFile,
+      brightness: 64,
+      speed: 2,
+      light_name: 'Office Amp LED Ring',
+      light_object_id: 'led_ring',
+      states: { idle: { effect: 'doa', color: '#001018' } },
+    },
+    device: { apply: async () => {} },
+  })
+  assert.deepEqual(controller.readLocal(), { mode: 'voice', color: '#00bcd4' })
 })
 
 test('smartampctl process failures are logged and still refresh state', () => {

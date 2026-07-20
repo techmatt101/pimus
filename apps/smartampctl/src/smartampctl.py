@@ -33,7 +33,8 @@ def status_path() -> Path:
 
 def read_json(path: Path, default: dict[str, Any]) -> dict[str, Any]:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else default
     except (FileNotFoundError, json.JSONDecodeError):
         return default
 

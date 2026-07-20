@@ -210,7 +210,11 @@ export class ReSpeakerController {
 
   readLocal(): LedLocalState {
     try {
-      return JSON.parse(fs.readFileSync(this.stateFile, 'utf8')) as LedLocalState
+      const value: unknown = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'))
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        throw new SyntaxError('LED state must be a JSON object')
+      }
+      return value as LedLocalState
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code
       if (code !== 'ENOENT' && !(error instanceof SyntaxError)) {
