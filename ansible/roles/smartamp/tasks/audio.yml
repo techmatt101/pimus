@@ -77,13 +77,3 @@
   notify:
     - Reload systemd
     - Restart audio manager
-
-# Enable for future boots. Restarts are deferred to handlers so several file
-# changes cause only one service restart.
-- name: Enable audio services
-  ansible.builtin.systemd_service:
-    name: "{{ item }}"
-    enabled: true
-  loop:
-    - smartamp-hifiberry.service
-    - smartamp-audio-manager.service

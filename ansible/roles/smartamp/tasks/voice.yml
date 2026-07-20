@@ -72,10 +72,3 @@
   notify:
     - Reload systemd
     - Restart voice assistant
-
-# Enable without forcing an early start; handlers start/restart it after the
-# audio graph and complete unit file are in place.
-- name: Enable Home Assistant voice service
-  ansible.builtin.systemd_service:
-    name: smartamp-voice-assistant.service
-    enabled: true

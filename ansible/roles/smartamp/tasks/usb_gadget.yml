@@ -43,9 +43,3 @@
     group: root
     mode: "0644"
   notify: Reload systemd
-
-# Makes USB audio available without an interactive setup step after reboot.
-- name: Enable UAC2 gadget service
-  ansible.builtin.systemd_service:
-    name: smartamp-usb-audio-gadget.service
-    enabled: true

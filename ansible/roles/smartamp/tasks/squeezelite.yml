@@ -27,9 +27,3 @@
   notify:
     - Reload systemd
     - Restart Squeezelite
-
-# Register the player automatically after every boot.
-- name: Enable Squeezelite
-  ansible.builtin.systemd_service:
-    name: smartamp-squeezelite.service
-    enabled: true

@@ -195,12 +195,6 @@
     - Restart controller
   when: smartamp_controller_enabled | bool
 
-- name: Enable hardware controller service
-  ansible.builtin.systemd_service:
-    name: smartamp-controller.service
-    enabled: true
-  when: smartamp_controller_enabled | bool
-
 # Stop an existing controller when hardware surfaces and voice ducking are disabled.
 - name: Disable hardware controller service when unused
   ansible.builtin.systemd_service:
