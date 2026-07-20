@@ -21,6 +21,10 @@ The optional USB audio input changes the Pi 5 USB-C port into a peripheral port.
 
 On the fresh Pi, use Raspberry Pi Imager to enable SSH and create your normal admin user. From this control computer:
 
+The control computer needs Python with Ansible, plus Node.js 18.18 or newer and
+npm to compile the controller. The Pi itself needs neither Ansible nor a
+TypeScript toolchain.
+
 ```sh
 python3 -m pip install --user ansible
 make install
@@ -47,7 +51,7 @@ This project installs no Home Assistant, Music Assistant, or LMS server componen
 
 ## Project layout
 
-- `apps/controller`: one Node daemon for Stream Deck+, ReSpeaker LEDs, voice-state events, and HA light commands.
+- `apps/controller`: one TypeScript/Node daemon for Stream Deck+, ReSpeaker LEDs, voice-state events, and HA light commands. `make provision` compiles it here and deploys the resulting JavaScript.
 - `apps/audio-manager`: the Python PipeWire reconciliation daemon and its colocated tests.
 - `apps/smartampctl`: the one-shot Python command used from SSH and by local automation.
 - `ansible`: inventory, playbooks, deployment tasks, generated configuration, and systemd templates.

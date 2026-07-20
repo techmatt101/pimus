@@ -1,5 +1,9 @@
-const FONT = {
-  ' ': ['00000','00000','00000','00000','00000','00000','00000'],
+import type { Bitmap } from './types.mjs'
+
+const BLANK = ['00000', '00000', '00000', '00000', '00000', '00000', '00000']
+
+const FONT: Record<string, string[]> = {
+  ' ': BLANK,
   '-': ['00000','00000','00000','11111','00000','00000','00000'],
   ':': ['00000','00100','00100','00000','00100','00100','00000'],
   '%': ['11001','11010','00100','01000','10110','00110','00000'],
@@ -42,12 +46,12 @@ const FONT = {
   Z: ['11111','00001','00010','00100','01000','10000','11111'],
 }
 
-export function color(value) {
+export function color(value: string): [number, number, number] {
   const parsed = Number.parseInt(String(value).replace('#', ''), 16)
   return [(parsed >> 16) & 255, (parsed >> 8) & 255, parsed & 255]
 }
 
-export function createImage(width, height, background = '#000000') {
+export function createImage(width: number, height: number, background = '#000000'): Bitmap {
   const buffer = Buffer.alloc(width * height * 3)
   const rgb = color(background)
   for (let offset = 0; offset < buffer.length; offset += 3) {
@@ -58,7 +62,14 @@ export function createImage(width, height, background = '#000000') {
   return { width, height, buffer }
 }
 
-export function drawRectangle(target, x, y, width, height, value) {
+export function drawRectangle(
+  target: Bitmap,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  value: string,
+): void {
   const rgb = color(value)
   for (let py = Math.max(0, y); py < Math.min(target.height, y + height); py += 1) {
     for (let px = Math.max(0, x); px < Math.min(target.width, x + width); px += 1) {
@@ -70,14 +81,21 @@ export function drawRectangle(target, x, y, width, height, value) {
   }
 }
 
-export function drawText(target, value, centerX, centerY, scale, valueColor = '#ffffff') {
+export function drawText(
+  target: Bitmap,
+  value: string,
+  centerX: number,
+  centerY: number,
+  scale: number,
+  valueColor = '#ffffff',
+): void {
   const label = String(value).toUpperCase()
   const glyphWidth = 5 * scale
   const totalWidth = label.length * (glyphWidth + scale) - scale
   let left = Math.round(centerX - totalWidth / 2)
   const top = Math.round(centerY - (7 * scale) / 2)
   for (const character of label) {
-    const glyph = FONT[character] || FONT[' ']
+    const glyph = FONT[character] ?? BLANK
     glyph.forEach((row, y) => [...row].forEach((bit, x) => {
       if (bit === '1') drawRectangle(target, left + x * scale, top + y * scale, scale, scale, valueColor)
     }))

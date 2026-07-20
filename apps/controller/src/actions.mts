@@ -1,12 +1,27 @@
+import type { Action, ControlState, LvaSender } from './types.mjs'
+
+export interface ActionHandlerOptions {
+  state: ControlState
+  lva: LvaSender
+  control: (args: string[]) => unknown
+  lights?: (command: string) => unknown
+  webhookBase?: string
+  /** Only the request is meaningful here; the response body is ignored. */
+  request?: (url: string, init?: { method: string }) => unknown
+  onStateChange?: () => void
+}
+
+export type ActionHandler = (action: Action | undefined) => Promise<void>
+
 export function createActionHandler({
   state,
   lva,
   control,
-  lights = (command) => control(['lights', command]),
+  lights = (command: string) => control(['lights', command]),
   webhookBase = '',
   request = globalThis.fetch,
   onStateChange = () => {},
-}) {
+}: ActionHandlerOptions): ActionHandler {
   return async function handleAction(action) {
     if (!action || action.type === 'noop') return
 
@@ -23,20 +38,20 @@ export function createActionHandler({
         lva.send('stop_media_player')
         state.media = false
         onStateChange()
-      } else {
+      } else if (action.command) {
         lva.send(action.command)
       }
       return
     }
 
-    if (action.type === 'audio') {
+    if (action.type === 'audio' && action.command) {
       control(action.source
         ? ['source', action.source, action.command]
         : ['volume', action.command])
       return
     }
 
-    if (action.type === 'led') {
+    if (action.type === 'led' && action.command) {
       await lights(action.command)
       return
     }

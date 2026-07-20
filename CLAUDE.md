@@ -36,10 +36,12 @@ Each deployable app owns its source and tests:
 ```text
 apps/
   controller/
-    src/                 Node ESM controller modules
-    test/                Hardware-free Node tests
+    src/                 TypeScript controller modules (.mts)
+    test/                Hardware-free Node tests (.mts)
+    dist/                Compiled .mjs output; build artifact, not tracked
     package.json
     package-lock.json
+    tsconfig.json
   audio-manager/
     src/                 PipeWire reconciliation daemon
     test/                Python unit tests
@@ -72,11 +74,20 @@ runtime validation, and relevant documentation together.
 
 ### Node controller
 
-- Use ESM `.mjs` modules compatible with Node `>=18.18`.
-- Keep `index.mjs` as composition/root wiring; put device or domain logic in a
+- Write ESM `.mts` modules compiled to `.mjs` output that runs on Node
+  `>=18.18`. Do not use language or library features newer than the `ES2022`
+  target; the Pi runs the Debian `nodejs` package.
+- Type checking is strict, including `noUncheckedIndexedAccess`. Prefer
+  narrowing and explicit guards over `any` or non-null assertions.
+- Declare shared configuration, voice-event, and device shapes in `types.mts`.
+  Its configuration types mirror `controller.json.j2`; change both together.
+- Depend on the narrow interfaces in `types.mts` (`LvaSender`, `LedDevice`,
+  `UsbControlDevice`) rather than concrete classes, so modules stay free of
+  circular imports and tests can inject plain objects.
+- Keep `index.mts` as composition/root wiring; put device or domain logic in a
   focused module.
-- Route configured actions through `actions.mjs` and keep shared display/voice
-  state in `state.mjs`.
+- Route configured actions through `actions.mts` and keep shared display/voice
+  state in `state.mts`.
 - Treat USB and WebSocket disconnects as normal. Log, retain useful state, and
   reconnect without terminating the daemon.
 - Keep hardware access injectable so tests run without a Stream Deck or
@@ -105,6 +116,10 @@ runtime validation, and relevant documentation together.
   what it provides and why this project needs it.
 - Avoid global npm installs. Deploy the controller under `/opt/smartamp/controller`
   and install its lockfile with `npm ci --omit=dev --omit=peer`.
+- Deploy the compiled `controller/dist/src/*.mjs`, never the `.mts` sources. The
+  Pi gets no TypeScript toolchain; `make build` compiles on the control
+  computer, and provisioning fails with an instruction if that output is
+  missing.
 - Preserve the migration cleanup for the legacy `smartamp-peripherals` and
   `smartamp-streamdeck` units.
 
@@ -117,17 +132,24 @@ finished:
 make test
 ```
 
-This compiles Python, runs Python and Node tests, checks every Node module, and
-performs an Ansible syntax check without contacting the Pi.
+This compiles Python, type-checks and compiles the TypeScript controller, runs
+Python and Node tests, and performs an Ansible syntax check without contacting
+the Pi. A type error fails the build before any test runs.
 
 For controller dependency changes, also run:
 
 ```sh
 cd apps/controller
-npm ci --omit=dev --omit=peer
+npm ci                         # development tree, including TypeScript
 npm test
+npm ci --omit=dev --omit=peer  # the exact tree installed on the Pi
 npm audit --omit=dev --omit=peer
+npm ci                         # restore the development tree
 ```
+
+Build and test need the development tree; `npm test` cannot run under
+`--omit=dev` because that omits TypeScript. Install the production tree only to
+confirm the runtime dependencies the Pi receives still resolve.
 
 Keep tests deterministic and hardware-free. Use injected fake USB, HID,
 WebSocket, process, and filesystem boundaries where needed.

@@ -12,6 +12,7 @@ import { duckingForEvent, VoiceDucker, writeDuckRequest } from '../src/ducking.m
 import { encodePayload, ReSpeakerController, rgb, Xvf3800Device } from '../src/respeaker.mjs'
 import { applyLvaEvent, createState } from '../src/state.mjs'
 import { parseOutputState } from '../src/system-control.mjs'
+import type { LedStateSpec, StreamDeckKey, UsbControlDevice } from '../src/types.mjs'
 
 test('LVA snapshots and events update shared display state', () => {
   const state = createState()
@@ -44,13 +45,21 @@ test('enabled ducking requires a state file and positive refresh interval', (con
 
 test('key and dial appearances reflect audio and voice state', () => {
   const state = createState({ muted: true, volume: 0.67, media: true })
-  const audioKey = { label: 'AUX', color: '#4a148c', action: { type: 'audio', source: 'aux' } }
+  const audioKey: StreamDeckKey = {
+    label: 'AUX',
+    color: '#4a148c',
+    action: { type: 'audio', source: 'aux' },
+  }
   assert.deepEqual(keyAppearance(audioKey, state, { sources: { aux: true } }), {
     label: 'AUX ON',
     background: '#1b5e20',
   })
 
-  const muteKey = { label: 'MIC', color: '#000000', action: { command: 'mute_toggle' } }
+  const muteKey: StreamDeckKey = {
+    label: 'MIC',
+    color: '#000000',
+    action: { type: 'lva', command: 'mute_toggle' },
+  }
   assert.deepEqual(keyAppearance(muteKey, state), { label: 'MIC OFF', background: '#d50000' })
   assert.equal(dialDetail(0, state), '67%')
   state.outputMuted = true
@@ -59,13 +68,13 @@ test('key and dial appearances reflect audio and voice state', () => {
 
 test('action handler routes device and LVA commands', async () => {
   const state = createState({ muted: false, media: true })
-  const lvaCommands = []
-  const controlCommands = []
-  const lightCommands = []
+  const lvaCommands: string[] = []
+  const controlCommands: string[][] = []
+  const lightCommands: string[] = []
   let changes = 0
   const handle = createActionHandler({
     state,
-    lva: { send: (command) => lvaCommands.push(command) },
+    lva: { send: (command) => { lvaCommands.push(command) } },
     control: (args) => controlCommands.push(args),
     lights: (command) => lightCommands.push(command),
     onStateChange: () => { changes += 1 },
@@ -86,13 +95,13 @@ test('action handler routes device and LVA commands', async () => {
 })
 
 test('webhook actions encode their identifier', async () => {
-  const requests = []
+  const requests: unknown[][] = []
   const handle = createActionHandler({
     state: createState(),
     lva: { send: () => {} },
     control: () => {},
     webhookBase: 'http://homeassistant.local:8123/api/webhook/',
-    request: async (...args) => { requests.push(args) },
+    request: async (...args: unknown[]) => { requests.push(args) },
   })
   await handle({ type: 'webhook', id: 'movie mode' })
   assert.deepEqual(requests, [[
@@ -108,7 +117,7 @@ test('bitmap and PipeWire parsers produce deterministic values', () => {
 })
 
 test('voice pipeline events duck and safely restore background audio', () => {
-  const writes = []
+  const writes: [string, boolean][] = []
   const ducker = new VoiceDucker({
     stateFile: '/runtime/duck.json',
     refreshMilliseconds: 0,
@@ -142,12 +151,14 @@ test('duck requests use atomic JSON with a cross-process timestamp', (context) =
 })
 
 test('XVF3800 commands use vendor transfers and little-endian payloads', async () => {
-  const transfers = []
-  const usbDevice = {
+  const transfers: unknown[][] = []
+  const usbDevice: UsbControlDevice & { openCalls: number } = {
     openCalls: 0,
+    timeout: 0,
     open() { this.openCalls += 1 },
-    controlTransfer(...args) {
-      const callback = args.pop()
+    close() {},
+    controlTransfer(...args: unknown[]) {
+      const callback = args.pop() as (error: unknown) => void
       transfers.push(args)
       callback(null)
     },
@@ -168,7 +179,7 @@ test('XVF3800 commands use vendor transfers and little-endian payloads', async (
     [0x40, 0, 17, 20],
     [0x40, 0, 12, 20],
   ])
-  assert.deepEqual([...transfers[3][4]], [0x30, 0x20, 0x10, 0, 0xc0, 0xb0, 0xa0, 0])
+  assert.deepEqual([...(transfers[3]?.[4] as Buffer)], [0x30, 0x20, 0x10, 0, 0xc0, 0xb0, 0xa0, 0])
   assert.equal(rgb('#abcdef'), 0xabcdef)
   assert.deepEqual([...encodePayload('uint8', [-1, 256])], [0, 255])
 })
@@ -177,9 +188,10 @@ test('ReSpeaker state follows voice events and Home Assistant light commands', a
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pimus-controller-'))
   context.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const stateFile = path.join(directory, 'led-state.json')
-  const rendered = []
+  const rendered: [LedStateSpec, number, number][] = []
   const controller = new ReSpeakerController({
     config: {
+      enabled: true,
       vendor_id: 0x2886,
       product_id: 0x001a,
       state_file: stateFile,
@@ -193,7 +205,9 @@ test('ReSpeaker state follows voice events and Home Assistant light commands', a
         disconnected: { effect: 'single', color: '#d50000' },
       },
     },
-    device: { apply: async (...args) => rendered.push(args) },
+    device: {
+      apply: async (spec, brightness, speed) => { rendered.push([spec, brightness, speed]) },
+    },
   })
 
   await controller.handleEvent({ event: 'snapshot', data: { ha_connected: true, muted: false } })

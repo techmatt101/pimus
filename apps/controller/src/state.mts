@@ -1,4 +1,6 @@
-export function createState(overrides = {}) {
+import type { ControlState, LvaMessage } from './types.mjs'
+
+export function createState(overrides: Partial<ControlState> = {}): ControlState {
   return {
     assist: 'DISCONNECTED',
     muted: false,
@@ -9,7 +11,7 @@ export function createState(overrides = {}) {
   }
 }
 
-export function applyLvaEvent(state, message) {
+export function applyLvaEvent(state: ControlState, message: LvaMessage): ControlState {
   const data = message.data || {}
   if (message.event === 'snapshot') {
     state.muted = Boolean(data.muted)

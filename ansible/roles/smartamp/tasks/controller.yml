@@ -136,6 +136,24 @@
       not (controller_dependencies.stat.exists | default(false))
   notify: Restart controller
 
+# The controller is written in TypeScript and compiled on this computer, so the
+# Pi needs no build tooling and keeps running plain ESM under the Debian nodejs
+# package. "make provision" builds first; check the output before copying so a
+# missing build fails here instead of leaving a stale controller on the Pi.
+- name: Find compiled hardware controller modules
+  ansible.builtin.set_fact:
+    smartamp_controller_modules: >-
+      {{ query('ansible.builtin.fileglob', smartamp_source_dir + '/controller/dist/src/*.mjs') }}
+  when: smartamp_controller_enabled | bool
+
+- name: Require a compiled hardware controller
+  ansible.builtin.assert:
+    that: smartamp_controller_modules | length > 0
+    fail_msg: >-
+      No compiled controller modules in apps/controller/dist/src. Run
+      "make build" on this computer before provisioning.
+  when: smartamp_controller_enabled | bool
+
 # Deploy each small module into src so the installed layout mirrors the app
 # boundary in Git and makes runtime ownership clear during troubleshooting.
 - name: Install hardware controller modules
@@ -145,7 +163,7 @@
     owner: root
     group: root
     mode: "0644"
-  loop: "{{ query('ansible.builtin.fileglob', smartamp_source_dir + '/controller/src/*.mjs') }}"
+  loop: "{{ smartamp_controller_modules }}"
   loop_control:
     label: "{{ item | basename }}"
   notify: Restart controller

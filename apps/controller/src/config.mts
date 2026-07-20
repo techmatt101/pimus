@@ -1,9 +1,16 @@
 import fs from 'node:fs'
 
+import type { ControllerConfig } from './types.mjs'
+
 export const DEFAULT_CONFIG_PATH = '/etc/smartamp/controller.json'
 
-export function loadConfig(path = process.env.SMARTAMP_CONFIG || DEFAULT_CONFIG_PATH) {
-  const config = JSON.parse(fs.readFileSync(path, 'utf8'))
+export function loadConfig(
+  path: string = process.env.SMARTAMP_CONFIG || DEFAULT_CONFIG_PATH,
+): ControllerConfig {
+  // Ansible generates this file from controller.json.j2, so the overall shape
+  // is trusted. The checks below cover the fields whose absence would
+  // otherwise surface much later as a confusing runtime failure.
+  const config = JSON.parse(fs.readFileSync(path, 'utf8')) as ControllerConfig
   if (config.streamdeck?.enabled
       && (!Array.isArray(config.streamdeck.keys) || !Array.isArray(config.streamdeck.dials))) {
     throw new Error(`Controller configuration at ${path} must define Stream Deck keys and dials arrays`)

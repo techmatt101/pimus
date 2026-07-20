@@ -2,6 +2,7 @@
 *.retry
 inventory/host_vars/*.vault.yml
 node_modules/
+dist/
 __pycache__/
 *.py[cod]
 .DS_Store

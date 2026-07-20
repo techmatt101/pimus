@@ -1,6 +1,18 @@
-import { createImage, drawRectangle, drawText } from './bitmap.mjs'
+import type { StreamDeck } from '@elgato-stream-deck/node'
 
-export function keyAppearance(key, state, audioState = { sources: {} }) {
+import { createImage, drawRectangle, drawText } from './bitmap.mjs'
+import type { AudioState, ControlState, StreamDeckConfig, StreamDeckKey } from './types.mjs'
+
+export interface KeyAppearance {
+  label: string
+  background: string
+}
+
+export function keyAppearance(
+  key: StreamDeckKey,
+  state: ControlState,
+  audioState: AudioState = { sources: {} },
+): KeyAppearance {
   let label = key.label
   let background = key.color
   if (key.action?.type === 'audio' && key.action?.source) {
@@ -19,43 +31,59 @@ export function keyAppearance(key, state, audioState = { sources: {} }) {
   return { label, background }
 }
 
-export function dialDetail(index, state) {
+export function dialDetail(index: number, state: ControlState): string {
   if (index === 0) return state.outputMuted ? 'MUTED' : `${Math.round(state.volume * 100)}%`
   return String(state.assist)
 }
 
+export interface DeckRendererOptions {
+  /** Absent in LED-only deployments, where nothing is ever rendered. */
+  config: StreamDeckConfig | undefined
+  state: ControlState
+  readAudioState: () => AudioState
+  logger?: Pick<Console, 'error'>
+}
+
 export class DeckRenderer {
-  constructor({ config, state, readAudioState, logger = console }) {
+  readonly config: StreamDeckConfig | undefined
+  readonly state: ControlState
+  private readonly readAudioState: () => AudioState
+  private readonly logger: Pick<Console, 'error'>
+  private deck: StreamDeck | null = null
+  private renderPending = false
+
+  constructor({ config, state, readAudioState, logger = console }: DeckRendererOptions) {
     this.config = config
     this.state = state
     this.readAudioState = readAudioState
     this.logger = logger
-    this.deck = null
-    this.renderPending = false
   }
 
-  setDeck(deck) {
+  setDeck(deck: StreamDeck): void {
     this.deck = deck
   }
 
-  clearDeck(deck) {
+  clearDeck(deck: StreamDeck | null): void {
     if (this.deck === deck) this.deck = null
   }
 
-  schedule() {
+  schedule(): void {
     if (this.renderPending) return
     this.renderPending = true
     setTimeout(() => void this.render(), 50)
   }
 
-  async render() {
+  async render(): Promise<void> {
     this.renderPending = false
     const deck = this.deck
-    if (!deck) return
+    const config = this.config
+    if (!deck || !config) return
     try {
       const audioState = this.readAudioState()
-      for (let index = 0; index < Math.min(8, this.config.keys.length); index += 1) {
-        const appearance = keyAppearance(this.config.keys[index], this.state, audioState)
+      for (let index = 0; index < Math.min(8, config.keys.length); index += 1) {
+        const key = config.keys[index]
+        if (!key) continue
+        const appearance = keyAppearance(key, this.state, audioState)
         const target = createImage(120, 120, appearance.background)
         drawRectangle(target, 0, 94, 120, 26, '#000000')
         drawText(target, appearance.label, 60, 106, appearance.label.length > 8 ? 2 : 3)
@@ -63,7 +91,7 @@ export class DeckRenderer {
       }
 
       const lcd = createImage(800, 100, '#101820')
-      this.config.dials.slice(0, 4).forEach((dial, index) => {
+      config.dials.slice(0, 4).forEach((dial, index) => {
         drawRectangle(lcd, index * 200 + 1, 1, 198, 98, index % 2 ? '#17242d' : '#101820')
         drawText(lcd, dial.label, index * 200 + 100, 30, 3, '#80deea')
         const detail = dialDetail(index, this.state).slice(0, 12)

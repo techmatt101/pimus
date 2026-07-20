@@ -1,0 +1,156 @@
+// Shapes shared across controller modules. The configuration types mirror
+// ansible/roles/smartamp/templates/controller.json.j2; change both together.
+
+/** A configured control-surface action, as generated into controller.json. */
+export interface Action {
+  type: 'noop' | 'lva' | 'audio' | 'led' | 'webhook'
+  command?: string
+  /** Named audio route for `audio` actions; absent means the master volume. */
+  source?: string
+  /** Home Assistant webhook identifier for `webhook` actions. */
+  id?: string
+}
+
+export interface StreamDeckKey {
+  label: string
+  color: string
+  action?: Action
+}
+
+export interface StreamDeckDial {
+  label: string
+  left?: Action
+  right?: Action
+  press?: Action
+}
+
+export interface StreamDeckConfig {
+  enabled: boolean
+  brightness: number
+  keys: StreamDeckKey[]
+  dials: StreamDeckDial[]
+}
+
+/** One LED appearance: an effect name plus its colours and brightness. */
+export interface LedStateSpec {
+  effect?: string
+  color?: string
+  accent?: string
+  brightness?: number
+}
+
+/** Voice states map to LED appearances; `idle` is the required fallback. */
+export interface ReSpeakerStates {
+  idle: LedStateSpec
+  [state: string]: LedStateSpec | undefined
+}
+
+export interface ReSpeakerConfig {
+  enabled: boolean
+  vendor_id: number
+  product_id: number
+  brightness: number
+  speed: number
+  state_file: string
+  light_name: string
+  light_object_id: string
+  states: ReSpeakerStates
+}
+
+/** Operator-controlled LED override persisted next to the runtime state. */
+export interface LedLocalState {
+  mode?: string
+  color?: string
+  brightness?: number
+}
+
+export interface DuckingConfig {
+  enabled: boolean
+  state_file: string
+  refresh_milliseconds: number
+}
+
+export interface ControllerConfig {
+  voice_enabled: boolean
+  lva_uri: string
+  audio_state_file: string
+  webhook_base?: string
+  ducking?: DuckingConfig
+  streamdeck?: StreamDeckConfig
+  respeaker?: ReSpeakerConfig
+}
+
+/** Fields the controller reads out of Linux Voice Assistant event payloads. */
+export interface LvaEventData {
+  muted?: boolean
+  volume?: number
+  ha_connected?: boolean
+  status?: string
+  object_id?: string
+  effect?: string
+  state?: boolean
+  red?: number
+  green?: number
+  blue?: number
+  brightness?: number
+}
+
+export interface LvaMessage {
+  event?: string
+  data?: LvaEventData
+}
+
+/**
+ * The subset of the LVA client the action handler and ReSpeaker controller
+ * need. Depending on this instead of LvaClient keeps those modules free of a
+ * circular import and lets tests pass a plain recording object.
+ */
+export interface LvaSender {
+  send(command: string, data?: Record<string, unknown>): void
+}
+
+/** Shared control-surface state rendered on the Stream Deck. */
+export interface ControlState {
+  assist: string
+  muted: boolean
+  volume: number
+  outputMuted: boolean
+  media: boolean
+}
+
+/** Route enablement published by the audio manager. */
+export interface AudioState {
+  sources: Record<string, boolean | undefined>
+}
+
+/** A raw RGB image buffer built for Stream Deck keys and the LCD strip. */
+export interface Bitmap {
+  width: number
+  height: number
+  buffer: Buffer
+}
+
+/**
+ * The narrow slice of the `usb` package's Device used for XVF3800 vendor
+ * control transfers. Keeping it structural lets tests inject a fake device.
+ */
+export interface UsbControlDevice {
+  timeout: number
+  open(): void
+  close(): void
+  controlTransfer(
+    bmRequestType: number,
+    bRequest: number,
+    wValue: number,
+    wIndex: number,
+    data: Buffer,
+    callback: (error: unknown, buffer?: Buffer | number) => void,
+  ): unknown
+}
+
+export type UsbDeviceFinder = (vendorId: number, productId: number) => UsbControlDevice | undefined
+
+/** The LED transport the ReSpeaker controller drives. */
+export interface LedDevice {
+  apply(spec: LedStateSpec, brightness: number, speed: number): Promise<void>
+}

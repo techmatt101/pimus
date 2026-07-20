@@ -1,6 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
+import type { LvaMessage } from './types.mjs'
+
 const ACTIVE_EVENTS = new Set([
   'wake_word_detected',
   'listening',
@@ -16,14 +18,17 @@ const RELEASE_EVENTS = new Set([
   'disconnected',
 ])
 
-export function duckingForEvent(message) {
+export type DuckWriter = (stateFile: string, active: boolean, now?: number) => void
+
+/** Returns the requested duck state, or null when the event is irrelevant. */
+export function duckingForEvent(message: LvaMessage | undefined): boolean | null {
   const event = String(message?.event || '')
   if (ACTIVE_EVENTS.has(event)) return true
   if (RELEASE_EVENTS.has(event) || event === 'snapshot') return false
   return null
 }
 
-export function writeDuckRequest(stateFile, active, now = Date.now()) {
+export function writeDuckRequest(stateFile: string, active: boolean, now: number = Date.now()): void {
   fs.mkdirSync(path.dirname(stateFile), { recursive: true })
   const temporary = `${stateFile}.tmp`
   fs.writeFileSync(temporary, `${JSON.stringify({
@@ -33,20 +38,30 @@ export function writeDuckRequest(stateFile, active, now = Date.now()) {
   fs.renameSync(temporary, stateFile)
 }
 
+export interface VoiceDuckerOptions {
+  stateFile: string
+  refreshMilliseconds?: number
+  writeRequest?: DuckWriter
+}
+
 export class VoiceDucker {
+  readonly stateFile: string
+  readonly refreshMilliseconds: number
+  readonly writeRequest: DuckWriter
+  active = false
+  private refreshTimer: NodeJS.Timeout | null = null
+
   constructor({
     stateFile,
     refreshMilliseconds = 30000,
     writeRequest = writeDuckRequest,
-  }) {
+  }: VoiceDuckerOptions) {
     this.stateFile = stateFile
     this.refreshMilliseconds = refreshMilliseconds
     this.writeRequest = writeRequest
-    this.active = false
-    this.refreshTimer = null
   }
 
-  setActive(active) {
+  setActive(active: boolean): void {
     this.active = Boolean(active)
     this.writeRequest(this.stateFile, this.active)
     if (this.active && !this.refreshTimer && this.refreshMilliseconds > 0) {
@@ -61,12 +76,12 @@ export class VoiceDucker {
     }
   }
 
-  handleEvent(message) {
+  handleEvent(message: LvaMessage | undefined): void {
     const active = duckingForEvent(message)
     if (active !== null) this.setActive(active)
   }
 
-  release() {
+  release(): void {
     this.setActive(false)
   }
 }

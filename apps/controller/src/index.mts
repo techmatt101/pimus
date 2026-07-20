@@ -19,7 +19,7 @@ const ducker = config.ducking?.enabled
   : null
 ducker?.release()
 if (ducker) {
-  const releaseAndExit = () => {
+  const releaseAndExit = (): void => {
     ducker.release()
     process.exit(0)
   }
@@ -37,7 +37,8 @@ const respeaker = config.respeaker?.enabled
   ? new ReSpeakerController({ config: config.respeaker })
   : null
 
-const lva = new LvaClient({
+// Annotated because onOpen refers back to this binding while constructing it.
+const lva: LvaClient = new LvaClient({
   uri: config.lva_uri,
   state,
   onStateChange: () => renderer.schedule(),
@@ -52,7 +53,7 @@ const lva = new LvaClient({
   },
 })
 
-const control = (args) => runSmartampctl(args, {
+const control = (args: string[]) => runSmartampctl(args, {
   onExit: () => setTimeout(() => renderer.schedule(), 300),
 })
 
@@ -60,7 +61,7 @@ const handleAction = createActionHandler({
   state,
   lva,
   control,
-  lights: (command) => respeaker?.command(command),
+  lights: (command: string) => respeaker?.command(command),
   webhookBase: config.webhook_base,
   onStateChange: () => renderer.schedule(),
 })

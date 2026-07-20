@@ -7,11 +7,19 @@
     "node": ">=18.18"
   },
   "scripts": {
-    "test": "node --test test/*.test.mjs"
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "test": "npm run build && node --test dist/test/*.test.mjs"
   },
   "dependencies": {
     "@elgato-stream-deck/node": "7.6.3",
     "usb": "2.18.0",
     "ws": "8.21.1"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "@types/ws": "8.18.1",
+    "typescript": "5.9.3"
   }
 }
