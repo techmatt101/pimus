@@ -45,6 +45,15 @@ class AudioManagerTests(unittest.TestCase):
             self.assertEqual(state, {"sources": {"aux": True, "usb": False}})
             self.assertEqual(json.loads(path.read_text()), state)
 
+    def test_unchanged_state_is_not_rewritten(self) -> None:
+        config = {"sources": {"aux": {"enabled": True}}}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "audio-state.json"
+            audio_manager.load_state(path, config)
+            with mock.patch.object(audio_manager, "atomic_json") as write:
+                audio_manager.load_state(path, config)
+            write.assert_not_called()
+
     def test_owned_stream_matches_numeric_or_string_module_id(self) -> None:
         streams = [
             {"index": 10, "owner_module": 7},

@@ -114,13 +114,19 @@ def load_state(path: Path, config: dict[str, Any]) -> dict[str, Any]:
             for name, source in config["sources"].items()
         }
     }
+    current: Any = None
     try:
         current = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(current.get("sources"), dict):
+        if isinstance(current, dict) and isinstance(current.get("sources"), dict):
             defaults["sources"].update(current["sources"])
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         pass
-    atomic_json(path, defaults)
+    # This runs every reconcile and the state lives on the SD card, so only
+    # rewrite when the merged content differs. An unconditional write would
+    # wear flash and widen the window for losing a concurrent smartampctl
+    # toggle between the read above and the write below.
+    if current != defaults:
+        atomic_json(path, defaults)
     return defaults
 
 
