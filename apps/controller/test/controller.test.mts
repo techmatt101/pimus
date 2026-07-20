@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -7,12 +8,15 @@ import test from 'node:test'
 import { createActionHandler } from '../src/actions.mjs'
 import { color, createImage } from '../src/bitmap.mjs'
 import { loadConfig } from '../src/config.mjs'
+import { createActionDispatcher, findStreamDeckPlus } from '../src/deck-controller.mjs'
 import { dialDetail, keyAppearance } from '../src/display.mjs'
 import { duckingForEvent, VoiceDucker, writeDuckRequest } from '../src/ducking.mjs'
 import { encodePayload, ReSpeakerController, rgb, Xvf3800Device } from '../src/respeaker.mjs'
 import { applyLvaEvent, createState } from '../src/state.mjs'
-import { parseOutputState } from '../src/system-control.mjs'
-import type { LedLocalState, LedStateSpec, StreamDeckKey, UsbControlDevice } from '../src/types.mjs'
+import { parseOutputState, runSmartampctl } from '../src/system-control.mjs'
+import type { ChildProcess, spawn } from 'node:child_process'
+import type { StreamDeckDeviceInfo } from '@elgato-stream-deck/node'
+import type { Action, LedLocalState, LedStateSpec, StreamDeckKey, UsbControlDevice } from '../src/types.mjs'
 
 test('LVA snapshots and events update shared display state', () => {
   const state = createState()
@@ -91,6 +95,41 @@ test('key and dial appearances reflect audio and voice state', () => {
   assert.equal(dialDetail(0, state), '67%')
   state.outputMuted = true
   assert.equal(dialDetail(0, state), 'MUTED')
+  assert.equal(dialDetail(1, state, { sources: { aux: true } }, {
+    label: 'AUX',
+    press: { type: 'audio', source: 'aux', command: 'toggle' },
+  }), 'ON')
+  assert.equal(dialDetail(2, state, { sources: { usb: false } }, {
+    label: 'USB',
+    left: { type: 'audio', source: 'usb', command: 'off' },
+  }), 'OFF')
+})
+
+test('Stream Deck actions are serialized and the Plus model is selected', async () => {
+  const observed: string[] = []
+  let active = 0
+  let maximumActive = 0
+  const dispatch = createActionDispatcher(async (action) => {
+    active += 1
+    maximumActive = Math.max(maximumActive, active)
+    await new Promise((resolve) => setTimeout(resolve, 1))
+    observed.push(action?.command ?? '')
+    active -= 1
+  })
+  const actions: Action[] = [
+    { type: 'audio', command: 'one' },
+    { type: 'audio', command: 'two' },
+    { type: 'audio', command: 'three' },
+  ]
+  await Promise.all(actions.map((action) => dispatch(action)))
+  assert.equal(maximumActive, 1)
+  assert.deepEqual(observed, ['one', 'two', 'three'])
+
+  const devices = [
+    { model: 'original', path: '/dev/hidraw0' },
+    { model: 'plus', path: '/dev/hidraw1' },
+  ] as StreamDeckDeviceInfo[]
+  assert.equal(findStreamDeckPlus(devices)?.path, '/dev/hidraw1')
 })
 
 test('action handler routes device and LVA commands', async () => {
@@ -142,6 +181,23 @@ test('bitmap and PipeWire parsers produce deterministic values', () => {
   assert.deepEqual(color('#102030'), [16, 32, 48])
   assert.deepEqual([...createImage(1, 1, '#010203').buffer], [1, 2, 3])
   assert.deepEqual(parseOutputState('Volume: 0.55 [MUTED]'), { volume: 0.55, outputMuted: true })
+})
+
+test('smartampctl process failures are logged and still refresh state', () => {
+  const child = new EventEmitter() as ChildProcess
+  const errors: unknown[][] = []
+  let exits = 0
+  runSmartampctl(['source', 'aux', 'toggle'], {
+    spawnProcess: (() => child) as typeof spawn,
+    onExit: () => { exits += 1 },
+    logger: { error: (...args: unknown[]) => { errors.push(args) } },
+  })
+  child.emit('error', new Error('spawn failed'))
+  child.emit('exit', 1, null)
+  assert.equal(exits, 1)
+  assert.equal(errors.length, 2)
+  assert.match(String(errors[0]?.[0]), /failed to start/)
+  assert.match(String(errors[1]?.[0]), /exited 1/)
 })
 
 test('voice pipeline events duck and safely restore background audio', () => {

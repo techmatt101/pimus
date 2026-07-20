@@ -1,7 +1,7 @@
 import type { StreamDeck } from '@elgato-stream-deck/node'
 
 import { createImage, drawRectangle, drawText } from './bitmap.mjs'
-import type { AudioState, ControlState, StreamDeckConfig, StreamDeckKey } from './types.mjs'
+import type { AudioState, ControlState, StreamDeckConfig, StreamDeckDial, StreamDeckKey } from './types.mjs'
 
 export interface KeyAppearance {
   label: string
@@ -32,8 +32,15 @@ export function keyAppearance(
   return { label, background }
 }
 
-export function dialDetail(index: number, state: ControlState): string {
+export function dialDetail(
+  index: number,
+  state: ControlState,
+  audioState: AudioState = { sources: {} },
+  dial?: StreamDeckDial,
+): string {
   if (index === 0) return state.outputMuted ? 'MUTED' : `${Math.round(state.volume * 100)}%`
+  const source = dial?.press?.source ?? dial?.left?.source ?? dial?.right?.source
+  if (source) return audioState.sources[source] ? 'ON' : 'OFF'
   return String(state.assist)
 }
 
@@ -95,7 +102,7 @@ export class DeckRenderer {
       config.dials.slice(0, 4).forEach((dial, index) => {
         drawRectangle(lcd, index * 200 + 1, 1, 198, 98, index % 2 ? '#17242d' : '#101820')
         drawText(lcd, dial.label, index * 200 + 100, 30, 3, '#80deea')
-        const detail = dialDetail(index, this.state).slice(0, 12)
+        const detail = dialDetail(index, this.state, audioState, dial).slice(0, 12)
         drawText(lcd, detail, index * 200 + 100, 70, detail.length > 8 ? 2 : 3)
       })
       await deck.fillLcd(0, lcd.buffer, { format: 'rgb' })

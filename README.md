@@ -75,6 +75,8 @@ The default Stream Deck+ layout is:
 | Lights | Cycle voice/off/single/breath/rainbow/DOA modes |
 
 Dial 1 controls volume. Dials 2 and 3 control aux and USB routes. Dial 4 starts a voice conversation. The JSON configuration is generated from `streamdeck_keys` and `streamdeck_dials` in the Ansible variables.
+The controller opens the Stream Deck+ model specifically, queues rapid encoder
+steps in order, and shows the current AUX/USB route state on those two dials.
 
 The same controls are available on the Pi:
 

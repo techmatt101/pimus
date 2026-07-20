@@ -22,14 +22,30 @@ export function readAudioState(path: string): AudioState {
 export interface SmartampctlOptions {
   onExit?: () => void
   spawnProcess?: typeof spawn
+  logger?: Pick<Console, 'error'>
 }
 
 export function runSmartampctl(
   args: string[],
-  { onExit = () => {}, spawnProcess = spawn }: SmartampctlOptions = {},
+  { onExit = () => {}, spawnProcess = spawn, logger = console }: SmartampctlOptions = {},
 ): ChildProcess {
   const child = spawnProcess('/usr/local/bin/smartampctl', args, { stdio: 'inherit' })
-  child.on('exit', onExit)
+  let finished = false
+  const finish = (): void => {
+    if (finished) return
+    finished = true
+    onExit()
+  }
+  child.on('error', (error) => {
+    logger.error(`smartampctl ${args.join(' ')} failed to start`, error)
+    finish()
+  })
+  child.on('exit', (code, signal) => {
+    if (code !== 0) {
+      logger.error(`smartampctl ${args.join(' ')} exited ${code ?? `after ${signal}`}`)
+    }
+    finish()
+  })
   return child
 }
 

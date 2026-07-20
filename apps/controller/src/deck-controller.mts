@@ -1,6 +1,7 @@
 import {
   listStreamDecks,
   openStreamDeck,
+  DeviceModelId,
   type StreamDeck,
   type StreamDeckDeviceInfo,
 } from '@elgato-stream-deck/node'
@@ -11,6 +12,25 @@ import type { StreamDeckConfig } from './types.mjs'
 
 const sleep = (milliseconds: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, milliseconds))
+
+export function findStreamDeckPlus(devices: StreamDeckDeviceInfo[]): StreamDeckDeviceInfo | undefined {
+  return devices.find((device) => device.model === DeviceModelId.PLUS)
+}
+
+export function createActionDispatcher(
+  handleAction: ActionHandler,
+  logger: Pick<Console, 'error'> = console,
+): (action: Parameters<ActionHandler>[0]) => Promise<void> {
+  let queue = Promise.resolve()
+  return (action) => {
+    // Encoder rotation can produce many events in one tick. Chain every action
+    // so route toggles and volume steps preserve their physical order.
+    queue = queue
+      .then(() => handleAction(action))
+      .catch((error: unknown) => logger.error('action failed', error))
+    return queue
+  }
+}
 
 export interface DeckLoopOptions {
   config: StreamDeckConfig
@@ -33,14 +53,12 @@ export async function runDeckLoop({
   logger = console,
 }: DeckLoopOptions): Promise<never> {
   let deck: StreamDeck | null = null
-  const dispatch = (action: Parameters<ActionHandler>[0]): void => {
-    Promise.resolve(handleAction(action)).catch((error: unknown) => logger.error('action failed', error))
-  }
+  const dispatch = createActionDispatcher(handleAction, logger)
 
   while (true) {
     try {
       const devices = await listDevices()
-      const device = devices[0]
+      const device = findStreamDeckPlus(devices)
       if (!device) {
         await sleep(retryMilliseconds)
         continue
@@ -59,18 +77,18 @@ export async function runDeckLoop({
       const disconnected = new Promise<void>((resolve) => deck?.once('error', () => resolve()))
       deck.on('down', (controlDefinition) => {
         if (controlDefinition.type === 'button') {
-          dispatch(config.keys[controlDefinition.index]?.action)
+          void dispatch(config.keys[controlDefinition.index]?.action)
         } else if (controlDefinition.type === 'encoder') {
-          dispatch(config.dials[controlDefinition.index]?.press)
+          void dispatch(config.dials[controlDefinition.index]?.press)
         }
       })
       deck.on('rotate', (controlDefinition, amount) => {
         const dial = config.dials[controlDefinition.index]
         const selected = amount < 0 ? dial?.left : dial?.right
-        for (let count = 0; count < Math.min(10, Math.abs(amount)); count += 1) dispatch(selected)
+        for (let count = 0; count < Math.min(10, Math.abs(amount)); count += 1) void dispatch(selected)
       })
       deck.on('lcdShortPress', (_controlDefinition, position) => {
-        dispatch(config.dials[Math.min(3, Math.floor(position.x / 200))]?.press)
+        void dispatch(config.dials[Math.min(3, Math.floor(position.x / 200))]?.press)
       })
       await disconnected
     } catch (error) {
