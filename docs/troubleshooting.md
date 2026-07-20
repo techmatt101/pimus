@@ -47,4 +47,9 @@ Unplug/replug it once after the initial udev rule installation, then check `lsus
 
 ## Home Assistant does not discover voice
 
+If `smartamp-voice-assistant` reports that audio routing did not become ready,
+inspect `/run/user/*/smartamp-audio-status.json`. Both `sink` and `voice_input`
+must contain device names. Then check `smartamp-audio-manager` logs for the
+HiFiBerry or ReSpeaker match that is missing.
+
 Ensure the Pi and Home Assistant share an mDNS-capable LAN/VLAN, and ports 6053/tcp and mDNS are not filtered. Add it manually through **Settings → Devices & services → ESPHome** using the Pi IP and port 6053 if discovery is blocked.

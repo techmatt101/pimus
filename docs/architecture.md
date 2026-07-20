@@ -27,6 +27,10 @@ Linux Voice Assistant TTS/media ----------------------------+
 
 PipeWire and WirePlumber run in a persistent `smartamp` system-user session. The audio manager finds devices by configurable regular expressions instead of unstable ALSA card numbers, makes HiFiBerry the default sink, makes the XVF3800 the default voice source, and creates monitor loopbacks for enabled input routes.
 
+The voice service waits for a fresh audio-manager status file containing both
+devices. It then lets the audio library resolve PipeWire's selected defaults;
+`default` is not passed as a literal hardware-device name.
+
 Squeezelite and the USB computer input feed a named background sink. Its monitor is bridged to HiFiBerry through one gain-controlled loopback; Linux Voice Assistant and aux bypass it. The controller requests ducking on wake/listen/think/TTS, announcement, and timer events. Requests are refreshed while active and expire automatically if the controller stops unexpectedly, so background audio cannot remain quiet indefinitely.
 
 It also mirrors the HiFiBerry output monitor into the XVF3800 USB playback endpoint. Nothing is connected to the ReSpeaker speaker jack; the stream exists to give the XMOS DSP the far-end reference required for acoustic echo cancellation.

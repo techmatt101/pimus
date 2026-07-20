@@ -14,6 +14,9 @@ Environment=HOME={{ smartamp_state_dir }}
 Environment=XDG_RUNTIME_DIR=/run/user/{{ smartamp_uid }}
 Environment=PULSE_SERVER=/run/user/{{ smartamp_uid }}/pulse/native
 Environment=PYTHONUNBUFFERED=1
+# The audio manager chooses the real PipeWire defaults after discovering the
+# HiFiBerry and ReSpeaker. Waiting avoids racing that first hardware scan.
+ExecStartPre={{ smartamp_app_dir }}/wait-audio-ready.sh /run/user/{{ smartamp_uid }}/smartamp-audio-status.json 60
 ExecStart={{ smartamp_app_dir }}/linux-voice-assistant/script/run \
   --name {{ voice_assistant_name | quote }} \
   --preferences-file {{ smartamp_state_dir }}/lva/configuration/preferences.json \
@@ -21,8 +24,6 @@ ExecStart={{ smartamp_app_dir }}/linux-voice-assistant/script/run \
   --wake-word-dir {{ smartamp_state_dir }}/lva/wakewords \
   --host 0.0.0.0 \
   --port {{ voice_assistant_port }} \
-  --audio-input-device default \
-  --audio-output-device default \
   --audio-input-channels {{ voice_assistant_mic_channels }} \
   --mic-volume {{ voice_assistant_mic_volume }} \
   --wake-model {{ voice_assistant_wake_model | quote }} \
@@ -36,6 +37,7 @@ ExecStart={{ smartamp_app_dir }}/linux-voice-assistant/script/run \
   --peripheral-startup-wait 5
 Restart=always
 RestartSec=5
+TimeoutStartSec=75
 TimeoutStopSec=20
 
 [Install]
