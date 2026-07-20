@@ -1,7 +1,13 @@
+{% set voice_ducking_enabled = (voice_assistant_enabled | bool) and (smartamp_voice_ducking_enabled | bool) %}
 {
   "voice_enabled": {{ voice_assistant_enabled | bool | to_json }},
   "lva_uri": "ws://127.0.0.1:{{ voice_assistant_peripheral_port }}",
   "audio_state_file": "{{ smartamp_state_dir }}/audio-state.json",
+  "ducking": {
+    "enabled": {{ voice_ducking_enabled | to_json }},
+    "state_file": "/run/user/{{ smartamp_uid }}/smartamp-audio-duck.json",
+    "refresh_milliseconds": {{ (smartamp_voice_duck_refresh_seconds | int) * 1000 }}
+  },
   "webhook_base": {{ home_assistant_webhook_base | to_json }},
   "streamdeck": {
     "enabled": {{ streamdeck_enabled | bool | to_json }},

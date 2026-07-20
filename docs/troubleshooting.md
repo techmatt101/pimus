@@ -22,6 +22,12 @@ Confirm `/boot/firmware/config.txt` contains `force_eeprom_read=0`, `dtparam=aud
 
 The XVF3800's acoustic echo cancellation requires the far-end playback reference. The audio manager mirrors the HiFiBerry output monitor into the XVF3800 USB playback endpoint for this purpose. Check the `aec_reference` section in `/run/user/*/smartamp-audio-status.json`. If it is available but cancellation is poor, tune the XVF3800 system delay and far-end gain using Seeed's `xvf_host.py`. Do not enable LVA's software gain/noise processing until the hardware DSP path is confirmed.
 
+## Background audio does not duck or restore
+
+Check the `background` section in `/run/user/*/smartamp-audio-status.json`. `available` confirms that the background sink and HiFiBerry bridge exist; `ducked` reports the current lease state. Squeezelite should have `PULSE_SINK=smartamp_background` in `systemctl cat smartamp-squeezelite`, and an enabled USB route should target the same sink in `pactl list sink-inputs`.
+
+The controller writes `/run/user/*/smartamp-audio-duck.json` from LVA events. A stale active request is safe: the audio manager restores full volume when `smartamp_voice_duck_timeout_seconds` elapses. Check both `smartamp-controller` and `smartamp-audio-manager` logs if the file is not being refreshed or the gain does not change.
+
 ## USB audio device does not appear on the computer
 
 The cable must be connected to the Pi 5 USB-C port, not a USB-A port. Check `systemctl status smartamp-usb-audio-gadget`, `ls /sys/class/udc`, and confirm `dtoverlay=dwc2,dr_mode=peripheral`. The USB-C port cannot simultaneously be the normal dedicated PSU connection in this mode; the HiFiBerry/AAmp60 stack powers the Pi through GPIO.

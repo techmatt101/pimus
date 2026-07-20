@@ -43,7 +43,7 @@ heading 'Services'
 {% for service in doctor_services %}
 systemctl is-active --quiet {{ service }}.service && pass '{{ service }} is active' || fail '{{ service }} is not active'
 {% endfor %}
-{% if respeaker_led_enabled or streamdeck_enabled %}
+{% if smartamp_controller_enabled | bool %}
 systemctl is-active --quiet smartamp-controller.service && pass 'smartamp-controller is active' || warn 'smartamp-controller is not active'
 {% endif %}
 

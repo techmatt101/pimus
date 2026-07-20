@@ -32,7 +32,7 @@
   ansible.builtin.systemd_service:
     name: smartamp-controller.service
     state: restarted
-  when: (streamdeck_enabled | bool) or (respeaker_led_enabled | bool)
+  when: smartamp_controller_enabled | default(false) | bool
 
 # Device-tree overlays and modules-load changes only take effect at boot, so a
 # changed hardware configuration needs one controlled reboot before use.

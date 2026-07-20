@@ -2,6 +2,7 @@ import { createActionHandler } from './actions.mjs'
 import { loadConfig } from './config.mjs'
 import { runDeckLoop } from './deck-controller.mjs'
 import { DeckRenderer } from './display.mjs'
+import { VoiceDucker } from './ducking.mjs'
 import { LvaClient } from './lva-client.mjs'
 import { ReSpeakerController } from './respeaker.mjs'
 import { createState } from './state.mjs'
@@ -9,6 +10,22 @@ import { readAudioState, runSmartampctl, startOutputMonitor } from './system-con
 
 const config = loadConfig()
 const state = createState()
+
+const ducker = config.ducking?.enabled
+  ? new VoiceDucker({
+      stateFile: config.ducking.state_file,
+      refreshMilliseconds: config.ducking.refresh_milliseconds,
+    })
+  : null
+ducker?.release()
+if (ducker) {
+  const releaseAndExit = () => {
+    ducker.release()
+    process.exit(0)
+  }
+  process.once('SIGTERM', releaseAndExit)
+  process.once('SIGINT', releaseAndExit)
+}
 
 const renderer = new DeckRenderer({
   config: config.streamdeck,
@@ -25,8 +42,14 @@ const lva = new LvaClient({
   state,
   onStateChange: () => renderer.schedule(),
   onOpen: () => respeaker?.register(lva),
-  onEvent: (message) => respeaker?.handleEvent(message),
-  onDisconnect: () => respeaker?.setDisconnected(),
+  onEvent: async (message) => {
+    ducker?.handleEvent(message)
+    await respeaker?.handleEvent(message)
+  },
+  onDisconnect: async () => {
+    ducker?.release()
+    await respeaker?.setDisconnected()
+  },
 })
 
 const control = (args) => runSmartampctl(args, {

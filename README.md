@@ -84,7 +84,7 @@ sudo smartamp-doctor
 
 ## What gets installed
 
-PipeWire owns the HiFiBerry output and mixes all clients. The aux and USB-gadget inputs are low-latency loopbacks that can be switched independently. Squeezelite uses PipeWire's PulseAudio compatibility layer. Linux Voice Assistant is installed directly into a pinned Python virtual environment and presents an ESPHome voice satellite/media player to the remote Home Assistant. One local Node controller consumes its peripheral WebSocket API and coordinates the Stream Deck+ and ReSpeaker LEDs. Docker is not installed.
+PipeWire owns the HiFiBerry output and mixes all clients. Aux remains an independently switchable direct loopback. USB-gadget audio and Squeezelite share a background bus that fades to 15% while Assist listens, thinks, speaks, announces, or rings a timer, then returns to full level. Linux Voice Assistant bypasses that bus and presents an ESPHome voice satellite/media player to the remote Home Assistant. One local Node controller consumes its peripheral WebSocket API and coordinates ducking, the Stream Deck+, and ReSpeaker LEDs. Docker is not installed.
 
 See [architecture](docs/architecture.md), [configuration](docs/configuration.md), and [troubleshooting](docs/troubleshooting.md) for details.
 

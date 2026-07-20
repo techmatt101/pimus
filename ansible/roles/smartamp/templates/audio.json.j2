@@ -1,3 +1,4 @@
+{% set voice_ducking_enabled = (voice_assistant_enabled | bool) and (smartamp_voice_ducking_enabled | bool) %}
 {
   "output_match": {{ smartamp_output_match | to_json }},
   "voice_input_match": {{ smartamp_voice_input_match | to_json }},
@@ -6,7 +7,16 @@
     "sink_match": {{ smartamp_aec_reference_match | to_json }},
     "latency_ms": 40
   },
+  "background": {
+    "enabled": {{ voice_ducking_enabled | to_json }},
+    "sink_name": {{ smartamp_background_sink_name | to_json }},
+    "latency_ms": 40,
+    "duck_volume_percent": {{ smartamp_voice_duck_volume_percent | int }},
+    "fade_ms": {{ smartamp_voice_duck_fade_ms | int }},
+    "duck_timeout_seconds": {{ smartamp_voice_duck_timeout_seconds | int }}
+  },
   "poll_seconds": 2,
+  "duck_poll_seconds": 0.1,
   "sources": {
     "aux": {
       "match": {{ smartamp_aux_match | to_json }},
@@ -16,6 +26,7 @@
     "usb": {
       "match": {{ smartamp_usb_gadget_match | to_json }},
       "enabled": {{ usb_audio_gadget_enabled | bool | to_json }},
+      "target": {{ ('background' if voice_ducking_enabled else 'output') | to_json }},
       "latency_ms": 40
     }
   }

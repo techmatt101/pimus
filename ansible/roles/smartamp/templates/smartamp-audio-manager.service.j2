@@ -10,7 +10,7 @@ User={{ smartamp_service_user }}
 Group={{ smartamp_service_user }}
 Environment=XDG_RUNTIME_DIR=/run/user/{{ smartamp_uid }}
 Environment=PULSE_SERVER=/run/user/{{ smartamp_uid }}/pulse/native
-ExecStart={{ smartamp_app_dir }}/audio_manager.py --config {{ smartamp_config_dir }}/audio.json --state {{ smartamp_state_dir }}/audio-state.json --status /run/user/{{ smartamp_uid }}/smartamp-audio-status.json
+ExecStart={{ smartamp_app_dir }}/audio_manager.py --config {{ smartamp_config_dir }}/audio.json --state {{ smartamp_state_dir }}/audio-state.json --status /run/user/{{ smartamp_uid }}/smartamp-audio-status.json --duck-state /run/user/{{ smartamp_uid }}/smartamp-audio-duck.json
 Restart=always
 RestartSec=3
 

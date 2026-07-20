@@ -10,6 +10,10 @@ Device match expressions search every PipeWire/Pulse node property. Use `pactl l
 
 Set `smartamp_aux_enabled` to choose whether aux monitoring starts on boot. USB monitoring is initially enabled when `usb_audio_gadget_enabled` is true. The Stream Deck or `smartampctl` persists subsequent route state.
 
+Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Squeezelite and USB computer audio share the `smartamp_background_sink_name` bus and fade to `smartamp_voice_duck_volume_percent` during an Assist interaction. `smartamp_voice_duck_fade_ms` controls the transition. The controller refreshes a runtime lease every `smartamp_voice_duck_refresh_seconds`; the audio manager restores full background volume after `smartamp_voice_duck_timeout_seconds` if that lease becomes stale.
+
+Aux is deliberately not on the duckable bus. It continues at its selected level during voice interactions. Set the generated source target to `background` as a code-level extension if aux should follow the same policy.
+
 ## Voice
 
 `voice_assistant_version` pins the upstream Git release installed into `/opt/smartamp/linux-voice-assistant/.venv`; no container runtime is used. `voice_assistant_wake_model` defaults to `okay_nabu`. Custom OpenWakeWord model files can be placed in `/var/lib/smartamp/lva/wakewords` and selected by name. The remote Home Assistant Assist pipeline supplies speech-to-text, conversation handling, and text-to-speech.

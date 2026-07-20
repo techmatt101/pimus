@@ -19,7 +19,8 @@ Keep these boundaries clear:
   WebSocket, Home Assistant light commands, and shared control-surface state.
 - `smartamp-audio-manager` is a separate long-running Python daemon. It
   continuously reconciles the PipeWire graph, default devices, aux/USB
-  loopbacks, and the XVF3800 acoustic-echo-cancellation reference.
+  loopbacks, the duckable Squeezelite/USB background bus, and the XVF3800
+  acoustic-echo-cancellation reference.
 - `smartampctl` is a short-lived Python CLI, not a daemon. It changes volume or
   persistent route/LED state and exits.
 - Linux Voice Assistant and Squeezelite are external upstream applications
@@ -85,7 +86,8 @@ runtime validation, and relevant documentation together.
 
 ### Python apps
 
-- Keep the audio manager focused on PipeWire graph reconciliation.
+- Keep the audio manager focused on PipeWire graph reconciliation and gain on
+  graph-owned routes. Voice-event policy stays in the Node controller.
 - Keep `smartampctl` fast and one-shot; do not turn it into another resident
   service.
 - Prefer the Python standard library unless a dependency has a clear runtime

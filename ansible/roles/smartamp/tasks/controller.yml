@@ -33,6 +33,17 @@
     - "{{ smartamp_config_dir }}/peripherals.yml"
     - "{{ smartamp_config_dir }}/streamdeck.json"
 
+# Voice ducking consumes the same LVA event stream as the physical feedback
+# devices, so it also needs the controller when both USB surfaces are disabled.
+- name: Determine whether the local controller is needed
+  ansible.builtin.set_fact:
+    smartamp_controller_enabled: >-
+      {{
+        (streamdeck_enabled | bool)
+        or (respeaker_led_enabled | bool)
+        or ((voice_assistant_enabled | bool) and (smartamp_voice_ducking_enabled | bool))
+      }}
+
 # The Node usb library sends XVF3800 vendor-control transfers directly. Grant
 # only the service account's plugdev group instead of running the app as root.
 - name: Install ReSpeaker USB permissions
@@ -87,7 +98,7 @@
   loop:
     - "{{ smartamp_app_dir }}/controller"
     - "{{ smartamp_app_dir }}/controller/src"
-  when: (streamdeck_enabled | bool) or (respeaker_led_enabled | bool)
+  when: smartamp_controller_enabled | bool
 
 # package.json lists direct modules; the lockfile pins every transitive version
 # so a fresh Pi receives the same controller dependency tree as a tested build.
@@ -102,7 +113,7 @@
     - package.json
     - package-lock.json
   register: controller_manifests
-  when: (streamdeck_enabled | bool) or (respeaker_led_enabled | bool)
+  when: smartamp_controller_enabled | bool
 
 # npm writes its hidden lock only after creating the production dependency tree,
 # making it a reliable completion marker for both USB controller libraries.
@@ -110,7 +121,7 @@
   ansible.builtin.stat:
     path: "{{ smartamp_app_dir }}/controller/node_modules/.package-lock.json"
   register: controller_dependencies
-  when: (streamdeck_enabled | bool) or (respeaker_led_enabled | bool)
+  when: smartamp_controller_enabled | bool
 
 # Omit development tooling and the optional native JPEG peer. Elgato falls back
 # to jpeg-js, avoiding an unnecessary native image build chain on the Pi.
@@ -119,7 +130,7 @@
   args:
     chdir: "{{ smartamp_app_dir }}/controller"
   when:
-    - (streamdeck_enabled | bool) or (respeaker_led_enabled | bool)
+    - smartamp_controller_enabled | bool
     - >-
       (controller_manifests.changed | default(false)) or
       not (controller_dependencies.stat.exists | default(false))
@@ -138,7 +149,7 @@
   loop_control:
     label: "{{ item | basename }}"
   notify: Restart controller
-  when: (streamdeck_enabled | bool) or (respeaker_led_enabled | bool)
+  when: smartamp_controller_enabled | bool
 
 # Generate physical controls and LED state colours from inventory variables so
 # both devices can be customised without changing application source.
@@ -150,7 +161,7 @@
     group: "{{ smartamp_service_user }}"
     mode: "0640"
   notify: Restart controller
-  when: (streamdeck_enabled | bool) or (respeaker_led_enabled | bool)
+  when: smartamp_controller_enabled | bool
 
 # One systemd unit now owns the LVA WebSocket and both USB control surfaces,
 # giving shared state and reconnect behavior a single lifecycle.
@@ -164,19 +175,19 @@
   notify:
     - Reload systemd
     - Restart controller
-  when: (streamdeck_enabled | bool) or (respeaker_led_enabled | bool)
+  when: smartamp_controller_enabled | bool
 
 - name: Enable hardware controller service
   ansible.builtin.systemd_service:
     name: smartamp-controller.service
     enabled: true
-  when: (streamdeck_enabled | bool) or (respeaker_led_enabled | bool)
+  when: smartamp_controller_enabled | bool
 
-# Stop an existing controller when both of its hardware features are disabled.
+# Stop an existing controller when hardware surfaces and voice ducking are disabled.
 - name: Disable hardware controller service when unused
   ansible.builtin.systemd_service:
     name: smartamp-controller.service
     enabled: false
     state: stopped
   failed_when: false
-  when: not ((streamdeck_enabled | bool) or (respeaker_led_enabled | bool))
+  when: not (smartamp_controller_enabled | bool)

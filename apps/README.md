@@ -5,12 +5,13 @@ only for installing these apps, rendering configuration, and managing services.
 
 ## `controller`
 
-The long-running Node app in `controller/src/` shares voice and audio state
-between both USB control surfaces:
+The long-running Node app in `controller/src/` turns LVA events into audio
+policy and shares voice/audio state between both USB control surfaces:
 
 - `index.mjs` composes and starts the app.
 - `config.mjs` loads and validates `/etc/smartamp/controller.json`.
 - `lva-client.mjs` owns the reconnecting Linux Voice Assistant WebSocket.
+- `ducking.mjs` turns voice events into a refreshed, crash-safe ducking lease.
 - `respeaker.mjs` maps voice/HA/local state to XVF3800 USB LED commands.
 - `deck-controller.mjs` owns Stream Deck discovery, reconnects, and input events.
 - `display.mjs`, `bitmap.mjs`, and `state.mjs` render the Stream Deck display.
@@ -25,8 +26,8 @@ The package lock pins the dependency tree deployed with `npm ci`.
 
 The long-running Python daemon in `audio-manager/src/` makes HiFiBerry the
 default output, selects the XVF3800 microphone, and maintains aux, USB audio,
-and acoustic-echo-reference PipeWire routes. Its unit tests are colocated in
-`audio-manager/test/`.
+the Squeezelite/USB background bus, ducking gain, and acoustic-echo-reference
+PipeWire routes. Its unit tests are colocated in `audio-manager/test/`.
 
 ## `smartampctl`
 

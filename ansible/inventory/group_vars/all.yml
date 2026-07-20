@@ -23,6 +23,16 @@ smartamp_aux_enabled: true
 smartamp_aux_latency_ms: 40
 smartamp_aec_reference_enabled: true
 
+# Keep background playback audible but quieter while Assist is listening,
+# thinking, speaking, announcing, or ringing a timer. Squeezelite and the USB
+# computer input share this background path; LVA voice playback bypasses it.
+smartamp_voice_ducking_enabled: true
+smartamp_background_sink_name: smartamp_background
+smartamp_voice_duck_volume_percent: 15
+smartamp_voice_duck_fade_ms: 250
+smartamp_voice_duck_timeout_seconds: 120
+smartamp_voice_duck_refresh_seconds: 30
+
 # Make the Pi appear as a 48 kHz stereo USB sound card to a computer connected
 # to the Pi 5 USB-C port. The AAmp60/DAC stack must power the Pi through GPIO.
 usb_audio_gadget_enabled: true
