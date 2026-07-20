@@ -115,12 +115,16 @@
   register: controller_manifests
   when: smartamp_controller_enabled | bool
 
-# npm writes its hidden lock only after creating the production dependency tree,
-# making it a reliable completion marker for both USB controller libraries.
+# A hidden npm lock can survive an interrupted or manually damaged install.
+# Ask npm to verify every direct production dependency instead of trusting one
+# marker file.
 - name: Check installed hardware controller dependencies
-  ansible.builtin.stat:
-    path: "{{ smartamp_app_dir }}/controller/node_modules/.package-lock.json"
+  ansible.builtin.command: npm ls --omit=dev --omit=peer --depth=0
+  args:
+    chdir: "{{ smartamp_app_dir }}/controller"
   register: controller_dependencies
+  changed_when: false
+  failed_when: false
   when: smartamp_controller_enabled | bool
 
 # Omit development tooling and the optional native JPEG peer. Elgato falls back
@@ -133,7 +137,7 @@
     - smartamp_controller_enabled | bool
     - >-
       (controller_manifests.changed | default(false)) or
-      not (controller_dependencies.stat.exists | default(false))
+      (controller_dependencies.rc | default(1)) != 0
   notify: Restart controller
 
 # The controller is written in TypeScript and compiled on this computer, so the

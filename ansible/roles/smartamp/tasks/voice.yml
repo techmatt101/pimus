@@ -38,13 +38,37 @@
     update: true
   register: voice_assistant_checkout
 
+# A release marker alone does not prove that the virtual environment survived
+# an interrupted setup or later SD-card damage. Import the core runtime modules
+# using the exact interpreter the service will execute.
+- name: Check native Linux Voice Assistant runtime
+  ansible.builtin.command:
+    argv:
+      - "{{ smartamp_app_dir }}/linux-voice-assistant/.venv/bin/python"
+      - -c
+      - "import aioesphomeapi, linux_voice_assistant, mpv, soundcard, websockets"
+  args:
+    chdir: "{{ smartamp_app_dir }}/linux-voice-assistant"
+  register: voice_assistant_runtime
+  changed_when: false
+  failed_when: false
+
+- name: Determine whether Linux Voice Assistant needs repair
+  ansible.builtin.set_fact:
+    voice_assistant_needs_setup: >-
+      {{
+        voice_assistant_checkout.changed
+        or not voice_assistant_setup_marker.stat.exists
+        or voice_assistant_runtime.rc != 0
+      }}
+
 # Upstream's setup script owns creation of .venv and its Python dependencies.
 # This is the native/bare-metal client install, not a Home Assistant server.
 - name: Install Linux Voice Assistant into its virtual environment
   ansible.builtin.command:
     cmd: script/setup
     chdir: "{{ smartamp_app_dir }}/linux-voice-assistant"
-  when: voice_assistant_checkout.changed or not voice_assistant_setup_marker.stat.exists
+  when: voice_assistant_needs_setup | bool
   notify: Restart voice assistant
 
 # Only write the marker after setup succeeds, so a failed/partial install is
@@ -58,7 +82,7 @@
     mode: "0644"
     modification_time: preserve
     access_time: preserve
-  when: voice_assistant_checkout.changed or not voice_assistant_setup_marker.stat.exists
+  when: voice_assistant_needs_setup | bool
 
 # LVA must start after the audio manager has found both required devices. This
 # small gate checks the manager's fresh status file and produces a clear systemd
