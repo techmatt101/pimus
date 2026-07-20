@@ -101,12 +101,14 @@ def install_media_event_adapters() -> None:
     ) -> Iterable[Any]:
         callback = done_callback
         if not announcement:
+            upstream_callback = done_callback
+
             def finished() -> None:
                 emitter = getattr(self.server, "_emit", None)
                 if callable(emitter):
                     emitter(SmartampMediaEvent.IDLE)
-                if callback is not None:
-                    callback()
+                if upstream_callback is not None:
+                    upstream_callback()
 
             callback = finished
         yield from original_play(self, url, announcement=announcement, done_callback=callback)
