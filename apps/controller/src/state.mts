@@ -44,7 +44,7 @@ export function applyLvaEvent(state: ControlState, message: LvaMessage): Control
     state.assist = 'IDLE'
   } else if (message.event === 'disconnected') {
     state.assist = 'DISCONNECTED'
-  } else if (message.event === 'timer_updated') {
+  } else if (message.event === 'timer_ticking' || message.event === 'timer_updated') {
     state.assist = 'TIMER_TICKING'
   } else if (message.event && ASSIST_EVENTS.has(message.event)) {
     state.assist = message.event.toUpperCase()

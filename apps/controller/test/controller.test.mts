@@ -42,6 +42,9 @@ test('non-pipeline events leave the assist display state alone', () => {
   applyLvaEvent(state, { event: 'light_command', data: { object_id: 'led_ring' } })
   applyLvaEvent(state, { event: 'zeroconf', data: { status: 'connected' } })
   assert.equal(state.assist, 'LISTENING')
+  applyLvaEvent(state, { event: 'timer_ticking' })
+  assert.equal(state.assist, 'TIMER_TICKING')
+  state.assist = 'LISTENING'
   applyLvaEvent(state, { event: 'timer_updated' })
   assert.equal(state.assist, 'TIMER_TICKING')
 })
