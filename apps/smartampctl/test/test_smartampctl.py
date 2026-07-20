@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest import mock
 
@@ -27,6 +28,23 @@ class SmartampctlTests(unittest.TestCase):
                 self.assertFalse(json.loads(audio_state.read_text())["sources"]["aux"])
                 self.assertEqual(smartampctl.source("usb", "on"), 0)
                 self.assertTrue(json.loads(audio_state.read_text())["sources"]["usb"])
+
+    def test_concurrent_toggles_are_serialized(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            audio_state = Path(directory) / "audio-state.json"
+            with mock.patch.object(smartampctl, "AUDIO_STATE", audio_state):
+                with mock.patch("builtins.print"):
+                    with ThreadPoolExecutor(max_workers=10) as executor:
+                        results = list(
+                            executor.map(
+                                lambda _index: smartampctl.source("aux", "toggle"),
+                                range(50),
+                            )
+                        )
+                self.assertEqual(results, [0] * 50)
+                self.assertFalse(json.loads(audio_state.read_text())["sources"]["aux"])
+                self.assertEqual(list(Path(directory).glob("*.lock")), [])
+                self.assertEqual(list(Path(directory).glob("*.tmp")), [])
 
     def test_lights_cycle_wraps_and_recovers_unknown_modes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

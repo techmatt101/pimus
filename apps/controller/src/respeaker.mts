@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import path from 'node:path'
 
 import type {
   LedDevice,
@@ -41,6 +42,40 @@ const LOCAL_MODES = ['voice', 'off', 'single', 'breath', 'rainbow', 'doa', 'ring
 const clampByte = (value: number): number => Math.max(0, Math.min(255, Math.round(Number(value))))
 
 const isEffectName = (value: string): value is EffectName => Object.hasOwn(EFFECTS, value)
+
+const lockWait = new Int32Array(new SharedArrayBuffer(4))
+
+function withStateLock<T>(stateFile: string, callback: () => T): T {
+  fs.mkdirSync(path.dirname(stateFile), { recursive: true })
+  const lockPath = `${stateFile}.lock`
+  const deadline = Date.now() + 2000
+  while (true) {
+    try {
+      fs.mkdirSync(lockPath, { mode: 0o700 })
+      break
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      try {
+        if (Date.now() - fs.statSync(lockPath).mtimeMs > 30_000) {
+          fs.rmdirSync(lockPath)
+          continue
+        }
+      } catch (statError) {
+        if ((statError as NodeJS.ErrnoException).code === 'ENOENT') continue
+        throw statError
+      }
+      if (Date.now() >= deadline) throw new Error(`Timed out waiting for state lock ${lockPath}`)
+      Atomics.wait(lockWait, 0, 0, 10)
+    }
+  }
+  try {
+    return callback()
+  } finally {
+    try { fs.rmdirSync(lockPath) } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+  }
+}
 
 export function rgb(value: string): number {
   const parsed = Number.parseInt(String(value).replace(/^#/, ''), 16)
@@ -162,14 +197,28 @@ export class ReSpeakerController {
 
   writeLocal(state: LedLocalState): void {
     const serialized = `${JSON.stringify(state, null, 2)}\n`
-    // Home Assistant light transitions stream light_command events; skip the
-    // SD-card write when the persisted state already matches.
-    try {
-      if (fs.readFileSync(this.stateFile, 'utf8') === serialized) return
-    } catch {}
-    const temporary = `${this.stateFile}.tmp`
-    fs.writeFileSync(temporary, serialized)
-    fs.renameSync(temporary, this.stateFile)
+    withStateLock(this.stateFile, () => {
+      // Home Assistant light transitions stream light_command events; skip the
+      // SD-card write when the persisted state already matches.
+      try {
+        if (fs.readFileSync(this.stateFile, 'utf8') === serialized) return
+      } catch {}
+      const temporary = `${this.stateFile}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`
+      try {
+        const descriptor = fs.openSync(temporary, 'wx', 0o640)
+        try {
+          fs.writeFileSync(descriptor, serialized)
+          fs.fsyncSync(descriptor)
+        } finally {
+          fs.closeSync(descriptor)
+        }
+        fs.renameSync(temporary, this.stateFile)
+      } finally {
+        try { fs.unlinkSync(temporary) } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        }
+      }
+    })
   }
 
   desired(): LedStateSpec {

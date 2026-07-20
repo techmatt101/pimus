@@ -4,15 +4,17 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import json
 import logging
 import os
 import re
 import signal
 import subprocess
+import tempfile
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 
 LOG = logging.getLogger("smartamp-audio")
@@ -114,27 +116,76 @@ def load_state(path: Path, config: dict[str, Any]) -> dict[str, Any]:
             for name, source in config["sources"].items()
         }
     }
-    current: Any = None
-    try:
-        current = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(current, dict) and isinstance(current.get("sources"), dict):
-            defaults["sources"].update(current["sources"])
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        pass
-    # This runs every reconcile and the state lives on the SD card, so only
-    # rewrite when the merged content differs. An unconditional write would
-    # wear flash and widen the window for losing a concurrent smartampctl
-    # toggle between the read above and the write below.
-    if current != defaults:
-        atomic_json(path, defaults)
+    # smartampctl may toggle a route at the same time as a reconcile. Keep the
+    # complete merge and optional write under its cross-process lock.
+    with state_lock(path):
+        current: Any = None
+        try:
+            current = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(current, dict) and isinstance(current.get("sources"), dict):
+                defaults["sources"].update(current["sources"])
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            pass
+        # This runs every reconcile and the state lives on the SD card, so only
+        # rewrite when the merged content differs.
+        if current != defaults:
+            atomic_json(path, defaults)
     return defaults
 
 
 def atomic_json(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
-    os.replace(temporary, path)
+    temporary_name: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary:
+            temporary_name = temporary.name
+            temporary.write(json.dumps(value, indent=2) + "\n")
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        os.replace(temporary_name, path)
+        temporary_name = None
+    finally:
+        if temporary_name is not None:
+            try:
+                os.unlink(temporary_name)
+            except FileNotFoundError:
+                pass
+
+
+@contextmanager
+def state_lock(path: Path, timeout_seconds: float = 2.0) -> Iterator[None]:
+    """Use the same atomic directory lock as smartampctl and the controller."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = Path(f"{path}.lock")
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        try:
+            os.mkdir(lock_path, 0o700)
+            break
+        except FileExistsError:
+            try:
+                if time.time() - lock_path.stat().st_mtime > 30:
+                    os.rmdir(lock_path)
+                    continue
+            except FileNotFoundError:
+                continue
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"Timed out waiting for state lock {lock_path}")
+            time.sleep(0.01)
+    try:
+        yield
+    finally:
+        try:
+            os.rmdir(lock_path)
+        except FileNotFoundError:
+            pass
 
 
 class AudioManager:

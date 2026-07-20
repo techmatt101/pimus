@@ -4,12 +4,15 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import json
 import os
 import subprocess
 import sys
+import tempfile
+import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Iterator
 
 
 STATE_DIR = Path(os.environ.get("SMARTAMP_STATE_DIR", "/var/lib/smartamp"))
@@ -36,16 +39,84 @@ def read_json(path: Path, default: dict[str, Any]) -> dict[str, Any]:
 
 
 def write_json(path: Path, value: dict[str, Any]) -> None:
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
-    os.replace(temporary, path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    serialized = json.dumps(value, indent=2) + "\n"
+    temporary_name: str | None = None
+    try:
+        # A unique file prevents simultaneous controller/CLI writes from
+        # renaming another process's temporary file.
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary:
+            temporary_name = temporary.name
+            temporary.write(serialized)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        os.replace(temporary_name, path)
+        temporary_name = None
+    finally:
+        if temporary_name is not None:
+            try:
+                os.unlink(temporary_name)
+            except FileNotFoundError:
+                pass
+
+
+@contextmanager
+def state_lock(path: Path, timeout_seconds: float = 2.0) -> Iterator[None]:
+    """Use an atomic directory lock shared with the Node controller."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = Path(f"{path}.lock")
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        try:
+            os.mkdir(lock_path, 0o700)
+            break
+        except FileExistsError:
+            # Recover a lock abandoned by a process that was killed mid-write.
+            try:
+                if time.time() - lock_path.stat().st_mtime > 30:
+                    os.rmdir(lock_path)
+                    continue
+            except FileNotFoundError:
+                continue
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"Timed out waiting for state lock {lock_path}")
+            time.sleep(0.01)
+    try:
+        yield
+    finally:
+        try:
+            os.rmdir(lock_path)
+        except FileNotFoundError:
+            pass
+
+
+def update_json(
+    path: Path,
+    default: dict[str, Any],
+    update: Callable[[dict[str, Any]], None],
+) -> dict[str, Any]:
+    with state_lock(path):
+        state = read_json(path, default)
+        before = json.dumps(state, sort_keys=True)
+        update(state)
+        if json.dumps(state, sort_keys=True) != before:
+            write_json(path, state)
+        return state
 
 
 def source(name: str, command: str) -> int:
-    state = read_json(AUDIO_STATE, {"sources": {}})
-    current = bool(state.setdefault("sources", {}).get(name, False))
-    state["sources"][name] = not current if command == "toggle" else command == "on"
-    write_json(AUDIO_STATE, state)
+    def update(state: dict[str, Any]) -> None:
+        current = bool(state.setdefault("sources", {}).get(name, False))
+        state["sources"][name] = not current if command == "toggle" else command == "on"
+
+    state = update_json(AUDIO_STATE, {"sources": {}}, update)
     print(f"{name}={'on' if state['sources'][name] else 'off'}")
     return 0
 
@@ -62,13 +133,14 @@ def volume(command: str) -> int:
 def lights(command: str) -> int:
     # Mirrors LOCAL_MODES in the controller's respeaker.mts; keep both aligned.
     modes = ["voice", "off", "single", "breath", "rainbow", "doa", "ring"]
-    state = read_json(LED_STATE, {"mode": "voice", "color": "#00bcd4"})
-    if command == "cycle":
-        current = state.get("mode", "voice")
-        state["mode"] = modes[(modes.index(current) + 1) % len(modes)] if current in modes else "voice"
-    else:
-        state["mode"] = command
-    write_json(LED_STATE, state)
+    def update(state: dict[str, Any]) -> None:
+        if command == "cycle":
+            current = state.get("mode", "voice")
+            state["mode"] = modes[(modes.index(current) + 1) % len(modes)] if current in modes else "voice"
+        else:
+            state["mode"] = command
+
+    state = update_json(LED_STATE, {"mode": "voice", "color": "#00bcd4"}, update)
     print(f"lights={state['mode']}")
     return 0
 
