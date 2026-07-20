@@ -1,0 +1,8 @@
+.ansible/
+*.retry
+inventory/host_vars/*.vault.yml
+artifacts/
+node_modules/
+__pycache__/
+*.py[cod]
+.DS_Store

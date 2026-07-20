@@ -1,0 +1,16 @@
+[Unit]
+Description=Smart Amp ReSpeaker LEDs and Home Assistant peripheral
+After=smartamp-voice-assistant.service
+Wants=smartamp-voice-assistant.service
+
+[Service]
+Type=simple
+User={{ smartamp_service_user }}
+Group={{ smartamp_service_user }}
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 {{ smartamp_app_dir }}/peripheral.py --config {{ smartamp_config_dir }}/peripherals.yml
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

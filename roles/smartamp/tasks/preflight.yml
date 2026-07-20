@@ -1,0 +1,39 @@
+---
+# /proc/device-tree/model is authoritative even when the OS image has been
+# renamed. Reading it before editing boot files prevents applying Pi 5-specific
+# overlays and USB-controller settings to unrelated hardware.
+- name: Read Raspberry Pi model
+  ansible.builtin.slurp:
+    src: /proc/device-tree/model
+  register: raspberry_pi_model_raw
+
+# Device-tree strings are NUL-terminated, so normalise the value before testing
+# and before displaying it in a useful failure message.
+- name: Set Raspberry Pi model
+  ansible.builtin.set_fact:
+    raspberry_pi_model: "{{ raspberry_pi_model_raw.content | b64decode | replace('\u0000', '') }}"
+
+# This project relies on Pi 5 USB-C peripheral support, the arm64 LVA build, and
+# Debian package names. Fail early instead of leaving a half-configured system.
+- name: Check the target platform
+  ansible.builtin.assert:
+    that:
+      - ansible_architecture in ['aarch64', 'arm64']
+      - "'Raspberry Pi 5' in raspberry_pi_model"
+      - ansible_os_family == 'Debian'
+    fail_msg: >-
+      This recipe requires 64-bit Raspberry Pi OS on a Pi 5. Detected
+      {{ raspberry_pi_model }}, {{ ansible_distribution }} {{ ansible_distribution_version }},
+      {{ ansible_architecture }}.
+
+# Bookworm moved config.txt under /boot/firmware. Confirm that expected layout
+# before any blockinfile task is allowed to modify boot configuration.
+- name: Locate Raspberry Pi boot configuration
+  ansible.builtin.stat:
+    path: /boot/firmware/config.txt
+  register: boot_config
+
+- name: Require the Bookworm or Trixie boot layout
+  ansible.builtin.assert:
+    that: boot_config.stat.exists
+    fail_msg: "Expected /boot/firmware/config.txt; Raspberry Pi OS older than Bookworm is unsupported."

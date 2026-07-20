@@ -1,0 +1,81 @@
+---
+# These are only installed when voice is enabled. LVA is run directly in a
+# Python virtual environment, so no Docker daemon or container packages exist.
+- name: Install native Linux Voice Assistant dependencies
+  ansible.builtin.apt:
+    name:
+      # mDNS utilities support ESPHome discovery by the remote HA instance.
+      - avahi-utils
+      # Provides `ip`, used to determine the address/interface advertised to HA.
+      - iproute2
+      # Native media playback library used for TTS, announcements, and timers.
+      - libmpv-dev
+      # Standard process tools expected by the upstream bare-metal install.
+      - procps
+      # Python headers needed when wake-word/audio extensions compile locally.
+      - python3-dev
+      # Creates the isolated .venv that replaces a container runtime.
+      - python3-venv
+    state: present
+
+# Building wake-word dependencies is comparatively expensive. A per-version
+# marker lets normal Ansible re-runs skip setup while still rebuilding on an
+# explicit voice_assistant_version change.
+- name: Check native Linux Voice Assistant installation
+  ansible.builtin.stat:
+    path: "{{ smartamp_app_dir }}/linux-voice-assistant/.smartamp-setup-v{{ voice_assistant_version }}"
+  register: voice_assistant_setup_marker
+
+# Pinning a release makes rebuilds repeatable; a shallow checkout avoids keeping
+# the full upstream history on the SD card.
+- name: Check out pinned Linux Voice Assistant release
+  ansible.builtin.git:
+    repo: https://github.com/OHF-Voice/linux-voice-assistant.git
+    dest: "{{ smartamp_app_dir }}/linux-voice-assistant"
+    version: "v{{ voice_assistant_version }}"
+    depth: 1
+    single_branch: true
+    update: true
+  register: voice_assistant_checkout
+
+# Upstream's setup script owns creation of .venv and its Python dependencies.
+# This is the native/bare-metal client install, not a Home Assistant server.
+- name: Install Linux Voice Assistant into its virtual environment
+  ansible.builtin.command:
+    cmd: script/setup
+    chdir: "{{ smartamp_app_dir }}/linux-voice-assistant"
+  when: voice_assistant_checkout.changed or not voice_assistant_setup_marker.stat.exists
+  notify: Restart voice assistant
+
+# Only write the marker after setup succeeds, so a failed/partial install is
+# retried on the next provisioning run.
+- name: Record installed Linux Voice Assistant release
+  ansible.builtin.file:
+    path: "{{ smartamp_app_dir }}/linux-voice-assistant/.smartamp-setup-v{{ voice_assistant_version }}"
+    state: touch
+    owner: root
+    group: root
+    mode: "0644"
+    modification_time: preserve
+    access_time: preserve
+  when: voice_assistant_checkout.changed or not voice_assistant_setup_marker.stat.exists
+
+# The unit runs under the same account as PipeWire so it can use the private
+# audio socket. It exposes an ESPHome voice satellite to HA on the other host.
+- name: Install Home Assistant voice service
+  ansible.builtin.template:
+    src: smartamp-voice-assistant.service.j2
+    dest: /etc/systemd/system/smartamp-voice-assistant.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart voice assistant
+
+# Enable without forcing an early start; handlers start/restart it after the
+# audio graph and complete unit file are in place.
+- name: Enable Home Assistant voice service
+  ansible.builtin.systemd_service:
+    name: smartamp-voice-assistant.service
+    enabled: true

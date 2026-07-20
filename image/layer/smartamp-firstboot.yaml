@@ -1,0 +1,12 @@
+# METABEGIN
+# X-Env-Layer-Name: smartamp-firstboot
+# X-Env-Layer-Category: pimus
+# X-Env-Layer-Desc: Pimus Smart Amp first-boot Ansible provisioner
+# X-Env-Layer-Version: 0.1.0
+# X-Env-Layer-Requires: trixie-minbase
+# METAEND
+---
+mmdebstrap:
+  packages:
+    - ansible-core
+    - rsync

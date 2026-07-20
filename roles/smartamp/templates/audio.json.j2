@@ -1,0 +1,22 @@
+{
+  "output_match": {{ smartamp_output_match | to_json }},
+  "voice_input_match": {{ smartamp_voice_input_match | to_json }},
+  "aec_reference": {
+    "enabled": {{ smartamp_aec_reference_enabled | bool | to_json }},
+    "sink_match": {{ smartamp_aec_reference_match | to_json }},
+    "latency_ms": 40
+  },
+  "poll_seconds": 2,
+  "sources": {
+    "aux": {
+      "match": {{ smartamp_aux_match | to_json }},
+      "enabled": {{ smartamp_aux_enabled | bool | to_json }},
+      "latency_ms": {{ smartamp_aux_latency_ms | int }}
+    },
+    "usb": {
+      "match": {{ smartamp_usb_gadget_match | to_json }},
+      "enabled": {{ usb_audio_gadget_enabled | bool | to_json }},
+      "latency_ms": 40
+    }
+  }
+}

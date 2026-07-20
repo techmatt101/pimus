@@ -1,0 +1,49 @@
+---
+# Handlers coalesce repeated notifications: several changed files still produce
+# one daemon reload or service restart at the end of the play.
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+# Reloading rules affects future device opens; unplug/replug may still be needed
+# if a peripheral was already present before its permission rule was installed.
+- name: Reload udev
+  ansible.builtin.command: udevadm control --reload-rules
+  changed_when: true
+
+- name: Restart audio manager
+  ansible.builtin.systemd_service:
+    name: smartamp-audio-manager.service
+    state: restarted
+
+- name: Restart voice assistant
+  ansible.builtin.systemd_service:
+    name: smartamp-voice-assistant.service
+    state: restarted
+  when: voice_assistant_enabled | bool
+
+- name: Restart Squeezelite
+  ansible.builtin.systemd_service:
+    name: smartamp-squeezelite.service
+    state: restarted
+  when: squeezelite_enabled | bool
+
+- name: Restart peripherals
+  ansible.builtin.systemd_service:
+    name: smartamp-peripherals.service
+    state: restarted
+  when: respeaker_led_enabled | bool
+
+- name: Restart streamdeck
+  ansible.builtin.systemd_service:
+    name: smartamp-streamdeck.service
+    state: restarted
+  when: streamdeck_enabled | bool
+
+# Device-tree overlays and modules-load changes only take effect at boot. The
+# switch allows image builds/tests to suppress a reboot when required.
+- name: Reboot Smart Amp
+  ansible.builtin.reboot:
+    msg: "Rebooting to activate Smart Amp boot configuration"
+    reboot_timeout: 300
+  when: smartamp_reboot_allowed | bool

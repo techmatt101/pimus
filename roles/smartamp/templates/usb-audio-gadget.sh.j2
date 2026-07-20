@@ -1,0 +1,59 @@
+#!/bin/sh
+set -eu
+
+GADGET=/sys/kernel/config/usb_gadget/smartamp
+
+start_gadget() {
+    /usr/sbin/modprobe libcomposite
+    /usr/bin/mountpoint -q /sys/kernel/config || /usr/bin/mount -t configfs none /sys/kernel/config
+
+    if [ -d "$GADGET" ]; then
+        UDC=$(/usr/bin/ls /sys/class/udc | /usr/bin/head -n 1)
+        [ -n "$UDC" ] || { echo 'No USB device controller found' >&2; exit 1; }
+        printf '%s' "$UDC" > "$GADGET/UDC"
+        return 0
+    fi
+
+    /usr/bin/mkdir -p "$GADGET"
+    cd "$GADGET"
+    printf '0x1d6b' > idVendor
+    printf '0x0104' > idProduct
+    printf '0x0100' > bcdDevice
+    printf '0x0200' > bcdUSB
+
+    /usr/bin/mkdir -p strings/0x409
+    /usr/bin/awk '/Serial/ {print $3}' /proc/cpuinfo > strings/0x409/serialnumber
+    printf 'Pimus' > strings/0x409/manufacturer
+    printf '%s' {{ usb_audio_product | quote }} > strings/0x409/product
+
+    /usr/bin/mkdir -p configs/c.1/strings/0x409
+    printf 'UAC2 stereo input' > configs/c.1/strings/0x409/configuration
+    printf '100' > configs/c.1/MaxPower
+
+    /usr/bin/mkdir -p functions/uac2.usb0
+    # "Playback" is from the USB host into the Pi. Disable the opposite path.
+    printf '0x3' > functions/uac2.usb0/p_chmask
+    printf '0x0' > functions/uac2.usb0/c_chmask
+    printf '%s' {{ usb_audio_sample_rate | int }} > functions/uac2.usb0/p_srate
+    printf '%s' {{ usb_audio_sample_size_bytes | int }} > functions/uac2.usb0/p_ssize
+    [ ! -e configs/c.1/uac2.usb0 ] && /usr/bin/ln -s functions/uac2.usb0 configs/c.1/
+
+    UDC=$(/usr/bin/ls /sys/class/udc | /usr/bin/head -n 1)
+    if [ -z "$UDC" ]; then
+        echo 'No USB device controller found; is dtoverlay=dwc2,dr_mode=peripheral active?' >&2
+        exit 1
+    fi
+    printf '%s' "$UDC" > UDC
+}
+
+stop_gadget() {
+    if [ -f "$GADGET/UDC" ]; then
+        printf '' > "$GADGET/UDC"
+    fi
+}
+
+case "${1:-start}" in
+    start) start_gadget ;;
+    stop) stop_gadget ;;
+    *) echo "usage: $0 [start|stop]" >&2; exit 2 ;;
+esac

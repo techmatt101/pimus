@@ -1,0 +1,157 @@
+---
+# This is the name advertised by mDNS and used for office-amp.local. Keeping it
+# under Ansible control also makes re-imaged devices return with the same name.
+- name: Set hostname
+  ansible.builtin.hostname:
+    name: "{{ smartamp_hostname }}"
+
+# Read first so the following command stays idempotent. Correct local time makes
+# Home Assistant events, timers, and service logs easier to correlate.
+- name: Read configured timezone
+  ansible.builtin.command: timedatectl show --property=Timezone --value
+  register: configured_timezone
+  changed_when: false
+
+- name: Set timezone
+  ansible.builtin.command: "timedatectl set-timezone {{ smartamp_timezone }}"
+  changed_when: true
+  when: configured_timezone.stdout != smartamp_timezone
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name:
+      # aplay, arecord and amixer provide hardware discovery, diagnostics, and
+      # the mixer controls used to initialise the HiFiBerry card.
+      - alsa-utils
+      # Publishes office-amp.local over mDNS so other LAN hosts can use a stable
+      # name without a manually assigned DNS record.
+      - avahi-daemon
+      # Compiles Python and Node native extensions used by LVA and Stream Deck.
+      - build-essential
+      # Allows Git, pip, npm, and curl to verify HTTPS certificates.
+      - ca-certificates
+      # Useful for provisioning downloads and local API troubleshooting.
+      - curl
+      # Provides the per-user D-Bus session required by headless PipeWire and
+      # WirePlumber services.
+      - dbus-user-session
+      # Fetches the pinned Linux Voice Assistant source release.
+      - git
+      # Reads JSON status files in smartamp-doctor and during troubleshooting.
+      - jq
+      # Makes ALSA applications able to use the PipeWire/Pulse compatibility
+      # layer instead of opening the HiFiBerry device exclusively.
+      - libasound2-plugins
+      # Headers needed by native HID/USB Node modules used for Stream Deck+.
+      - libudev-dev
+      # Runtime backend used by PyUSB to control the ReSpeaker LEDs.
+      - libusb-1.0-0
+      # Headers needed when USB-dependent Python or Node modules are compiled.
+      - libusb-1.0-0-dev
+      # Runs the local, headless Stream Deck+ controller.
+      - nodejs
+      # Installs the pinned Stream Deck controller dependencies.
+      - npm
+      # Core audio server that mixes aux, USB, Squeezelite, and voice playback.
+      - pipewire
+      # Redirects ALSA-only clients into PipeWire's shared audio graph.
+      - pipewire-alsa
+      # Supplies PipeWire command-line tools used to inspect the audio graph.
+      - pipewire-bin
+      # Presents a PulseAudio-compatible socket to Squeezelite and LVA.
+      - pipewire-pulse
+      # Supplies pactl, which the audio router uses to select devices, create
+      # loopbacks, and adjust volume.
+      - pulseaudio-utils
+      # Runs the audio router, ReSpeaker controller, and smartampctl utilities.
+      - python3
+      # Provides the PyUSB bindings used for XVF3800 LED/control transfers.
+      - python3-usb
+      # Connects the ReSpeaker LED service to LVA's peripheral WebSocket API.
+      - python3-websockets
+      # Parses the generated ReSpeaker peripheral configuration file.
+      - python3-yaml
+      # Lets PipeWire request safe real-time scheduling for glitch-free audio.
+      - rtkit
+      # Supplies lsusb for device discovery and smartamp-doctor diagnostics.
+      - usbutils
+      # Applies PipeWire device policy and creates usable sources and sinks.
+      - wireplumber
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# All long-running clients use one non-login account. PipeWire sockets are
+# private to a user session, so sharing this account avoids both root services
+# and fragile cross-user audio permissions.
+- name: Create Smart Amp service account
+  ansible.builtin.user:
+    name: "{{ smartamp_service_user }}"
+    comment: Smart Amp services
+    home: "{{ smartamp_state_dir }}"
+    create_home: true
+    shell: /usr/sbin/nologin
+    groups: audio,plugdev,input
+    append: true
+    system: true
+
+# The numeric UID/GIDs are embedded in runtime socket paths and systemd units;
+# looking them up avoids assuming a particular value on a fresh image.
+- name: Read service account information
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ smartamp_service_user }}"
+
+- name: Read audio group information
+  ansible.builtin.getent:
+    database: group
+    key: audio
+
+- name: Set service account IDs
+  ansible.builtin.set_fact:
+    smartamp_uid: "{{ ansible_facts.getent_passwd[smartamp_service_user][1] }}"
+    smartamp_gid: "{{ ansible_facts.getent_passwd[smartamp_service_user][2] }}"
+    smartamp_audio_gid: "{{ ansible_facts.getent_group.audio[1] }}"
+
+# Pi OS Lite has no desktop login to keep a user session alive. Linger makes the
+# smartamp user manager (and therefore PipeWire) survive SSH logout and reboots.
+- name: Enable the persistent service-account session
+  ansible.builtin.command: "loginctl enable-linger {{ smartamp_service_user }}"
+  args:
+    creates: "/var/lib/systemd/linger/{{ smartamp_service_user }}"
+
+# Enable these globally so the sockets and policy manager start for the
+# persistent smartamp user session rather than only for interactive users.
+- name: Enable PipeWire services for user sessions
+  ansible.builtin.command: "systemctl --global enable {{ item }}"
+  loop:
+    - pipewire.socket
+    - pipewire-pulse.socket
+    - wireplumber.service
+  register: global_user_units
+  changed_when: "'Created symlink' in global_user_units.stdout or 'Created symlink' in global_user_units.stderr"
+
+# Start it immediately so later service handlers can reach the PipeWire socket
+# during this same provisioning run; no manual login is required.
+- name: Start the persistent service-account session
+  ansible.builtin.systemd_service:
+    name: "user@{{ smartamp_uid }}.service"
+    state: started
+
+# Executables and generated configuration stay root-owned. Runtime preferences,
+# downloaded wake words, and state are writable only by the service account.
+- name: Create application directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default('root') }}"
+    group: "{{ item.group | default('root') }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ smartamp_config_dir }}", mode: "0755" }
+    - { path: "{{ smartamp_app_dir }}", mode: "0755" }
+    - { path: "{{ smartamp_state_dir }}", owner: "{{ smartamp_service_user }}", group: "{{ smartamp_service_user }}", mode: "0750" }
+    - { path: "{{ smartamp_state_dir }}/lva/configuration", owner: "{{ smartamp_service_user }}", group: "{{ smartamp_service_user }}", mode: "0750" }
+    - { path: "{{ smartamp_state_dir }}/lva/local", owner: "{{ smartamp_service_user }}", group: "{{ smartamp_service_user }}", mode: "0750" }
+    - { path: "{{ smartamp_state_dir }}/lva/wakewords", owner: "{{ smartamp_service_user }}", group: "{{ smartamp_service_user }}", mode: "0750" }
+    - { path: "{{ smartamp_state_dir }}/lva/sounds", owner: "{{ smartamp_service_user }}", group: "{{ smartamp_service_user }}", mode: "0750" }

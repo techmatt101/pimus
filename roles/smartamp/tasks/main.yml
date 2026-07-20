@@ -1,0 +1,73 @@
+---
+# Order matters: validate first, create the persistent audio user, configure the
+# physical audio graph, and only then add clients and controllers.
+- name: Run preflight checks
+  ansible.builtin.import_tasks: preflight.yml
+
+- name: Configure the base system
+  ansible.builtin.import_tasks: base.yml
+
+- name: Configure audio hardware and PipeWire
+  ansible.builtin.import_tasks: audio.yml
+
+- name: Configure USB audio gadget
+  ansible.builtin.import_tasks: usb_gadget.yml
+  when: usb_audio_gadget_enabled | bool
+
+# Feature flags must be reversible. Removing the overlay returns USB-C to its
+# normal role rather than leaving stale boot configuration from an earlier run.
+- name: Remove USB-C peripheral overlay when disabled
+  ansible.builtin.blockinfile:
+    path: /boot/firmware/config.txt
+    marker: "# {mark} SMART AMP USB AUDIO"
+    state: absent
+  when: not (usb_audio_gadget_enabled | bool)
+  notify: Reboot Smart Amp
+
+# Stop old units as well as skipping new installation, so toggling a variable is
+# sufficient to disable a feature on an already-provisioned Pi.
+- name: Disable USB audio gadget service when disabled
+  ansible.builtin.systemd_service:
+    name: smartamp-usb-audio-gadget.service
+    enabled: false
+    state: stopped
+  failed_when: false
+  when: not (usb_audio_gadget_enabled | bool)
+
+- name: Configure Squeezelite
+  ansible.builtin.import_tasks: squeezelite.yml
+  when: squeezelite_enabled | bool
+
+# Avoid leaving the remote music player advertised after its feature flag is
+# turned off.
+- name: Disable Squeezelite when disabled
+  ansible.builtin.systemd_service:
+    name: smartamp-squeezelite.service
+    enabled: false
+    state: stopped
+  failed_when: false
+  when: not (squeezelite_enabled | bool)
+
+- name: Configure Home Assistant voice
+  ansible.builtin.import_tasks: voice.yml
+  when: voice_assistant_enabled | bool
+
+# Stop exposing the ESPHome voice satellite when voice support is disabled.
+- name: Disable Home Assistant voice when disabled
+  ansible.builtin.systemd_service:
+    name: smartamp-voice-assistant.service
+    enabled: false
+    state: stopped
+  failed_when: false
+  when: not (voice_assistant_enabled | bool)
+
+- name: Configure peripherals
+  ansible.builtin.import_tasks: peripherals.yml
+
+- name: Install diagnostics
+  ansible.builtin.import_tasks: diagnostics.yml
+
+# Apply deferred daemon reloads and restarts before Ansible reports success. This
+# also surfaces service-start problems during provisioning rather than later.
+- name: Flush configuration handlers
+  ansible.builtin.meta: flush_handlers

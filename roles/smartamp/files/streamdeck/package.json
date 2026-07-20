@@ -1,0 +1,10 @@
+{
+  "name": "pimus-streamdeck",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@elgato-stream-deck/node": "7.6.3",
+    "ws": "8.18.3"
+  }
+}

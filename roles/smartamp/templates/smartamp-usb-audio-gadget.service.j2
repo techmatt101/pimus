@@ -1,0 +1,13 @@
+[Unit]
+Description=Smart Amp USB Audio Class 2 gadget
+After=systemd-modules-load.service sys-kernel-config.mount
+Before=smartamp-audio-manager.service
+
+[Service]
+Type=oneshot
+ExecStart={{ smartamp_app_dir }}/usb-audio-gadget.sh start
+ExecStop={{ smartamp_app_dir }}/usb-audio-gadget.sh stop
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

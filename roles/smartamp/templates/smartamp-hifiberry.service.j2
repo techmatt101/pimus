@@ -1,0 +1,12 @@
+[Unit]
+Description=Initialise HiFiBerry DAC2 ADC Pro mixer
+After=sound.target
+Wants=sound.target
+
+[Service]
+Type=oneshot
+ExecStart={{ smartamp_app_dir }}/hifiberry-init.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

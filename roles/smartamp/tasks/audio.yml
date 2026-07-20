@@ -1,0 +1,89 @@
+---
+# Disable the Pi's onboard audio to avoid ambiguous card numbering, then load
+# the DAC2 ADC Pro driver. force_eeprom_read=0 is the HiFiBerry Pi 5 workaround
+# that lets the explicitly selected overlay configure the HAT.
+- name: Configure the Pi 5 HiFiBerry overlay
+  ansible.builtin.blockinfile:
+    path: /boot/firmware/config.txt
+    marker: "# {mark} SMART AMP AUDIO"
+    block: |
+      dtparam=audio=off
+      force_eeprom_read=0
+      dtoverlay={{ hifiberry_overlay }}
+  notify: Reboot Smart Amp
+
+# Device names can change with USB enumeration. The generated config stores
+# property-match expressions and initial route state instead of ALSA card IDs.
+- name: Install audio configuration
+  ansible.builtin.template:
+    src: audio.json.j2
+    dest: "{{ smartamp_config_dir }}/audio.json"
+    owner: root
+    group: "{{ smartamp_service_user }}"
+    mode: "0640"
+  notify: Restart audio manager
+
+# This process makes HiFiBerry the default sink, selects the ReSpeaker mic, and
+# maintains independently switchable aux and USB loopbacks in PipeWire.
+- name: Install Smart Amp audio manager
+  ansible.builtin.copy:
+    src: audio_manager.py
+    dest: "{{ smartamp_app_dir }}/audio_manager.py"
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart audio manager
+
+# smartampctl provides the same source, volume, and LED controls to SSH scripts
+# that the Stream Deck exposes physically.
+- name: Install Smart Amp control command
+  ansible.builtin.copy:
+    src: smartampctl.py
+    dest: /usr/local/bin/smartampctl
+    owner: root
+    group: root
+    mode: "0755"
+
+# ALSA mixer defaults are not guaranteed after a clean image. Apply the chosen
+# ADC pins/gain and a conservative amplifier level on every boot.
+- name: Install HiFiBerry mixer initialisation
+  ansible.builtin.template:
+    src: hifiberry-init.sh.j2
+    dest: "{{ smartamp_app_dir }}/hifiberry-init.sh"
+    owner: root
+    group: root
+    mode: "0755"
+
+# A separate early service ensures ALSA has detected the HAT before mixer
+# settings are applied and before PipeWire begins routing sound.
+- name: Install HiFiBerry initialisation service
+  ansible.builtin.template:
+    src: smartamp-hifiberry.service.j2
+    dest: /etc/systemd/system/smartamp-hifiberry.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
+# systemd restarts the router if a USB device is re-enumerated or the process
+# fails, keeping the headless amp self-healing.
+- name: Install audio manager service
+  ansible.builtin.template:
+    src: smartamp-audio-manager.service.j2
+    dest: /etc/systemd/system/smartamp-audio-manager.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart audio manager
+
+# Enable for future boots. Restarts are deferred to handlers so several file
+# changes cause only one service restart.
+- name: Enable audio services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+  loop:
+    - smartamp-hifiberry.service
+    - smartamp-audio-manager.service

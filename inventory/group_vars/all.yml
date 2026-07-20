@@ -1,0 +1,89 @@
+---
+# Identity
+smartamp_hostname: office-amp
+smartamp_timezone: Europe/London
+smartamp_service_user: smartamp
+
+# HiFiBerry DAC2 ADC Pro + AAmp60
+hifiberry_overlay: hifiberry-dacplusadcpro
+hifiberry_card_name: sndrpihifiberry
+hifiberry_output_volume_percent: 70
+hifiberry_aux_gain_db: 0
+hifiberry_aux_input_left: "VINL1[SE]"
+hifiberry_aux_input_right: "VINR1[SE]"
+
+# PipeWire device matching. These are regular expressions, matched against
+# the Pulse/PipeWire node name, description and properties.
+smartamp_output_match: "HiFiBerry|snd_rpi_hifiberry|soc_sound"
+smartamp_aux_match: "HiFiBerry|snd_rpi_hifiberry|soc_sound"
+smartamp_voice_input_match: "reSpeaker.*XVF3800|XVF3800|2886.*001A"
+smartamp_aec_reference_match: "reSpeaker.*XVF3800|XVF3800|2886.*001A"
+smartamp_usb_gadget_match: "UAC2Gadget|Office Amp USB Audio"
+smartamp_aux_enabled: true
+smartamp_aux_latency_ms: 40
+smartamp_aec_reference_enabled: true
+
+# Make the Pi appear as a 48 kHz stereo USB sound card to a computer connected
+# to the Pi 5 USB-C port. The AAmp60/DAC stack must power the Pi through GPIO.
+usb_audio_gadget_enabled: true
+usb_audio_product: "Office Amp USB Audio"
+usb_audio_sample_rate: 48000
+usb_audio_sample_size_bytes: 2
+
+# Squeezelite / Home Assistant Music Assistant. Leave server empty for
+# SlimProto discovery, or set the Music Assistant/LMS IP address.
+squeezelite_enabled: true
+squeezelite_name: "Office Amp"
+squeezelite_server: ""
+squeezelite_extra_args: "-C 5 -a 80:4::1"
+
+# Lightweight Home Assistant voice satellite (ESPHome protocol). This is a
+# native client only; Home Assistant and its Assist pipeline run elsewhere.
+voice_assistant_enabled: true
+voice_assistant_version: "1.1.13"
+voice_assistant_name: "Office Amp Voice"
+voice_assistant_wake_model: okay_nabu
+voice_assistant_stop_model: stop
+voice_assistant_mic_channels: 2
+voice_assistant_mic_volume: 100
+voice_assistant_port: 6053
+voice_assistant_peripheral_port: 6055
+voice_assistant_debug: false
+
+# ReSpeaker state colours. Effects: off, breath, rainbow, single, doa, ring.
+respeaker_led_enabled: true
+respeaker_led_brightness: 64
+respeaker_led_states:
+  idle: { effect: doa, color: "#102030", accent: "#00bcd4" }
+  wake_word_detected: { effect: breath, color: "#00bcd4" }
+  listening: { effect: doa, color: "#001018", accent: "#00e5ff" }
+  thinking: { effect: rainbow, color: "#7c4dff" }
+  tts_speaking: { effect: breath, color: "#00c853" }
+  media_player_playing: { effect: single, color: "#1565c0" }
+  timer_ticking: { effect: single, color: "#ffab00" }
+  timer_ringing: { effect: breath, color: "#ff6d00" }
+  muted: { effect: single, color: "#d50000" }
+  disconnected: { effect: breath, color: "#d50000" }
+  pipeline_error: { effect: breath, color: "#ff1744" }
+
+# Stream Deck+ controls. Each key supports lva, audio, led, webhook and noop.
+streamdeck_enabled: true
+streamdeck_brightness: 40
+streamdeck_keys:
+  - { label: "VOICE", color: "#006064", action: { type: lva, command: start_listening } }
+  - { label: "MIC", color: "#7f0000", action: { type: lva, command: mute_toggle } }
+  - { label: "AUX", color: "#4a148c", action: { type: audio, source: aux, command: toggle } }
+  - { label: "USB", color: "#0d47a1", action: { type: audio, source: usb, command: toggle } }
+  - { label: "PLAY", color: "#1b5e20", action: { type: lva, command: media_toggle } }
+  - { label: "STOP", color: "#b71c1c", action: { type: lva, command: stop } }
+  - { label: "TIMER", color: "#e65100", action: { type: lva, command: stop_timer_ringing } }
+  - { label: "LIGHTS", color: "#37474f", action: { type: led, command: cycle } }
+streamdeck_dials:
+  - { label: "VOLUME", left: { type: audio, command: down }, right: { type: audio, command: up }, press: { type: audio, command: mute } }
+  - { label: "AUX", left: { type: audio, source: aux, command: off }, right: { type: audio, source: aux, command: on }, press: { type: audio, source: aux, command: toggle } }
+  - { label: "USB", left: { type: audio, source: usb, command: off }, right: { type: audio, source: usb, command: on }, press: { type: audio, source: usb, command: toggle } }
+  - { label: "VOICE", left: { type: noop }, right: { type: noop }, press: { type: lva, command: start_listening } }
+
+# Optional Home Assistant webhook base URL. A Stream Deck action of type
+# "webhook" and an "id" posts to <base>/<id>. No HA token is stored here.
+home_assistant_webhook_base: ""

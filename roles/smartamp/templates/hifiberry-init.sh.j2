@@ -1,0 +1,23 @@
+#!/bin/sh
+set -u
+
+CARD={{ hifiberry_card_name | quote }}
+
+for try in $(seq 1 30); do
+    if /usr/bin/arecord -l 2>/dev/null | /usr/bin/grep -q "$CARD"; then
+        break
+    fi
+    /usr/bin/sleep 1
+done
+
+if ! /usr/bin/arecord -l 2>/dev/null | /usr/bin/grep -q "$CARD"; then
+    echo "HiFiBerry card $CARD was not detected" >&2
+    exit 1
+fi
+
+# Mixer control names are supplied by the DAC2 ADC Pro kernel driver.
+/usr/bin/amixer -q -c "$CARD" sset 'ADC Left Input' {{ hifiberry_aux_input_left | quote }}
+/usr/bin/amixer -q -c "$CARD" sset 'ADC Right Input' {{ hifiberry_aux_input_right | quote }}
+/usr/bin/amixer -q -c "$CARD" sset 'ADC' {{ (hifiberry_aux_gain_db ~ 'dB') | quote }}
+/usr/bin/amixer -q -c "$CARD" sset 'Digital' {{ (hifiberry_output_volume_percent ~ '%') | quote }}
+/usr/sbin/alsactl store "$CARD"

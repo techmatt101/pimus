@@ -1,0 +1,10 @@
+---
+- name: Build the Smart Amp locally on first boot
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../inventory/group_vars/all.yml
+  roles:
+    - smartamp

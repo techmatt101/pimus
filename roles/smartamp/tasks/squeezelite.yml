@@ -1,0 +1,35 @@
+---
+# Use the PulseAudio build so playback enters PipeWire's mixer. The plain ALSA
+# build could hold the HiFiBerry device exclusively and block aux/voice audio.
+- name: Install PulseAudio-compatible Squeezelite
+  ansible.builtin.apt:
+    name: squeezelite-pulseaudio
+    state: present
+
+# The distro unit does not know about the dedicated user session, player name,
+# remote server, or PipeWire socket, and would create a duplicate player.
+- name: Disable the distribution Squeezelite service
+  ansible.builtin.systemd_service:
+    name: squeezelite.service
+    enabled: false
+    state: stopped
+  failed_when: false
+
+# The custom unit advertises Office Amp and runs as the same audio-session user
+# as every other client. Music Assistant/LMS itself remains on the other host.
+- name: Install Smart Amp Squeezelite service
+  ansible.builtin.template:
+    src: smartamp-squeezelite.service.j2
+    dest: /etc/systemd/system/smartamp-squeezelite.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart Squeezelite
+
+# Register the player automatically after every boot.
+- name: Enable Squeezelite
+  ansible.builtin.systemd_service:
+    name: smartamp-squeezelite.service
+    enabled: true

@@ -1,0 +1,51 @@
+---
+# Pi 5's USB-C controller is normally used for power/host operation. Peripheral
+# mode is required for the Pi to appear as a sound card to a connected computer.
+- name: Enable the Pi 5 USB-C peripheral controller
+  ansible.builtin.blockinfile:
+    path: /boot/firmware/config.txt
+    marker: "# {mark} SMART AMP USB AUDIO"
+    block: |
+      dtoverlay=dwc2,dr_mode=peripheral
+  notify: Reboot Smart Amp
+
+# dwc2 is the peripheral controller driver; libcomposite provides ConfigFS USB
+# functions, including the UAC2 audio function assembled by our script.
+- name: Load USB gadget modules at boot
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/smartamp-usb-gadget.conf
+    content: |
+      dwc2
+      libcomposite
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reboot Smart Amp
+
+# ConfigFS gadgets are runtime kernel objects, not permanent files. Recreate the
+# stereo 48 kHz sound-card function deterministically after each boot.
+- name: Install UAC2 gadget setup script
+  ansible.builtin.template:
+    src: usb-audio-gadget.sh.j2
+    dest: "{{ smartamp_app_dir }}/usb-audio-gadget.sh"
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Reboot Smart Amp
+
+# Run gadget creation only after the kernel modules are available and tear it
+# down cleanly on service stop/reconfiguration.
+- name: Install UAC2 gadget service
+  ansible.builtin.template:
+    src: smartamp-usb-audio-gadget.service.j2
+    dest: /etc/systemd/system/smartamp-usb-audio-gadget.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
+# Makes USB audio available without an interactive setup step after reboot.
+- name: Enable UAC2 gadget service
+  ansible.builtin.systemd_service:
+    name: smartamp-usb-audio-gadget.service
+    enabled: true

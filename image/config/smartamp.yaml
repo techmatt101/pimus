@@ -1,0 +1,18 @@
+device:
+  layer: rpi5
+  hostname: office-amp
+  user1: matt
+  user1sudo: nopasswd
+
+ssh:
+  pubkey_only: y
+
+image:
+  layer: image-rpios
+  boot_part_size: 200%
+  root_part_size: 700%
+  name: pimus-office-amp
+  compression: zstd
+
+layer:
+  smartamp: smartamp-firstboot

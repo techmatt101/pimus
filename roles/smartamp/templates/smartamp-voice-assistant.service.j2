@@ -1,0 +1,42 @@
+[Unit]
+Description=Home Assistant Linux Voice Assistant
+After=smartamp-audio-manager.service network-online.target
+Requires=smartamp-audio-manager.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ smartamp_service_user }}
+Group={{ smartamp_service_user }}
+SupplementaryGroups=audio
+WorkingDirectory={{ smartamp_app_dir }}/linux-voice-assistant
+Environment=HOME={{ smartamp_state_dir }}
+Environment=XDG_RUNTIME_DIR=/run/user/{{ smartamp_uid }}
+Environment=PULSE_SERVER=/run/user/{{ smartamp_uid }}/pulse/native
+Environment=PYTHONUNBUFFERED=1
+ExecStart={{ smartamp_app_dir }}/linux-voice-assistant/script/run \
+  --name {{ voice_assistant_name | quote }} \
+  --preferences-file {{ smartamp_state_dir }}/lva/configuration/preferences.json \
+  --download-dir {{ smartamp_state_dir }}/lva/local \
+  --wake-word-dir {{ smartamp_state_dir }}/lva/wakewords \
+  --host 0.0.0.0 \
+  --port {{ voice_assistant_port }} \
+  --audio-input-device default \
+  --audio-output-device default \
+  --audio-input-channels {{ voice_assistant_mic_channels }} \
+  --mic-volume {{ voice_assistant_mic_volume }} \
+  --wake-model {{ voice_assistant_wake_model | quote }} \
+  --stop-model {{ voice_assistant_stop_model | quote }} \
+  --peripheral-host 0.0.0.0 \
+  --peripheral-port {{ voice_assistant_peripheral_port }} \
+  --peripheral-volume-step 0.05 \
+{% if voice_assistant_debug | bool %}
+  --debug \
+{% endif %}
+  --peripheral-startup-wait 5
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

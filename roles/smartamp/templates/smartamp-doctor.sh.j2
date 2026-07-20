@@ -1,0 +1,61 @@
+#!/bin/sh
+set -u
+
+FAILED=0
+
+heading() { printf '\n== %s ==\n' "$1"; }
+pass() { printf 'PASS  %s\n' "$1"; }
+warn() { printf 'WARN  %s\n' "$1"; }
+fail() { printf 'FAIL  %s\n' "$1"; FAILED=1; }
+
+heading 'Platform'
+MODEL=$(tr -d '\000' < /proc/device-tree/model)
+printf 'Model: %s\n' "$MODEL"
+printf 'Kernel: %s\n' "$(uname -r)"
+case "$MODEL" in *'Raspberry Pi 5'*) pass 'Raspberry Pi 5 detected' ;; *) fail 'Target is not a Raspberry Pi 5' ;; esac
+if command -v vcgencmd >/dev/null 2>&1; then
+    THROTTLED=$(vcgencmd get_throttled)
+    [ "$THROTTLED" = 'throttled=0x0' ] && pass 'No under-voltage/throttle flags' || warn "$THROTTLED (check AAmp60 and USB power budget)"
+fi
+
+heading 'ALSA hardware'
+aplay -l || true
+arecord -l || true
+aplay -l 2>/dev/null | grep -q {{ hifiberry_card_name | quote }} && pass 'HiFiBerry playback found' || fail 'HiFiBerry playback missing'
+arecord -l 2>/dev/null | grep -q {{ hifiberry_card_name | quote }} && pass 'HiFiBerry aux capture found' || fail 'HiFiBerry aux capture missing'
+lsusb 2>/dev/null | grep -qi '2886:001a' && pass 'ReSpeaker XVF3800 connected' || warn 'ReSpeaker XVF3800 not connected'
+lsusb 2>/dev/null | grep -qi '0fd9:' && pass 'Elgato Stream Deck connected' || warn 'Elgato Stream Deck not connected'
+
+heading 'PipeWire'
+if runuser -u {{ smartamp_service_user | quote }} -- env XDG_RUNTIME_DIR=/run/user/{{ smartamp_uid }} PULSE_SERVER=/run/user/{{ smartamp_uid }}/pulse/native pactl info; then
+    pass 'PipeWire Pulse is reachable'
+else
+    fail 'PipeWire Pulse is not reachable by {{ smartamp_service_user }}'
+fi
+if [ -f /run/user/{{ smartamp_uid }}/smartamp-audio-status.json ]; then
+    jq . /run/user/{{ smartamp_uid }}/smartamp-audio-status.json
+else
+    warn 'Audio router has not written status yet'
+fi
+
+heading 'Services'
+{% set doctor_services = ['smartamp-hifiberry', 'smartamp-audio-manager'] + (['smartamp-usb-audio-gadget'] if usb_audio_gadget_enabled else []) + (['smartamp-squeezelite'] if squeezelite_enabled else []) + (['smartamp-voice-assistant'] if voice_assistant_enabled else []) %}
+{% for service in doctor_services %}
+systemctl is-active --quiet {{ service }}.service && pass '{{ service }} is active' || fail '{{ service }} is not active'
+{% endfor %}
+{% if respeaker_led_enabled %}
+systemctl is-active --quiet smartamp-peripherals.service && pass 'smartamp-peripherals is active' || warn 'smartamp-peripherals is not active'
+{% endif %}
+{% if streamdeck_enabled %}
+systemctl is-active --quiet smartamp-streamdeck.service && pass 'smartamp-streamdeck is active' || warn 'smartamp-streamdeck is not active'
+{% endif %}
+
+heading 'Recent errors'
+journalctl -p warning -b --no-pager -n 30 \
+    -u smartamp-hifiberry \
+    -u smartamp-audio-manager \
+    -u smartamp-voice-assistant \
+    -u smartamp-peripherals \
+    -u smartamp-streamdeck || true
+
+exit "$FAILED"

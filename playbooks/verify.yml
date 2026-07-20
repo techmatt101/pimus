@@ -1,0 +1,21 @@
+---
+- name: Verify the Smart Amp
+  hosts: smartamp
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Run Smart Amp diagnostics
+      ansible.builtin.command: smartamp-doctor
+      register: smartamp_doctor
+      changed_when: false
+      failed_when: false
+
+    - name: Show diagnostics
+      ansible.builtin.debug:
+        var: smartamp_doctor.stdout_lines
+
+    - name: Fail when critical checks failed
+      ansible.builtin.assert:
+        that:
+          - smartamp_doctor.rc == 0
+        fail_msg: "One or more critical Smart Amp checks failed; inspect the report above."

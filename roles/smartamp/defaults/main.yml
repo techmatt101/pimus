@@ -1,0 +1,5 @@
+---
+smartamp_state_dir: /var/lib/smartamp
+smartamp_config_dir: /etc/smartamp
+smartamp_app_dir: /opt/smartamp
+smartamp_reboot_allowed: true

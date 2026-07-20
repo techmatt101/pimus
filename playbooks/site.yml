@@ -1,0 +1,7 @@
+---
+- name: Build the Smart Amp
+  hosts: smartamp
+  become: true
+  gather_facts: true
+  roles:
+    - smartamp

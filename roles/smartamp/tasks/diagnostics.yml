@@ -1,0 +1,26 @@
+---
+# Install one stable command that checks power flags, USB/ALSA discovery,
+# PipeWire reachability, route status, and the enabled systemd services.
+- name: Install Smart Amp diagnostic command
+  ansible.builtin.template:
+    src: smartamp-doctor.sh.j2
+    dest: /usr/local/bin/smartamp-doctor
+    owner: root
+    group: root
+    mode: "0755"
+
+# Centralising boot enablement here guarantees all optional unit templates have
+# already been installed before systemd is asked to enable them.
+- name: Enable configured Smart Amp services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+  loop: >-
+    {{
+      ['smartamp-hifiberry.service', 'smartamp-audio-manager.service']
+      + (['smartamp-usb-audio-gadget.service'] if usb_audio_gadget_enabled else [])
+      + (['smartamp-squeezelite.service'] if squeezelite_enabled else [])
+      + (['smartamp-voice-assistant.service'] if voice_assistant_enabled else [])
+      + (['smartamp-peripherals.service'] if respeaker_led_enabled else [])
+      + (['smartamp-streamdeck.service'] if streamdeck_enabled else [])
+    }}
