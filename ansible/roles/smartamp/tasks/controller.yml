@@ -234,3 +234,17 @@
     state: stopped
   failed_when: false
   when: not (smartamp_controller_enabled | bool)
+
+# Remove compiled modules, production dependencies, generated config, and the
+# unit when no enabled feature needs this daemon. Persistent user choices in
+# /var/lib remain available if the feature is enabled again later.
+- name: Remove hardware controller artifacts when unused
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/smartamp-controller.service
+    - "{{ smartamp_config_dir }}/controller.json"
+    - "{{ smartamp_app_dir }}/controller"
+  notify: Reload systemd
+  when: not (smartamp_controller_enabled | bool)

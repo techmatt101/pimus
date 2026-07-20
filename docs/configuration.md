@@ -64,6 +64,11 @@ so run shell automation as that user, for example
 `sudo -u smartamp smartampctl lights cycle`. Invoked as another user,
 `smartampctl` explains this instead of failing with a traceback.
 
+Feature flags are reversible: disabling voice, Squeezelite, USB gadget audio,
+or every controller consumer stops the relevant service and removes its
+installed runtime artifacts. Persistent preferences and downloaded wake-word
+models under `/var/lib/smartamp` are retained for a later re-enable.
+
 ## Stream Deck+
 
 Supported action objects are:
