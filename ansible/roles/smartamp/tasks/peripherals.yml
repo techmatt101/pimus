@@ -126,15 +126,18 @@
       not (streamdeck_dependencies.stat.exists | default(false))
   notify: Restart streamdeck
 
-# The controller renders keys/touch strip locally and maps presses/dials to LVA,
-# audio-route, LED, or optional HA webhook actions.
-- name: Install Stream Deck controller
+# Deploy every application module while keeping package manifests under the
+# separate dependency tasks above. basename preserves the flat source layout.
+- name: Install Stream Deck controller modules
   ansible.builtin.copy:
-    src: "{{ smartamp_source_dir }}/streamdeck/index.mjs"
-    dest: "{{ smartamp_app_dir }}/streamdeck/index.mjs"
+    src: "{{ item }}"
+    dest: "{{ smartamp_app_dir }}/streamdeck/{{ item | basename }}"
     owner: root
     group: root
     mode: "0644"
+  loop: "{{ query('ansible.builtin.fileglob', smartamp_source_dir + '/streamdeck/*.mjs') }}"
+  loop_control:
+    label: "{{ item | basename }}"
   notify: Restart streamdeck
   when: streamdeck_enabled | bool
 

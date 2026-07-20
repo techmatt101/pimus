@@ -15,9 +15,18 @@ configuration.
 
 ## Stream Deck+
 
-`streamdeck/index.mjs` renders the keys and touch strip, handles keys and rotary
-encoders, and dispatches actions to Linux Voice Assistant, `smartampctl`, or an
-optional Home Assistant webhook. `package-lock.json` pins the complete Node
-dependency tree deployed by Ansible with `npm ci`. Deployment omits the optional
-native JPEG peer and uses Elgato's built-in `jpeg-js` fallback, avoiding an
-unnecessary native build toolchain on the Pi.
+The Stream Deck controller is split by responsibility:
+
+- `index.mjs` composes and starts the application.
+- `config.mjs` loads and validates generated configuration.
+- `state.mjs` owns the shared display/voice state model.
+- `lva-client.mjs` handles the reconnecting LVA peripheral WebSocket.
+- `actions.mjs` dispatches configured LVA, audio, LED, and webhook actions.
+- `system-control.mjs` bridges to `smartampctl`, PipeWire, and route state.
+- `bitmap.mjs` contains the dependency-free bitmap font and drawing primitives.
+- `display.mjs` renders keys and the touch strip from current state.
+- `deck-controller.mjs` owns device discovery, reconnects, and input events.
+
+`package-lock.json` pins the Node dependency tree deployed by Ansible with
+`npm ci`. Deployment omits the optional native JPEG peer and uses Elgato's
+built-in `jpeg-js` fallback, avoiding an unnecessary native build toolchain.
