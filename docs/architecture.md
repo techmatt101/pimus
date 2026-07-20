@@ -1,5 +1,8 @@
 # Architecture
 
+Runtime logic is kept under `src/`; Ansible under `ansible/` only installs that
+code, renders device configuration, and manages operating-system services.
+
 ```text
                                       +--------------------------+
 XVF3800 microphones --USB/PipeWire--->| Linux Voice Assistant    |--ESPHome API--> Home Assistant

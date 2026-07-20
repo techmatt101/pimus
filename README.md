@@ -26,7 +26,7 @@ python3 -m pip install --user ansible
 make install
 ```
 
-Edit [`inventory/hosts.yml`](inventory/hosts.yml) so the hostname/IP and `ansible_user` match the Pi. Review the feature settings in [`inventory/group_vars/all.yml`](inventory/group_vars/all.yml), then run:
+Edit [`ansible/inventory/hosts.yml`](ansible/inventory/hosts.yml) so the hostname/IP and `ansible_user` match the Pi. Review the feature settings in [`ansible/inventory/group_vars/all.yml`](ansible/inventory/group_vars/all.yml), then run:
 
 ```sh
 ssh matt@office-amp.local  # accept the new host key, then exit
@@ -44,6 +44,13 @@ In Home Assistant, open **Settings → Devices & services**. The device named **
 For Music Assistant, add the Squeezelite player named **Office Amp**. Discovery normally works on the local network; otherwise set `squeezelite_server` to the Music Assistant host IP and provision again.
 
 This project installs no Home Assistant, Music Assistant, or LMS server components. `office-amp` is only a network audio/voice endpoint; the server and media library remain on your other machine.
+
+## Project layout
+
+- `src/python`: PipeWire routing, ReSpeaker LED integration, and the local control command.
+- `src/streamdeck`: the headless Stream Deck+ application and locked Node dependencies.
+- `ansible`: inventory, playbooks, deployment tasks, generated configuration, and systemd templates.
+- `tests`: source-level tests that run without provisioning a Pi.
 
 ## Everyday control
 

@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 
-MODULE_PATH = Path(__file__).parents[1] / "roles/smartamp/files/audio_manager.py"
+MODULE_PATH = Path(__file__).parents[1] / "src/python/audio_manager.py"
 SPEC = importlib.util.spec_from_file_location("audio_manager", MODULE_PATH)
 assert SPEC and SPEC.loader
 audio_manager = importlib.util.module_from_spec(SPEC)

@@ -29,7 +29,7 @@
 # controls; the voice client itself remains hardware-agnostic.
 - name: Install ReSpeaker peripheral controller
   ansible.builtin.copy:
-    src: peripheral.py
+    src: "{{ smartamp_source_dir }}/python/peripheral.py"
     dest: "{{ smartamp_app_dir }}/peripheral.py"
     owner: root
     group: root
@@ -90,37 +90,47 @@
     mode: "0755"
   when: streamdeck_enabled | bool
 
-# package.json pins the USB/HID and WebSocket libraries for repeatable rebuilds.
-# Its change status tells the following npm task when dependencies may differ.
-- name: Install Stream Deck application manifest
+# package.json declares direct dependencies and package-lock.json pins the full
+# transitive tree. A change to either triggers a clean dependency installation.
+- name: Install Stream Deck application manifests
   ansible.builtin.copy:
-    src: streamdeck/package.json
-    dest: "{{ smartamp_app_dir }}/streamdeck/package.json"
+    src: "{{ smartamp_source_dir }}/streamdeck/{{ item }}"
+    dest: "{{ smartamp_app_dir }}/streamdeck/{{ item }}"
     owner: root
     group: root
     mode: "0644"
-  register: streamdeck_package
+  loop:
+    - package.json
+    - package-lock.json
+  register: streamdeck_manifests
   when: streamdeck_enabled | bool
 
-# Omit development tooling, audit traffic, and funding prompts to keep the
-# headless runtime install smaller and deterministic in automation logs.
+# The module marker avoids rebuilding dependencies on every Ansible run. When a
+# manifest changes, npm ci recreates exactly the dependency tree in the lockfile.
+- name: Check installed Stream Deck dependencies
+  ansible.builtin.stat:
+    path: "{{ smartamp_app_dir }}/streamdeck/node_modules/@elgato-stream-deck/node/package.json"
+  register: streamdeck_dependencies
+  when: streamdeck_enabled | bool
+
+# Omit development tooling and the optional native JPEG peer. Elgato falls back
+# to jpeg-js, avoiding a Node-version-sensitive native build chain on the Pi.
 - name: Install Stream Deck application dependencies
-  ansible.builtin.command: npm install --omit=dev --no-audit --no-fund
+  ansible.builtin.command: npm ci --omit=dev --omit=peer --no-audit --no-fund
   args:
     chdir: "{{ smartamp_app_dir }}/streamdeck"
-  register: streamdeck_npm
-  changed_when: >-
-    'added ' in streamdeck_npm.stdout or
-    'removed ' in streamdeck_npm.stdout or
-    'changed ' in streamdeck_npm.stdout
-  when: streamdeck_enabled | bool
+  when:
+    - streamdeck_enabled | bool
+    - >-
+      (streamdeck_manifests.changed | default(false)) or
+      not (streamdeck_dependencies.stat.exists | default(false))
   notify: Restart streamdeck
 
 # The controller renders keys/touch strip locally and maps presses/dials to LVA,
 # audio-route, LED, or optional HA webhook actions.
 - name: Install Stream Deck controller
   ansible.builtin.copy:
-    src: streamdeck/index.mjs
+    src: "{{ smartamp_source_dir }}/streamdeck/index.mjs"
     dest: "{{ smartamp_app_dir }}/streamdeck/index.mjs"
     owner: root
     group: root

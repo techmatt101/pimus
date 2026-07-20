@@ -1,6 +1,6 @@
 # Configuration
 
-All supported settings live in `inventory/group_vars/all.yml`. Re-run `make provision` after changing them.
+All supported settings live in `ansible/inventory/group_vars/all.yml`. Re-run `make provision` after changing them.
 
 ## Audio
 

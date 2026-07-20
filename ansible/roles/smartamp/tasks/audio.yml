@@ -27,7 +27,7 @@
 # maintains independently switchable aux and USB loopbacks in PipeWire.
 - name: Install Smart Amp audio manager
   ansible.builtin.copy:
-    src: audio_manager.py
+    src: "{{ smartamp_source_dir }}/python/audio_manager.py"
     dest: "{{ smartamp_app_dir }}/audio_manager.py"
     owner: root
     group: root
@@ -38,7 +38,7 @@
 # that the Stream Deck exposes physically.
 - name: Install Smart Amp control command
   ansible.builtin.copy:
-    src: smartampctl.py
+    src: "{{ smartamp_source_dir }}/python/smartampctl.py"
     dest: /usr/local/bin/smartampctl
     owner: root
     group: root
