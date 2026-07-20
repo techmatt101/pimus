@@ -8,6 +8,19 @@ Type=oneshot
 ExecStart={{ smartamp_app_dir }}/usb-audio-gadget.sh start
 ExecStop={{ smartamp_app_dir }}/usb-audio-gadget.sh stop
 RemainAfterExit=yes
+# Gadget setup deliberately needs module-loading/mount capabilities and configfs
+# writes, but it does not need home directories or writable installed config.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_SYS_MODULE
+UMask=0027
 
 [Install]
 WantedBy=multi-user.target

@@ -7,6 +7,21 @@ Wants=sound.target
 Type=oneshot
 ExecStart={{ smartamp_app_dir }}/hifiberry-init.sh
 RemainAfterExit=yes
+# Mixer setup needs the ALSA device and its saved state only; the rest of the
+# installed filesystem and kernel configuration remain protected.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=-/var/lib/alsa
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictAddressFamilies=AF_UNIX
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+UMask=0027
 
 [Install]
 WantedBy=multi-user.target
