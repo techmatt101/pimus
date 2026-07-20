@@ -51,6 +51,7 @@ heading 'Recent errors'
 journalctl -p warning -b --no-pager -n 30 \
     -u smartamp-hifiberry \
     -u smartamp-audio-manager \
+    -u smartamp-squeezelite \
     -u smartamp-voice-assistant \
     -u smartamp-controller || true
 
