@@ -355,6 +355,9 @@ export class ReSpeakerController {
       })
     } else if (event && Object.hasOwn(this.config.states, event)) {
       this.assistState = String(event)
+    } else if ((event === 'media_player_paused' || event === 'media_player_idle')
+        && this.assistState === 'media_player_playing') {
+      this.assistState = 'idle'
     } else if (event === 'tts_finished' || event === 'idle') {
       this.assistState = 'idle'
     } else if (event === 'timer_updated') {

@@ -17,7 +17,7 @@ Environment=PYTHONUNBUFFERED=1
 # The audio manager chooses the real PipeWire defaults after discovering the
 # HiFiBerry and ReSpeaker. Waiting avoids racing that first hardware scan.
 ExecStartPre={{ smartamp_app_dir }}/wait-audio-ready.sh /run/user/{{ smartamp_uid }}/smartamp-audio-status.json 60
-ExecStart={{ smartamp_app_dir }}/linux-voice-assistant/script/run \
+ExecStart={{ smartamp_app_dir }}/linux-voice-assistant/.venv/bin/python {{ smartamp_app_dir }}/smartamp_lva.py \
   --name {{ voice_assistant_name | quote }} \
   --preferences-file {{ smartamp_state_dir }}/lva/configuration/preferences.json \
   --download-dir {{ smartamp_state_dir }}/lva/local \

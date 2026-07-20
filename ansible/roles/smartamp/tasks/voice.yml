@@ -118,6 +118,17 @@
     access_time: preserve
   when: voice_assistant_needs_setup | bool
 
+# This wrapper leaves the pinned checkout clean while adding the pause/idle
+# peripheral events needed for a reliable physical play/pause control.
+- name: Install Smart Amp voice media event adapter
+  ansible.builtin.copy:
+    src: smartamp_lva.py
+    dest: "{{ smartamp_app_dir }}/smartamp_lva.py"
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart voice assistant
+
 # LVA must start after the audio manager has found both required devices. This
 # small gate checks the manager's fresh status file and produces a clear systemd
 # failure instead of an obscure SoundCard device-lookup exception.

@@ -338,6 +338,7 @@ test('ReSpeaker state follows voice events and Home Assistant light commands', a
       states: {
         idle: { effect: 'doa', color: '#102030', accent: '#00bcd4' },
         listening: { effect: 'breath', color: '#00e5ff' },
+        media_player_playing: { effect: 'single', color: '#1565c0' },
         disconnected: { effect: 'single', color: '#d50000' },
       },
     },
@@ -349,6 +350,10 @@ test('ReSpeaker state follows voice events and Home Assistant light commands', a
   await controller.handleEvent({ event: 'snapshot', data: { ha_connected: true, muted: false } })
   await controller.handleEvent({ event: 'listening' })
   assert.deepEqual(rendered.at(-1), [{ effect: 'breath', color: '#00e5ff' }, 64, 2])
+
+  await controller.handleEvent({ event: 'media_player_playing' })
+  await controller.handleEvent({ event: 'media_player_idle' })
+  assert.deepEqual(rendered.at(-1), [{ effect: 'doa', color: '#102030', accent: '#00bcd4' }, 64, 2])
 
   await controller.handleEvent({
     event: 'light_command',
