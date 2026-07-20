@@ -52,6 +52,10 @@ export async function runDeckLoop({
       await deck.setBrightness(config.brightness)
       await renderer.render()
 
+      // A USB unplug can emit several errors; without a listener still
+      // attached after the first one, EventEmitter would throw and kill the
+      // daemon instead of letting the loop reconnect.
+      deck.on('error', () => {})
       const disconnected = new Promise<void>((resolve) => deck?.once('error', () => resolve()))
       deck.on('down', (controlDefinition) => {
         if (controlDefinition.type === 'button') {
