@@ -29,9 +29,9 @@ lsusb 2>/dev/null | grep -qi '2886:001a' && pass 'ReSpeaker XVF3800 connected' |
 lsusb 2>/dev/null | grep -qi '2886:001a' && pass 'ReSpeaker XVF3800 connected' || warn 'Optional ReSpeaker XVF3800 is not connected'
 {% endif %}
 {% if streamdeck_enabled %}
-lsusb 2>/dev/null | grep -qi '0fd9:' && pass 'Elgato Stream Deck connected' || fail 'Required Elgato Stream Deck is not connected'
+lsusb 2>/dev/null | grep -qi '0fd9:0084' && pass 'Elgato Stream Deck+ connected' || fail 'Required Elgato Stream Deck+ is not connected'
 {% else %}
-lsusb 2>/dev/null | grep -qi '0fd9:' && pass 'Elgato Stream Deck connected' || warn 'Optional Elgato Stream Deck is not connected'
+lsusb 2>/dev/null | grep -qi '0fd9:0084' && pass 'Elgato Stream Deck+ connected' || warn 'Optional Elgato Stream Deck+ is not connected'
 {% endif %}
 
 heading 'PipeWire'

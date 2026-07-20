@@ -71,7 +71,7 @@
   ansible.builtin.copy:
     dest: /etc/udev/rules.d/60-smartamp-streamdeck.rules
     content: |
-      KERNEL=="hidraw*", ATTRS{idVendor}=="0fd9", MODE:="0660", GROUP="plugdev"
+      KERNEL=="hidraw*", ATTRS{idVendor}=="0fd9", ATTRS{idProduct}=="0084", MODE:="0660", GROUP="plugdev"
     owner: root
     group: root
     mode: "0644"
