@@ -12,7 +12,7 @@ import { duckingForEvent, VoiceDucker, writeDuckRequest } from '../src/ducking.m
 import { encodePayload, ReSpeakerController, rgb, Xvf3800Device } from '../src/respeaker.mjs'
 import { applyLvaEvent, createState } from '../src/state.mjs'
 import { parseOutputState } from '../src/system-control.mjs'
-import type { LedStateSpec, StreamDeckKey, UsbControlDevice } from '../src/types.mjs'
+import type { LedLocalState, LedStateSpec, StreamDeckKey, UsbControlDevice } from '../src/types.mjs'
 
 test('LVA snapshots and events update shared display state', () => {
   const state = createState()
@@ -258,4 +258,14 @@ test('ReSpeaker state follows voice events and Home Assistant light commands', a
 
   await controller.command('cycle')
   assert.equal(JSON.parse(fs.readFileSync(stateFile, 'utf8')).mode, 'doa')
+
+  // Unchanged state must not rewrite the file: pin the mtime into the past
+  // and confirm an identical write leaves it alone while a real change moves it.
+  const past = new Date('2020-01-01T00:00:00Z')
+  const persisted = JSON.parse(fs.readFileSync(stateFile, 'utf8')) as LedLocalState
+  fs.utimesSync(stateFile, past, past)
+  controller.writeLocal(persisted)
+  assert.equal(fs.statSync(stateFile).mtimeMs, past.getTime())
+  controller.writeLocal({ ...persisted, mode: 'off' })
+  assert.notEqual(fs.statSync(stateFile).mtimeMs, past.getTime())
 })

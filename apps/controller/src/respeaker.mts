@@ -161,8 +161,14 @@ export class ReSpeakerController {
   }
 
   writeLocal(state: LedLocalState): void {
+    const serialized = `${JSON.stringify(state, null, 2)}\n`
+    // Home Assistant light transitions stream light_command events; skip the
+    // SD-card write when the persisted state already matches.
+    try {
+      if (fs.readFileSync(this.stateFile, 'utf8') === serialized) return
+    } catch {}
     const temporary = `${this.stateFile}.tmp`
-    fs.writeFileSync(temporary, `${JSON.stringify(state, null, 2)}\n`)
+    fs.writeFileSync(temporary, serialized)
     fs.renameSync(temporary, this.stateFile)
   }
 
