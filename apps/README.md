@@ -38,9 +38,3 @@ The long-running Python daemon in `audio-manager/src/` makes HiFiBerry the
 default output, selects the XVF3800 microphone, and maintains aux, USB audio,
 the Squeezelite/USB background bus, ducking gain, and acoustic-echo-reference
 PipeWire routes. Its unit tests are colocated in `audio-manager/test/`.
-
-## `smartampctl`
-
-The Python program in `smartampctl/src/` is a short-lived command, not a daemon.
-It changes PipeWire volume or persistent aux/USB route state and exits. Its unit tests are colocated in
-`smartampctl/test/`.

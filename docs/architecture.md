@@ -49,9 +49,7 @@ The initialisation service selects the DAC2 ADC Pro unbalanced line inputs, sets
 The controller is one long-running Node process because ducking and both control
 surfaces consume the same voice, mute, media, and audio-route state.
 The audio manager remains a separate Python daemon because it continuously
-reconciles the PipeWire graph and owns its gain nodes. `smartampctl` remains a
-short-lived CLI so SSH and automation can change persistent state without
-needing a second control protocol.
+reconciles the PipeWire graph and owns its gain nodes.
 
 The Stream Deck driver uses `@elgato-stream-deck/node`, which supports the Plus model's eight key LCDs, four rotary encoders, and 800×100 touch strip. The ReSpeaker module uses USB vendor-control transfers for XVF3800 LED effects. Everything runs headlessly.
 

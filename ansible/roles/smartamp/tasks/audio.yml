@@ -34,16 +34,12 @@
     mode: "0755"
   notify: Restart audio manager
 
-# smartampctl gives SSH scripts the same source and volume controls the Stream
-# Deck exposes physically; the controller itself acts on wpctl and the state
-# file directly.
-- name: Install Smart Amp control command
-  ansible.builtin.copy:
-    src: "{{ smartamp_source_dir }}/smartampctl/src/smartampctl.py"
-    dest: /usr/local/bin/smartampctl
-    owner: root
-    group: root
-    mode: "0755"
+# The controller acts on wpctl and the audio state file directly; the retired
+# smartampctl helper must not linger as a stale command on upgraded devices.
+- name: Remove retired smartampctl command
+  ansible.builtin.file:
+    path: /usr/local/bin/smartampctl
+    state: absent
 
 # ALSA mixer defaults are not guaranteed after a clean image. Apply the chosen
 # ADC pins/gain and a conservative amplifier level on every boot.

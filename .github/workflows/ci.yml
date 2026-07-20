@@ -47,11 +47,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Compile Python clients
-        run: python -m compileall -q apps/audio-manager/src apps/smartampctl/src
+        run: python -m compileall -q apps/audio-manager/src
       - name: Test audio manager
         run: python -m unittest discover -s apps/audio-manager/test
-      - name: Test control command
-        run: python -m unittest discover -s apps/smartampctl/test
 
   ansible:
     name: Ansible syntax

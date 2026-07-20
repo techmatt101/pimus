@@ -151,8 +151,8 @@ def load_state(path: Path, config: dict[str, Any]) -> dict[str, Any]:
             for name, source in config["sources"].items()
         }
     }
-    # smartampctl may toggle a route at the same time as a reconcile. Keep the
-    # complete merge and optional write under its cross-process lock.
+    # The controller may toggle a route at the same time as a reconcile. Keep
+    # the complete merge and optional write under its cross-process lock.
     with state_lock(path):
         current: Any = None
         try:
@@ -196,7 +196,7 @@ def atomic_json(path: Path, value: dict[str, Any]) -> None:
 
 @contextmanager
 def state_lock(path: Path, timeout_seconds: float = 2.0) -> Iterator[None]:
-    """Use the same atomic directory lock as smartampctl and the controller."""
+    """Use the same atomic directory lock as the Node controller."""
     path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = Path(f"{path}.lock")
     deadline = time.monotonic() + timeout_seconds

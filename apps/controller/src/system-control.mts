@@ -10,9 +10,9 @@ const execFileAsync = promisify(execFile)
 const lockWait = new Int32Array(new SharedArrayBuffer(4))
 
 /**
- * The audio state file is shared with smartampctl and read by the audio
- * manager, so writes use the same .lock-directory protocol as the Python
- * side: atomic mkdir, 30 s stale-lock recovery, unique temp file, rename.
+ * The audio manager also reads and rewrites the audio state file, so writes
+ * use the same .lock-directory protocol as the Python side: atomic mkdir,
+ * 30 s stale-lock recovery, unique temp file, rename.
  */
 function withStateLock<T>(stateFile: string, callback: () => T): T {
   fs.mkdirSync(path.dirname(stateFile), { recursive: true })

@@ -63,7 +63,7 @@
       # Supplies pactl, which the audio router uses to select devices, create
       # loopbacks, and adjust volume.
       - pulseaudio-utils
-      # Runs the audio router and smartampctl utility; hardware control is Node.
+      # Runs the audio router; hardware control is Node.
       - python3
       # Lets PipeWire request safe real-time scheduling for glitch-free audio.
       - rtkit

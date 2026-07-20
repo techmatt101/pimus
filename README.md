@@ -53,7 +53,6 @@ This project installs no Home Assistant, Music Assistant, or LMS server componen
 
 - `apps/controller`: one TypeScript/Node daemon for Stream Deck+, ReSpeaker LEDs, and voice-state events. `make provision` compiles it here and deploys the resulting JavaScript.
 - `apps/audio-manager`: the Python PipeWire reconciliation daemon and its colocated tests.
-- `apps/smartampctl`: the one-shot Python command used from SSH and by local automation.
 - `ansible`: inventory, playbooks, deployment tasks, generated configuration, and systemd templates.
 
 Each app owns its `src/` directory and, where applicable, a sibling `test/`
@@ -77,14 +76,7 @@ Dial 1 controls volume. Dials 2 and 3 control aux and USB routes. Dial 4 starts 
 The controller opens the Stream Deck+ model specifically, queues rapid encoder
 steps in order, and shows the current AUX/USB route state on those two dials.
 
-The same controls are available on the Pi:
-
-```sh
-sudo -u smartamp smartampctl source aux toggle
-sudo -u smartamp smartampctl source usb toggle
-sudo -u smartamp smartampctl volume up
-sudo smartamp-doctor
-```
+Run `sudo smartamp-doctor` on the Pi for a health report.
 
 ## What gets installed
 

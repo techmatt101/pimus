@@ -8,7 +8,7 @@ All supported settings live in `ansible/inventory/group_vars/all.yml`. Re-run `m
 
 Device match expressions search every PipeWire/Pulse node property. Use `pactl list sinks` and `pactl list sources` on the Pi if your firmware exposes different names.
 
-Set `smartamp_aux_enabled` to choose whether aux monitoring starts on boot. USB monitoring is initially enabled when `usb_audio_gadget_enabled` is true. The Stream Deck or `smartampctl` persists subsequent route state.
+Set `smartamp_aux_enabled` to choose whether aux monitoring starts on boot. USB monitoring is initially enabled when `usb_audio_gadget_enabled` is true. The Stream Deck persists subsequent route state.
 
 Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Squeezelite and USB computer audio share the `smartamp_background_sink_name` bus and fade to `smartamp_voice_duck_volume_percent` during an Assist interaction. `smartamp_voice_duck_fade_ms` controls the transition. The controller refreshes a runtime lease every `smartamp_voice_duck_refresh_seconds`; the audio manager restores full background volume after `smartamp_voice_duck_timeout_seconds` if that lease becomes stale.
 
@@ -57,11 +57,6 @@ The ring is purely reactive: it renders the configured appearance for the
 current voice, media, timer, mute, or error state and nothing else. There is
 no separately controllable lamp mode, no persisted LED state, and no Home
 Assistant light entity.
-
-The state files and PipeWire session belong to the `smartamp` service account,
-so run shell automation as that user, for example
-`sudo -u smartamp smartampctl source aux toggle`. Invoked as another user,
-`smartampctl` explains this instead of failing with a traceback.
 
 Feature flags are reversible: disabling voice, Squeezelite, USB gadget audio,
 or every controller consumer stops the relevant service and removes its

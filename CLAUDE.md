@@ -21,8 +21,6 @@ Keep these boundaries clear:
   continuously reconciles the PipeWire graph, default devices, aux/USB
   loopbacks, the duckable Squeezelite/USB background bus, and the XVF3800
   acoustic-echo-cancellation reference.
-- `smartampctl` is a short-lived Python CLI, not a daemon. It changes volume or
-  persistent route state and exits.
 - Linux Voice Assistant and Squeezelite are external upstream applications
   installed and configured by Ansible; do not duplicate their logic locally.
 
@@ -44,9 +42,6 @@ apps/
     tsconfig.json
   audio-manager/
     src/                 PipeWire reconciliation daemon
-    test/                Python unit tests
-  smartampctl/
-    src/                 One-shot command-line utility
     test/                Python unit tests
 ansible/
   inventory/             User-editable device configuration
@@ -100,8 +95,6 @@ runtime validation, and relevant documentation together.
 
 - Keep the audio manager focused on PipeWire graph reconciliation and gain on
   graph-owned routes. Voice-event policy stays in the Node controller.
-- Keep `smartampctl` fast and one-shot; do not turn it into another resident
-  service.
 - Prefer the Python standard library unless a dependency has a clear runtime
   benefit and is provisioned explicitly by Ansible.
 
