@@ -154,6 +154,17 @@ test('invalid device and action configuration fails at startup', (context) => {
     },
   }))
   assert.throws(() => loadConfig(configFile), /invalid audio command/)
+
+  fs.writeFileSync(configFile, JSON.stringify({
+    ...base,
+    streamdeck: {
+      enabled: true,
+      brightness: 40,
+      keys: [{ label: 'VOICE', color: '#123456', action: { type: 'lva', command: 'typo_listen' } }],
+      dials: [],
+    },
+  }))
+  assert.throws(() => loadConfig(configFile), /invalid LVA command/)
 })
 
 test('key and dial appearances reflect audio and voice state', () => {

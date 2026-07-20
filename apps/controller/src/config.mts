@@ -9,6 +9,15 @@ const SOURCE_COMMANDS = new Set(['on', 'off', 'toggle'])
 const VOLUME_COMMANDS = new Set(['up', 'down', 'mute'])
 const LED_COMMANDS = new Set(['cycle', 'voice', 'off', 'single', 'breath', 'rainbow', 'doa', 'ring'])
 const LED_EFFECTS = new Set(['off', 'breath', 'rainbow', 'single', 'doa', 'ring'])
+const LVA_COMMANDS = new Set([
+  'start_listening', 'stop_pipeline',
+  'mute_mic', 'unmute_mic', 'mute_toggle',
+  'volume_up', 'volume_down',
+  'stop_timer_ringing',
+  'pause_media_player', 'resume_media_player', 'stop_media_player', 'media_toggle',
+  'button_single_press', 'button_double_press', 'button_triple_press', 'button_long_press',
+  'stop',
+])
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -39,6 +48,8 @@ function validateAction(value: unknown, location: string, webhookBase: unknown):
     if (!commands.has(value.command)) throw new Error(`${location} has an invalid audio command`)
   } else if (value.type === 'led' && !LED_COMMANDS.has(value.command)) {
     throw new Error(`${location} has an invalid LED command`)
+  } else if (value.type === 'lva' && !LVA_COMMANDS.has(value.command)) {
+    throw new Error(`${location} has an invalid LVA command`)
   }
 }
 
