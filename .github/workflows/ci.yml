@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# Tests need repository contents only; keep the default workflow token read-only.
+permissions:
+  contents: read
+
+jobs:
+  controller:
+    name: Controller (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 18.18 is the declared floor; a current LTS catches ecosystem drift.
+        node: [18.18, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: apps/controller/package-lock.json
+      - name: Install locked controller dependencies
+        working-directory: apps/controller
+        run: npm ci
+      - name: Build and test controller
+        working-directory: apps/controller
+        run: npm test
+
+  python:
+    name: Python clients (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Bookworm uses 3.11; 3.13 covers the newer Pi OS/Trixie runtime.
+        python: ['3.11', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Compile Python clients
+        run: python -m compileall -q apps/audio-manager/src apps/smartampctl/src
+      - name: Test audio manager
+        run: python -m unittest discover -s apps/audio-manager/test
+      - name: Test control command
+        run: python -m unittest discover -s apps/smartampctl/test
+
+  ansible:
+    name: Ansible syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install Ansible
+        run: pip install 'ansible-core>=2.18,<2.21'
+      - name: Install required collections
+        run: ansible-galaxy collection install -r ansible/requirements.yml
+      - name: Check playbook syntax
+        env:
+          ANSIBLE_CONFIG: ${{ github.workspace }}/ansible/ansible.cfg
+        run: ansible-playbook ansible/playbooks/site.yml --syntax-check
