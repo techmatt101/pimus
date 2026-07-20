@@ -27,7 +27,8 @@ jobs:
           cache-dependency-path: apps/controller/package-lock.json
       - name: Install locked controller dependencies
         working-directory: apps/controller
-        run: npm ci
+        # Match the Pi deployment: jpeg-js is the supported non-native fallback.
+        run: npm ci --omit=peer
       - name: Build and test controller
         working-directory: apps/controller
         run: npm test
