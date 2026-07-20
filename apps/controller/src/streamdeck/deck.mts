@@ -8,7 +8,7 @@ import {
 
 import type { DeckRenderer } from './renderer.mjs'
 import type { ActionHandler } from '../actions/handler.mjs'
-import type { StreamDeckConfig } from '../types.mjs'
+import type { StreamDeckLayout } from '../types.mjs'
 
 const sleep = (milliseconds: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, milliseconds))
@@ -33,7 +33,7 @@ export function createActionDispatcher(
 }
 
 export interface DeckLoopOptions {
-  config: StreamDeckConfig
+  layout: StreamDeckLayout
   renderer: DeckRenderer
   handleAction: ActionHandler
   listDevices?: () => Promise<StreamDeckDeviceInfo[]>
@@ -44,7 +44,7 @@ export interface DeckLoopOptions {
 
 /** Owns the Stream Deck lifecycle: connect, bind input, reconnect on loss. */
 export async function runDeckLoop({
-  config,
+  layout,
   renderer,
   handleAction,
   listDevices = listStreamDecks,
@@ -67,7 +67,7 @@ export async function runDeckLoop({
       deck = await openDevice(device.path)
       renderer.setDeck(deck)
       logger.log(`opened ${deck.PRODUCT_NAME}`)
-      await deck.setBrightness(config.brightness)
+      await deck.setBrightness(layout.brightness)
       await renderer.render()
 
       // A USB unplug can emit several errors; without a listener still
@@ -77,18 +77,18 @@ export async function runDeckLoop({
       const disconnected = new Promise<void>((resolve) => deck?.once('error', () => resolve()))
       deck.on('down', (controlDefinition) => {
         if (controlDefinition.type === 'button') {
-          void dispatch(config.keys[controlDefinition.index]?.action)
+          void dispatch(layout.keys[controlDefinition.index]?.action)
         } else if (controlDefinition.type === 'encoder') {
-          void dispatch(config.dials[controlDefinition.index]?.press)
+          void dispatch(layout.dials[controlDefinition.index]?.press)
         }
       })
       deck.on('rotate', (controlDefinition, amount) => {
-        const dial = config.dials[controlDefinition.index]
+        const dial = layout.dials[controlDefinition.index]
         const selected = amount < 0 ? dial?.left : dial?.right
         for (let count = 0; count < Math.min(10, Math.abs(amount)); count += 1) void dispatch(selected)
       })
       deck.on('lcdShortPress', (_controlDefinition, position) => {
-        void dispatch(config.dials[Math.min(3, Math.floor(position.x / 200))]?.press)
+        void dispatch(layout.dials[Math.min(3, Math.floor(position.x / 200))]?.press)
       })
       await disconnected
     } catch (error) {

@@ -90,76 +90,14 @@
       - (voice_assistant_port | int) != (voice_assistant_peripheral_port | int)
       - (respeaker_led_brightness | int) >= 0
       - (respeaker_led_brightness | int) <= 255
-      - (streamdeck_brightness | int) >= 0
-      - (streamdeck_brightness | int) <= 100
-      - (streamdeck_keys | length) <= 8
-      - (streamdeck_dials | length) <= 4
       - home_assistant_webhook_base == '' or home_assistant_webhook_base is match('^https?://')
     fail_msg: >-
       Hardware/controller inventory contains an out-of-range value, conflicting
-      voice ports, too many Stream Deck controls, or an invalid webhook URL.
+      voice ports, or an invalid webhook URL.
 
-# YAML 1.1 treats unquoted on/off as booleans. Flatten every configured gesture
-# and require string commands here before it can become broken controller JSON.
-- name: Collect configured Stream Deck actions
-  ansible.builtin.set_fact:
-    smartamp_streamdeck_actions: >-
-      {{
-        (streamdeck_keys | map(attribute='action', default={'type': 'noop'}) | list)
-        + (streamdeck_dials | map(attribute='left', default={'type': 'noop'}) | list)
-        + (streamdeck_dials | map(attribute='right', default={'type': 'noop'}) | list)
-        + (streamdeck_dials | map(attribute='press', default={'type': 'noop'}) | list)
-      }}
-  when: streamdeck_enabled | bool
-
-- name: Validate configured Stream Deck actions
-  ansible.builtin.assert:
-    that:
-      - item.type in ['noop', 'lva', 'audio', 'webhook']
-      - item.type in ['noop', 'webhook'] or (item.command is defined and item.command is string)
-      - item.type != 'webhook' or (item.id is defined and item.id is string and item.id | length > 0)
-      - item.type != 'webhook' or home_assistant_webhook_base is match('^https?://')
-      - >-
-        item.type != 'audio' or
-        ((item.source is defined and item.source in ['aux', 'usb'] and item.command in ['on', 'off', 'toggle']) or
-         (item.source is not defined and item.command in ['up', 'down', 'mute']))
-      - >-
-        item.type != 'lva' or item.command in
-        ['start_listening', 'stop_pipeline', 'mute_mic', 'unmute_mic', 'mute_toggle',
-         'volume_up', 'volume_down', 'stop_timer_ringing', 'pause_media_player',
-         'resume_media_player', 'stop_media_player', 'media_toggle',
-         'button_single_press', 'button_double_press', 'button_triple_press',
-         'button_long_press', 'stop']
-    fail_msg: >-
-      Stream Deck action {{ item }} has an invalid type, source, command, or
-      webhook identifier. Quote YAML commands such as "on" and "off".
-  loop: "{{ smartamp_streamdeck_actions }}"
-  loop_control:
-    label: "{{ item.type | default('missing type') }}:{{ item.command | default(item.id | default('')) }}"
-  when: streamdeck_enabled | bool
-
-# Labels and colours affect only rendering, so validate them once at provision
-# time rather than carrying the same schema checks in the long-running process.
-- name: Validate configured Stream Deck keys
-  ansible.builtin.assert:
-    that:
-      - item.label is defined and item.label is string
-      - item.color is defined and item.color is match('^#[0-9A-Fa-f]{6}$')
-    fail_msg: "Each Stream Deck key requires a text label and #RRGGBB colour."
-  loop: "{{ streamdeck_keys }}"
-  loop_control:
-    label: "{{ item.label | default('missing label') }}"
-  when: streamdeck_enabled | bool
-
-- name: Validate configured Stream Deck dial labels
-  ansible.builtin.assert:
-    that:
-      - item.label is defined and item.label is string
-    fail_msg: "Each Stream Deck dial requires a text label."
-  loop: "{{ streamdeck_dials }}"
-  loop_control:
-    label: "{{ item.label | default('missing label') }}"
-  when: streamdeck_enabled | bool
+# The Stream Deck key/dial layout is compiled into the controller
+# (streamdeck/layout.mts) and validated by its own Node test, so there is no
+# YAML layout to schema-check here.
 
 # The XVF3800 protocol accepts only the documented effects and byte brightness.
 # Check every state colour here so a typo cannot turn into an unintended LED.

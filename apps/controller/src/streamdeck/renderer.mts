@@ -2,7 +2,7 @@ import type { StreamDeck } from '@elgato-stream-deck/node'
 
 import { createImage, drawRectangle, drawText } from './bitmap.mjs'
 import { indicatorFor } from '../actions/catalog.mjs'
-import type { AudioState, ControlState, StreamDeckConfig, StreamDeckDial, StreamDeckKey } from '../types.mjs'
+import type { AudioState, ControlState, StreamDeckDial, StreamDeckKey, StreamDeckLayout } from '../types.mjs'
 
 export interface KeyAppearance {
   label: string
@@ -30,8 +30,8 @@ export function keyAppearance(
 
 /**
  * The value line under a dial's label. What a dial reports follows from the
- * actions bound to it rather than its position, so reordering `streamdeck_dials`
- * keeps each dial's readout correct.
+ * actions bound to it rather than its position, so reordering the dials in
+ * layout.mts keeps each dial's readout correct.
  */
 export function dialDetail(
   state: ControlState,
@@ -48,23 +48,24 @@ export function dialDetail(
 }
 
 export interface DeckRendererOptions {
-  /** Absent in LED-only deployments, where nothing is ever rendered. */
-  config: StreamDeckConfig | undefined
+  layout: StreamDeckLayout
   state: ControlState
   readAudioState: () => AudioState
   logger?: Pick<Console, 'error'>
 }
 
 export class DeckRenderer {
-  readonly config: StreamDeckConfig | undefined
+  readonly layout: StreamDeckLayout
   readonly state: ControlState
   private readonly readAudioState: () => AudioState
   private readonly logger: Pick<Console, 'error'>
+  // Null until a deck is attached; LED-only deployments never attach one, so
+  // render is a no-op there without any special-casing of the layout.
   private deck: StreamDeck | null = null
   private renderPending = false
 
-  constructor({ config, state, readAudioState, logger = console }: DeckRendererOptions) {
-    this.config = config
+  constructor({ layout, state, readAudioState, logger = console }: DeckRendererOptions) {
+    this.layout = layout
     this.state = state
     this.readAudioState = readAudioState
     this.logger = logger
@@ -87,14 +88,14 @@ export class DeckRenderer {
   async render(): Promise<void> {
     this.renderPending = false
     const deck = this.deck
-    const config = this.config
-    if (!deck || !config) return
+    if (!deck) return
+    const layout = this.layout
     try {
       const audioState = this.readAudioState()
       // Draw all eight keys: the deck retains its last image, so slots without
       // a configured key must be blanked rather than skipped.
       for (let index = 0; index < 8; index += 1) {
-        const key = config.keys[index]
+        const key = layout.keys[index]
         if (!key) {
           await deck.fillKeyBuffer(index, createImage(120, 120, '#000000').buffer, { format: 'rgb' })
           continue
@@ -107,7 +108,7 @@ export class DeckRenderer {
       }
 
       const lcd = createImage(800, 100, '#101820')
-      config.dials.slice(0, 4).forEach((dial, index) => {
+      layout.dials.slice(0, 4).forEach((dial, index) => {
         drawRectangle(lcd, index * 200 + 1, 1, 198, 98, index % 2 ? '#17242d' : '#101820')
         drawText(lcd, dial.label, index * 200 + 100, 30, 3, '#80deea')
         const detail = dialDetail(this.state, audioState, dial).slice(0, 12)

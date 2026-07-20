@@ -11,9 +11,8 @@
 //   - streamdeck/renderer.mts reads the `indicator` below to decide the active
 //     colour and label, so key feedback lives with the action it belongs to.
 //
-// Bindings themselves live in ansible/inventory/group_vars/all.yml under
-// `streamdeck_keys` and `streamdeck_dials`; docs/controls.md is the reference
-// table. When you add an action, update all three together.
+// Bindings themselves live in streamdeck/layout.mts; docs/controls.md is the
+// reference table. When you add an action, update all three together.
 
 import type { Action, AudioState, ControlState } from '../types.mjs'
 

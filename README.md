@@ -87,7 +87,7 @@ The default Stream Deck+ layout is:
 | Stop | Stop voice, ringing timer, and LVA media |
 | Timer | Dismiss a ringing timer |
 
-Dial 1 controls volume. Dials 2 and 3 control aux and USB routes. Dial 4 starts a voice conversation. The JSON configuration is generated from `streamdeck_keys` and `streamdeck_dials` in the Ansible variables.
+Dial 1 controls volume. Dials 2 and 3 control aux and USB routes. Dial 4 starts a voice conversation. The layout is defined in `apps/controller/src/streamdeck/layout.mts`.
 The controller opens the Stream Deck+ model specifically, queues rapid encoder
 steps in order, and shows the current AUX/USB route state on those two dials.
 

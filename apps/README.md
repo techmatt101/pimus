@@ -20,8 +20,9 @@ are grouped by the boundary they own:
 - `audio/` — `manager-client.mts` mirrors route state over the audio manager
   socket, `volume.mts` runs `wpctl` and polls PipeWire output state, and
   `ducking.mts` turns voice events into duck requests on that same socket.
-- `streamdeck/` — `deck.mts` owns discovery, reconnects, and input events, while
-  `renderer.mts` and `bitmap.mts` draw the keys and LCD strip.
+- `streamdeck/` — `layout.mts` is the editable key/dial layout, `deck.mts` owns
+  discovery, reconnects, and input events, and `renderer.mts` and `bitmap.mts`
+  draw the keys and LCD strip.
 - `voice/` — `lva-client.mts` owns the reconnecting Linux Voice Assistant
   WebSocket, `respeaker.mts` maps voice state to an LED appearance, and
   `xvf3800-device.mts` holds the XMOS vendor-control protocol and its USB

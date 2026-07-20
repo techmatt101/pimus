@@ -25,57 +25,24 @@ test('a controller socket is required, since it now carries duck requests too', 
   assert.throws(() => loadConfig(configFile), /must define audio_socket/)
 })
 
-test('invalid device configuration fails at startup', (context) => {
+test('an idle ReSpeaker state is required when the LEDs are enabled', (context) => {
   const configFile = writeConfig(context, {
     voice_enabled: false,
     audio_socket: '/run/smartamp/audio.sock',
     ducking: { enabled: false },
-    streamdeck: { enabled: true, brightness: 101, keys: [], dials: [] },
-    respeaker: { enabled: false },
+    streamdeck: { enabled: false },
+    respeaker: { enabled: true },
   })
-  assert.throws(() => loadConfig(configFile), /brightness from 0 to 100/)
+  assert.throws(() => loadConfig(configFile), /must define an idle ReSpeaker state/)
 })
 
-test('a mistyped Stream Deck action names the control that is wrong', (context) => {
+test('a minimal deployment config loads, layout is compiled in separately', (context) => {
   const configFile = writeConfig(context, {
     voice_enabled: false,
     audio_socket: '/run/smartamp/audio.sock',
     ducking: { enabled: false },
-    streamdeck: {
-      enabled: true,
-      brightness: 40,
-      keys: [{ label: 'AUX', color: '#4a148c', action: { type: 'audio', source: 'aux', command: 'flip' } }],
-      dials: [{ label: 'VOLUME', press: { type: 'audio', command: 'sideways' } }],
-    },
+    streamdeck: { enabled: true },
     respeaker: { enabled: false },
   })
-  assert.throws(() => loadConfig(configFile), (error: Error) => {
-    assert.match(error.message, /key 0 \(AUX\): unknown route command "flip"/)
-    assert.match(error.message, /dial 0 \(VOLUME\) press: unknown volume command "sideways"/)
-    return true
-  })
-})
-
-test('the configured control surface loads cleanly', (context) => {
-  const configFile = writeConfig(context, {
-    voice_enabled: false,
-    audio_socket: '/run/smartamp/audio.sock',
-    ducking: { enabled: false },
-    streamdeck: {
-      enabled: true,
-      brightness: 40,
-      keys: [
-        { label: 'VOICE', color: '#006064', action: { type: 'lva', command: 'start_listening' } },
-        { label: 'AUX', color: '#4a148c', action: { type: 'audio', source: 'aux', command: 'toggle' } },
-      ],
-      dials: [{
-        label: 'VOLUME',
-        left: { type: 'audio', command: 'down' },
-        right: { type: 'audio', command: 'up' },
-        press: { type: 'audio', command: 'mute' },
-      }],
-    },
-    respeaker: { enabled: false },
-  })
-  assert.equal(loadConfig(configFile).streamdeck?.keys.length, 2)
+  assert.equal(loadConfig(configFile).streamdeck?.enabled, true)
 })

@@ -24,8 +24,17 @@ export interface StreamDeckDial {
   press?: Action
 }
 
-export interface StreamDeckConfig {
+/**
+ * The Stream Deck deployment flag from controller.json. Whether a unit drives a
+ * deck is a per-device choice (`streamdeck_enabled` in inventory); the layout
+ * itself is compiled in, see streamdeck/layout.mts.
+ */
+export interface StreamDeckDeployment {
   enabled: boolean
+}
+
+/** The compiled control surface: panel brightness and the key/dial bindings. */
+export interface StreamDeckLayout {
   brightness: number
   keys: StreamDeckKey[]
   dials: StreamDeckDial[]
@@ -70,7 +79,7 @@ export interface ControllerConfig {
   audio_socket: string
   webhook_base?: string
   ducking?: DuckingConfig
-  streamdeck?: StreamDeckConfig
+  streamdeck?: StreamDeckDeployment
   respeaker?: ReSpeakerConfig
 }
 

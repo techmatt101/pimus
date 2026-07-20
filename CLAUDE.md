@@ -91,9 +91,11 @@ runtime validation, and relevant documentation together.
   the root. Mirror the same folders under `test/`.
 - `actions/catalog.mts` is the single source of truth for the control surface.
   Declare a new action there, give it a runner in `actions/handler.mts`, add it
-  to `docs/controls.md` and the comment block in `all.yml`, then bind it. Key
-  colour and label feedback belongs in the catalog entry's `indicator`, not in
-  the renderer.
+  to `docs/controls.md`, then bind it in `streamdeck/layout.mts`. Key colour and
+  label feedback belongs in the catalog entry's `indicator`, not in the renderer.
+- The Stream Deck key/dial layout is compiled in at `streamdeck/layout.mts`, not
+  in inventory. Only the `streamdeck_enabled` deployment flag lives in Ansible;
+  `layout.test.mts` validates the compiled layout against the catalog.
 - Keep shared display/voice state in `state.mts`.
 - Treat USB and WebSocket disconnects as normal. Log, retain useful state, and
   reconnect without terminating the daemon.

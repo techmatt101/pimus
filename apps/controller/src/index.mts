@@ -5,6 +5,7 @@ import { runVolumeCommand, startOutputMonitor } from './audio/volume.mjs'
 import { loadConfig } from './config.mjs'
 import { createState } from './state.mjs'
 import { runDeckLoop } from './streamdeck/deck.mjs'
+import { STREAMDECK_LAYOUT } from './streamdeck/layout.mjs'
 import { DeckRenderer } from './streamdeck/renderer.mjs'
 import { LvaClient } from './voice/lva-client.mjs'
 import { ReSpeakerController } from './voice/respeaker.mjs'
@@ -24,7 +25,7 @@ const ducker = config.ducking?.enabled
   : null
 
 const renderer = new DeckRenderer({
-  config: config.streamdeck,
+  layout: STREAMDECK_LAYOUT,
   state,
   readAudioState: () => audio.state,
 })
@@ -64,7 +65,7 @@ if (config.voice_enabled) lva.connect()
 
 if (config.streamdeck?.enabled) {
   startOutputMonitor({ state, onStateChange: () => renderer.schedule() })
-  await runDeckLoop({ config: config.streamdeck, renderer, handleAction })
+  await runDeckLoop({ layout: STREAMDECK_LAYOUT, renderer, handleAction })
 } else {
   // The ReSpeaker watch timer and optional LVA socket do the work in LED-only
   // deployments; this explicit wait documents that the process is a daemon.

@@ -84,59 +84,13 @@ respeaker_led_states:
   disconnected: { effect: breath, color: "#d50000" }
   pipeline_error: { effect: breath, color: "#ff1744" }
 
-# Stream Deck+ controls: 8 keys and 4 dials. Each dial binds three actions --
-# left (counter-clockwise), right (clockwise), and press. Pressing the LCD strip
-# above a dial triggers that dial's press action.
-#
-# Every available action, from apps/controller/src/actions/catalog.mts. A typo
-# here fails at controller startup naming the key or dial, so a mistyped binding
-# never becomes a key that silently does nothing. See docs/controls.md.
-#
-#   Voice          { type: lva, command: ... }
-#     start_listening      start a pipeline, same as the wake word
-#     mute_toggle          toggle the microphone mute
-#     media_toggle         play or pause the media player
-#     stop                 stop timer ringing, the pipeline, and media
-#     stop_timer_ringing   silence a ringing timer, leave media playing
-#     <anything else>      forwarded to LVA as-is, no key feedback
-#
-#   Master volume  { type: audio, command: ... }   (no source)
-#     up                   raise the default sink by 5%, capped at 100%
-#     down                 lower the default sink by 5%
-#     mute                 toggle mute on the default sink
-#
-#   Audio route    { type: audio, source: aux|usb, command: ... }
-#     "on"                 enable the route
-#     "off"                disable the route
-#     toggle               flip the route
-#
-#   Webhook        { type: webhook, id: my_automation }
-#                          POST to <home_assistant_webhook_base>/<id>
-#
-#   Nothing        { type: noop }
-#                          bind a dial direction you do not want used
-#
-# Keys bound to mute_toggle, media_toggle, start_listening, or an audio route
-# recolour and relabel themselves while active; everything else keeps the label
-# and colour set here. A dial's readout follows the actions bound to it, so
-# reordering streamdeck_dials keeps each readout correct.
+# Whether this unit drives a Stream Deck+. The key and dial layout itself is
+# compiled into the controller and edited in
+# apps/controller/src/streamdeck/layout.mts; see docs/controls.md. Set this to
+# false for an LED-only deployment with no deck attached.
 streamdeck_enabled: true
-streamdeck_brightness: 40
-streamdeck_keys:
-  - { label: "VOICE", color: "#006064", action: { type: lva, command: start_listening } }
-  - { label: "MIC", color: "#7f0000", action: { type: lva, command: mute_toggle } }
-  - { label: "AUX", color: "#4a148c", action: { type: audio, source: aux, command: toggle } }
-  - { label: "USB", color: "#0d47a1", action: { type: audio, source: usb, command: toggle } }
-  - { label: "PLAY", color: "#1b5e20", action: { type: lva, command: media_toggle } }
-  - { label: "STOP", color: "#b71c1c", action: { type: lva, command: stop } }
-  - { label: "TIMER", color: "#e65100", action: { type: lva, command: stop_timer_ringing } }
-streamdeck_dials:
-  - { label: "VOLUME", left: { type: audio, command: down }, right: { type: audio, command: up }, press: { type: audio, command: mute } }
-  # Quote YAML's boolean-like on/off words so controller.json receives strings.
-  - { label: "AUX", left: { type: audio, source: aux, command: "off" }, right: { type: audio, source: aux, command: "on" }, press: { type: audio, source: aux, command: toggle } }
-  - { label: "USB", left: { type: audio, source: usb, command: "off" }, right: { type: audio, source: usb, command: "on" }, press: { type: audio, source: usb, command: toggle } }
-  - { label: "VOICE", left: { type: noop }, right: { type: noop }, press: { type: lva, command: start_listening } }
 
 # Optional Home Assistant webhook base URL. A Stream Deck action of type
-# "webhook" and an "id" posts to <base>/<id>. No HA token is stored here.
+# "webhook" with an "id" (bound in streamdeck/layout.mts) posts to <base>/<id>.
+# No HA token is stored here.
 home_assistant_webhook_base: ""

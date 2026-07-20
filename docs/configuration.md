@@ -65,14 +65,15 @@ models under `/var/lib/smartamp` are retained for a later re-enable.
 
 ## Stream Deck+
 
-`streamdeck_enabled` turns the control surface on or off, and
-`streamdeck_brightness` sets the panel brightness from 0 to 100.
+`streamdeck_enabled` turns the control surface on or off for this unit. Set it
+to `false` for an LED-only deployment with no deck attached.
 
-Bindings live in `streamdeck_keys` and `streamdeck_dials`. Every available
+The key and dial layout, and the panel brightness, are defined in the
+controller itself at `apps/controller/src/streamdeck/layout.mts`, not in the
+inventory — edit that file and run `make deploy-controller`. Every available
 action, with examples and the key feedback each one produces, is listed in
-[controls](controls.md) and repeated as a comment block directly above those
-variables in the inventory. A mistyped action fails at controller startup with
-the offending key or dial named.
+[controls](controls.md). A mistyped `route`/`volume` command is a compile
+error, and `make test` rejects any action the catalog does not understand.
 
 Webhook actions POST to `home_assistant_webhook_base/<id>`. Configure a Home Assistant webhook trigger and set the base to `http://homeassistant.local:8123/api/webhook`. Treat webhook IDs as secrets if the endpoint is reachable outside a trusted LAN.
 

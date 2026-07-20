@@ -7,11 +7,10 @@
     "enabled": {{ voice_ducking_enabled | to_json }}
   },
   "webhook_base": {{ home_assistant_webhook_base | to_json }},
+  {# The key/dial layout is compiled into the controller (streamdeck/layout.mts);
+     only whether this unit drives a deck is a deployment choice. #}
   "streamdeck": {
-    "enabled": {{ streamdeck_enabled | bool | to_json }},
-    "brightness": {{ streamdeck_brightness | int }},
-    "keys": {{ streamdeck_keys | to_nice_json }},
-    "dials": {{ streamdeck_dials | to_nice_json }}
+    "enabled": {{ streamdeck_enabled | bool | to_json }}
   },
   "respeaker": {
     "enabled": {{ respeaker_led_enabled | bool | to_json }},

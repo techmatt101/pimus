@@ -56,7 +56,7 @@ test('dial readouts follow their bound actions rather than dial position', () =>
     press: { type: 'audio', command: 'mute' },
   } as const
 
-  // The volume dial reports volume wherever it sits in streamdeck_dials.
+  // The volume dial reports volume wherever it sits in the layout.
   assert.equal(dialDetail(state, { sources: {} }, volumeDial), '67%')
   state.outputMuted = true
   assert.equal(dialDetail(state, { sources: {} }, volumeDial), 'MUTED')
