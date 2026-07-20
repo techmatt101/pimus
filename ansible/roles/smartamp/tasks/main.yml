@@ -7,6 +7,9 @@
 - name: Configure the base system
   ansible.builtin.import_tasks: base.yml
 
+- name: Reduce SD-card wear
+  ansible.builtin.import_tasks: sdcard.yml
+
 - name: Configure audio hardware and PipeWire
   ansible.builtin.import_tasks: audio.yml
 

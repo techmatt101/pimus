@@ -4,6 +4,10 @@ smartamp_hostname: office-amp
 smartamp_timezone: Europe/London
 smartamp_service_user: smartamp
 
+# SD-card endurance. Keeps systemd logs for the current boot in RAM only;
+# logs do not survive a reboot. Set to false to restore persistent journals.
+smartamp_journal_in_ram: true
+
 # HiFiBerry DAC2 ADC Pro + AAmp60
 hifiberry_overlay: hifiberry-dacplusadcpro
 hifiberry_card_name: sndrpihifiberry

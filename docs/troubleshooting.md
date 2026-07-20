@@ -14,6 +14,11 @@ sudo journalctl -b -u smartamp-voice-assistant
 sudo journalctl -b -u smartamp-controller
 ```
 
+To spare the SD card, the journal lives in RAM (`smartamp_journal_in_ram`), so
+logs cover the current boot only and do not survive a reboot. Capture output
+before rebooting when investigating a problem, or set the variable to false
+and re-provision to keep persistent journals while debugging.
+
 ## HiFiBerry is missing
 
 Confirm `/boot/firmware/config.txt` contains `force_eeprom_read=0`, `dtparam=audio=off`, and `dtoverlay=hifiberry-dacplusadcpro`. The Pi 5 needs the kernel overlay rather than the older overlay embedded in the HAT EEPROM. Check `dmesg | grep -i hifiberry` after reboot.

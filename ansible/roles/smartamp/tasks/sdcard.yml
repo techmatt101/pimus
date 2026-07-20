@@ -1,0 +1,36 @@
+---
+# Raspberry Pi OS persists the journal under /var/log/journal, and this
+# system's failure modes are chatty: a broken audio graph logs every second
+# until someone notices. Keeping logs for the current boot in RAM removes that
+# steady flash wear; smartamp-doctor and the troubleshooting guide only read
+# the current boot anyway.
+- name: Create journald configuration directory
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: smartamp_journal_in_ram | bool
+
+- name: Keep the systemd journal in RAM
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/smartamp.conf
+    content: |
+      [Journal]
+      Storage=volatile
+      RuntimeMaxUse=32M
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart journald
+  when: smartamp_journal_in_ram | bool
+
+# Restore the distribution default (persistent storage under /var/log/journal)
+# when the override is turned off.
+- name: Remove journal RAM override when disabled
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d/smartamp.conf
+    state: absent
+  notify: Restart journald
+  when: not (smartamp_journal_in_ram | bool)
