@@ -18,6 +18,10 @@ compile and push it. A mistyped `route`/`volume` command is a compile error, and
 `make test` rejects any key or dial the catalog does not understand before it
 can ship.
 
+To see a change before it reaches the Pi, run `make playground`: it runs the
+real controller on this computer against fake hardware and draws the deck,
+pressable, in a browser. See [playground](playground.md).
+
 ## Hardware
 
 The Stream Deck+ has an **8-key grid** (4 columns × 2 rows) and **4 dials**. Each

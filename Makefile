@@ -3,7 +3,7 @@
 ANSIBLE_CONFIG := $(CURDIR)/ansible/ansible.cfg
 export ANSIBLE_CONFIG
 
-.PHONY: help install build provision deploy-controller check test verify doctor
+.PHONY: help install build playground provision deploy-controller check test verify doctor
 
 help:
 	@awk 'BEGIN {FS = ":.*## "; printf "Usage: make <target>\n\n"} /^[a-zA-Z_-]+:.*## / {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -17,6 +17,12 @@ install: ## Install control computer dependencies (Ansible collections, controll
 build: ## Compile the TypeScript controller to apps/controller/dist
 	cd apps/controller && [ -d node_modules ] || npm ci
 	cd apps/controller && npm run build
+
+# Development only. Runs the real controller against fake hardware and fake
+# services, with the Stream Deck drawn in a browser; it never contacts the Pi.
+playground: ## Run the controller locally with a fake Stream Deck in a browser
+	cd apps/playground && [ -d node_modules ] || npm ci
+	cd apps/playground && npm start
 
 provision: build ## Configure the Pi and reboot when boot settings change
 	ansible-playbook ansible/playbooks/site.yml

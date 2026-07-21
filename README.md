@@ -68,6 +68,7 @@ Use the full `make provision` after changing anything outside
 
 - `apps/controller`: one TypeScript/Node daemon for Stream Deck+, ReSpeaker LEDs, and voice-state events. `make provision` compiles it here and deploys the resulting JavaScript.
 - `apps/audio-manager`: the Python PipeWire reconciliation daemon and its colocated tests.
+- `apps/playground`: a development-only debug environment that runs the controller on this computer against fake hardware. Not deployed.
 - `ansible`: inventory, playbooks, deployment tasks, generated configuration, and systemd templates.
 
 Each app owns its `src/` directory and, where applicable, a sibling `test/`
@@ -92,7 +93,9 @@ The controller opens the Stream Deck+ model specifically, queues rapid encoder
 steps in order, and shows the current AUX/USB route state on those two dials.
 
 To change what a key or dial does, see [controls](docs/controls.md) for every
-available action.
+available action. To try a change without a Pi or a Stream Deck attached, run
+`make playground` — it runs the real controller on this computer and draws the
+deck in a browser. See [playground](docs/playground.md).
 
 Run `sudo smartamp-doctor` on the Pi for a health report.
 
@@ -100,7 +103,7 @@ Run `sudo smartamp-doctor` on the Pi for a health report.
 
 PipeWire owns the HiFiBerry output and mixes all clients. Aux remains an independently switchable direct loopback. USB-gadget audio and Sendspin share a background bus that fades to 15% while Assist listens, thinks, speaks, announces, or rings a timer, then returns to full level. Linux Voice Assistant bypasses that bus and presents an ESPHome voice satellite/media player to the remote Home Assistant. One local Node controller consumes its peripheral WebSocket API and coordinates ducking, the Stream Deck+, and ReSpeaker LEDs. Docker is not installed.
 
-See [architecture](docs/architecture.md), [configuration](docs/configuration.md), [controls](docs/controls.md), and [troubleshooting](docs/troubleshooting.md) for details.
+See [architecture](docs/architecture.md), [configuration](docs/configuration.md), [controls](docs/controls.md), [playground](docs/playground.md), and [troubleshooting](docs/troubleshooting.md) for details.
 
 ## Upstream references
 

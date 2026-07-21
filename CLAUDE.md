@@ -48,6 +48,9 @@ apps/
   audio-manager/
     src/                 PipeWire reconciliation daemon
     test/                Python unit tests
+  playground/            Development-only debug environment; never deployed
+    src/                 Fake deck, LVA, audio manager, wpctl, LEDs, web server
+    ui/                  The browser page the fake deck is drawn on
 ansible/
   inventory/             User-editable device configuration
   playbooks/             Provisioning and verification entry points
@@ -185,6 +188,17 @@ confirm the runtime dependencies the Pi receives still resolve.
 
 Keep tests deterministic and hardware-free. Use injected fake USB, HID,
 WebSocket, process, and filesystem boundaries where needed.
+
+`apps/playground` is deliberately outside `make test`, which never installs it.
+It compiles `apps/controller/src` with the controller's own strict settings, so
+after changing a controller module's shape also run:
+
+```sh
+make playground        # or: cd apps/playground && npm run typecheck
+```
+
+Add fakes there rather than changing controller code to accommodate the
+playground; it may only replace boundaries the controller already injects.
 
 Commands such as `make provision`, `make check`, `make verify`, and `make doctor`
 contact or change the real Pi. Do not run them unless the user asks for remote

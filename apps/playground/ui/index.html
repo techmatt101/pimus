@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pimus controller playground</title>
+<style>
+  :root {
+    --bg: #0b0e14;
+    --panel: #121822;
+    --panel-2: #0e131b;
+    --line: #1f2a38;
+    --text: #c9d4e2;
+    --dim: #6b7c93;
+    --accent: #4fd1e5;
+    --ok: #34d399;
+    --bad: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  header {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel-2);
+  }
+  header h1 { font-size: 14px; margin: 0; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  .pills { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+  .pill {
+    display: flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--dim);
+  }
+  .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--bad); }
+  .pill.on { color: var(--text); }
+  .pill.on .dot { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+
+  main { display: grid; grid-template-columns: minmax(520px, 560px) minmax(360px, 1fr); gap: 18px; padding: 18px 20px; align-items: start; }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+  /* On a wide screen the two columns fill the window and scroll on their own,
+     so the log always ends at the bottom edge instead of running off it. */
+  @media (min-width: 981px) {
+    main { height: calc(100vh - 58px); }
+    main > div { height: 100%; min-height: 0; }
+    main > div:first-child { overflow-y: auto; }
+    main > div:last-child { display: flex; flex-direction: column; }
+    main > div:last-child > section:last-child { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  }
+
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  section + section { margin-top: 16px; }
+  h2 { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); margin: 0 0 12px; font-weight: 600; }
+
+  /* --- deck --- */
+  .deck { background: #05070a; border-radius: 12px; padding: 14px; border: 1px solid #1a222d; }
+  .keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .key { position: relative; aspect-ratio: 1; border: 0; padding: 0; background: #000; border-radius: 8px; overflow: hidden; cursor: pointer; outline: 1px solid #1a222d; }
+  .key canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+  .key:active { transform: translateY(1px); }
+  .key .idx { position: absolute; top: 3px; left: 5px; font-size: 9px; color: rgba(255,255,255,.35); pointer-events: none; }
+  .lcd { margin-top: 12px; border-radius: 6px; overflow: hidden; outline: 1px solid #1a222d; cursor: pointer; }
+  .lcd canvas { width: 100%; display: block; image-rendering: pixelated; }
+  .dials { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 12px; }
+  .dial { display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .dial button { background: #151d28; color: var(--text); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; font: inherit; padding: 4px 7px; }
+  .dial button.knob { border-radius: 50%; width: 34px; height: 34px; padding: 0; background: radial-gradient(circle at 35% 30%, #2b3646, #10161e); }
+  .dial button:hover { border-color: var(--accent); color: var(--accent); }
+  .unplugged { text-align: center; color: var(--dim); padding: 6px 0 0; font-size: 11px; }
+
+  /* --- controls --- */
+  .row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .row button, .toolbar button {
+    background: #151d28; color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 4px 9px; font: inherit; cursor: pointer;
+  }
+  .row button:hover, .toolbar button:hover { border-color: var(--accent); color: var(--accent); }
+  .row button.danger:hover { border-color: var(--bad); color: var(--bad); }
+  label.check { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); cursor: pointer; }
+
+  /* --- state --- */
+  .state { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+  .cell { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  .cell .k { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+  .cell .v { font-size: 15px; margin-top: 2px; }
+  .cell .v.on { color: var(--ok); }
+  .cell .v.off { color: var(--dim); }
+  .ring { display: flex; align-items: center; gap: 10px; }
+  .ring .halo { width: 30px; height: 30px; border-radius: 50%; border: 4px solid #222; }
+
+  /* --- log --- */
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .toolbar input { flex: 1; background: var(--panel-2); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 4px 8px; font: inherit; }
+  #log { flex: 1; min-height: 260px; overflow-y: auto; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+  .line { display: grid; grid-template-columns: 8ch 7ch 1ch 1fr; gap: 8px; padding: 1px 0; white-space: pre-wrap; word-break: break-word; }
+  .line .t { color: #3f4d5f; white-space: nowrap; }
+  .line .c { text-transform: uppercase; font-size: 11px; }
+  .line .a { color: var(--dim); text-align: center; }
+  .line .m .detail { color: var(--dim); }
+  .c-system { color: #94a3b8; } .c-deck { color: #7dd3fc; } .c-tile { color: #a3e635; }
+  .c-lva { color: #c084fc; } .c-voice { color: #d8b4fe; } .c-audio { color: #34d399; }
+  .c-wpctl { color: #fbbf24; } .c-led { color: #f472b6; } .c-duck { color: #fb923c; }
+  .c-webhook { color: #60a5fa; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Pimus controller playground</h1>
+  <span style="color:var(--dim)">fake hardware &middot; real controller</span>
+  <div class="pills">
+    <span class="pill" id="pill-deck"><span class="dot"></span>deck</span>
+    <span class="pill" id="pill-lva"><span class="dot"></span>voice</span>
+    <span class="pill" id="pill-audio"><span class="dot"></span>audio</span>
+  </div>
+</header>
+
+<main>
+  <div>
+    <section>
+      <h2>Stream Deck +</h2>
+      <div class="deck">
+        <div class="keys" id="keys"></div>
+        <div class="lcd" id="lcd"><canvas width="800" height="100"></canvas></div>
+        <div class="dials" id="dials"></div>
+        <div class="unplugged" id="hint">click a key to press it &middot; keys 1-8 on your keyboard &middot; scroll a dial to turn it</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>State</h2>
+      <div class="state" id="state"></div>
+    </section>
+  </div>
+
+  <div>
+    <section>
+      <h2>Inject</h2>
+      <div class="row" id="inject"></div>
+      <h2 style="margin-top:14px">Fault injection</h2>
+      <div class="row">
+        <button data-fault="unplug" class="danger">unplug deck</button>
+        <button data-fault="plug">plug deck back in</button>
+        <button data-fault="drop-lva" class="danger">drop voice socket</button>
+        <button data-fault="drop-audio" class="danger">drop audio socket</button>
+        <label class="check"><input type="checkbox" id="simulate" checked> simulate pipeline</label>
+      </div>
+    </section>
+
+    <section>
+      <h2>Event log</h2>
+      <div class="toolbar">
+        <input id="filter" placeholder="filter (e.g. lva, duck, volume)">
+        <button id="clear">clear</button>
+      </div>
+      <div id="log"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const KEY_SIZE = 120
+const LCD = { w: 800, h: 100 }
+
+const post = (body) => fetch('/input', { method: 'POST', body: JSON.stringify(body) })
+
+// --- deck surface ------------------------------------------------------------
+
+const keyContexts = []
+const keysEl = document.getElementById('keys')
+for (let index = 0; index < 8; index += 1) {
+  const button = document.createElement('button')
+  button.className = 'key'
+  button.title = `key ${index}`
+  const canvas = document.createElement('canvas')
+  canvas.width = KEY_SIZE
+  canvas.height = KEY_SIZE
+  const badge = document.createElement('span')
+  badge.className = 'idx'
+  badge.textContent = index
+  button.append(canvas, badge)
+  button.addEventListener('click', () => post({ kind: 'key', index }))
+  keysEl.append(button)
+  keyContexts.push(canvas.getContext('2d'))
+}
+
+const lcdEl = document.getElementById('lcd')
+const lcdContext = lcdEl.querySelector('canvas').getContext('2d')
+lcdEl.addEventListener('click', (event) => {
+  const rect = lcdEl.getBoundingClientRect()
+  post({ kind: 'lcd', x: ((event.clientX - rect.left) / rect.width) * LCD.w })
+})
+
+const dialsEl = document.getElementById('dials')
+for (let index = 0; index < 4; index += 1) {
+  const cell = document.createElement('div')
+  cell.className = 'dial'
+  cell.innerHTML = `<button data-turn="left">&#9664;</button>`
+    + `<button class="knob" data-turn="press" title="press dial ${index}"></button>`
+    + `<button data-turn="right">&#9654;</button>`
+  cell.addEventListener('click', (event) => {
+    const direction = event.target.dataset.turn
+    if (direction) post({ kind: 'dial', index, direction })
+  })
+  cell.addEventListener('wheel', (event) => {
+    event.preventDefault()
+    post({ kind: 'dial', index, direction: event.deltaY > 0 ? 'right' : 'left' })
+  }, { passive: false })
+  dialsEl.append(cell)
+}
+
+document.addEventListener('keydown', (event) => {
+  if (event.target.tagName === 'INPUT') return
+  const index = '12345678'.indexOf(event.key)
+  if (index >= 0) post({ kind: 'key', index })
+})
+
+/** Expands the run-length encoded RGB frame the controller wrote. */
+function draw(context, base64, width, height) {
+  const binary = atob(base64)
+  const pixels = new Uint8ClampedArray(width * height * 4)
+  let offset = 0
+  for (let index = 0; index + 3 < binary.length; index += 4) {
+    let run = binary.charCodeAt(index)
+    const r = binary.charCodeAt(index + 1)
+    const g = binary.charCodeAt(index + 2)
+    const b = binary.charCodeAt(index + 3)
+    while (run-- > 0 && offset < pixels.length) {
+      pixels[offset++] = r
+      pixels[offset++] = g
+      pixels[offset++] = b
+      pixels[offset++] = 255
+    }
+  }
+  context.putImageData(new ImageData(pixels, width, height), 0, 0)
+}
+
+function clearDeck() {
+  for (const context of keyContexts) { context.fillStyle = '#000'; context.fillRect(0, 0, KEY_SIZE, KEY_SIZE) }
+  lcdContext.fillStyle = '#000'
+  lcdContext.fillRect(0, 0, LCD.w, LCD.h)
+}
+clearDeck()
+
+// --- inject buttons ----------------------------------------------------------
+
+const INJECT = [
+  ['wake word', { event: 'start_pipeline' }],
+  ['listening', { event: 'listening' }],
+  ['thinking', { event: 'thinking' }],
+  ['speaking', { event: 'tts_speaking' }],
+  ['tts finished', { event: 'tts_finished' }],
+  ['idle', { event: 'idle' }],
+  ['pipeline error', { event: 'pipeline_error' }],
+  ['timer ticking', { event: 'timer_ticking' }],
+  ['timer ringing', { event: 'timer_ringing' }],
+  ['media playing', { event: 'media_player_playing' }],
+  ['media paused', { event: 'media_player_paused' }],
+  ['mic muted', { event: 'muted', data: { muted: true } }],
+  ['mic live', { event: 'muted', data: { muted: false } }],
+  ['ha offline', { event: 'snapshot', data: { ha_connected: false, muted: false, volume: 1 } }],
+  ['ha online', { event: 'snapshot', data: { ha_connected: true, muted: false, volume: 1 } }],
+]
+const injectEl = document.getElementById('inject')
+for (const [label, payload] of INJECT) {
+  const button = document.createElement('button')
+  button.textContent = label
+  button.addEventListener('click', () => post({ kind: 'event', ...payload }))
+  injectEl.append(button)
+}
+
+document.querySelectorAll('[data-fault]').forEach((button) => {
+  button.addEventListener('click', () => {
+    const fault = button.dataset.fault
+    if (fault === 'unplug') post({ kind: 'deck', plugged: false })
+    else if (fault === 'plug') post({ kind: 'deck', plugged: true })
+    else post({ kind: 'drop', target: fault === 'drop-lva' ? 'lva' : 'audio' })
+  })
+})
+document.getElementById('simulate').addEventListener('change', (event) => {
+  post({ kind: 'simulate', enabled: event.target.checked })
+})
+
+// --- state panel -------------------------------------------------------------
+
+const stateEl = document.getElementById('state')
+const flag = (value) => `<span class="v ${value ? 'on' : 'off'}">${value ? 'yes' : 'no'}</span>`
+
+let wasAttached = false
+function renderState(state) {
+  // A detached deck keeps no image; blank the panel rather than leave the last
+  // frame looking live.
+  if (wasAttached && !state.deckAttached) clearDeck()
+  wasAttached = Boolean(state.deckAttached)
+  for (const [id, live] of [['deck', state.deckAttached], ['lva', state.lvaConnected], ['audio', state.audioConnected]]) {
+    document.getElementById(`pill-${id}`).classList.toggle('on', Boolean(live))
+  }
+  const led = state.led || {}
+  const sources = Object.entries(state.sources || {})
+    .map(([name, on]) => `<div class="cell"><div class="k">route ${name}</div>${flag(on)}</div>`).join('')
+  stateEl.innerHTML = `
+    <div class="cell"><div class="k">assist</div><div class="v">${state.assist}</div></div>
+    <div class="cell"><div class="k">volume</div><div class="v">${state.outputMuted ? 'muted' : Math.round(state.volume * 100) + '%'}</div></div>
+    <div class="cell"><div class="k">mic muted</div>${flag(state.muted)}</div>
+    <div class="cell"><div class="k">media</div>${flag(state.media)}</div>
+    <div class="cell"><div class="k">ducked</div>${flag(state.ducked)}</div>
+    ${sources}
+    <div class="cell" style="grid-column: span 2">
+      <div class="k">respeaker ring</div>
+      <div class="ring">
+        <span class="halo" style="border-color:${led.color || '#222'};background:${led.accent || 'transparent'}"></span>
+        <span class="v">${led.effect || 'off'}<br><span style="font-size:11px;color:var(--dim)">${led.color || ''}</span></span>
+      </div>
+    </div>`
+}
+
+// --- log ---------------------------------------------------------------------
+
+const logEl = document.getElementById('log')
+const filterEl = document.getElementById('filter')
+const ARROW = { out: '→', in: '←', note: '·' }
+let entries = []
+
+function matches(entry) {
+  const needle = filterEl.value.trim().toLowerCase()
+  if (!needle) return true
+  return `${entry.category} ${entry.message} ${entry.detail || ''}`.toLowerCase().includes(needle)
+}
+
+function lineHtml(entry) {
+  const time = new Date(entry.time).toTimeString().slice(0, 8)
+  const detail = entry.detail ? ` <span class="detail">${escapeHtml(entry.detail)}</span>` : ''
+  return `<div class="line"><span class="t">${time}</span>`
+    + `<span class="c c-${entry.category}">${entry.category}</span>`
+    + `<span class="a">${ARROW[entry.direction] || ''}</span>`
+    + `<span class="m">${escapeHtml(entry.message)}${detail}</span></div>`
+}
+
+const escapeHtml = (value) => String(value).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
+
+function appendLog(entry) {
+  entries.push(entry)
+  if (entries.length > 400) entries = entries.slice(-400)
+  if (!matches(entry)) return
+  const atBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40
+  logEl.insertAdjacentHTML('beforeend', lineHtml(entry))
+  while (logEl.childElementCount > 400) logEl.firstElementChild.remove()
+  if (atBottom) logEl.scrollTop = logEl.scrollHeight
+}
+
+const rebuildLog = () => {
+  logEl.innerHTML = entries.filter(matches).map(lineHtml).join('')
+  logEl.scrollTop = logEl.scrollHeight
+}
+filterEl.addEventListener('input', rebuildLog)
+document.getElementById('clear').addEventListener('click', () => { entries = []; rebuildLog() })
+
+// --- stream ------------------------------------------------------------------
+
+const stream = new EventSource('/events')
+stream.onmessage = (message) => {
+  const payload = JSON.parse(message.data)
+  if (payload.type === 'log') appendLog(payload.entry)
+  else if (payload.type === 'state') renderState(payload.state)
+  else if (payload.type === 'keys') {
+    for (const [index, image] of Object.entries(payload.keys || {})) {
+      const context = keyContexts[Number(index)]
+      if (context) draw(context, image, KEY_SIZE, KEY_SIZE)
+    }
+    if (payload.lcd) draw(lcdContext, payload.lcd, LCD.w, LCD.h)
+  }
+}
+stream.onerror = () => { document.getElementById('hint').textContent = 'playground disconnected — is it still running?' }
+</script>
+</body>
+</html>

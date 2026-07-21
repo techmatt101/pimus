@@ -1,0 +1,26 @@
+{
+  "name": "pimus-playground",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local debug playground for the smartamp controller. Development only; never deployed to the Pi.",
+  "engines": {
+    "node": ">=18.18"
+  },
+  "scripts": {
+    "build": "npm run clean && tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "start": "npm run build && node dist/playground/src/main.mjs"
+  },
+  "dependencies": {
+    "@elgato-stream-deck/node": "7.6.3",
+    "usb": "2.18.0",
+    "ws": "8.21.1"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "@types/ws": "8.18.1",
+    "typescript": "5.9.3"
+  }
+}

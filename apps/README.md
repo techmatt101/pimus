@@ -2,6 +2,7 @@
 
 Each deployable program owns its source and tests here. Ansible is responsible
 only for installing these apps, rendering configuration, and managing services.
+`playground` is the exception: a development-only tool that is never deployed.
 
 ## `controller`
 
@@ -40,6 +41,17 @@ action catalog and dispatch, rendering helpers, and ReSpeaker USB protocol
 without requiring either physical device. The package lock pins the dependency
 tree deployed with `npm ci`; TypeScript and the type packages are
 development-only and are omitted from the Pi.
+
+## `playground`
+
+A local debug environment for the controller, run with `make playground`. It has
+its own `package.json` and compiles `controller/src/` alongside `playground/src/`
+so it drives the real modules, replacing only the outermost boundaries: the
+Stream Deck+ becomes a canvas in the browser, the LVA and audio-manager sockets
+become loopback servers speaking the same protocols, `wpctl` becomes a number,
+and the ReSpeaker LED ring becomes a drawing. `playground/ui/index.html` is the
+page. Nothing here ships to the Pi, and `make test` does not build it — see
+[docs/playground.md](../docs/playground.md).
 
 ## `audio-manager`
 
