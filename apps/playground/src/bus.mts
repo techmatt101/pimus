@@ -46,6 +46,10 @@ export interface PlaygroundSnapshot {
 }
 
 export type Message =
+  /** Identifies this process, so a page can tell a restart from a reconnect. */
+  | { type: 'hello'; bootId: string }
+  /** Asks the page to reload itself; sent when the page source changes. */
+  | { type: 'reload' }
   | { type: 'log'; entry: LogEntry }
   | { type: 'keys'; keys: Record<string, string>; lcd?: string }
   | { type: 'state'; state: PlaygroundSnapshot }

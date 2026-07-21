@@ -34,13 +34,15 @@ build output rather than tracked source. The compiler runs only on this
 computer: Ansible mirrors the compiled `dist/src/` tree onto the Pi, preserving
 the folders so import specifiers stay valid, and the Pi keeps running plain ESM
 under the Debian `nodejs` package with no build tooling installed. Run
-`make build` (or `npm run build`) before provisioning.
+`make build` (or `pnpm --filter pimus-controller build`) before provisioning.
 
 `controller/test/` mirrors the same folders and exercises the shared state,
 action catalog and dispatch, rendering helpers, and ReSpeaker USB protocol
-without requiring either physical device. The package lock pins the dependency
-tree deployed with `npm ci`; TypeScript and the type packages are
-development-only and are omitted from the Pi.
+without requiring either physical device. Every dependency is pinned to an exact
+version in `controller/package.json`, which is the only manifest the Pi
+receives: it installs those pins with `npm install --omit=dev --omit=peer`, so
+TypeScript and the type packages never reach it. Development on this computer
+uses the pnpm workspace at the repository root instead.
 
 ## `playground`
 

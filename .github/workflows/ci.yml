@@ -20,18 +20,24 @@ jobs:
         node: [18.18, 22]
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      # pnpm and the TypeScript build run on a current Node; what has to work on
+      # the Pi's floor is the compiled output, so the tests below run on the
+      # matrix runtime instead.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install the locked workspace
+        run: pnpm install --frozen-lockfile
+      - name: Compile the controller
+        run: pnpm --filter pimus-controller build
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-          cache: npm
-          cache-dependency-path: apps/controller/package-lock.json
-      - name: Install locked controller dependencies
+      - name: Test the compiled controller on Node ${{ matrix.node }}
         working-directory: apps/controller
-        # Match the Pi deployment: jpeg-js is the supported non-native fallback.
-        run: npm ci --omit=peer
-      - name: Build and test controller
-        working-directory: apps/controller
-        run: npm test
+        run: node --test $(find dist/test -name '*.test.mjs' | sort)
 
   python:
     name: Python clients (${{ matrix.python }})

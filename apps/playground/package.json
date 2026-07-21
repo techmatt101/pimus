@@ -8,10 +8,13 @@
     "node": ">=18.18"
   },
   "scripts": {
-    "build": "npm run clean && tsc",
+    "build": "pnpm run clean && tsc",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "start": "npm run build && node dist/playground/src/main.mjs"
+    "start": "pnpm run build && node dist/playground/src/main.mjs",
+    "dev": "pnpm run build && pnpm run --parallel \"/^dev:/\"",
+    "dev:compile": "tsc --watch --preserveWatchOutput",
+    "dev:serve": "node --watch dist/playground/src/main.mjs"
   },
   "dependencies": {
     "@elgato-stream-deck/node": "7.6.3",

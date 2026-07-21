@@ -5,6 +5,7 @@
 
 import fs from 'node:fs'
 import http from 'node:http'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import type { Message, PlaygroundBus } from './bus.mjs'
@@ -13,6 +14,16 @@ import type { Message, PlaygroundBus } from './bus.mjs'
 // into dist, so editing ui/index.html only needs a browser refresh. The hops
 // climb out of dist/playground/src/ back to the app root.
 const PAGE_PATH = fileURLToPath(new URL('../../../ui/index.html', import.meta.url))
+
+/**
+ * How long a browser waits before reconnecting a dropped stream. Short, because
+ * this is exactly the gap while `pnpm dev` restarts the process: the page is
+ * back before anyone notices, and the reconnect is what triggers its reload.
+ */
+const RECONNECT_MILLISECONDS = 400
+
+/** Coalesces the several events an editor emits for one save. */
+const WATCH_SETTLE_MILLISECONDS = 100
 
 /** Everything the browser can ask the fake hardware and services to do. */
 export type PlaygroundInput =
@@ -35,8 +46,16 @@ export interface PlaygroundServerOptions {
 
 export class PlaygroundServer {
   readonly port: number
+  /**
+   * Identifies this process to the browser. A page that reconnects and finds a
+   * different id knows the playground restarted under it — which is how a
+   * rebuilt controller ends up on screen without anyone pressing reload.
+   */
+  readonly bootId = `${process.pid}-${Date.now()}`
   private readonly server: http.Server
   private readonly streams = new Set<http.ServerResponse>()
+  private pageWatcher: fs.FSWatcher | null = null
+  private watchTimer: NodeJS.Timeout | null = null
 
   constructor({ bus, onInput, port = 8787 }: PlaygroundServerOptions) {
     this.port = port
@@ -50,17 +69,49 @@ export class PlaygroundServer {
     bus.on('message', (message: Message) => this.push(message))
   }
 
+  /** How many browsers are currently attached to the event stream. */
+  get clients(): number {
+    return this.streams.size
+  }
+
   async start(): Promise<string> {
     await new Promise<void>((resolve, reject) => {
       this.server.once('error', reject)
       this.server.listen(this.port, '127.0.0.1', () => resolve())
     })
+    this.watchPage()
     return `http://127.0.0.1:${this.port}/`
   }
 
   close(): void {
+    if (this.watchTimer) clearTimeout(this.watchTimer)
+    this.pageWatcher?.close()
     for (const stream of this.streams) stream.end()
     this.server.close()
+  }
+
+  /**
+   * Reloads open pages when the page source changes. The directory is watched
+   * rather than the file, because an editor that saves by renaming replaces the
+   * inode a single-file watch is holding.
+   */
+  private watchPage(): void {
+    const directory = path.dirname(PAGE_PATH)
+    const name = path.basename(PAGE_PATH)
+    try {
+      this.pageWatcher = fs.watch(directory, (_event, changed) => {
+        if (changed !== null && changed !== name) return
+        if (this.watchTimer) clearTimeout(this.watchTimer)
+        this.watchTimer = setTimeout(() => {
+          this.watchTimer = null
+          this.push({ type: 'reload' })
+        }, WATCH_SETTLE_MILLISECONDS)
+        this.watchTimer.unref()
+      })
+    } catch {
+      // Watching is a convenience; a missing inotify watch must not stop the
+      // playground from running.
+    }
   }
 
   private page(response: http.ServerResponse): void {
@@ -82,7 +133,11 @@ export class PlaygroundServer {
       'cache-control': 'no-store',
       connection: 'keep-alive',
     })
+    // Browsers wait three seconds before retrying by default, which is most of
+    // a restart spent staring at a dead page.
+    response.write(`retry: ${RECONNECT_MILLISECONDS}\n\n`)
     this.streams.add(response)
+    response.write(`data: ${JSON.stringify({ type: 'hello', bootId: this.bootId } satisfies Message)}\n\n`)
     // A page opened mid-session catches up on the current deck face, state and
     // recent log instead of waiting for the next change.
     for (const message of bus.replay()) response.write(`data: ${JSON.stringify(message)}\n\n`)

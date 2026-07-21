@@ -21,12 +21,13 @@ The optional USB audio input changes the Pi 5 USB-C port into a peripheral port.
 
 On the fresh Pi, use Raspberry Pi Imager to enable SSH and create your normal admin user. From this control computer:
 
-The control computer needs Python with Ansible, plus Node.js 18.18 or newer and
-npm to compile the controller. The Pi itself needs neither Ansible nor a
-TypeScript toolchain.
+The control computer needs Python with Ansible, plus Node.js and
+[pnpm](https://pnpm.io/installation) to compile the controller. The Pi itself
+needs neither Ansible, pnpm, nor a TypeScript toolchain.
 
 ```sh
 python3 -m pip install --user ansible
+corepack enable pnpm   # or: npm install -g pnpm
 make install
 ```
 
@@ -72,7 +73,10 @@ Use the full `make provision` after changing anything outside
 - `ansible`: inventory, playbooks, deployment tasks, generated configuration, and systemd templates.
 
 Each app owns its `src/` directory and, where applicable, a sibling `test/`
-directory. See [`apps/README.md`](apps/README.md) for the module boundaries.
+directory. See [`apps/README.md`](apps/README.md) for the module boundaries. The
+two Node apps form a pnpm workspace, so one `pnpm install` at the root sets up
+both; the workspace and its lockfile are development tooling and never reach the
+Pi, which installs the controller's exact pins with plain npm.
 
 ## Everyday control
 
@@ -101,7 +105,8 @@ Stream Deck+ model specifically and queues rapid encoder steps in order.
 To change what a key or dial does, see [controls](docs/controls.md) for every
 available action. To try a change without a Pi or a Stream Deck attached, run
 `make playground` — it runs the real controller on this computer and draws the
-deck in a browser. See [playground](docs/playground.md).
+deck in a browser — or `make dev` to have it rebuild and reload as you edit. See
+[playground](docs/playground.md).
 
 Run `sudo smartamp-doctor` on the Pi for a health report.
 

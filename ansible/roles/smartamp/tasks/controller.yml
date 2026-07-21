@@ -102,18 +102,17 @@
     - "{{ smartamp_app_dir }}/controller/src"
   when: smartamp_controller_enabled | bool
 
-# package.json lists direct modules; the lockfile pins every transitive version
-# so a fresh Pi receives the same controller dependency tree as a tested build.
-- name: Install hardware controller manifests
+# package.json pins every direct dependency to an exact version. The control
+# computer develops in a pnpm workspace whose lockfile stays there; the Pi
+# installs with plain npm so it needs no extra tooling, and npm writes its own
+# lockfile here on the first install, keeping later runs reproducible.
+- name: Install hardware controller manifest
   ansible.builtin.copy:
-    src: "{{ smartamp_source_dir }}/controller/{{ item }}"
-    dest: "{{ smartamp_app_dir }}/controller/{{ item }}"
+    src: "{{ smartamp_source_dir }}/controller/package.json"
+    dest: "{{ smartamp_app_dir }}/controller/package.json"
     owner: root
     group: root
     mode: "0644"
-  loop:
-    - package.json
-    - package-lock.json
   register: controller_manifests
   when: smartamp_controller_enabled | bool
 
@@ -132,7 +131,7 @@
 # Omit development tooling and the optional native JPEG peer. Elgato falls back
 # to jpeg-js, avoiding an unnecessary native image build chain on the Pi.
 - name: Install hardware controller dependencies
-  ansible.builtin.command: npm ci --omit=dev --omit=peer --no-audit --no-fund
+  ansible.builtin.command: npm install --omit=dev --omit=peer --no-audit --no-fund
   args:
     chdir: "{{ smartamp_app_dir }}/controller"
   when:

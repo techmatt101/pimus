@@ -45,7 +45,6 @@ apps/
       support/           Shared test doubles; the one folder not mirroring src/
     dist/                Compiled .mjs output; build artifact, not tracked
     package.json
-    package-lock.json
     tsconfig.json
   audio-manager/
     src/                 PipeWire reconciliation daemon
@@ -68,8 +67,11 @@ tests inside the app that owns them.
 - User configuration lives in `ansible/inventory/group_vars/all.yml`.
 - Runtime JSON and systemd units are generated from
   `ansible/roles/smartamp/templates/`; do not rely on hand-edited target files.
-- Node dependencies must be declared and exactly locked in
-  `apps/controller/package.json` and `package-lock.json`.
+- Node apps are a pnpm workspace (`pnpm-workspace.yaml`, root `pnpm-lock.yaml`)
+  on the control computer only. Every controller dependency is pinned to an
+  exact version in `apps/controller/package.json`, because that file is the only
+  manifest the Pi receives and it installs with plain `npm install`.
+  `apps/playground` must pin the identical versions; `make test` enforces it.
 - Service relationships are documented in `docs/architecture.md`.
 - The hostname is `office-amp` and is managed by Ansible.
 
@@ -161,8 +163,9 @@ runtime validation, and relevant documentation together.
   root. Grant hardware access through narrow group/udev permissions.
 - Every package entry and non-obvious task needs a nearby comment explaining
   what it provides and why this project needs it.
-- Avoid global npm installs. Deploy the controller under `/opt/smartamp/controller`
-  and install its lockfile with `npm ci --omit=dev --omit=peer`.
+- The Pi has npm and no pnpm; do not add one. Deploy the controller under
+  `/opt/smartamp/controller` and install its exact pins with
+  `npm install --omit=dev --omit=peer`. Avoid global npm installs.
 - Deploy the compiled `controller/dist/src/` tree, never the `.mts` sources, and
   preserve its folders on the Pi so import specifiers stay valid. The Pi gets no
   TypeScript toolchain; `make build` compiles on the control computer, and
@@ -183,20 +186,18 @@ This compiles Python, type-checks and compiles the TypeScript controller, runs
 Python and Node tests, and performs an Ansible syntax check without contacting
 the Pi. A type error fails the build before any test runs.
 
-For controller dependency changes, also run:
+For controller dependency changes, pin the exact version in both
+`apps/controller/package.json` and `apps/playground/package.json`, then run:
 
 ```sh
-cd apps/controller
-npm ci                         # development tree, including TypeScript
-npm test
-npm ci --omit=dev --omit=peer  # the exact tree installed on the Pi
-npm audit --omit=dev --omit=peer
-npm ci                         # restore the development tree
+pnpm install                   # refresh the workspace lockfile
+make test
+pnpm --filter pimus-controller audit --prod
 ```
 
-Build and test need the development tree; `npm test` cannot run under
-`--omit=dev` because that omits TypeScript. Install the production tree only to
-confirm the runtime dependencies the Pi receives still resolve.
+The Pi resolves those pins itself with `npm install --omit=dev --omit=peer`, so
+transitive versions there are not fixed by the workspace lockfile. Keep the
+direct pins exact, and prefer dependencies with shallow trees.
 
 Keep tests deterministic and hardware-free. Use injected fake USB, HID,
 WebSocket, process, and filesystem boundaries where needed.
@@ -206,7 +207,7 @@ It compiles `apps/controller/src` with the controller's own strict settings, so
 after changing a controller module's shape also run:
 
 ```sh
-make playground        # or: cd apps/playground && npm run typecheck
+make playground        # or: pnpm --filter pimus-playground typecheck
 ```
 
 Add fakes there rather than changing controller code to accommodate the

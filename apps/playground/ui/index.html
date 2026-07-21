@@ -410,10 +410,20 @@ document.getElementById('clear').addEventListener('click', () => { entries = [];
 
 // --- stream ------------------------------------------------------------------
 
+// Live reload. The server sends a boot id on every connection: seeing a new one
+// means `pnpm dev` restarted the playground under us, so the page reloads to
+// pick up whatever changed. An explicit reload message covers edits to this
+// file, which the server watches but never restarts for.
+let bootId = null
 const stream = new EventSource('/events')
 stream.onmessage = (message) => {
   const payload = JSON.parse(message.data)
-  if (payload.type === 'log') appendLog(payload.entry)
+  if (payload.type === 'hello') {
+    if (bootId && bootId !== payload.bootId) location.reload()
+    bootId = payload.bootId
+  }
+  else if (payload.type === 'reload') location.reload()
+  else if (payload.type === 'log') appendLog(payload.entry)
   else if (payload.type === 'state') renderState(payload.state)
   else if (payload.type === 'keys') {
     for (const [index, image] of Object.entries(payload.keys || {})) {

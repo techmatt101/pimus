@@ -242,8 +242,17 @@ const snapshotTimer = setInterval(() => {
 snapshotTimer.unref()
 
 bus.log('system', 'note', `playground ready at ${url}`)
+
+// Open a browser only when nobody is watching yet. Under `pnpm dev` the process
+// restarts on every rebuild, and an already-open page reconnects within the
+// stream's retry window — so this opens one tab on the first run and never
+// piles up tabs afterwards.
 if (!process.argv.includes('--no-open') && (process.platform === 'darwin' || process.platform === 'linux')) {
-  spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [url], { stdio: 'ignore', detached: true }).unref()
+  const opener = setTimeout(() => {
+    if (server.clients > 0) return
+    spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [url], { stdio: 'ignore', detached: true }).unref()
+  }, 1500)
+  opener.unref()
 }
 
 // Every step here is synchronous: process.exit does not wait for a promise, so

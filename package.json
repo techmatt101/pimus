@@ -1,0 +1,17 @@
+{
+  "name": "pimus",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Development workspace for the pimus Node apps. Nothing here is deployed; see apps/controller for the app that runs on the Pi.",
+  "packageManager": "pnpm@11.10.0",
+  "engines": {
+    "node": ">=18.18"
+  },
+  "scripts": {
+    "build": "pnpm --filter pimus-controller build",
+    "typecheck": "pnpm --recursive typecheck",
+    "test": "pnpm --filter pimus-controller test",
+    "playground": "pnpm --filter pimus-playground start",
+    "dev": "pnpm --filter pimus-playground dev"
+  }
+}

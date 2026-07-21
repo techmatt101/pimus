@@ -1,0 +1,18 @@
+# The control computer's development workspace. One `pnpm install` at the root
+# installs both Node apps and links their shared dependencies once.
+#
+# This is a development convenience only. The Pi never sees this file, never
+# runs pnpm, and installs the controller's production dependencies with plain
+# `npm install` against the exact versions pinned in
+# apps/controller/package.json — see ansible/roles/smartamp/tasks/controller.yml.
+packages:
+  - apps/controller
+  - apps/playground
+# Which dependencies may run install scripts. usb and node-hid fetch the
+# prebuilt native binding they need to load at all, so both apps need them
+# built. The optional jpeg-turbo peer is deliberately left unbuilt to match the
+# Pi, which installs with --omit=peer and falls back to jpeg-js.
+allowBuilds:
+  '@julusian/jpeg-turbo': false
+  node-hid: true
+  usb: true

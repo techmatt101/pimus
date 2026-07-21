@@ -5,7 +5,8 @@ on your own machine with every piece of hardware and every remote service
 replaced by a fake, and draws the Stream Deck+ in a browser.
 
 ```sh
-make playground
+make dev          # rebuilds and reloads as you edit — the one to use
+make playground   # build once and run
 ```
 
 The page opens at <http://127.0.0.1:8787/>. Stop it with `Ctrl-C`.
@@ -64,23 +65,36 @@ The controller configuration is written out and then read back through the real
   every Home Assistant entity the keys read.
 
 Options: `--port=<n>` to move the web server, `--no-open` to skip launching a
-browser. Pass them through npm, e.g. `npm start -- --port=9000`.
+browser. Pass them through pnpm, e.g.
+`pnpm --filter pimus-playground start -- --port=9000`.
 
 ## Working on the layout
 
-`make playground` compiles the controller sources before it starts, so a change
-to `streamdeck/layout.mts`, a tile, or the action catalog is on screen a couple
-of seconds later. A mistyped route or volume command still fails to compile.
+`make dev` is the loop to leave running. It watches the controller and
+playground sources, recompiles on save, restarts the playground, and reloads the
+open page — so a change to `streamdeck/layout.mts`, a tile, or the action
+catalog is on screen a second or two after you save, with no click anywhere.
+Editing `apps/playground/ui/index.html` reloads the page without a restart. A
+mistyped route or volume command still fails to compile, and the error appears
+in the same terminal while the last good build keeps running.
+
+`make playground` does the same thing without the watchers: one build, one run.
+Reach for it when you want a fixed build rather than a moving one.
+
+The browser reconnects to the event stream on its own and reloads whenever it
+finds a playground that has restarted underneath it, so nothing needs a manual
+refresh and no second tab piles up.
 
 Because the playground compiles those sources with the same strict settings as
 the controller's own build, it is also a fast check that a refactor did not
-break the wiring — but it is **not** covered by `make test`, which never
-installs this app. After changing a controller module's shape, run
-`make playground` (or `cd apps/playground && npm run typecheck`) as well.
+break the wiring — but it is **not** covered by `make test`, which never builds
+this app. After changing a controller module's shape, run `make dev` (or
+`pnpm --filter pimus-playground typecheck`) as well.
 
-The dependency versions in `apps/playground/package.json` must match
-`apps/controller/package.json`; the playground loads the controller's modules,
-so it needs the same `ws`, `usb`, and Stream Deck packages.
+Both apps are members of the repository's pnpm workspace, so one `pnpm install`
+at the root covers them. The playground loads the controller's own modules, so
+it must pin the same `ws`, `usb`, and Stream Deck versions its package.json
+declares — `make test` fails if the two drift apart.
 
 ## What it cannot tell you
 
