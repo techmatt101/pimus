@@ -5,12 +5,14 @@
 // catalog indicators, dial readouts, and layout validation.
 
 import {
+  runHaCommand,
   runVoiceCommand,
+  type HaActionName,
   type RouteActionName,
   type VolumeActionName,
 } from '../actions/catalog.mjs'
 import type { ControlModel } from '../state.mjs'
-import type { Action, LvaSender } from '../types.mjs'
+import type { Action, HomeAssistantService, LvaSender } from '../types.mjs'
 
 /**
  * The controller services injected into tiles and dial bindings. Depending on
@@ -25,6 +27,12 @@ export interface TileServices {
   setSource(name: string, command: string): unknown
   /** Applies up/down/mute to the PipeWire default sink. */
   setVolume(command: string): unknown
+  /**
+   * Reads entity state and calls services. Always present: a deployment with no
+   * Home Assistant configured gets the offline stand-in, so a tile never has to
+   * ask whether the integration exists.
+   */
+  ha: HomeAssistantService
   webhookBase?: string
   /** Only the request is meaningful here; the response body is ignored. */
   request?(url: string, init?: { method: string }): unknown
@@ -42,9 +50,10 @@ export interface Binding {
 
 /**
  * Binding builders closed over the injected services. The layout factory uses
- * these to give every key and dial its behaviour. Route and volume commands
- * are checked against the catalog at compile time; voice commands stay a free
- * string because anything uncatalogued is forwarded to LVA verbatim.
+ * these to give every key and dial its behaviour. Route, volume, and Home
+ * Assistant commands are checked against the catalog at compile time; voice
+ * commands stay a free string because anything uncatalogued is forwarded to LVA
+ * verbatim.
  */
 export function createBindings(services: TileServices) {
   const voiceContext = () => ({
@@ -64,6 +73,10 @@ export function createBindings(services: TileServices) {
     route: (source: string, command: RouteActionName): Binding => ({
       action: { type: 'audio', source, command },
       run: () => services.setSource(source, command),
+    }),
+    ha: (command: HaActionName, entity: string, data?: Record<string, unknown>): Binding => ({
+      action: { type: 'ha', command, entity, ...(data ? { data } : {}) },
+      run: () => runHaCommand(command, { ha: services.ha, entity, data }),
     }),
     webhook: (id: string): Binding => ({
       action: { type: 'webhook', id },

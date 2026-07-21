@@ -7,6 +7,7 @@
 //   audio manager socket  -> fake-audio-manager.mts, a real Unix socket server
 //   wpctl                 -> fake-wpctl.mts, a number instead of a sink
 //   ReSpeaker USB LEDs    -> fake-led.mts, drawn as a ring
+//   Home Assistant        -> fake-home-assistant.mts, a house that responds
 //
 // Everything above those boundaries — the deck lifecycle, paging, tiles and
 // their mount/unmount, the action catalog, ducking, the LED state machine, the
@@ -21,6 +22,7 @@ import { spawn } from 'node:child_process'
 import { busLogger, PlaygroundBus, type PlaygroundSnapshot } from './bus.mjs'
 import { FakeAudioManager } from './fake-audio-manager.mjs'
 import { FakeDeckHardware } from './fake-deck.mjs'
+import { CONDITIONS, FakeHomeAssistant } from './fake-home-assistant.mjs'
 import { FakeLedRing } from './fake-led.mjs'
 import { FakeLvaServer } from './fake-lva.mjs'
 import { FakeWpctl } from './fake-wpctl.mjs'
@@ -70,6 +72,7 @@ const lvaServer = new FakeLvaServer({ bus })
 const wpctl = new FakeWpctl(bus)
 const ledRing = new FakeLedRing(bus)
 const hardware = new FakeDeckHardware(bus)
+const homeAssistant = new FakeHomeAssistant(bus)
 
 await audioManager.start()
 const lvaUri = await lvaServer.start()
@@ -82,6 +85,11 @@ await fs.promises.writeFile(configPath, JSON.stringify({
   audio_socket: socketPath,
   ducking: { enabled: true },
   webhook_base: 'http://home-assistant.playground/api/webhook',
+  home_assistant: {
+    enabled: false,
+    url: '',
+    token: '',
+  },
   streamdeck: { enabled: true },
   respeaker: {
     enabled: true,
@@ -146,6 +154,9 @@ const layout = createLayout({
     spawnProcess: wpctl.spawnProcess,
     logger: busLogger(bus, 'wpctl'),
   }),
+  // The real client speaks the WebSocket API and has its own tests; what the
+  // playground is for is watching the keys, so this replaces the whole service.
+  ha: homeAssistant,
   webhookBase: config.webhook_base,
   // The layout binds no webhook today; logging the request keeps one visible
   // the moment someone binds `webhook(...)` to a key.
@@ -185,6 +196,16 @@ function handleInput(input: PlaygroundInput): void {
   else if (input.kind === 'drop') {
     if (input.target === 'lva') lvaServer.dropConnections()
     else audioManager.dropConnections()
+  } else if (input.kind === 'entity') {
+    homeAssistant.put(String(input.entity), String(input.state), input.attributes ?? {})
+  } else if (input.kind === 'weather') {
+    const current = homeAssistant.entity('weather.home')?.state ?? CONDITIONS[0]
+    const next = CONDITIONS[(CONDITIONS.indexOf(String(current)) + 1) % CONDITIONS.length]
+    homeAssistant.put('weather.home', String(next), {
+      temperature: Math.round(4 + Math.random() * 22),
+    })
+  } else if (input.kind === 'drop-ha') {
+    homeAssistant.setConnected(!homeAssistant.connected)
   } else if (input.kind === 'simulate') {
     lvaServer.simulate = Boolean(input.enabled)
     bus.log('system', 'note', `pipeline simulation ${lvaServer.simulate ? 'on' : 'off'}`)
@@ -210,6 +231,8 @@ const snapshotTimer = setInterval(() => {
     sources: audio.state.sources,
     ducked: audioManager.ducked,
     led: ledRing.appearance,
+    homeAssistant: homeAssistant.connected,
+    entities: homeAssistant.snapshot(),
   }
   const serialized = JSON.stringify(snapshot)
   if (serialized === lastSnapshot) return
@@ -229,6 +252,7 @@ const shutdown = (): void => {
   server.close()
   lvaServer.close()
   audioManager.close()
+  homeAssistant.close()
   fs.rmSync(configPath, { force: true })
   process.exit(0)
 }

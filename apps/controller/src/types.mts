@@ -7,12 +7,16 @@
  * (actions/catalog.mts) validates it and describes its key feedback.
  */
 export interface Action {
-  type: 'noop' | 'lva' | 'audio' | 'webhook'
+  type: 'noop' | 'lva' | 'audio' | 'webhook' | 'ha'
   command?: string
   /** Named audio route for `audio` actions; absent means the master volume. */
   source?: string
   /** Home Assistant webhook identifier for `webhook` actions. */
   id?: string
+  /** Home Assistant entity id for `ha` actions, e.g. `fan.office_ceiling`. */
+  entity?: string
+  /** Extra service data for `ha` actions, merged into the call. */
+  data?: Record<string, unknown>
 }
 
 /**
@@ -61,6 +65,47 @@ export interface DuckingConfig {
   enabled: boolean
 }
 
+/**
+ * Home Assistant connection details. The controller reads entity state and
+ * calls services over the WebSocket API, so unlike the write-only `webhook`
+ * action this needs a long-lived access token; controller.json is 0640 and
+ * owned by the service account.
+ */
+export interface HomeAssistantConfig {
+  enabled: boolean
+  /** Base URL of the Home Assistant instance, e.g. `http://homeassistant.local:8123`. */
+  url: string
+  token: string
+}
+
+/** One entity's last known state, in the shape Home Assistant reports it. */
+export interface HomeAssistantEntity {
+  entity_id: string
+  state: string
+  attributes: Record<string, unknown>
+}
+
+/**
+ * The slice of Home Assistant the control surface needs: read an entity, call a
+ * service, and be told when a watched entity changes. Tiles depend on this
+ * rather than the concrete client, so tests inject a plain object and a
+ * deployment with no Home Assistant configured injects an offline stand-in
+ * (home-assistant/client.mts).
+ */
+export interface HomeAssistantService {
+  /** True while the socket is authenticated. Tiles show unknown state otherwise. */
+  readonly connected: boolean
+  /** The last known state of an entity, or undefined while it is unknown. */
+  entity(entityId: string): HomeAssistantEntity | undefined
+  /** Call `<domain>.<service>` against one entity, with optional extra data. */
+  call(domain: string, service: string, entityId: string, data?: Record<string, unknown>): void
+  /**
+   * Report changes to any of `entityIds`. Returns an unsubscribe function; a
+   * mounted tile watches only what it draws and drops the watch on unmount.
+   */
+  watch(entityIds: readonly string[], listener: () => void): () => void
+}
+
 export interface ControllerConfig {
   voice_enabled: boolean
   lva_uri: string
@@ -70,6 +115,7 @@ export interface ControllerConfig {
   ducking?: DuckingConfig
   streamdeck?: StreamDeckDeployment
   respeaker?: ReSpeakerConfig
+  home_assistant?: HomeAssistantConfig
 }
 
 /** Fields the controller reads out of Linux Voice Assistant event payloads. */

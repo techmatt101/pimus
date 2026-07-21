@@ -24,6 +24,14 @@ export interface TileContext {
 export interface TileHost {
   /** Repaint just this tile's key face, outside the shared render schedule. */
   invalidate(): void
+  /**
+   * Move by whole pages, the same as the bottom-corner navigation keys. A tile
+   * only ever has a host while it is the visible page, so this is safe to call
+   * from a press.
+   */
+  changePage(delta: number): void
+  /** The name of the page `delta` steps away, for a navigation key's face. */
+  pageName(delta: number): string
 }
 
 /**
@@ -55,7 +63,23 @@ export interface Tile {
 /** The standard key face: a centred label over a black caption bar. */
 export function labelTile(background: string, label: string): Bitmap {
   const face = createImage(120, 120, background)
+  drawCaption(face, label)
+  return face
+}
+
+/**
+ * A readout key: one large value over the caption bar, for tiles that show a
+ * measurement rather than a state — the clock, a temperature, a countdown.
+ */
+export function valueTile(background: string, value: string, caption: string): Bitmap {
+  const face = createImage(120, 120, background)
+  drawText(face, value, 60, 46, value.length > 5 ? 3 : 4)
+  drawCaption(face, caption)
+  return face
+}
+
+/** The black caption bar every key face shares, so labels line up across the grid. */
+export function drawCaption(face: Bitmap, label: string): void {
   drawRectangle(face, 0, 94, 120, 26, '#000000')
   drawText(face, label, 60, 106, label.length > 8 ? 2 : 3)
-  return face
 }

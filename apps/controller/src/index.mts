@@ -2,6 +2,7 @@ import { VoiceDucker } from './audio/ducking.mjs'
 import { AudioManagerClient } from './audio/manager-client.mjs'
 import { runVolumeCommand, startOutputMonitor } from './audio/volume.mjs'
 import { loadConfig } from './config.mjs'
+import { createOfflineHomeAssistant, HomeAssistantClient } from './home-assistant/client.mjs'
 import { ControlModel, createState } from './state.mjs'
 import { runDeckLoop } from './streamdeck/deck.mjs'
 import { createLayout } from './streamdeck/layout.mjs'
@@ -31,6 +32,17 @@ const respeaker = config.respeaker?.enabled
   ? new ReSpeakerController({ config: config.respeaker, voiceEnabled: config.voice_enabled })
   : null
 
+// With no Home Assistant configured the tiles that read it keep their places on
+// the deck and draw unknown state, so the layout never has to ask whether the
+// integration exists.
+const homeAssistant = config.home_assistant?.enabled
+  ? new HomeAssistantClient({
+    url: config.home_assistant.url,
+    token: config.home_assistant.token,
+    onStateChange: () => model.notify(),
+  })
+  : createOfflineHomeAssistant()
+
 const lva = new LvaClient({
   uri: config.lva_uri,
   state,
@@ -54,6 +66,7 @@ const layout = createLayout({
     audio.setSource(name, command)
   },
   setVolume: (command) => runVolumeCommand(command, { onExit: () => model.notify() }),
+  ha: homeAssistant,
   webhookBase: config.webhook_base,
 })
 
@@ -61,6 +74,7 @@ const renderer = new DeckRenderer({ layout, model })
 
 respeaker?.start()
 audio.connect()
+if (homeAssistant instanceof HomeAssistantClient) homeAssistant.connect()
 if (config.voice_enabled) lva.connect()
 
 if (config.streamdeck?.enabled) {

@@ -15,7 +15,13 @@
 // controller services; docs/controls.md is the reference table. When you add
 // an action, update all three together.
 
-import type { Action, AudioState, ControlState, LvaSender } from '../types.mjs'
+import type {
+  Action,
+  AudioState,
+  ControlState,
+  HomeAssistantService,
+  LvaSender,
+} from '../types.mjs'
 
 /** State an indicator may consult to decide whether its key reads as active. */
 export interface IndicatorContext {
@@ -58,7 +64,11 @@ interface VoiceActionSpec extends ActionSpec {
   run(context: VoiceContext): void
 }
 
-const ASSIST_ACTIVE = ['WAKE_WORD_DETECTED', 'LISTENING', 'THINKING', 'TTS_SPEAKING']
+/** Assist states that mean a pipeline is running right now. */
+export const ASSIST_ACTIVE = ['WAKE_WORD_DETECTED', 'LISTENING', 'THINKING', 'TTS_SPEAKING']
+
+/** Whether the voice pipeline is mid-run, so a listen key cancels rather than starts. */
+export const isAssistRunning = (state: ControlState): boolean => ASSIST_ACTIVE.includes(state.assist)
 
 /**
  * Voice actions (`type: lva`) sent to the Linux Voice Assistant peripheral
@@ -74,11 +84,25 @@ export const VOICE_ACTIONS = {
     summary: 'Start a voice pipeline, the same as speaking the wake word.',
     example: '{ type: lva, command: start_listening }',
     indicator: {
-      isActive: ({ state }) => ASSIST_ACTIVE.includes(state.assist),
+      isActive: ({ state }) => isAssistRunning(state),
       activeColor: '#00b8d4',
     },
     run: ({ lva }) => {
       lva.send('start_listening')
+    },
+  },
+  listen_toggle: {
+    summary: 'Start a voice pipeline, or cancel the one already running.',
+    example: '{ type: lva, command: listen_toggle }',
+    indicator: {
+      isActive: ({ state }) => isAssistRunning(state),
+      activeColor: '#00b8d4',
+      label: (configured, active) => (active ? 'CANCEL' : configured),
+    },
+    run: ({ state, lva }) => {
+      // One key for both directions: pressing it while Assist is listening,
+      // thinking, or speaking should get rid of it, not queue another pipeline.
+      lva.send(isAssistRunning(state) ? 'stop_pipeline' : 'start_listening')
     },
   },
   mute_toggle: {
@@ -191,6 +215,137 @@ export const ROUTE_ACTIONS = {
 
 export type RouteActionName = keyof typeof ROUTE_ACTIONS
 
+/** What a Home Assistant action's runner is allowed to touch. */
+export interface HaContext {
+  ha: HomeAssistantService
+  /** The bound entity id, e.g. `fan.office_ceiling`. */
+  entity: string
+  /** Extra service data carried by the binding, such as a media id. */
+  data?: Record<string, unknown> | undefined
+}
+
+/**
+ * Like a voice action, a Home Assistant action carries its behaviour, so the
+ * service call for an entry lives beside the entry rather than in a dispatcher
+ * a new action can forget to reach.
+ */
+interface HaActionSpec extends ActionSpec {
+  run(context: HaContext): void
+}
+
+/**
+ * An entity id's domain, which is also the domain of the service that acts on
+ * it: `fan.office_ceiling` is turned off by `fan.turn_off`. Deriving it means
+ * one `toggle` action covers lights, fans, switches, covers, and helpers
+ * instead of one catalog entry per domain.
+ */
+export const entityDomain = (entityId: string): string => entityId.split('.')[0] ?? ''
+
+/** A well-formed entity id: `<domain>.<object_id>`. */
+export const ENTITY_ID = /^[a-z][a-z0-9_]*\.[a-z0-9_]+$/
+
+/**
+ * Checks an entity id as a tile is constructed, so a typo fails while the
+ * layout is being built rather than becoming a key that presses successfully
+ * and reaches nothing. `describeActionProblem` catches the same mistake in a
+ * declared action; this covers tiles that hold several entities and so cannot
+ * expose them all as one `action()`.
+ */
+export function requireEntity(entityId: string, where: string): string {
+  if (!ENTITY_ID.test(entityId)) {
+    throw new Error(`${where}: "${entityId}" is not a Home Assistant entity id such as "fan.office_ceiling"`)
+  }
+  return entityId
+}
+
+/** How far one step of a light dial moves brightness. */
+const BRIGHTNESS_STEP_PERCENT = 10
+
+/**
+ * Home Assistant actions (`type: ha`). Each targets one entity over the
+ * WebSocket API (home-assistant/client.mts), so unlike a `webhook` action they
+ * can also be read back — which is what lets the tiles in streamdeck/tiles/
+ * show whether the fan is actually running.
+ */
+export const HA_ACTIONS = {
+  toggle: {
+    summary: 'Flip an entity on or off: a light, fan, switch, cover, or helper.',
+    example: "ha('toggle', 'fan.office_ceiling')",
+    run: ({ ha, entity }) => ha.call(entityDomain(entity), 'toggle', entity),
+  },
+  turn_on: {
+    summary: 'Turn an entity on. A cover opens.',
+    example: "ha('turn_on', 'switch.office_pc')",
+    run: ({ ha, entity, data }) => ha.call(entityDomain(entity), 'turn_on', entity, data),
+  },
+  turn_off: {
+    summary: 'Turn an entity off. A cover closes.',
+    example: "ha('turn_off', 'switch.office_pc')",
+    run: ({ ha, entity, data }) => ha.call(entityDomain(entity), 'turn_off', entity, data),
+  },
+  activate: {
+    summary: 'Activate a scene or run a script, which have no matching "off".',
+    example: "ha('activate', 'scene.office_bright')",
+    run: ({ ha, entity, data }) => ha.call(entityDomain(entity), 'turn_on', entity, data),
+  },
+  play_media: {
+    summary: 'Play a media id on a media player, such as a saved playlist.',
+    example: "ha('play_media', 'media_player.office', { media_content_id: '...', media_content_type: 'playlist' })",
+    run: ({ ha, entity, data }) => ha.call('media_player', 'play_media', entity, data),
+  },
+  media_next: {
+    summary: 'Skip a media player to the next track.',
+    example: "ha('media_next', 'media_player.office')",
+    run: ({ ha, entity }) => ha.call('media_player', 'media_next_track', entity),
+  },
+  media_previous: {
+    summary: 'Send a media player back to the previous track.',
+    example: "ha('media_previous', 'media_player.office')",
+    run: ({ ha, entity }) => ha.call('media_player', 'media_previous_track', entity),
+  },
+  media_shuffle: {
+    summary: 'Toggle shuffle on a media player, from the shuffle state it reports.',
+    example: "ha('media_shuffle', 'media_player.office')",
+    run: ({ ha, entity }) => {
+      // shuffle_set takes an absolute value, so ask for the opposite of the
+      // last reported one; an unknown player is assumed to be un-shuffled.
+      ha.call('media_player', 'shuffle_set', entity, { shuffle: !isShuffled(ha, entity) })
+    },
+  },
+  brightness_up: {
+    summary: `Raise a light's brightness by ${BRIGHTNESS_STEP_PERCENT}%.`,
+    example: "ha('brightness_up', 'light.office')",
+    run: ({ ha, entity }) => {
+      ha.call('light', 'turn_on', entity, { brightness_step_pct: BRIGHTNESS_STEP_PERCENT })
+    },
+  },
+  brightness_down: {
+    summary: `Lower a light's brightness by ${BRIGHTNESS_STEP_PERCENT}%.`,
+    example: "ha('brightness_down', 'light.office')",
+    run: ({ ha, entity }) => {
+      ha.call('light', 'turn_on', entity, { brightness_step_pct: -BRIGHTNESS_STEP_PERCENT })
+    },
+  },
+  timer_toggle: {
+    summary: 'Start a Home Assistant timer, or cancel the one already running.',
+    example: "ha('timer_toggle', 'timer.office', { duration: '00:05:00' })",
+    run: ({ ha, entity, data }) => {
+      // `timer.start` on a running timer restarts it, which is not what a
+      // second press of one key should mean.
+      const running = ha.entity(entity)?.state
+      if (running === 'active' || running === 'paused') ha.call('timer', 'cancel', entity)
+      else ha.call('timer', 'start', entity, data)
+    },
+  },
+} as const satisfies Record<string, HaActionSpec>
+
+export type HaActionName = keyof typeof HA_ACTIONS
+
+/** Whether a media player last reported shuffle on. */
+export function isShuffled(ha: HomeAssistantService, entityId: string): boolean {
+  return Boolean(ha.entity(entityId)?.attributes.shuffle)
+}
+
 export const WEBHOOK_ACTION: ActionSpec = {
   summary: 'POST to <home_assistant_webhook_base>/<id>. Does nothing if no base URL is configured.',
   example: '{ type: webhook, id: office_lights }',
@@ -212,6 +367,17 @@ export const isVolumeAction = (command: string): command is VolumeActionName =>
 
 export const isRouteAction = (command: string): command is RouteActionName =>
   has(ROUTE_ACTIONS, command)
+
+export const isHaAction = (command: string): command is HaActionName => has(HA_ACTIONS, command)
+
+/**
+ * Runs a Home Assistant command. Unlike voice commands there is no verbatim
+ * fallback: the service call is composed here from the entity's domain, so a
+ * command with no catalog entry has no meaning to forward.
+ */
+export function runHaCommand(command: HaActionName, context: HaContext): void {
+  HA_ACTIONS[command].run(context)
+}
 
 /**
  * Runs a voice command: a catalogued action performs the behaviour declared in
@@ -282,5 +448,17 @@ export function describeActionProblem(action: unknown): string | null {
     return typeof id === 'string' && id.length > 0 ? null : 'a "webhook" action needs an id'
   }
 
-  return `unknown action type "${String(type)}"; expected noop, lva, audio, or webhook`
+  if (type === 'ha') {
+    const { entity } = action as Record<string, unknown>
+    if (typeof command !== 'string' || !isHaAction(command)) {
+      return `unknown Home Assistant command "${String(command)}"; expected ${Object.keys(HA_ACTIONS).join(', ')}`
+    }
+    // A mistyped entity id is otherwise a key that silently does nothing, since
+    // Home Assistant accepts the service call and finds no target.
+    return typeof entity === 'string' && ENTITY_ID.test(entity)
+      ? null
+      : 'a "ha" action needs an entity id such as "fan.office_ceiling"'
+  }
+
+  return `unknown action type "${String(type)}"; expected noop, lva, audio, webhook, or ha`
 }

@@ -3,11 +3,12 @@
 //
 // It is compiled into the controller, so a change ships with `make
 // deploy-controller` (or `make provision`). In return the layout is
-// type-checked: the `route`/`volume` builders only accept commands that exist
-// in actions/catalog.mts, and a test rejects any key or dial the catalog does
-// not understand before it can reach the device. Whether a deck is driven at
-// all stays a deployment choice in `streamdeck_enabled` (ansible inventory);
-// this file only describes the surface.
+// type-checked: the `route`/`volume`/`ha` builders only accept commands that
+// exist in actions/catalog.mts, a malformed entity id throws while the layout is
+// being built, and a test rejects any key or dial the catalog does not
+// understand before it can reach the device. Whether a deck is driven at all
+// stays a deployment choice in `streamdeck_enabled` (ansible inventory); this
+// file only describes the surface.
 //
 // The physical panel is a 4x2 key grid, 4 dials, and a touch strip above the
 // dials. Each dial reacts to three inputs: `left` (counter-clockwise), `right`
@@ -23,31 +24,84 @@
 //
 // Every key is a Tile (streamdeck/tiles/) that runs its own behaviour and
 // renders its own face: a plain `key(...)` for a fixed button, or a dynamic
-// tile such as `MediaTile`. The dials keep their bindings on every page, so
-// volume and the aux/usb routes are always one turn away whichever page is
-// showing.
+// tile such as `MediaTile` or `TimerTile`. The dials keep their bindings on
+// every page, so volume, transport, and the lights are always one turn away
+// whichever page is showing.
 
+import { isEntityOn, numericAttribute } from '../home-assistant/entity.mjs'
 import { createBindings, type Binding, type TileServices } from './bindings.mjs'
 import type { StreamDeckDial, StreamDeckPage, StreamDeckLayout } from './grid.mjs'
+import { blindsIcon, fanIcon, monitorIcon } from './icons.mjs'
 import { ActionTile } from './tiles/action-tile.mjs'
+import { AudioModeTile } from './tiles/audio-mode-tile.mjs'
+import { ClockTile } from './tiles/clock-tile.mjs'
+import { EntityToggleTile } from './tiles/entity-toggle-tile.mjs'
 import { MediaTile } from './tiles/media-tile.mjs'
+import { PageTile } from './tiles/page-tile.mjs'
+import { PlaylistTile } from './tiles/playlist-tile.mjs'
+import { SceneTile } from './tiles/scene-tile.mjs'
+import { ShuffleTile } from './tiles/shuffle-tile.mjs'
+import { TemperatureTile } from './tiles/temperature-tile.mjs'
+import { TimerTile } from './tiles/timer-tile.mjs'
+import { WeatherTile } from './tiles/weather-tile.mjs'
 import type { Tile } from './tiles/tile.mjs'
+import { VoiceTile } from './tiles/voice-tile.mjs'
 
 /** Panel brightness, 0 to 100. */
 const BRIGHTNESS = 40
 
 /**
+ * The Home Assistant entities this layout drives. They are compiled in with the
+ * rest of the layout rather than living in inventory: which fan a key toggles
+ * is part of what the key *is*, and keeping it here means a typo is caught by
+ * `make test` instead of by a key that presses successfully and reaches
+ * nothing. Only the connection itself (`home_assistant_url` and
+ * `home_assistant_token`) is inventory configuration.
+ *
+ * Change these to the entity ids in your own Home Assistant.
+ */
+const HA = {
+  /** The Music Assistant player this deck controls. */
+  player: 'media_player.office_amp',
+  lights: 'light.office',
+  fan: 'fan.office_ceiling',
+  blinds: 'cover.office_blinds',
+  /** A wake-on-LAN switch, so the key both starts the PC and reports it. */
+  pc: 'switch.office_pc',
+  timer: 'timer.office',
+  temperature: 'sensor.office_temperature',
+  weather: 'weather.home',
+  scenes: [
+    { label: 'BRIGHT', entity: 'scene.office_bright', color: '#f9a825' },
+    { label: 'WORK', entity: 'scene.office_work', color: '#0277bd' },
+    { label: 'WARM', entity: 'scene.office_warm', color: '#bf360c' },
+    { label: 'OFF', entity: 'scene.office_off', color: '#37474f' },
+  ],
+  /** The playlist the shortcut key starts. Take the id from Music Assistant. */
+  playlist: {
+    media_content_id: 'library://playlist/1',
+    media_content_type: 'playlist',
+  },
+} as const
+
+/** How long a press of the timer key starts the Home Assistant timer for. */
+const TIMER_DURATION = '00:05:00'
+
+/**
  * Builds the layout with the controller's services injected, so every tile and
- * dial binding carries its behaviour with it. The `voice`, `volume`, and
- * `route` builders close over those services; `key` places a fixed labelled
- * tile whose feedback (mute, listen, and route colour changes) comes from the
- * bound action's catalog indicator. Voice commands are a free string because
- * anything uncatalogued is forwarded to LVA verbatim (see actions/catalog.mts);
- * routes and volume are checked against the catalog at compile time. To post
- * to Home Assistant, bind `webhook('my_automation')` from the same builders.
+ * dial binding carries its behaviour with it. The `voice`, `volume`, `route`,
+ * and `ha` builders close over those services; `key` places a fixed labelled
+ * tile whose feedback (mute and route colour changes) comes from the bound
+ * action's catalog indicator. Voice commands are a free string because anything
+ * uncatalogued is forwarded to LVA verbatim (see actions/catalog.mts); routes,
+ * volume, and Home Assistant commands are checked against the catalog at
+ * compile time. To post to a Home Assistant webhook instead of calling a
+ * service, bind `webhook('my_automation')` from the same builders.
  */
 export function createLayout(services: TileServices): StreamDeckLayout {
-  const { voice, volume, route, none } = createBindings(services)
+  // `route` is still available for a key bound straight to one audio route; the
+  // AudioModeTile below owns aux and usb together, so nothing here uses it.
+  const { voice, volume, ha, none } = createBindings(services)
   const key = (label: string, color: string, binding: Binding): Tile =>
     new ActionTile({ label, color, binding })
 
@@ -55,36 +109,116 @@ export function createLayout(services: TileServices): StreamDeckLayout {
   // page fills the six named slots between them; an omitted slot renders blank.
   // Every tile keeps its grid position whether or not paging is active, so
   // adding a page never reshuffles the keys already placed. A slot can hold any
-  // Tile: a plain `key(...)` or a dynamic one such as `MediaTile`, which is a
-  // single play/pause button that draws its own icon and colour from the
-  // playback state.
+  // Tile: a plain `key(...)` or a dynamic one that draws its own face from live
+  // state, such as MediaTile, TimerTile, or WeatherTile.
   const pages: StreamDeckPage[] = [
     {
+      // Everything you reach for while music is playing or you are talking to
+      // the house.
       name: 'MAIN',
       grid: {
-        topLeft: key('VOICE', '#006064', voice('start_listening')),
+        topLeft: new VoiceTile(services),
         topMidLeft: key('MIC', '#7f0000', voice('mute_toggle')),
         topMidRight: new MediaTile(services),
-        topRight: key('STOP', '#b71c1c', voice('stop')),
-        bottomLeft: key('AUX', '#4a148c', route('aux', 'toggle')),
-        bottomRight: key('USB', '#0d47a1', route('usb', 'toggle')),
+        topRight: new ShuffleTile(services, HA.player),
+        // One key cycles the input instead of one key per route, which is what
+        // frees the two dials the transport and lights now use.
+        bottomLeft: new AudioModeTile(services, {
+          modes: [
+            { label: 'STREAM', color: '#004d40' },
+            { label: 'AUX', color: '#4a148c', source: 'aux' },
+            { label: 'USB', color: '#0d47a1', source: 'usb' },
+          ],
+        }),
+        bottomRight: new PlaylistTile(services, {
+          label: 'FOCUS',
+          player: HA.player,
+          media: HA.playlist,
+        }),
       },
     },
     {
-      name: 'MORE',
+      // The room itself: lights, the things that move, and the desk PC.
+      name: 'ROOM',
       grid: {
-        topLeft: key('TIMER', '#e65100', voice('stop_timer_ringing')),
+        topLeft: new SceneTile(services, { scenes: HA.scenes }),
+        topMidLeft: new EntityToggleTile(services, {
+          label: 'FAN',
+          entity: HA.fan,
+          icon: fanIcon,
+          onColor: '#00695c',
+          offColor: '#0d2320',
+          // A turning fan needs a moving phase; deriving it from the repaint
+          // instant keeps render pure while the tile drives the repaints.
+          phase: (_entity, now) => (now % 1200) / 1200,
+          animationMilliseconds: 100,
+        }),
+        topMidRight: new EntityToggleTile(services, {
+          label: 'BLINDS',
+          entity: HA.blinds,
+          icon: blindsIcon,
+          onColor: '#455a64',
+          offColor: '#1c2429',
+          // A cover reads "on" when open, so the slats are drawn down when off.
+          phase: (entity) => (isEntityOn(entity) ? 0.2 : 1),
+        }),
+        topRight: new EntityToggleTile(services, {
+          label: 'PC',
+          entity: HA.pc,
+          icon: monitorIcon,
+          onColor: '#283593',
+          offColor: '#151a30',
+        }),
+        bottomLeft: new TimerTile(services, { entity: HA.timer, duration: TIMER_DURATION }),
+        bottomRight: key('STOP', '#b71c1c', voice('stop')),
+      },
+    },
+    {
+      // A glanceable page: nothing here changes anything when pressed.
+      name: 'INFO',
+      grid: {
+        topLeft: new ClockTile(),
+        topMidLeft: new TemperatureTile(services, { label: 'OFFICE', entity: HA.temperature }),
+        topMidRight: new WeatherTile(services, { entity: HA.weather }),
+        // The corners already navigate; this shows a page key can sit anywhere,
+        // which a page that wanted its whole bottom row for tiles would need.
+        topRight: new PageTile({ delta: 1 }),
       },
     },
   ]
 
   // Four dials, left to right. A dial's readout follows the actions bound to
-  // it, so the display stays correct however these are ordered.
+  // it, so the display stays correct however these are ordered; a dial that
+  // knows something the actions cannot express supplies its own `detail`.
   const dials: StreamDeckDial[] = [
     { label: 'VOLUME', left: volume('down'), right: volume('up'), press: volume('mute') },
-    { label: 'AUX', left: route('aux', 'off'), right: route('aux', 'on'), press: route('aux', 'toggle') },
-    { label: 'USB', left: route('usb', 'off'), right: route('usb', 'on'), press: route('usb', 'toggle') },
-    { label: 'VOICE', left: none(), right: none(), press: voice('start_listening') },
+    {
+      label: 'MEDIA',
+      // Transport goes through the Music Assistant player rather than LVA: the
+      // LVA media player is the satellite's own announcement player and has no
+      // queue to skip through. Play/pause stays on LVA because that is where
+      // the controller's playback state comes from.
+      left: ha('media_previous', HA.player),
+      right: ha('media_next', HA.player),
+      press: voice('media_toggle'),
+      detail: ({ state }) => (state.media ? 'PLAYING' : 'PAUSED'),
+    },
+    {
+      label: 'LIGHTS',
+      left: ha('brightness_down', HA.lights),
+      right: ha('brightness_up', HA.lights),
+      press: ha('toggle', HA.lights),
+      detail: () => {
+        const light = services.ha.entity(HA.lights)
+        if (!isEntityOn(light)) return light ? 'OFF' : '--'
+        const brightness = numericAttribute(light, 'brightness')
+        // Home Assistant reports brightness 0-255; the dial reads as a percentage.
+        return brightness === undefined ? 'ON' : `${Math.round((brightness / 255) * 100)}%`
+      },
+    },
+    // No `detail`: the default readout for a dial bound to neither volume nor a
+    // route is already the assist state, which is what this dial is for.
+    { label: 'VOICE', left: none(), right: none(), press: voice('listen_toggle') },
   ]
 
   return { brightness: BRIGHTNESS, pages, dials }

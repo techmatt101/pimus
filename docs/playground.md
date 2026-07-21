@@ -25,6 +25,13 @@ own code, imported straight from `apps/controller/src/`:
 | Audio manager Unix socket | a Unix socket server speaking the same protocol | `AudioManagerClient`'s optimistic route cache, its re-assert on reconnect, ducking |
 | `wpctl` | a number standing in for the sink | `runVolumeCommand`'s argument vectors and the output monitor poll |
 | ReSpeaker XVF3800 USB LEDs | a ring drawn in the state panel | `ReSpeakerController`'s state-to-appearance mapping and write de-duplication |
+| Home Assistant | a house that responds to service calls | every tile's entity watch and `mount`/`unmount`, the catalog's service composition, the unknown-state faces |
+
+The Home Assistant fake replaces the whole `HomeAssistantService` rather than
+the socket under `HomeAssistantClient`: the protocol client has its own tests,
+and what the playground is for is watching the keys. In exchange it can do what
+a real house does — pressing the fan key turns the fan on, the timer really
+counts down, and the lights dial moves the brightness it reports back.
 
 The controller configuration is written out and then read back through the real
 `loadConfig`, so the playground also exercises the validation that
@@ -48,8 +55,13 @@ The controller configuration is written out and then read back through the real
 - **Event log** — every command the controller sends, every event it receives,
   and the local decisions in between, colour-coded by module. The same lines go
   to the terminal, so the playground is still useful with the browser closed.
+- **Home Assistant** — change an entity from "somewhere else", the way the app
+  or an automation would, so you can watch a key follow state it did not set
+  itself. **toggle Home Assistant** under fault injection drops the connection,
+  which is how to see the unknown-state faces.
 - **State** — the shared control state, the audio manager's routes, whether
-  background audio is ducked, and the LED appearance the ReSpeaker would show.
+  background audio is ducked, the LED appearance the ReSpeaker would show, and
+  every Home Assistant entity the keys read.
 
 Options: `--port=<n>` to move the web server, `--no-open` to skip launching a
 browser. Pass them through npm, e.g. `npm start -- --port=9000`.

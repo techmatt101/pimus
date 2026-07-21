@@ -1,23 +1,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { ControlModel, createState } from '../../src/state.mjs'
+import { createState } from '../../src/state.mjs'
 import { createBindings } from '../../src/streamdeck/bindings.mjs'
-import type { TileServices } from '../../src/streamdeck/bindings.mjs'
+import { testServices, type TestServices } from '../support/fixtures.mjs'
 import type { ControlState } from '../../src/types.mjs'
 
-/** Recording services: every call a binding makes lands in one journal. */
-const recordingServices = (state: ControlState = createState()): TileServices & { calls: string[] } => {
-  const calls: string[] = []
-  const model = new ControlModel(state)
-  model.subscribe(() => calls.push('changed'))
-  return {
-    calls,
-    model,
-    lva: { send: (command) => { calls.push(`lva:${command}`) } },
-    setSource: (name, command) => calls.push(`source:${name}:${command}`),
-    setVolume: (command) => calls.push(`volume:${command}`),
-  }
+/** Recording services whose model change notifications join the same journal. */
+const recordingServices = (state: ControlState = createState()): TestServices => {
+  const services = testServices(state)
+  services.model.subscribe(() => services.calls.push('changed'))
+  return services
 }
 
 test('bindings run the injected services and expose their declarative action', async () => {
@@ -58,6 +51,45 @@ test('voice bindings notify the model when their runner changes state', () => {
     'changed',
   ])
   assert.equal(state.media, false)
+})
+
+test('Home Assistant bindings derive the service from the entity domain', () => {
+  const services = recordingServices()
+  services.ha.put('media_player.office', 'playing', { shuffle: true })
+  const { ha } = createBindings(services)
+
+  const fan = ha('toggle', 'fan.office_ceiling')
+  assert.deepEqual(fan.action, { type: 'ha', command: 'toggle', entity: 'fan.office_ceiling' })
+  fan.run()
+  // A cover is toggled by its own domain's service, with no layout change.
+  ha('toggle', 'cover.office_blinds').run()
+
+  // Shuffle is absolute in Home Assistant, so the binding reads the current
+  // value back and asks for the opposite.
+  ha('media_shuffle', 'media_player.office').run()
+  ha('play_media', 'media_player.office', { media_content_id: 'x', media_content_type: 'playlist' }).run()
+
+  assert.deepEqual(services.ha.calls, [
+    'fan.toggle fan.office_ceiling',
+    'cover.toggle cover.office_blinds',
+    'media_player.shuffle_set media_player.office {"shuffle":false}',
+    'media_player.play_media media_player.office {"media_content_id":"x","media_content_type":"playlist"}',
+  ])
+})
+
+test('a timer binding starts an idle timer and cancels a running one', () => {
+  const services = recordingServices()
+  const timer = createBindings(services).ha('timer_toggle', 'timer.office', { duration: '00:05:00' })
+
+  services.ha.put('timer.office', 'idle', {})
+  timer.run()
+  services.ha.put('timer.office', 'active', { finishes_at: '2026-07-21T10:05:00+00:00' })
+  timer.run()
+
+  assert.deepEqual(services.ha.calls, [
+    'timer.start timer.office {"duration":"00:05:00"}',
+    'timer.cancel timer.office',
+  ])
 })
 
 test('webhook bindings encode their identifier and need a configured base', async () => {

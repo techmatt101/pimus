@@ -10,7 +10,7 @@
 // page reads as a fixed grid rather than a count-the-positions array.
 
 import type { Binding } from './bindings.mjs'
-import type { Tile } from './tiles/tile.mjs'
+import type { Tile, TileContext } from './tiles/tile.mjs'
 
 /** Physical key index of the previous-page corner. */
 export const PREV_KEY = 4
@@ -60,12 +60,18 @@ export interface StreamDeckPage {
  * One physical dial: a touch-strip label plus the bindings run on
  * counter-clockwise turn, clockwise turn, and press. The bindings' declarative
  * actions also drive the dial's readout (renderer.mts) and layout validation.
+ *
+ * A dial reporting something the bound actions cannot express — a light's
+ * brightness, or which track a player is on — supplies its own `detail`, the
+ * dial equivalent of a Tile drawing its own face.
  */
 export interface StreamDeckDial {
   label: string
   left?: Binding
   right?: Binding
   press?: Binding
+  /** The value line under the label. Falls back to the bound actions' readout. */
+  detail?(context: TileContext): string
 }
 
 /**

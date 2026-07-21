@@ -9,6 +9,7 @@ import type { StreamDeckLayout } from '../../src/streamdeck/grid.mjs'
 import { DeckRenderer, dialDetail } from '../../src/streamdeck/renderer.mjs'
 import { ActionTile } from '../../src/streamdeck/tiles/action-tile.mjs'
 import type { Tile, TileHost } from '../../src/streamdeck/tiles/tile.mjs'
+import { testContext } from '../support/fixtures.mjs'
 import type { Action, Bitmap } from '../../src/types.mjs'
 
 const rendererFor = (layout: StreamDeckLayout): DeckRenderer =>
@@ -27,24 +28,42 @@ test('dial readouts follow their bound actions rather than dial position', () =>
   }
 
   // The volume dial reports volume wherever it sits in the layout.
-  assert.equal(dialDetail(state, { sources: {} }, volumeDial), '67%')
+  assert.equal(dialDetail(testContext(state), volumeDial), '67%')
   state.outputMuted = true
-  assert.equal(dialDetail(state, { sources: {} }, volumeDial), 'MUTED')
+  assert.equal(dialDetail(testContext(state), volumeDial), 'MUTED')
 
-  assert.equal(dialDetail(state, { sources: { aux: true } }, {
+  assert.equal(dialDetail(testContext(state, { sources: { aux: true } }), {
     label: 'AUX',
     press: bound({ type: 'audio', source: 'aux', command: 'toggle' }),
   }), 'ON')
-  assert.equal(dialDetail(state, { sources: { usb: false } }, {
+  assert.equal(dialDetail(testContext(state, { sources: { usb: false } }), {
     label: 'USB',
     left: bound({ type: 'audio', source: 'usb', command: 'off' }),
   }), 'OFF')
 
   // A dial bound to neither volume nor a route falls back to the assist state.
-  assert.equal(dialDetail(createState({ assist: 'LISTENING' }), { sources: {} }, {
+  assert.equal(dialDetail(testContext(createState({ assist: 'LISTENING' })), {
     label: 'VOICE',
     press: bound({ type: 'lva', command: 'start_listening' }),
   }), 'LISTENING')
+})
+
+test('a dial that supplies its own readout wins over the bound actions', () => {
+  // A light dial is bound to `ha` actions the shared readout cannot interpret,
+  // so it reports brightness itself — the dial equivalent of a tile drawing its
+  // own face.
+  const lights = {
+    label: 'LIGHTS',
+    press: bound({ type: 'ha', command: 'toggle', entity: 'light.office' }),
+    detail: () => '60%',
+  }
+  assert.equal(dialDetail(testContext(), lights), '60%')
+
+  // An own readout also overrides one the actions would have produced.
+  assert.equal(dialDetail(testContext(createState({ volume: 0.2 })), {
+    ...lights,
+    left: bound({ type: 'audio', command: 'down' }),
+  }), '60%')
 })
 
 /** A tile that records its label when pressed, to see which slot dispatched. */

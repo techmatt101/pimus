@@ -16,6 +16,7 @@ export type LogCategory =
   | 'led'
   | 'duck'
   | 'webhook'
+  | 'home-assistant'
 
 export interface LogEntry {
   time: number
@@ -39,6 +40,9 @@ export interface PlaygroundSnapshot {
   sources: Record<string, boolean | undefined>
   ducked: boolean
   led: { effect?: string; color?: string; accent?: string; brightness?: number } | null
+  homeAssistant: boolean
+  /** The entities the Home Assistant tiles read, for the browser panel. */
+  entities: Record<string, { state: string; attributes: Record<string, unknown> }>
 }
 
 export type Message =

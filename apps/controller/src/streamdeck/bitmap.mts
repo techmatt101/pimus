@@ -9,6 +9,8 @@ const FONT: Record<string, string[]> = {
   ':': ['00000','00100','00100','00000','00100','00100','00000'],
   '%': ['11001','11010','00100','01000','10110','00110','00000'],
   '.': ['00000','00000','00000','00000','00000','00110','00110'],
+  '°': ['01100','10010','10010','01100','00000','00000','00000'],
+  '/': ['00001','00010','00010','00100','01000','01000','10000'],
   '<': ['00010','00100','01000','10000','01000','00100','00010'],
   '>': ['01000','00100','00010','00001','00010','00100','01000'],
   '0': ['01110','10001','10011','10101','11001','10001','01110'],
@@ -81,6 +83,70 @@ export function drawRectangle(
       target.buffer[offset + 1] = rgb[1]
       target.buffer[offset + 2] = rgb[2]
     }
+  }
+}
+
+/**
+ * A straight line of `thickness` pixels, stepped along its longer axis. Icons
+ * are drawn from these rather than from an image format so the controller keeps
+ * no binary assets and no decoder.
+ */
+export function drawLine(
+  target: Bitmap,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  value: string,
+  thickness = 2,
+): void {
+  const steps = Math.max(1, Math.round(Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1))))
+  const offset = Math.floor(thickness / 2)
+  for (let step = 0; step <= steps; step += 1) {
+    const ratio = step / steps
+    const x = Math.round(x1 + (x2 - x1) * ratio) - offset
+    const y = Math.round(y1 + (y2 - y1) * ratio) - offset
+    drawRectangle(target, x, y, thickness, thickness, value)
+  }
+}
+
+/**
+ * A circle, filled or as a ring `thickness` pixels wide. `from` and `to` are
+ * turns clockwise from twelve o'clock, so a partial ring draws a progress arc.
+ */
+export function drawCircle(
+  target: Bitmap,
+  centerX: number,
+  centerY: number,
+  radius: number,
+  value: string,
+  { filled = false, thickness = 2, from = 0, to = 1 }: {
+    filled?: boolean
+    thickness?: number
+    from?: number
+    to?: number
+  } = {},
+): void {
+  if (filled) {
+    for (let dy = -radius; dy <= radius; dy += 1) {
+      const half = Math.round(Math.sqrt(Math.max(0, radius * radius - dy * dy)))
+      drawRectangle(target, centerX - half, centerY + dy, half * 2 + 1, 1, value)
+    }
+    return
+  }
+  // One step per pixel of circumference keeps the arc solid at any radius.
+  const steps = Math.max(8, Math.round(2 * Math.PI * radius))
+  for (let step = 0; step <= steps; step += 1) {
+    const turn = from + (to - from) * (step / steps)
+    const angle = turn * 2 * Math.PI - Math.PI / 2
+    drawRectangle(
+      target,
+      Math.round(centerX + Math.cos(angle) * radius) - Math.floor(thickness / 2),
+      Math.round(centerY + Math.sin(angle) * radius) - Math.floor(thickness / 2),
+      thickness,
+      thickness,
+      value,
+    )
   }
 }
 

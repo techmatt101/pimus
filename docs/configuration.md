@@ -75,7 +75,28 @@ action, with examples and the key feedback each one produces, is listed in
 [controls](controls.md). A mistyped `route`/`volume` command is a compile
 error, and `make test` rejects any action the catalog does not understand.
 
-Webhook actions POST to `home_assistant_webhook_base/<id>`. Configure a Home Assistant webhook trigger and set the base to `http://homeassistant.local:8123/api/webhook`. Treat webhook IDs as secrets if the endpoint is reachable outside a trusted LAN.
+### Home Assistant
+
+`home_assistant_url` and `home_assistant_token` connect the controller to Home
+Assistant's WebSocket API. This is what the keys that *show* house state need —
+the fan, blinds, PC, scenes, timer, temperature, weather, the lights dial, and
+the media transport — because they read entity state as well as change it.
+
+Create the token in Home Assistant under your profile → Security → Long-lived
+access tokens, and set both values together; `make check` fails if only one is
+filled in. Leave both empty to run without Home Assistant: those keys stay on
+the deck and draw an unknown state, and nothing else is affected.
+
+The token is written into `/etc/smartamp/controller.json`, mode `0640` and
+readable only by the `smartamp` service account. Keep it out of Git by putting
+it in a `.vault.yml` override (see below) rather than in `all.yml`.
+
+Which entities the keys drive is *not* configured here. Entity ids are compiled
+into the layout beside the keys that use them, in the `HA` block at the top of
+`apps/controller/src/streamdeck/layout.mts`; a typo there fails `make test`
+rather than becoming a key that presses successfully and reaches nothing.
+
+Webhook actions POST to `home_assistant_webhook_base/<id>`. Configure a Home Assistant webhook trigger and set the base to `http://homeassistant.local:8123/api/webhook`. Treat webhook IDs as secrets if the endpoint is reachable outside a trusted LAN. A webhook stores no token, but it is write-only: a key bound to one can fire an automation and show nothing back.
 
 Put private host or group overrides in files ending in `.vault.yml` under
 `ansible/inventory/host_vars` or `ansible/inventory/group_vars`, and encrypt

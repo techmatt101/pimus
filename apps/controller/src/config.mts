@@ -22,6 +22,20 @@ function validateControllerConfig(value: unknown, configPath: string): asserts v
   // The Stream Deck layout is compiled in (streamdeck/layout.mts) and validated
   // by its own test, so only the enable flag needs checking here.
 
+  // The Home Assistant tiles read state over the WebSocket API, which needs a
+  // reachable base URL and a long-lived access token. Checking them here means
+  // a half-filled inventory fails at startup with a clear message instead of
+  // producing a deck of keys that quietly never connect.
+  if (isRecord(value.home_assistant) && value.home_assistant.enabled) {
+    const { url, token } = value.home_assistant
+    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+      throw new Error(`Controller configuration at ${configPath} must define an http(s) home_assistant.url`)
+    }
+    if (typeof token !== 'string' || token.length === 0) {
+      throw new Error(`Controller configuration at ${configPath} must define a home_assistant.token`)
+    }
+  }
+
   if (isRecord(value.respeaker) && value.respeaker.enabled) {
     if (!isRecord(value.respeaker.states) || !isRecord(value.respeaker.states.idle)) {
       throw new Error(`Controller configuration at ${configPath} must define an idle ReSpeaker state`)

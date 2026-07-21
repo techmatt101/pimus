@@ -9,26 +9,27 @@ import {
   type StreamDeckLayout,
   type StreamDeckPage,
 } from './grid.mjs'
-import { labelTile, type Tile, type TileContext } from './tiles/tile.mjs'
+import { labelTile, type Tile, type TileContext, type TileHost } from './tiles/tile.mjs'
 import type { ControlModel } from '../state.mjs'
-import type { AudioState, ControlState } from '../types.mjs'
 
 /** Background colour of the previous/next navigation keys. */
 const NAV_COLOR = '#263238'
 
 /**
- * The value line under a dial's label. What a dial reports follows from the
- * actions bound to it rather than its position, so reordering the dials in
- * layout.mts keeps each dial's readout correct.
+ * The value line under a dial's label. A dial that knows something the bound
+ * actions cannot express — a light's brightness, say — supplies its own
+ * `detail`; otherwise the readout follows from the actions bound to it rather
+ * than its position, so reordering the dials in layout.mts keeps each dial's
+ * readout correct.
  */
-export function dialDetail(
-  state: ControlState,
-  audioState: AudioState = { sources: {} },
-  dial?: StreamDeckDial,
-): string {
+export function dialDetail(context: TileContext, dial?: StreamDeckDial): string {
+  const own = dial?.detail?.(context)
+  if (own !== undefined) return own
+
+  const { state, audio } = context
   const actions = [dial?.press, dial?.left, dial?.right].map((binding) => binding?.action)
   const source = actions.find((action) => action?.source)?.source
-  if (source) return audioState.sources[source] ? 'ON' : 'OFF'
+  if (source) return audio.sources[source] ? 'ON' : 'OFF'
   if (actions.some((action) => action?.type === 'audio' && !action.source)) {
     return state.outputMuted ? 'MUTED' : `${Math.round(state.volume * 100)}%`
   }
@@ -134,8 +135,24 @@ export class DeckRenderer {
       const tile = tileAt(page.grid, index)
       if (!tile) continue
       this.mounted.set(index, tile)
-      tile.mount?.({ invalidate: () => void this.renderKey(index) })
+      tile.mount?.(this.hostFor(index))
     }
+  }
+
+  /** What a mounted tile is allowed to ask of this renderer. */
+  private hostFor(index: number): TileHost {
+    return {
+      invalidate: () => void this.renderKey(index),
+      changePage: (delta) => this.changePage(delta),
+      pageName: (delta) => this.pageNameAt(delta),
+    }
+  }
+
+  /** The name of the page `delta` steps from the current one, wrapping around. */
+  private pageNameAt(delta: number): string {
+    const count = this.layout.pages.length
+    if (count === 0) return ''
+    return this.layout.pages[(((this.pageIndex + delta) % count) + count) % count]?.name ?? ''
   }
 
   private unmountPage(): void {
@@ -189,7 +206,7 @@ export class DeckRenderer {
       layout.dials.slice(0, 4).forEach((dial, index) => {
         drawRectangle(lcd, index * 200 + 1, 1, 198, 98, index % 2 ? '#17242d' : '#101820')
         drawText(lcd, dial.label, index * 200 + 100, 30, 3, '#80deea')
-        const detail = dialDetail(this.model.state, context.audio, dial).slice(0, 12)
+        const detail = dialDetail(context, dial).slice(0, 12)
         drawText(lcd, detail, index * 200 + 100, 70, detail.length > 8 ? 2 : 3)
       })
       await deck.fillLcd(0, lcd.buffer, { format: 'rgb' })
@@ -200,9 +217,7 @@ export class DeckRenderer {
 
   /** An arrow plus the name of the page a nav key would move to. */
   private navLabel(direction: 'prev' | 'next'): string {
-    const count = this.layout.pages.length
-    const delta = direction === 'next' ? 1 : -1
-    const name = this.layout.pages[(((this.pageIndex + delta) % count) + count) % count]?.name ?? ''
+    const name = this.pageNameAt(direction === 'next' ? 1 : -1)
     return direction === 'next' ? `${name} >`.trim() : `< ${name}`.trim()
   }
 }

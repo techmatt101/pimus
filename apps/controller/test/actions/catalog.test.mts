@@ -7,7 +7,9 @@ import { fileURLToPath } from 'node:url'
 import {
   describeActionProblem,
   indicatorFor,
+  runHaCommand,
   runVoiceCommand,
+  HA_ACTIONS,
   ROUTE_ACTIONS,
   VOICE_ACTIONS,
   VOLUME_ACTIONS,
@@ -22,6 +24,7 @@ test('valid actions from the catalog pass configuration validation', () => {
     ...Object.keys(VOICE_ACTIONS).map((command) => ({ type: 'lva', command })),
     ...Object.keys(VOLUME_ACTIONS).map((command) => ({ type: 'audio', command })),
     ...Object.keys(ROUTE_ACTIONS).map((command) => ({ type: 'audio', source: 'aux', command })),
+    ...Object.keys(HA_ACTIONS).map((command) => ({ type: 'ha', command, entity: 'light.office' })),
     { type: 'lva', command: 'some_future_lva_command' },
     { type: 'webhook', id: 'office_lights' },
   ]
@@ -39,8 +42,36 @@ test('mistyped actions are rejected with an actionable message', () => {
   assert.match(String(describeActionProblem({ type: 'audio' })), /needs a command/)
   assert.match(String(describeActionProblem({ type: 'lva' })), /needs a command/)
   assert.match(String(describeActionProblem({ type: 'webhook' })), /needs an id/)
+  assert.match(
+    String(describeActionProblem({ type: 'ha', command: 'levitate', entity: 'fan.office' })),
+    /unknown Home Assistant command/,
+  )
+  // A key bound to a mistyped entity id would press successfully and reach
+  // nothing, so the id has to be checked as strictly as the command.
+  assert.match(String(describeActionProblem({ type: 'ha', command: 'toggle' })), /needs an entity id/)
+  assert.match(
+    String(describeActionProblem({ type: 'ha', command: 'toggle', entity: 'office_ceiling' })),
+    /needs an entity id/,
+  )
   assert.match(String(describeActionProblem({ type: 'lights' })), /unknown action type/)
   assert.match(String(describeActionProblem('mute')), /must be an object/)
+})
+
+test('every catalogued Home Assistant action calls a service', () => {
+  for (const command of Object.keys(HA_ACTIONS) as Array<keyof typeof HA_ACTIONS>) {
+    const calls: string[] = []
+    runHaCommand(command, {
+      entity: 'light.office',
+      data: { duration: '00:05:00' },
+      ha: {
+        connected: true,
+        entity: () => undefined,
+        watch: () => () => {},
+        call: (domain, service) => calls.push(`${domain}.${service}`),
+      },
+    })
+    assert.ok(calls.length > 0, `${command} called no service`)
+  }
 })
 
 test('every catalogued voice action reaches the LVA socket', () => {
@@ -108,6 +139,7 @@ test('docs/controls.md documents every catalogued action', () => {
     ...Object.keys(VOICE_ACTIONS),
     ...Object.keys(VOLUME_ACTIONS),
     ...Object.keys(ROUTE_ACTIONS),
+    ...Object.keys(HA_ACTIONS),
   ]
   for (const command of documented) {
     assert.ok(

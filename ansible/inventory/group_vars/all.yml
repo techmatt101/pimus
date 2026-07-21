@@ -93,7 +93,24 @@ respeaker_led_states:
 # false for an LED-only deployment with no deck attached.
 streamdeck_enabled: true
 
-# Optional Home Assistant webhook base URL. A Stream Deck action of type
-# "webhook" with an "id" (bound in streamdeck/layout.mts) posts to <base>/<id>.
-# No HA token is stored here.
+# Home Assistant, for the Stream Deck keys that show and change house state:
+# the fan, blinds, PC, scenes, timer, temperature, weather, lights dial, and
+# media transport. The controller reads entity state and calls services over
+# the WebSocket API, which needs a long-lived access token (Home Assistant
+# profile -> Security -> Long-lived access tokens).
+#
+# Leave both empty to run without it: those keys stay on the deck and draw an
+# unknown state, and nothing else is affected. Which entities the keys drive is
+# compiled into apps/controller/src/streamdeck/layout.mts, not set here.
+#
+# The token is written into /etc/smartamp/controller.json, which is 0640 and
+# readable only by the service account. Keep it out of Git by supplying it from
+# a vault or an environment variable rather than editing it in here.
+home_assistant_url: ""
+home_assistant_token: ""
+
+# Optional Home Assistant webhook base URL, an alternative that stores no token.
+# A Stream Deck action of type "webhook" with an "id" (bound in
+# streamdeck/layout.mts) posts to <base>/<id>. Write-only: a key bound to a
+# webhook can fire an automation but cannot show any state.
 home_assistant_webhook_base: ""

@@ -35,12 +35,14 @@ Each deployable app owns its source and tests:
 apps/
   controller/
     src/                 TypeScript controller modules (.mts)
-      actions/           Action catalog: specs, validation, voice behaviour
+      actions/           Action catalog: specs, validation, voice/HA behaviour
       audio/             Audio manager socket, volume, ducking
-      streamdeck/        Stream Deck lifecycle, bindings, and rendering
+      home-assistant/    HA WebSocket client, entity cache, entity reading
+      streamdeck/        Stream Deck lifecycle, bindings, icons, and rendering
         tiles/           One Tile class per file (key behaviour + face)
       voice/             LVA WebSocket and ReSpeaker LEDs
     test/                Hardware-free Node tests (.mts), mirroring src/
+      support/           Shared test doubles; the one folder not mirroring src/
     dist/                Compiled .mjs output; build artifact, not tracked
     package.json
     package-lock.json
@@ -90,9 +92,19 @@ runtime validation, and relevant documentation together.
   circular imports and tests can inject plain objects.
 - Keep `index.mts` as composition/root wiring; put device or domain logic in a
   focused module.
-- Group modules by the boundary they own: `actions/`, `audio/`, `streamdeck/`,
-  and `voice/`, with `index.mts`, `config.mts`, `state.mts`, and `types.mts` at
-  the root. Mirror the same folders under `test/`.
+- Group modules by the boundary they own: `actions/`, `audio/`,
+  `home-assistant/`, `streamdeck/`, and `voice/`, with `index.mts`,
+  `config.mts`, `state.mts`, and `types.mts` at the root. Mirror the same
+  folders under `test/`.
+- Home Assistant is reached over its WebSocket API with a long-lived token
+  (`home-assistant/client.mts`). Tiles depend on the `HomeAssistantService`
+  interface, never the client, and a deployment with no token configured gets
+  `createOfflineHomeAssistant()` so the layout never branches on whether the
+  integration exists. A key that reads Home Assistant must draw three states —
+  on, off, and unknown — so an unreachable instance never looks like a device
+  that is simply switched off. Entity ids belong in `streamdeck/layout.mts`
+  beside the keys that use them, not in inventory; only the URL and token are
+  inventory settings.
 - `actions/catalog.mts` is the single source of truth for the control surface.
   Declare a new action there (a voice action's `run` behaviour lives in its
   catalog entry), add it to `docs/controls.md`, then bind it in

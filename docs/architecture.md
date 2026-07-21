@@ -78,4 +78,13 @@ paths, while USB, network, PipeWire, and configfs APIs remain available to the
 hardware features that need them. The root USB-gadget service retains only its
 mount and module-loading capabilities.
 
-Home Assistant and Music Assistant are not part of this image. The Pi is a client endpoint: ESPHome protocol connects voice to the remote HA instance, while the Sendspin protocol connects the local player to the remote Music Assistant.
+The controller also holds a second, separate connection to Home Assistant: its
+WebSocket API, authenticated with a long-lived access token, used by the Stream
+Deck keys that read and change house state. It subscribes to `state_changed` and
+caches only the entities a visible key is watching, so a house with hundreds of
+entities costs this daemon a handful of them. Losing the connection clears that
+cache, and the affected keys draw an unknown state rather than a stale one that
+still looks live. With no token configured the whole thing is replaced by an
+offline stand-in and the keys behave the same way, permanently.
+
+Home Assistant and Music Assistant are not part of this image. The Pi is a client endpoint: the ESPHome protocol connects voice to the remote HA instance, the HA WebSocket API connects the control surface to it, and the Sendspin protocol connects the local player to the remote Music Assistant.

@@ -76,21 +76,27 @@ directory. See [`apps/README.md`](apps/README.md) for the module boundaries.
 
 ## Everyday control
 
-The default Stream Deck+ layout is:
+The default Stream Deck+ layout has three pages, with the two bottom corners
+navigating between them:
 
-| Key | Action |
+| Page | Keys |
 |---|---|
-| Voice | Start an Assist conversation |
-| Mic | Toggle voice microphone mute |
-| Aux | Toggle analogue input monitoring |
-| USB | Toggle computer USB audio monitoring |
-| Play | Pause/resume the LVA media player |
-| Stop | Stop voice, ringing timer, and LVA media |
-| Timer | Dismiss a ringing timer |
+| Main | Voice (start or cancel Assist), mic mute, play/pause, shuffle, input mode (stream/aux/usb), and a playlist shortcut |
+| Room | Scenes, ceiling fan, blinds, desk PC, a Home Assistant timer, and stop |
+| Info | Clock, room temperature, weather, and a next-page key |
 
-Dial 1 controls volume. Dials 2 and 3 control aux and USB routes. Dial 4 starts a voice conversation. The layout is defined in `apps/controller/src/streamdeck/layout.mts`.
-The controller opens the Stream Deck+ model specifically, queues rapid encoder
-steps in order, and shows the current AUX/USB route state on those two dials.
+Dial 1 controls volume, dial 2 is media transport (previous/next, press to
+play/pause), dial 3 dims and toggles the lights, and dial 4 starts or cancels a
+voice conversation.
+
+Everything on the Room and Info pages, plus shuffle, the playlist, and the
+lights dial, talks to Home Assistant, so those keys show live state as well as
+change it — set `home_assistant_url` and `home_assistant_token`. Without them
+those keys stay in place and draw an unknown state.
+
+The layout is defined in `apps/controller/src/streamdeck/layout.mts`, with the
+entity ids it drives gathered at the top of that file. The controller opens the
+Stream Deck+ model specifically and queues rapid encoder steps in order.
 
 To change what a key or dial does, see [controls](docs/controls.md) for every
 available action. To try a change without a Pi or a Stream Deck attached, run

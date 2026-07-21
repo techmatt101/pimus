@@ -91,10 +91,23 @@
       - (respeaker_led_brightness | int) >= 0
       - (respeaker_led_brightness | int) <= 255
       - home_assistant_webhook_base == '' or home_assistant_webhook_base is match('^https?://')
+      - home_assistant_url == '' or home_assistant_url is match('^https?://')
       - sendspin_server_url == '' or sendspin_server_url is match('^wss?://')
     fail_msg: >-
       Hardware/controller inventory contains an out-of-range value, conflicting
-      voice ports, or an invalid webhook or Sendspin server URL.
+      voice ports, or an invalid Home Assistant, webhook, or Sendspin server URL.
+
+# Reading entity state needs both halves. Setting only one silently disables the
+# Home Assistant keys, which looks like a broken deck rather than a missing
+# setting, so fail here with the reason instead.
+- name: Validate Home Assistant credentials are complete
+  ansible.builtin.assert:
+    that:
+      - (home_assistant_url | length > 0) == (home_assistant_token | length > 0)
+    fail_msg: >-
+      home_assistant_url and home_assistant_token must be set together. Leave
+      both empty to run without Home Assistant; the keys that read it then draw
+      an unknown state.
 
 # The Stream Deck key/dial layout is compiled into the controller
 # (streamdeck/layout.mts) and validated by its own Node test, so there is no
