@@ -76,7 +76,7 @@ else
 fi
 
 heading 'Services'
-{% set doctor_services = ['smartamp-hifiberry', 'smartamp-audio-manager'] + (['smartamp-usb-audio-gadget'] if usb_audio_gadget_enabled else []) + (['smartamp-squeezelite'] if squeezelite_enabled else []) + (['smartamp-voice-assistant'] if voice_assistant_enabled else []) %}
+{% set doctor_services = ['smartamp-hifiberry', 'smartamp-audio-manager'] + (['smartamp-usb-audio-gadget'] if usb_audio_gadget_enabled else []) + (['smartamp-sendspin'] if sendspin_enabled else []) + (['smartamp-voice-assistant'] if voice_assistant_enabled else []) %}
 {% for service in doctor_services %}
 systemctl is-active --quiet {{ service }}.service && pass '{{ service }} is active' || fail '{{ service }} is not active'
 {% endfor %}
@@ -88,7 +88,7 @@ heading 'Recent errors'
 journalctl -p warning -b --no-pager -n 30 \
     -u smartamp-hifiberry \
     -u smartamp-audio-manager \
-    -u smartamp-squeezelite \
+    -u smartamp-sendspin \
     -u smartamp-voice-assistant \
     -u smartamp-controller || true
 

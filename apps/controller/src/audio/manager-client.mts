@@ -122,7 +122,7 @@ export class AudioManagerClient {
   /**
    * Requests or releases ducking of the background bus. The manager releases
    * the request by itself if this socket closes, so a crash cannot leave
-   * Squeezelite and USB audio stuck at the duck level.
+   * Sendspin and USB audio stuck at the duck level.
    */
   setDuck(active: boolean): void {
     if (this.duckActive === active) return

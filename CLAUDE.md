@@ -6,7 +6,7 @@ Pimus provisions `office-amp`, a Raspberry Pi 5 audio and voice endpoint built
 from a HiFiBerry DAC2 ADC Pro + AAmp60, ReSpeaker XVF3800, and Elgato Stream
 Deck+. It targets a fresh 64-bit Raspberry Pi OS Lite installation.
 
-Home Assistant, Music Assistant, and LMS run on another machine. This repository
+Home Assistant and Music Assistant run on another machine. This repository
 must remain a lightweight client: do not add Docker, a local HA/music server, or
 an OS-image build pipeline unless the user explicitly changes that scope.
 
@@ -19,9 +19,9 @@ Keep these boundaries clear:
   WebSocket, and shared control-surface state.
 - `smartamp-audio-manager` is a separate long-running Python daemon. It
   continuously reconciles the PipeWire graph, default devices, aux/USB
-  loopbacks, the duckable Squeezelite/USB background bus, and the XVF3800
+  loopbacks, the duckable Sendspin/USB background bus, and the XVF3800
   acoustic-echo-cancellation reference.
-- Linux Voice Assistant and Squeezelite are external upstream applications
+- Linux Voice Assistant and Sendspin are external upstream applications
   installed and configured by Ansible; do not duplicate their logic locally.
 
 The Node controller is the single owner of physical control-surface behavior.

@@ -31,7 +31,7 @@ smartamp_aux_latency_ms: 40
 smartamp_aec_reference_enabled: true
 
 # Keep background playback audible but quieter while Assist is listening,
-# thinking, speaking, announcing, or ringing a timer. Squeezelite and the USB
+# thinking, speaking, announcing, or ringing a timer. Sendspin and the USB
 # computer input share this background path; LVA voice playback bypasses it.
 smartamp_voice_ducking_enabled: true
 smartamp_background_sink_name: smartamp_background
@@ -45,12 +45,15 @@ usb_audio_product: "Office Amp USB Audio"
 usb_audio_sample_rate: 48000
 usb_audio_sample_size_bytes: 2
 
-# Squeezelite / Home Assistant Music Assistant. Leave server empty for
-# SlimProto discovery, or set the Music Assistant/LMS IP address.
-squeezelite_enabled: true
-squeezelite_name: "Office Amp"
-squeezelite_server: ""
-squeezelite_extra_args: "-C 5 -a 80:4::1"
+# Sendspin, Music Assistant's native player protocol. Leave the URL empty so
+# the player advertises itself over mDNS and Music Assistant discovers it, or
+# set the server WebSocket URL, e.g. "ws://192.168.1.10:8097/sendspin".
+sendspin_enabled: true
+sendspin_name: "Office Amp"
+sendspin_server_url: ""
+# Upstream sendspin-cli release installed into the player's virtual environment.
+sendspin_version: "7.5.0"
+sendspin_extra_args: ""
 
 # Lightweight Home Assistant voice satellite (ESPHome protocol). This is a
 # native client only; Home Assistant and its Assist pipeline run elsewhere.

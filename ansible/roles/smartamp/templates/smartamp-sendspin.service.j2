@@ -1,5 +1,5 @@
 [Unit]
-Description=Smart Amp Squeezelite player
+Description=Smart Amp Sendspin player
 After=smartamp-audio-manager.service network-online.target
 Wants=network-online.target
 Requires=smartamp-audio-manager.service
@@ -10,14 +10,17 @@ User={{ smartamp_service_user }}
 Group={{ smartamp_service_user }}
 Environment=XDG_RUNTIME_DIR=/run/user/{{ smartamp_uid }}
 Environment=PULSE_SERVER=/run/user/{{ smartamp_uid }}/pulse/native
+Environment=XDG_CONFIG_HOME={{ smartamp_state_dir }}/sendspin
 {% if (voice_assistant_enabled | bool) and (smartamp_voice_ducking_enabled | bool) %}
+{# The ALSA "pulse" output honours PULSE_SINK, which places playback on the
+   duckable background bus the audio manager maintains. #}
 Environment=PULSE_SINK={{ smartamp_background_sink_name }}
 {% endif %}
-ExecStart=/usr/bin/squeezelite -n {{ squeezelite_name | quote }} -o pulse {{ ('-s ' + squeezelite_server) if squeezelite_server else '' }} {{ squeezelite_extra_args }}
+ExecStart={{ smartamp_app_dir }}/sendspin/bin/sendspin daemon --name {{ sendspin_name | quote }} --audio-device pulse {{ ('--url ' + sendspin_server_url) if sendspin_server_url else '' }} {{ sendspin_extra_args }}
 Restart=on-failure
 RestartSec=3
 # Apply a small, predictable isolation baseline without restricting the network
-# and local PipeWire connections Squeezelite needs for playback.
+# and local PipeWire connections Sendspin needs for playback and discovery.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true

@@ -19,7 +19,7 @@ XVF3800 microphones --USB/PipeWire--->| Linux Voice Assistant    |--ESPHome API-
 DAC2 ADC Pro aux --PipeWire loopback------------------------+
 Computer --USB-C UAC2--+                                    |
                        +--> duckable background bus --------+--> HiFiBerry DAC --> AAmp60 --> speakers
-Squeezelite / MA ------+                                    |
+Sendspin / MA ---------+                                    |
 Linux Voice Assistant TTS/media ----------------------------+
 ```
 
@@ -31,7 +31,7 @@ The voice service waits for a fresh audio-manager status file containing both
 devices. It then lets the audio library resolve PipeWire's selected defaults;
 `default` is not passed as a literal hardware-device name.
 
-Squeezelite and the USB computer input feed a named background sink. Its monitor is bridged to HiFiBerry through one gain-controlled loopback; Linux Voice Assistant and aux bypass it. The controller requests ducking on wake/listen/think/TTS, announcement, and timer events by sending `set-duck` over the audio manager's control socket. The manager holds the request against that connection, so background audio cannot remain quiet indefinitely: if the controller stops unexpectedly the socket closes and the duck is released at once.
+Sendspin and the USB computer input feed a named background sink. Its monitor is bridged to HiFiBerry through one gain-controlled loopback; Linux Voice Assistant and aux bypass it. The controller requests ducking on wake/listen/think/TTS, announcement, and timer events by sending `set-duck` over the audio manager's control socket. The manager holds the request against that connection, so background audio cannot remain quiet indefinitely: if the controller stops unexpectedly the socket closes and the duck is released at once.
 
 It also mirrors the HiFiBerry output monitor into the XVF3800 USB playback endpoint. Nothing is connected to the ReSpeaker speaker jack; the stream exists to give the XMOS DSP the far-end reference required for acoustic echo cancellation.
 
@@ -42,7 +42,7 @@ The initialisation service selects the DAC2 ADC Pro unbalanced line inputs, sets
 - `smartamp-hifiberry`: applies hardware mixer settings after ALSA detects the HAT.
 - `smartamp-usb-audio-gadget`: creates the stereo UAC2 peripheral on the Pi 5 USB-C controller.
 - `smartamp-audio-manager`: maintains PipeWire defaults, switchable routes, the background bus, and its ducking gain, driven by `pactl subscribe` events and a Unix control socket.
-- `smartamp-squeezelite`: advertises a SlimProto player to Music Assistant or LMS.
+- `smartamp-sendspin`: runs the Sendspin player that Music Assistant discovers and streams to.
 - `smartamp-voice-assistant`: pinned OHF Linux Voice Assistant checkout and Python virtual environment.
 - `smartamp-controller`: maps Assist events to background ducking and XVF3800 effects, and renders/handles Stream Deck+ controls without Elgato desktop software.
 
@@ -78,4 +78,4 @@ paths, while USB, network, PipeWire, and configfs APIs remain available to the
 hardware features that need them. The root USB-gadget service retains only its
 mount and module-loading capabilities.
 
-Home Assistant and Music Assistant/LMS are not part of this image. The Pi is a client endpoint: ESPHome protocol connects voice to the remote HA instance, while SlimProto connects Squeezelite to the remote music server.
+Home Assistant and Music Assistant are not part of this image. The Pi is a client endpoint: ESPHome protocol connects voice to the remote HA instance, while the Sendspin protocol connects the local player to the remote Music Assistant.

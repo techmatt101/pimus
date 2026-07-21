@@ -5,7 +5,7 @@ An idempotent Raspberry Pi 5 build recipe for:
 - HiFiBerry DAC2 ADC Pro with the AAmp60 add-on amplifier
 - ReSpeaker XMOS XVF3800 USB four-microphone array
 - Elgato Stream Deck+
-- analogue aux input, computer audio over USB-C, Home Assistant media, and Squeezelite
+- analogue aux input, computer audio over USB-C, Home Assistant media, and Music Assistant playback over Sendspin
 - Home Assistant Assist, local wake word, voice responses, timers, and announcements
 - configurable ReSpeaker LEDs and Stream Deck+ keys, dials, and touch strip
 
@@ -45,9 +45,9 @@ make doctor
 
 In Home Assistant, open **Settings → Devices & services**. The device named **Office Amp Voice** should be discovered by the ESPHome integration. Add it and select the desired Assist pipeline. The ReSpeaker LED ring is purely reactive — it reflects voice, media, timer, mute, and error states configured in the Ansible variables.
 
-For Music Assistant, add the Squeezelite player named **Office Amp**. Discovery normally works on the local network; otherwise set `squeezelite_server` to the Music Assistant host IP and provision again.
+For Music Assistant, the Sendspin player named **Office Amp** appears automatically — the Sendspin provider is built into Music Assistant and mDNS discovery normally works on the local network. Otherwise set `sendspin_server_url` to the Music Assistant Sendspin WebSocket URL and provision again. The Sendspin client requires Python 3.12, so use a Trixie-based (or newer) Raspberry Pi OS image, or set `sendspin_enabled: false` on Bookworm.
 
-This project installs no Home Assistant, Music Assistant, or LMS server components. `office-amp` is only a network audio/voice endpoint; the server and media library remain on your other machine.
+This project installs no Home Assistant or Music Assistant server components. `office-amp` is only a network audio/voice endpoint; the server and media library remain on your other machine.
 
 ### Updating the controller
 
@@ -98,7 +98,7 @@ Run `sudo smartamp-doctor` on the Pi for a health report.
 
 ## What gets installed
 
-PipeWire owns the HiFiBerry output and mixes all clients. Aux remains an independently switchable direct loopback. USB-gadget audio and Squeezelite share a background bus that fades to 15% while Assist listens, thinks, speaks, announces, or rings a timer, then returns to full level. Linux Voice Assistant bypasses that bus and presents an ESPHome voice satellite/media player to the remote Home Assistant. One local Node controller consumes its peripheral WebSocket API and coordinates ducking, the Stream Deck+, and ReSpeaker LEDs. Docker is not installed.
+PipeWire owns the HiFiBerry output and mixes all clients. Aux remains an independently switchable direct loopback. USB-gadget audio and Sendspin share a background bus that fades to 15% while Assist listens, thinks, speaks, announces, or rings a timer, then returns to full level. Linux Voice Assistant bypasses that bus and presents an ESPHome voice satellite/media player to the remote Home Assistant. One local Node controller consumes its peripheral WebSocket API and coordinates ducking, the Stream Deck+, and ReSpeaker LEDs. Docker is not installed.
 
 See [architecture](docs/architecture.md), [configuration](docs/configuration.md), [controls](docs/controls.md), and [troubleshooting](docs/troubleshooting.md) for details.
 

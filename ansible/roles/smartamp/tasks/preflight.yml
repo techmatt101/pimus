@@ -91,9 +91,10 @@
       - (respeaker_led_brightness | int) >= 0
       - (respeaker_led_brightness | int) <= 255
       - home_assistant_webhook_base == '' or home_assistant_webhook_base is match('^https?://')
+      - sendspin_server_url == '' or sendspin_server_url is match('^wss?://')
     fail_msg: >-
       Hardware/controller inventory contains an out-of-range value, conflicting
-      voice ports, or an invalid webhook URL.
+      voice ports, or an invalid webhook or Sendspin server URL.
 
 # The Stream Deck key/dial layout is compiled into the controller
 # (streamdeck/layout.mts) and validated by its own Node test, so there is no

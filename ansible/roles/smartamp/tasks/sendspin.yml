@@ -1,0 +1,63 @@
+---
+# Sendspin is Music Assistant's native player protocol. The client is the
+# upstream sendspin-cli Python package, pinned and run from its own virtual
+# environment; the Music Assistant server stays on the other host.
+- name: Install Sendspin client dependencies
+  ansible.builtin.apt:
+    name:
+      # PortAudio runtime used by the client's sounddevice output backend.
+      - libportaudio2
+      # Creates the isolated virtual environment for the pinned client.
+      - python3-venv
+    state: present
+
+# The published sendspin wheels require Python >= 3.12. Fail with a direct
+# instruction instead of a confusing pip resolver error mid-provision.
+- name: Check the target Python version for Sendspin
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)"
+  register: sendspin_python_check
+  changed_when: false
+  failed_when: false
+
+- name: Require Python 3.12 or newer for Sendspin
+  ansible.builtin.assert:
+    that: sendspin_python_check.rc == 0
+    fail_msg: >-
+      The sendspin client requires Python >= 3.12. Update the Pi to a
+      Raspberry Pi OS release that ships it, or set sendspin_enabled: false.
+
+# Pinning the release keeps provisioning reproducible, mirroring the pinned
+# Linux Voice Assistant commit. Bump sendspin_version deliberately.
+- name: Install pinned Sendspin client
+  ansible.builtin.pip:
+    name: "sendspin=={{ sendspin_version }}"
+    virtualenv: "{{ smartamp_app_dir }}/sendspin"
+    virtualenv_command: python3 -m venv
+  notify: Restart Sendspin
+
+# The daemon persists runtime settings under XDG_CONFIG_HOME. Keep them with
+# the other service-account state so they survive reinstalls of the venv.
+- name: Create Sendspin state directory
+  ansible.builtin.file:
+    path: "{{ smartamp_state_dir }}/sendspin"
+    state: directory
+    owner: "{{ smartamp_service_user }}"
+    group: "{{ smartamp_service_user }}"
+    mode: "0750"
+
+# The custom unit advertises Office Amp and runs as the same audio-session user
+# as every other client, playing into PipeWire through the Pulse socket.
+- name: Install Smart Amp Sendspin service
+  ansible.builtin.template:
+    src: smartamp-sendspin.service.j2
+    dest: /etc/systemd/system/smartamp-sendspin.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart Sendspin

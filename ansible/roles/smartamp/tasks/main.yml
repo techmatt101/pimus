@@ -53,34 +53,53 @@
   notify: Reload systemd
   when: not (usb_audio_gadget_enabled | bool)
 
-- name: Configure Squeezelite
-  ansible.builtin.import_tasks: squeezelite.yml
-  when: squeezelite_enabled | bool
+- name: Configure Sendspin
+  ansible.builtin.import_tasks: sendspin.yml
+  when: sendspin_enabled | bool
 
 # Avoid leaving the remote music player advertised after its feature flag is
 # turned off.
-- name: Disable Squeezelite when disabled
+- name: Disable Sendspin when disabled
+  ansible.builtin.systemd_service:
+    name: smartamp-sendspin.service
+    enabled: false
+    state: stopped
+  failed_when: false
+  when: not (sendspin_enabled | bool)
+
+# A disabled client should leave neither an advertised unit nor an unused
+# playback runtime on a deliberately lightweight endpoint. Runtime settings in
+# /var/lib survive, matching the voice-assistant removal policy.
+- name: Remove Sendspin artifacts when disabled
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/smartamp-sendspin.service
+    - "{{ smartamp_app_dir }}/sendspin"
+  notify: Reload systemd
+  when: not (sendspin_enabled | bool)
+
+# Earlier releases played Music Assistant audio through Squeezelite. Stop and
+# remove it regardless of flags so an upgraded Pi does not advertise a stale
+# SlimProto player alongside the Sendspin one.
+- name: Stop legacy Squeezelite service
   ansible.builtin.systemd_service:
     name: smartamp-squeezelite.service
     enabled: false
     state: stopped
   failed_when: false
-  when: not (squeezelite_enabled | bool)
 
-# A disabled client should leave neither an advertised unit nor an unused
-# playback package on a deliberately lightweight endpoint.
-- name: Remove Squeezelite artifacts when disabled
+- name: Remove legacy Squeezelite unit
   ansible.builtin.file:
     path: /etc/systemd/system/smartamp-squeezelite.service
     state: absent
   notify: Reload systemd
-  when: not (squeezelite_enabled | bool)
 
-- name: Remove Squeezelite package when disabled
+- name: Remove legacy Squeezelite package
   ansible.builtin.apt:
     name: squeezelite-pulseaudio
     state: absent
-  when: not (squeezelite_enabled | bool)
 
 - name: Configure Home Assistant voice
   ansible.builtin.import_tasks: voice.yml

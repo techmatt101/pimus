@@ -35,11 +35,11 @@
     state: restarted
   when: voice_assistant_enabled | bool
 
-- name: Restart Squeezelite
+- name: Restart Sendspin
   ansible.builtin.systemd_service:
-    name: smartamp-squeezelite.service
+    name: smartamp-sendspin.service
     state: restarted
-  when: squeezelite_enabled | bool
+  when: sendspin_enabled | bool
 
 - name: Restart controller
   ansible.builtin.systemd_service:

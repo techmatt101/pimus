@@ -52,13 +52,13 @@
       - nodejs
       # Installs the controller's exactly pinned USB and WebSocket dependencies.
       - npm
-      # Core audio server that mixes aux, USB, Squeezelite, and voice playback.
+      # Core audio server that mixes aux, USB, Sendspin, and voice playback.
       - pipewire
       # Redirects ALSA-only clients into PipeWire's shared audio graph.
       - pipewire-alsa
       # Supplies PipeWire command-line tools used to inspect the audio graph.
       - pipewire-bin
-      # Presents a PulseAudio-compatible socket to Squeezelite and LVA.
+      # Presents a PulseAudio-compatible socket to Sendspin and LVA.
       - pipewire-pulse
       # Supplies pactl, which the audio router uses to select devices, create
       # loopbacks, and adjust volume.

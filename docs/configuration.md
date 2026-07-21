@@ -10,7 +10,7 @@ Device match expressions search every PipeWire/Pulse node property. Use `pactl l
 
 Set `smartamp_aux_enabled` to choose whether aux monitoring starts on boot. USB monitoring is initially enabled when `usb_audio_gadget_enabled` is true. Stream Deck route toggles last until the next reboot; every boot starts from these inventory defaults.
 
-Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Squeezelite and USB computer audio share the `smartamp_background_sink_name` bus and fade to `smartamp_voice_duck_volume_percent` during an Assist interaction. `smartamp_voice_duck_fade_ms` controls the transition. The controller requests ducking over the audio manager's control socket, which releases the request automatically if the controller disconnects.
+Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Sendspin and USB computer audio share the `smartamp_background_sink_name` bus and fade to `smartamp_voice_duck_volume_percent` during an Assist interaction. `smartamp_voice_duck_fade_ms` controls the transition. The controller requests ducking over the audio manager's control socket, which releases the request automatically if the controller disconnects.
 
 Aux is deliberately not on the duckable bus. It continues at its selected level during voice interactions. Set the generated source target to `background` as a code-level extension if aux should follow the same policy.
 
@@ -58,7 +58,7 @@ current voice, media, timer, mute, or error state and nothing else. There is
 no separately controllable lamp mode, no persisted LED state, and no Home
 Assistant light entity.
 
-Feature flags are reversible: disabling voice, Squeezelite, USB gadget audio,
+Feature flags are reversible: disabling voice, Sendspin, USB gadget audio,
 or every controller consumer stops the relevant service and removes its
 installed runtime artifacts. Persistent preferences and downloaded wake-word
 models under `/var/lib/smartamp` are retained for a later re-enable.
