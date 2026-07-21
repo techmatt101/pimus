@@ -46,19 +46,37 @@ placed. Any slot may be left out; it renders blank.
 
 ## Tiles
 
-Each key is a **tile** — a small class in
-`apps/controller/src/streamdeck/tile.mts` that owns both the action it dispatches
-and how it draws its 120×120 face:
+Each key is a **tile** — a class implementing the `Tile` interface, one class
+per file in `apps/controller/src/streamdeck/tiles/`. A tile owns what pressing
+it does and how it draws its 120×120 face. Tiles are created by the layout
+factory (`createLayout(services)`) with the controller's services injected, so
+a tile carries its behaviour with it instead of handing a description to a
+central dispatcher:
 
-- `ActionTile` is the default: a fixed label and colour bound to one action. Its
-  active-state feedback comes from the action's catalog indicator (see below), so
-  most keys need nothing more than `key('LABEL', '#colour', action)` in the
-  layout.
-- A key that needs richer, stateful rendering is a `Tile` subclass. `MediaTile`
-  is the first: a single play/pause button that draws a play triangle or pause
-  bars and swaps its colour with the playback state, instead of being two
-  separate keys. New dynamic keys (icons, per-state styling, animation) belong in
-  their own `Tile` subclass rather than in the shared renderer.
+- `ActionTile` (`tiles/action-tile.mts`) is the default: a fixed label and
+  colour that runs one binding (a declarative action paired with its
+  behaviour, built by the `voice`, `volume`, `route`, and `webhook` builders in
+  `streamdeck/bindings.mts`). Its active-state feedback comes from the bound
+  action's catalog indicator (see below), so most keys need nothing more than
+  `key('LABEL', '#colour', binding)` in the layout.
+- A key that needs richer behaviour or stateful rendering is its own `Tile`
+  class built on the injected services. `MediaTile` (`tiles/media-tile.mts`)
+  is the first: a single play/pause button that toggles the player itself,
+  draws a play triangle or pause bars, colours itself from the playback state,
+  and gently pulses while playing. New dynamic keys (icons, per-state styling,
+  animation) belong in their own `Tile` class rather than in the shared
+  renderer.
+
+Tiles have a lifecycle. `mount(host)` is called when a tile becomes visible on
+an attached deck and `unmount()` when its page navigates away or the deck
+disconnects. While mounted a tile may keep its own state, subscribe to the
+`ControlModel` (`state.mts`) to react to changes, and call `host.invalidate()`
+to repaint just its own key. Ordinary repaints are event-driven — any model
+change schedules a full redraw, debounced at 50 ms — so an **animated** tile
+runs its own timer between state changes: `MediaTile` subscribes to the model,
+starts a 150 ms pulse timer while the player is playing, and derives the
+animation phase from `context.now` so its render stays a pure function. Every
+timer and subscription must be dropped in `unmount`.
 
 ## Voice actions — `type: lva`
 
@@ -73,7 +91,7 @@ Sent to the Linux Voice Assistant peripheral socket.
 | `stop_timer_ringing` | Silence a ringing timer, leaving media playback alone. |
 
 ```ts
-{ label: 'VOICE', color: '#006064', action: voice('start_listening') }
+key('VOICE', '#006064', voice('start_listening'))
 ```
 
 Any other command is forwarded to LVA unchanged, so upstream features work
@@ -107,7 +125,7 @@ does not know.
 | `toggle` | Flip the named audio route on or off. |
 
 ```ts
-{ label: 'AUX', color: '#4a148c', action: route('aux', 'toggle') }
+key('AUX', '#4a148c', route('aux', 'toggle'))
 ```
 
 ## Home Assistant webhooks — `type: webhook`
@@ -117,16 +135,16 @@ POSTs to `<home_assistant_webhook_base>/<id>`. Set the base URL in
 No Home Assistant token is stored on the Pi.
 
 ```ts
-{ label: 'MOVIE', color: '#37474f', action: { type: 'webhook', id: 'movie_mode' } }
+key('MOVIE', '#37474f', webhook('movie_mode'))
 ```
 
 ## Nothing — `type: noop`
 
-Does nothing. Use the `NONE` action to blank a dial direction you do not want
-bound.
+Does nothing. Use the `none()` binding to blank a dial direction you do not
+want bound.
 
 ```ts
-{ label: 'VOICE', left: NONE, right: NONE, press: voice('start_listening') }
+{ label: 'VOICE', left: none(), right: none(), press: voice('start_listening') }
 ```
 
 ## Key and dial feedback
@@ -155,18 +173,20 @@ assistant state. Reordering the dials in `layout.mts` keeps each readout correct
 ## Changing the layout
 
 Edit `apps/controller/src/streamdeck/layout.mts`, then `make deploy-controller`.
-The `PAGES` and `DIALS` are ordinary TypeScript. Place a tile in a page slot with
-`key('LABEL', '#colour', action)`, or drop in a dynamic tile such as
-`new MediaTile()`. Add a page by adding another `{ name, grid }` entry to
-`PAGES`; each page's `grid` has the six named slots (`topLeft`, `topMidLeft`,
-`topMidRight`, `topRight`, `bottomLeft`, `bottomRight`), and its short `name`
-labels the nav keys.
+The layout is built by `createLayout(services)` and its `pages` and `dials` are
+ordinary TypeScript. Place a tile in a page slot with
+`key('LABEL', '#colour', binding)`, or drop in a dynamic tile such as
+`new MediaTile(services)`. Add a page by adding another `{ name, grid }` entry
+to `pages`; each page's `grid` has the six named slots (`topLeft`,
+`topMidLeft`, `topMidRight`, `topRight`, `bottomLeft`, `bottomRight`), and its
+short `name` labels the nav keys.
 
 ## Adding a new action
 
 1. Add an entry to the relevant table in `apps/controller/src/actions/catalog.mts`.
-2. For a voice action, add its runner in `apps/controller/src/actions/handler.mts`.
-   The compiler requires this — a catalogued action with no runner fails the build.
+2. For a voice action, declare its `run` behaviour in the catalog entry itself.
+   The compiler requires this — a catalogued action with no behaviour fails the
+   build.
 3. Document it in the table above; a test fails if it is missing here.
 4. Bind it in `apps/controller/src/streamdeck/layout.mts`.
 5. Run `make test`.

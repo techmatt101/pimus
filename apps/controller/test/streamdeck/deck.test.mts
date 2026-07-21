@@ -2,27 +2,29 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { color, createImage } from '../../src/streamdeck/bitmap.mjs'
-import { createActionDispatcher, findStreamDeckPlus } from '../../src/streamdeck/deck.mjs'
+import { createDispatcher, findStreamDeckPlus } from '../../src/streamdeck/deck.mjs'
 import type { StreamDeckDeviceInfo } from '@elgato-stream-deck/node'
-import type { Action } from '../../src/types.mjs'
 
-test('Stream Deck actions are serialized and the Plus model is selected', async () => {
+test('Stream Deck presses are serialized and the Plus model is selected', async () => {
   const observed: string[] = []
   let active = 0
   let maximumActive = 0
-  const dispatch = createActionDispatcher(async (action) => {
+  const dispatch = createDispatcher({ error: () => {} })
+  const press = (name: string) => async (): Promise<void> => {
     active += 1
     maximumActive = Math.max(maximumActive, active)
     await new Promise((resolve) => setTimeout(resolve, 1))
-    observed.push(action?.command ?? '')
+    observed.push(name)
     active -= 1
-  })
-  const actions: Action[] = [
-    { type: 'audio', command: 'one' },
-    { type: 'audio', command: 'two' },
-    { type: 'audio', command: 'three' },
-  ]
-  await Promise.all(actions.map((action) => dispatch(action)))
+  }
+  await Promise.all([
+    dispatch(press('one')),
+    // An empty slot dispatches nothing but must not break the chain.
+    dispatch(undefined),
+    dispatch(press('two')),
+    dispatch(() => { throw new Error('boom') }),
+    dispatch(press('three')),
+  ])
   assert.equal(maximumActive, 1)
   assert.deepEqual(observed, ['one', 'two', 'three'])
 

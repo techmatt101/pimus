@@ -35,9 +35,10 @@ Each deployable app owns its source and tests:
 apps/
   controller/
     src/                 TypeScript controller modules (.mts)
-      actions/           Action catalog and dispatch
+      actions/           Action catalog: specs, validation, voice behaviour
       audio/             Audio manager socket, volume, ducking
-      streamdeck/        Stream Deck lifecycle and rendering
+      streamdeck/        Stream Deck lifecycle, bindings, and rendering
+        tiles/           One Tile class per file (key behaviour + face)
       voice/             LVA WebSocket and ReSpeaker LEDs
     test/                Hardware-free Node tests (.mts), mirroring src/
     dist/                Compiled .mjs output; build artifact, not tracked
@@ -90,21 +91,34 @@ runtime validation, and relevant documentation together.
   and `voice/`, with `index.mts`, `config.mts`, `state.mts`, and `types.mts` at
   the root. Mirror the same folders under `test/`.
 - `actions/catalog.mts` is the single source of truth for the control surface.
-  Declare a new action there, give it a runner in `actions/handler.mts`, add it
-  to `docs/controls.md`, then bind it in `streamdeck/layout.mts`. A default
-  `ActionTile`'s colour and label feedback belongs in the catalog entry's
-  `indicator`, not in the renderer.
-- Each Stream Deck key is a `Tile` (`streamdeck/tile.mts`) that owns both the
-  action it dispatches and how it renders its own face. Use `ActionTile` for a
-  fixed key; write a `Tile` subclass (as `MediaTile` does for play/pause) when a
-  key needs stateful icons, styling, or animation the catalog indicator cannot
-  express. Never push per-key rendering back into the renderer.
-- The Stream Deck layout is compiled in at `streamdeck/layout.mts`, not in
-  inventory. Each page is a fixed named `PageGrid` (`streamdeck/grid.mts`) of
-  tiles; the grid geometry and physical-key mapping live in `grid.mts`. Only the
+  Declare a new action there (a voice action's `run` behaviour lives in its
+  catalog entry), add it to `docs/controls.md`, then bind it in
+  `streamdeck/layout.mts`. A default `ActionTile`'s colour and label feedback
+  belongs in the catalog entry's `indicator`, not in the renderer.
+- Each Stream Deck key is a `Tile` — an interface in
+  `streamdeck/tiles/tile.mts`, with one implementing class per file in
+  `streamdeck/tiles/`. A tile owns what pressing it does and how it renders its
+  own face; tiles get the controller's services (`TileServices`,
+  `streamdeck/bindings.mts`) injected by the layout factory, and there is no
+  central action dispatcher. Use `ActionTile` with a `Binding` for a fixed key;
+  write a new `Tile` class (as `MediaTile` does for play/pause) when a key
+  needs behaviour or stateful rendering — icons, styling, animation — the
+  catalog indicator cannot express. Never push per-key rendering back into the
+  renderer.
+- A tile that reacts to changes or animates uses the lifecycle: `mount(host)`
+  when it becomes visible on an attached deck, `unmount()` when hidden. While
+  mounted it may hold state, subscribe to the `ControlModel` (`state.mts`), and
+  repaint just its key via `host.invalidate()` — e.g. a timer for animation,
+  with the phase derived from `context.now` so render stays pure. Drop every
+  timer and subscription in `unmount`.
+- The Stream Deck layout is compiled in at `streamdeck/layout.mts` as
+  `createLayout(services)`, not in inventory. Each page is a fixed named
+  `PageGrid` (`streamdeck/grid.mts`) of tiles; the grid geometry,
+  physical-key mapping, and dial shape live in `grid.mts`. Only the
   `streamdeck_enabled` deployment flag lives in Ansible; `layout.test.mts` and
   `tile.test.mts` validate the compiled layout and tiles against the catalog.
-- Keep shared display/voice state in `state.mts`.
+- Keep shared display/voice state in `state.mts`; the `ControlModel` there is
+  the change-notification surface — mutate state, then `notify()`.
 - Treat USB and WebSocket disconnects as normal. Log, retain useful state, and
   reconnect without terminating the daemon.
 - Keep hardware access injectable so tests run without a Stream Deck or

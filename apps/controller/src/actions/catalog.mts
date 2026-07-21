@@ -1,20 +1,21 @@
 // The catalog of everything a Stream Deck key or dial can be bound to.
 //
 // This file is the single source of truth for the control surface. Adding an
-// action here is what makes it configurable, dispatchable, validated at
-// startup, and reflected on the key face:
+// action here is what makes it bindable, validated, and reflected on the key
+// face:
 //
-//   - actions/handler.mts must supply a runner for every voice action, so a new
-//     catalog entry fails to compile until its behaviour exists.
-//   - config.mts rejects an unknown action when controller.json loads, instead
-//     of leaving a silently dead key on the deck.
-//   - streamdeck/renderer.mts reads the `indicator` below to decide the active
+//   - every voice action declares its `run` behaviour in its own entry, so a
+//     new catalog entry fails to compile until its behaviour exists.
+//   - layout.test.mts rejects a bound action the catalog does not understand,
+//     instead of leaving a silently dead key on the deck.
+//   - streamdeck/tile.mts reads the `indicator` below to decide the active
 //     colour and label, so key feedback lives with the action it belongs to.
 //
-// Bindings themselves live in streamdeck/layout.mts; docs/controls.md is the
-// reference table. When you add an action, update all three together.
+// Bindings themselves are built in streamdeck/layout.mts from the injected
+// controller services; docs/controls.md is the reference table. When you add
+// an action, update all three together.
 
-import type { Action, AudioState, ControlState } from '../types.mjs'
+import type { Action, AudioState, ControlState, LvaSender } from '../types.mjs'
 
 /** State an indicator may consult to decide whether its key reads as active. */
 export interface IndicatorContext {
@@ -41,11 +42,27 @@ export interface ActionSpec {
   indicator?: KeyIndicator
 }
 
+/** What a voice action's runner is allowed to touch. */
+export interface VoiceContext {
+  state: ControlState
+  lva: LvaSender
+  onStateChange: () => void
+}
+
+/**
+ * A voice action must carry its behaviour with it. The required `run` makes
+ * adding an entry to VOICE_ACTIONS without behaviour a compile error rather
+ * than a dead key on the deck.
+ */
+interface VoiceActionSpec extends ActionSpec {
+  run(context: VoiceContext): void
+}
+
 const ASSIST_ACTIVE = ['WAKE_WORD_DETECTED', 'LISTENING', 'THINKING', 'TTS_SPEAKING']
 
 /**
  * Voice actions (`type: lva`) sent to the Linux Voice Assistant peripheral
- * socket. Every entry needs a runner in actions/handler.mts.
+ * socket.
  *
  * LVA accepts more commands than these. Any command not listed is forwarded
  * verbatim (see FORWARDED_VOICE_COMMAND below), so upstream additions work
@@ -60,6 +77,9 @@ export const VOICE_ACTIONS = {
       isActive: ({ state }) => ASSIST_ACTIVE.includes(state.assist),
       activeColor: '#00b8d4',
     },
+    run: ({ lva }) => {
+      lva.send('start_listening')
+    },
   },
   mute_toggle: {
     summary: 'Toggle the microphone mute. Tracks the mute state reported by LVA.',
@@ -68,6 +88,11 @@ export const VOICE_ACTIONS = {
       isActive: ({ state }) => state.muted,
       activeColor: '#d50000',
       label: (configured, active) => (active ? 'MIC OFF' : configured),
+    },
+    run: ({ state, lva }) => {
+      // LVA has no toggle command, so pick the opposite of the mute state it
+      // last reported. The resulting `muted` event is what updates our state.
+      lva.send(state.muted ? 'unmute_mic' : 'mute_mic')
     },
   },
   media_toggle: {
@@ -78,16 +103,33 @@ export const VOICE_ACTIONS = {
       activeColor: '#00c853',
       label: (configured, active) => (active ? 'PAUSE' : configured),
     },
+    run: ({ state, lva, onStateChange }) => {
+      lva.send(state.media ? 'pause_media_player' : 'resume_media_player')
+      // LVA confirms with a media_player_* event, but the key repaints now so
+      // the press feels immediate; the event reconciles any disagreement.
+      state.media = !state.media
+      onStateChange()
+    },
   },
   stop: {
     summary: 'Stop everything at once: timer ringing, the pipeline, and media playback.',
     example: '{ type: lva, command: stop }',
+    run: ({ state, lva, onStateChange }) => {
+      lva.send('stop_timer_ringing')
+      lva.send('stop_pipeline')
+      lva.send('stop_media_player')
+      state.media = false
+      onStateChange()
+    },
   },
   stop_timer_ringing: {
     summary: 'Silence a ringing timer, leaving media playback alone.',
     example: '{ type: lva, command: stop_timer_ringing }',
+    run: ({ lva }) => {
+      lva.send('stop_timer_ringing')
+    },
   },
-} as const satisfies Record<string, ActionSpec>
+} as const satisfies Record<string, VoiceActionSpec>
 
 export type VoiceActionName = keyof typeof VOICE_ACTIONS
 
@@ -171,6 +213,17 @@ export const isVolumeAction = (command: string): command is VolumeActionName =>
 export const isRouteAction = (command: string): command is RouteActionName =>
   has(ROUTE_ACTIONS, command)
 
+/**
+ * Runs a voice command: a catalogued action performs the behaviour declared in
+ * its entry, and any other command is forwarded to LVA verbatim, so LVA
+ * features that need no local bookkeeping are usable without a controller
+ * change.
+ */
+export function runVoiceCommand(command: string, context: VoiceContext): void {
+  if (isVoiceAction(command)) VOICE_ACTIONS[command].run(context)
+  else context.lva.send(command)
+}
+
 /** The key indicator for a bound action, if it reports an active state. */
 export function indicatorFor(action: Action | undefined): KeyIndicator | undefined {
   if (!action?.command) return undefined
@@ -189,9 +242,9 @@ export function indicatorFor(action: Action | undefined): KeyIndicator | undefin
 }
 
 /**
- * Explains why a configured action is unusable, or null when it is valid.
- * config.mts calls this so a typo fails at startup with a readable message
- * rather than producing a key that silently does nothing when pressed.
+ * Explains why a bound action is unusable, or null when it is valid.
+ * layout.test.mts calls this so a typo fails `make test` with a readable
+ * message rather than producing a key that silently does nothing when pressed.
  */
 export function describeActionProblem(action: unknown): string | null {
   if (action === undefined) return null

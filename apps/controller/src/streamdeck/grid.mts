@@ -9,8 +9,8 @@
 // navigation, leaving six slots for a page's tiles. Those six are named so a
 // page reads as a fixed grid rather than a count-the-positions array.
 
-import type { StreamDeckDial } from '../types.mjs'
-import type { Tile } from './tile.mjs'
+import type { Binding } from './bindings.mjs'
+import type { Tile } from './tiles/tile.mjs'
 
 /** Physical key index of the previous-page corner. */
 export const PREV_KEY = 4
@@ -54,6 +54,18 @@ export interface StreamDeckPage {
   /** Shown on the navigation keys so you can see which page you are moving to. */
   name: string
   grid: PageGrid
+}
+
+/**
+ * One physical dial: a touch-strip label plus the bindings run on
+ * counter-clockwise turn, clockwise turn, and press. The bindings' declarative
+ * actions also drive the dial's readout (renderer.mts) and layout validation.
+ */
+export interface StreamDeckDial {
+  label: string
+  left?: Binding
+  right?: Binding
+  press?: Binding
 }
 
 /**

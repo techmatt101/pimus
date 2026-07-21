@@ -1,4 +1,4 @@
-import type { ControlState, LvaMessage } from './types.mjs'
+import type { AudioState, ControlState, LvaMessage } from './types.mjs'
 
 // Pipeline states shown on the assist dial. The LVA socket also carries
 // non-pipeline traffic (light_command, zeroconf, media and volume updates)
@@ -20,6 +20,41 @@ export function createState(overrides: Partial<ControlState> = {}): ControlState
     outputMuted: false,
     media: false,
     ...overrides,
+  }
+}
+
+export type Unsubscribe = () => void
+
+/**
+ * The observable control-surface model: the mutable display state, a live view
+ * of the audio manager's route state, and a change subscription. Whoever
+ * mutates `state` (the LVA client, the volume monitor, a tile) calls
+ * `notify()`; the renderer repaints from it, and a mounted tile may subscribe
+ * directly when it needs to react to changes itself — starting an animation,
+ * say — rather than only being repainted.
+ */
+export class ControlModel {
+  private readonly listeners = new Set<() => void>()
+
+  constructor(
+    readonly state: ControlState,
+    private readonly readAudio: () => AudioState = () => ({ sources: {} }),
+  ) {}
+
+  get audio(): AudioState {
+    return this.readAudio()
+  }
+
+  subscribe(listener: () => void): Unsubscribe {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  }
+
+  notify(): void {
+    // Copy first so a listener that unsubscribes mid-notification is safe.
+    for (const listener of [...this.listeners]) listener()
   }
 }
 

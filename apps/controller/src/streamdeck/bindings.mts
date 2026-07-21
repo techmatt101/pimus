@@ -1,0 +1,80 @@
+// The executable side of the control surface. A Binding pairs a declarative
+// catalog action with the behaviour that runs it, closed over the controller
+// services injected by the layout factory (streamdeck/layout.mts). Tiles
+// (streamdeck/tiles/) and dials both run bindings; the declarative half feeds
+// catalog indicators, dial readouts, and layout validation.
+
+import {
+  runVoiceCommand,
+  type RouteActionName,
+  type VolumeActionName,
+} from '../actions/catalog.mjs'
+import type { ControlModel } from '../state.mjs'
+import type { Action, LvaSender } from '../types.mjs'
+
+/**
+ * The controller services injected into tiles and dial bindings. Depending on
+ * this narrow surface instead of the concrete clients keeps tiles free of
+ * device lifecycles and lets tests inject plain recording objects.
+ */
+export interface TileServices {
+  /** The observable control-surface model; mutate its state, then notify. */
+  model: ControlModel
+  lva: LvaSender
+  /** Applies on/off/toggle to a named audio route via the audio manager socket. */
+  setSource(name: string, command: string): unknown
+  /** Applies up/down/mute to the PipeWire default sink. */
+  setVolume(command: string): unknown
+  webhookBase?: string
+  /** Only the request is meaningful here; the response body is ignored. */
+  request?(url: string, init?: { method: string }): unknown
+}
+
+/**
+ * One executable control binding: the declarative action it stands for — kept
+ * for catalog indicators, dial readouts, and layout validation — paired with
+ * the behaviour that closes over the injected services.
+ */
+export interface Binding {
+  action: Action
+  run(): unknown
+}
+
+/**
+ * Binding builders closed over the injected services. The layout factory uses
+ * these to give every key and dial its behaviour. Route and volume commands
+ * are checked against the catalog at compile time; voice commands stay a free
+ * string because anything uncatalogued is forwarded to LVA verbatim.
+ */
+export function createBindings(services: TileServices) {
+  const voiceContext = () => ({
+    state: services.model.state,
+    lva: services.lva,
+    onStateChange: () => services.model.notify(),
+  })
+  return {
+    voice: (command: string): Binding => ({
+      action: { type: 'lva', command },
+      run: () => runVoiceCommand(command, voiceContext()),
+    }),
+    volume: (command: VolumeActionName): Binding => ({
+      action: { type: 'audio', command },
+      run: () => services.setVolume(command),
+    }),
+    route: (source: string, command: RouteActionName): Binding => ({
+      action: { type: 'audio', source, command },
+      run: () => services.setSource(source, command),
+    }),
+    webhook: (id: string): Binding => ({
+      action: { type: 'webhook', id },
+      run: async () => {
+        if (!services.webhookBase) return
+        const base = services.webhookBase.replace(/\/$/, '')
+        const request = services.request ?? globalThis.fetch
+        await request(`${base}/${encodeURIComponent(id)}`, { method: 'POST' })
+      },
+    }),
+    /** An explicitly blank binding, for a dial direction you do not want bound. */
+    none: (): Binding => ({ action: { type: 'noop' }, run: () => {} }),
+  }
+}

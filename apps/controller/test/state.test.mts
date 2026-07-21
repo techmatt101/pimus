@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { applyLvaEvent, createState } from '../src/state.mjs'
+import { applyLvaEvent, ControlModel, createState } from '../src/state.mjs'
 
 test('LVA snapshots and events update shared display state', () => {
   const state = createState()
@@ -36,4 +36,24 @@ test('non-pipeline events leave the assist display state alone', () => {
   state.assist = 'LISTENING'
   applyLvaEvent(state, { event: 'timer_updated' })
   assert.equal(state.assist, 'TIMER_TICKING')
+})
+
+test('the control model notifies subscribers until they unsubscribe', () => {
+  const model = new ControlModel(createState(), () => ({ sources: { aux: true } }))
+  assert.deepEqual(model.audio, { sources: { aux: true } })
+
+  let seen = 0
+  const unsubscribe = model.subscribe(() => { seen += 1 })
+  model.notify()
+  model.notify()
+  unsubscribe()
+  model.notify()
+  assert.equal(seen, 2)
+
+  // A listener that unsubscribes while being notified must not break others.
+  let other = 0
+  const stopEarly = model.subscribe(() => stopEarly())
+  model.subscribe(() => { other += 1 })
+  model.notify()
+  assert.equal(other, 1)
 })

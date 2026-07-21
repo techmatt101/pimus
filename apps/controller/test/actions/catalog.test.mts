@@ -7,10 +7,13 @@ import { fileURLToPath } from 'node:url'
 import {
   describeActionProblem,
   indicatorFor,
+  runVoiceCommand,
   ROUTE_ACTIONS,
   VOICE_ACTIONS,
   VOLUME_ACTIONS,
+  type VoiceContext,
 } from '../../src/actions/catalog.mjs'
+import { createState } from '../../src/state.mjs'
 
 test('valid actions from the catalog pass configuration validation', () => {
   const valid: unknown[] = [
@@ -38,6 +41,44 @@ test('mistyped actions are rejected with an actionable message', () => {
   assert.match(String(describeActionProblem({ type: 'webhook' })), /needs an id/)
   assert.match(String(describeActionProblem({ type: 'lights' })), /unknown action type/)
   assert.match(String(describeActionProblem('mute')), /must be an object/)
+})
+
+test('every catalogued voice action reaches the LVA socket', () => {
+  for (const command of Object.keys(VOICE_ACTIONS)) {
+    const sent: string[] = []
+    runVoiceCommand(command, {
+      state: createState(),
+      lva: { send: (lvaCommand) => { sent.push(lvaCommand) } },
+      onStateChange: () => {},
+    })
+    assert.ok(sent.length > 0, `${command} sent nothing to LVA`)
+  }
+})
+
+test('voice runners keep local state in step with what they send', () => {
+  const state = createState({ muted: false, media: true })
+  const sent: string[] = []
+  let changes = 0
+  const context: VoiceContext = {
+    state,
+    lva: { send: (command) => { sent.push(command) } },
+    onStateChange: () => { changes += 1 },
+  }
+
+  runVoiceCommand('mute_toggle', context)
+  runVoiceCommand('stop', context)
+  // A command with no catalog entry is forwarded to LVA unchanged.
+  runVoiceCommand('some_future_lva_command', context)
+
+  assert.deepEqual(sent, [
+    'mute_mic',
+    'stop_timer_ringing',
+    'stop_pipeline',
+    'stop_media_player',
+    'some_future_lva_command',
+  ])
+  assert.equal(state.media, false)
+  assert.equal(changes, 1)
 })
 
 test('only actions that report a live state expose an indicator', () => {

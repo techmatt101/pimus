@@ -1,7 +1,11 @@
 // Shapes shared across controller modules. The configuration types mirror
 // ansible/roles/smartamp/templates/controller.json.j2; change both together.
 
-/** A configured control-surface action, as generated into controller.json. */
+/**
+ * A declarative control-surface action. A `Binding` (streamdeck/bindings.mts)
+ * pairs one with the behaviour that runs it; the catalog
+ * (actions/catalog.mts) validates it and describes its key feedback.
+ */
 export interface Action {
   type: 'noop' | 'lva' | 'audio' | 'webhook'
   command?: string
@@ -11,13 +15,6 @@ export interface Action {
   id?: string
 }
 
-export interface StreamDeckDial {
-  label: string
-  left?: Action
-  right?: Action
-  press?: Action
-}
-
 /**
  * The Stream Deck deployment flag from controller.json. Whether a unit drives a
  * deck is a per-device choice (`streamdeck_enabled` in inventory); the layout
@@ -25,7 +22,7 @@ export interface StreamDeckDial {
  *
  * The compiled layout's own shape — pages, the fixed tile grid, and the tile
  * classes that render each key — lives in streamdeck/grid.mts and
- * streamdeck/tile.mts, since those hold rendering behaviour rather than plain
+ * streamdeck/tiles/, since those hold rendering behaviour rather than plain
  * configuration data.
  */
 export interface StreamDeckDeployment {
@@ -89,9 +86,9 @@ export interface LvaMessage {
 }
 
 /**
- * The subset of the LVA client the action handler needs. Depending on this
- * instead of LvaClient keeps the module free of a circular import and lets
- * tests pass a plain recording object.
+ * The subset of the LVA client the voice actions need. Depending on this
+ * instead of LvaClient keeps the catalog and tiles free of a circular import
+ * and lets tests pass a plain recording object.
  */
 export interface LvaSender {
   send(command: string, data?: Record<string, unknown>): void
