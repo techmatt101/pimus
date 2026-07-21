@@ -11,12 +11,6 @@ export interface Action {
   id?: string
 }
 
-export interface StreamDeckKey {
-  label: string
-  color: string
-  action?: Action
-}
-
 export interface StreamDeckDial {
   label: string
   left?: Action
@@ -28,16 +22,14 @@ export interface StreamDeckDial {
  * The Stream Deck deployment flag from controller.json. Whether a unit drives a
  * deck is a per-device choice (`streamdeck_enabled` in inventory); the layout
  * itself is compiled in, see streamdeck/layout.mts.
+ *
+ * The compiled layout's own shape — pages, the fixed tile grid, and the tile
+ * classes that render each key — lives in streamdeck/grid.mts and
+ * streamdeck/tile.mts, since those hold rendering behaviour rather than plain
+ * configuration data.
  */
 export interface StreamDeckDeployment {
   enabled: boolean
-}
-
-/** The compiled control surface: panel brightness and the key/dial bindings. */
-export interface StreamDeckLayout {
-  brightness: number
-  keys: StreamDeckKey[]
-  dials: StreamDeckDial[]
 }
 
 /** One LED appearance: an effect name plus its colours and brightness. */

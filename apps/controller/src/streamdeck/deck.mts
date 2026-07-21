@@ -7,8 +7,8 @@ import {
 } from '@elgato-stream-deck/node'
 
 import type { DeckRenderer } from './renderer.mjs'
+import type { StreamDeckLayout } from './grid.mjs'
 import type { ActionHandler } from '../actions/handler.mjs'
-import type { StreamDeckLayout } from '../types.mjs'
 
 const sleep = (milliseconds: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, milliseconds))
@@ -77,7 +77,14 @@ export async function runDeckLoop({
       const disconnected = new Promise<void>((resolve) => deck?.once('error', () => resolve()))
       deck.on('down', (controlDefinition) => {
         if (controlDefinition.type === 'button') {
-          void dispatch(layout.keys[controlDefinition.index]?.action)
+          // The bottom-corner keys page the grid when the layout has more than
+          // one page; every other key dispatches its current page's action.
+          const nav = renderer.navTarget(controlDefinition.index)
+          if (nav) {
+            renderer.changePage(nav === 'next' ? 1 : -1)
+          } else {
+            void dispatch(renderer.actionAt(controlDefinition.index))
+          }
         } else if (controlDefinition.type === 'encoder') {
           void dispatch(layout.dials[controlDefinition.index]?.press)
         }

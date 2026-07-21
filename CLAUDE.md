@@ -91,11 +91,19 @@ runtime validation, and relevant documentation together.
   the root. Mirror the same folders under `test/`.
 - `actions/catalog.mts` is the single source of truth for the control surface.
   Declare a new action there, give it a runner in `actions/handler.mts`, add it
-  to `docs/controls.md`, then bind it in `streamdeck/layout.mts`. Key colour and
-  label feedback belongs in the catalog entry's `indicator`, not in the renderer.
-- The Stream Deck key/dial layout is compiled in at `streamdeck/layout.mts`, not
-  in inventory. Only the `streamdeck_enabled` deployment flag lives in Ansible;
-  `layout.test.mts` validates the compiled layout against the catalog.
+  to `docs/controls.md`, then bind it in `streamdeck/layout.mts`. A default
+  `ActionTile`'s colour and label feedback belongs in the catalog entry's
+  `indicator`, not in the renderer.
+- Each Stream Deck key is a `Tile` (`streamdeck/tile.mts`) that owns both the
+  action it dispatches and how it renders its own face. Use `ActionTile` for a
+  fixed key; write a `Tile` subclass (as `MediaTile` does for play/pause) when a
+  key needs stateful icons, styling, or animation the catalog indicator cannot
+  express. Never push per-key rendering back into the renderer.
+- The Stream Deck layout is compiled in at `streamdeck/layout.mts`, not in
+  inventory. Each page is a fixed named `PageGrid` (`streamdeck/grid.mts`) of
+  tiles; the grid geometry and physical-key mapping live in `grid.mts`. Only the
+  `streamdeck_enabled` deployment flag lives in Ansible; `layout.test.mts` and
+  `tile.test.mts` validate the compiled layout and tiles against the catalog.
 - Keep shared display/voice state in `state.mts`.
 - Treat USB and WebSocket disconnects as normal. Log, retain useful state, and
   reconnect without terminating the daemon.

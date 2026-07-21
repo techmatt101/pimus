@@ -20,10 +20,45 @@ can ship.
 
 ## Hardware
 
-The Stream Deck+ has **8 keys** and **4 dials**. Each dial binds three separate
-actions: `left` (counter-clockwise), `right` (clockwise), and `press`. Pressing
-the LCD strip above a dial triggers that dial's `press` action. Fewer than 8
-keys is fine; the unused slots render blank.
+The Stream Deck+ has an **8-key grid** (4 columns × 2 rows) and **4 dials**. Each
+dial binds three separate actions: `left` (counter-clockwise), `right`
+(clockwise), and `press`. Pressing the LCD strip above a dial triggers that
+dial's `press` action.
+
+## Pages
+
+The keys are paged; the dials are not. With more than one page the two
+bottom-corner keys become previous/next navigation and each page fills the
+remaining six slots:
+
+```text
+[ topLeft ][ topMidLeft ][ topMidRight ][ topRight ]
+[   PREV   ][ bottomLeft ][ bottomRight ][   NEXT   ]
+```
+
+A page is a fixed grid of named slots, not a list — you read where each tile
+sits directly. The nav keys show an arrow and the name of the page they move to,
+and paging wraps around at either end. Because the dials keep their bindings on
+every page, volume and the aux/usb routes are always one turn away whichever page
+is showing. A layout with a single page shows no nav keys, and its tiles keep the
+same grid positions — adding a second page never reshuffles the keys already
+placed. Any slot may be left out; it renders blank.
+
+## Tiles
+
+Each key is a **tile** — a small class in
+`apps/controller/src/streamdeck/tile.mts` that owns both the action it dispatches
+and how it draws its 120×120 face:
+
+- `ActionTile` is the default: a fixed label and colour bound to one action. Its
+  active-state feedback comes from the action's catalog indicator (see below), so
+  most keys need nothing more than `key('LABEL', '#colour', action)` in the
+  layout.
+- A key that needs richer, stateful rendering is a `Tile` subclass. `MediaTile`
+  is the first: a single play/pause button that draws a play triangle or pause
+  bars and swaps its colour with the playback state, instead of being two
+  separate keys. New dynamic keys (icons, per-state styling, animation) belong in
+  their own `Tile` subclass rather than in the shared renderer.
 
 ## Voice actions — `type: lva`
 
@@ -96,9 +131,9 @@ bound.
 
 ## Key and dial feedback
 
-Some actions report their target's live state, so a key changes colour and label
-without any extra configuration. Everything else keeps the label and colour you
-configured.
+An `ActionTile` reports its target's live state through the bound action's
+catalog indicator, so a key changes colour and label without any extra
+configuration. Everything else keeps the label and colour you configured.
 
 | Bound action | While active |
 | --- | --- |
@@ -106,6 +141,11 @@ configured.
 | `lva` / `media_toggle` | Label becomes `PAUSE`, background green. |
 | `lva` / `start_listening` | Background cyan while the pipeline is running. |
 | `audio` route (`on`/`off`/`toggle`) | Label gains ` ON` or ` OFF`, background green when on. |
+
+The `MediaTile` used on the MAIN page goes further than the `media_toggle`
+indicator: it draws a play or pause icon and colours itself from the playback
+state. That state-driven rendering lives in the tile (see [Tiles](#tiles)), not
+in the catalog.
 
 A dial's readout follows the actions bound to it rather than its position: a
 dial with a master volume action shows the volume percentage or `MUTED`, a dial
@@ -115,9 +155,12 @@ assistant state. Reordering the dials in `layout.mts` keeps each readout correct
 ## Changing the layout
 
 Edit `apps/controller/src/streamdeck/layout.mts`, then `make deploy-controller`.
-The `KEYS` and `DIALS` arrays are ordinary TypeScript, so you can pull colours
-into constants, build repeated bindings in a loop, or split a page of actions
-into its own array.
+The `PAGES` and `DIALS` are ordinary TypeScript. Place a tile in a page slot with
+`key('LABEL', '#colour', action)`, or drop in a dynamic tile such as
+`new MediaTile()`. Add a page by adding another `{ name, grid }` entry to
+`PAGES`; each page's `grid` has the six named slots (`topLeft`, `topMidLeft`,
+`topMidRight`, `topRight`, `bottomLeft`, `bottomRight`), and its short `name`
+labels the nav keys.
 
 ## Adding a new action
 
