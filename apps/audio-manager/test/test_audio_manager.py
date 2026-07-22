@@ -4,6 +4,7 @@ import importlib.util
 import json
 import selectors
 import socket
+import subprocess
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -279,6 +280,114 @@ class AudioManagerTests(unittest.TestCase):
         self.assertIn(
             "sink_input_properties=media.name=SmartAmp.background_bridge",
             loaded[1][2],
+        )
+
+    @staticmethod
+    def _reconciling_manager() -> audio_manager.AudioManager:
+        manager = audio_manager.AudioManager.__new__(audio_manager.AudioManager)
+        manager.config = {
+            "output_match": "HiFiBerry",
+            "voice_input_match": "XVF3800",
+            "aec_reference": {"enabled": True, "sink_match": "XVF3800", "latency_ms": 40},
+            "background": {"enabled": False},
+            "sources": {},
+        }
+        manager.status_path = Path("/unused/status.json")
+        manager.modules = {}
+        manager.bindings = {}
+        manager.sources = {}
+        manager.duck_requests = set()
+        manager.background_stream_index = None
+        manager.background_ducked = None
+        return manager
+
+    @staticmethod
+    def _fake_run(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+        defaults = {"get-default-sink": "hifiberry", "get-default-source": "xvf_mic"}
+        stdout = next(
+            (name + "\n" for key, name in defaults.items() if key in args), ""
+        )
+        return subprocess.CompletedProcess(args, 0, stdout=stdout, stderr="")
+
+    def test_aec_reference_bridges_output_monitor_into_the_xvf3800(self) -> None:
+        manager = self._reconciling_manager()
+        loaded = []
+
+        def load_module(name: str, module: str, *arguments: str) -> int:
+            manager.modules[name] = 30
+            loaded.append((name, module, arguments))
+            return 30
+
+        manager.load_module = load_module
+        responses = {
+            "modules": [],
+            "sinks": [
+                {"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"},
+                {"name": "xvf_playback", "description": "reSpeaker XVF3800"},
+            ],
+            "sources": [
+                {"name": "hifiberry.monitor", "monitor_of_sink": 0},
+                {
+                    "name": "xvf_mic",
+                    "description": "reSpeaker XVF3800 Mic Array",
+                    "monitor_of_sink": 4294967295,
+                },
+            ],
+        }
+        with mock.patch.object(
+            audio_manager, "pactl_json", side_effect=lambda kind: responses[kind]
+        ), mock.patch.object(
+            audio_manager, "run", side_effect=self._fake_run
+        ), mock.patch.object(audio_manager, "atomic_json") as status_write:
+            manager.reconcile()
+
+        # The far-end reference is what the room hears: the output sink's
+        # monitor looped into the XVF3800 playback endpoint.
+        self.assertEqual(loaded, [
+            (
+                "_aec",
+                "module-loopback",
+                (
+                    "source=hifiberry.monitor",
+                    "sink=xvf_playback",
+                    "latency_msec=40",
+                    "source_dont_move=true",
+                    "sink_dont_move=true",
+                    "sink_input_properties=media.name=SmartAmp.aec",
+                ),
+            )
+        ])
+        status = status_write.call_args.args[1]
+        self.assertEqual(
+            status["aec_reference"],
+            {"enabled": True, "available": True, "sink": "xvf_playback"},
+        )
+
+    def test_aec_reference_is_released_when_the_xvf3800_disappears(self) -> None:
+        manager = self._reconciling_manager()
+        manager.modules = {"_aec": 30}
+        manager.bindings = {"_aec": ("hifiberry.monitor", "xvf_playback")}
+        responses = {
+            "modules": [{"index": 30}],
+            "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
+            "sources": [{"name": "hifiberry.monitor", "monitor_of_sink": 0}],
+        }
+        with mock.patch.object(
+            audio_manager, "pactl_json", side_effect=lambda kind: responses[kind]
+        ), mock.patch.object(
+            audio_manager, "run", side_effect=self._fake_run
+        ) as pactl_run, mock.patch.object(audio_manager, "atomic_json") as status_write:
+            manager.reconcile()
+
+        self.assertNotIn("_aec", manager.modules)
+        self.assertIn(
+            ("pactl", "unload-module", "30"),
+            [call.args for call in pactl_run.call_args_list],
+        )
+        status = status_write.call_args.args[1]
+        self.assertEqual(
+            status["aec_reference"],
+            {"enabled": True, "available": False, "sink": None},
         )
 
 
