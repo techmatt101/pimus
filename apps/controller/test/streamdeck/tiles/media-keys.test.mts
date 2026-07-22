@@ -9,7 +9,7 @@ import { PlaylistTile } from '../../../src/streamdeck/tiles/playlist-tile.mjs'
 import { SceneTile } from '../../../src/streamdeck/tiles/scene-tile.mjs'
 import { ShuffleTile } from '../../../src/streamdeck/tiles/shuffle-tile.mjs'
 import { VoiceTile } from '../../../src/streamdeck/tiles/voice-tile.mjs'
-import { eventually, testContext, testHost, testServices } from '../../support/fixtures.mjs'
+import { eventually, testContext, testHost, testServices, tileFace } from '../../support/fixtures.mjs'
 
 const PLAYER = 'media_player.office_amp'
 
@@ -32,11 +32,11 @@ test('the shuffle face separates on, off, and an unreachable player', () => {
   const services = testServices()
   const tile = new ShuffleTile(services, PLAYER)
 
-  const unknown = tile.render().buffer
+  const unknown = tileFace(tile)
   services.ha.put(PLAYER, 'playing', { shuffle: false })
-  const off = tile.render().buffer
+  const off = tileFace(tile)
   services.ha.put(PLAYER, 'playing', { shuffle: true })
-  const on = tile.render().buffer
+  const on = tileFace(tile)
 
   assert.notDeepEqual(on, off)
   assert.notDeepEqual(unknown, off)
@@ -63,9 +63,9 @@ test('a playlist key sends its compiled-in media id to its player', () => {
 
   // The key lights up with its player's own state; it cannot tell whether this
   // particular playlist is the thing playing.
-  const idle = tile.render().buffer
+  const idle = tileFace(tile)
   services.ha.put(PLAYER, 'playing', {})
-  assert.notDeepEqual(tile.render().buffer, idle)
+  assert.notDeepEqual(tileFace(tile), idle)
 })
 
 test('a scene key steps through its scenes and wraps around', () => {
@@ -77,7 +77,7 @@ test('a scene key steps through its scenes and wraps around', () => {
     ],
   })
 
-  const resting = tile.render().buffer
+  const resting = tileFace(tile)
   tile.press()
   tile.press()
   tile.press()
@@ -90,7 +90,7 @@ test('a scene key steps through its scenes and wraps around', () => {
 
   // Before the first press the key previews the first scene rather than
   // claiming it is applied — the room may have been set from somewhere else.
-  assert.notDeepEqual(tile.render().buffer, resting)
+  assert.notDeepEqual(tileFace(tile), resting)
 })
 
 test('a scene tile needs scenes, and checks every entity id it holds', () => {
@@ -122,13 +122,13 @@ test('the voice key ripples while a pipeline runs and stops when it ends', async
   const services = testServices(state)
   const tile = new VoiceTile(services)
 
-  const idle = tile.render(testContext(state, { now: 0 })).buffer
+  const idle = tileFace(tile, testContext(state, { now: 0 }))
   state.assist = 'LISTENING'
-  const listening = tile.render(testContext(state, { now: 0 })).buffer
+  const listening = tileFace(tile, testContext(state, { now: 0 }))
   assert.notDeepEqual(idle, listening)
   assert.notDeepEqual(
     listening,
-    tile.render(testContext(state, { now: 400 })).buffer,
+    tileFace(tile, testContext(state, { now: 400 })),
     'the rings sweep outwards',
   )
 

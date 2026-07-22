@@ -220,7 +220,7 @@ document.addEventListener('keydown', (event) => {
   if (index >= 0) post({ kind: 'key', index })
 })
 
-/** Expands the run-length encoded RGB frame the controller wrote. */
+/** Expands the run-length encoded frame the controller painted. */
 function draw(context, base64, width, height) {
   const binary = atob(base64)
   const pixels = new Uint8ClampedArray(width * height * 4)

@@ -7,10 +7,10 @@
 // across the whole width, and a dial being turned or a notification arriving
 // takes the width over for as long as it is relevant.
 
-import { createImage, drawRectangle, drawTextAt, textWidth } from '../bitmap.mjs'
+import { BOLD, measureText, type Surface } from '../surface.mjs'
 import type { TileContext } from '../tiles/tile.mjs'
 import type { StreamDeckDial } from '../grid.mjs'
-import type { Bitmap, Notification } from '../../types.mjs'
+import type { Notification } from '../../types.mjs'
 
 /** The touch strip's pixel size, shared by every screen that draws on it. */
 export const STRIP_WIDTH = 800
@@ -43,12 +43,12 @@ export interface ScreenHost {
 }
 
 export interface Screen {
-  /** The 800x100 strip face for the current state. */
-  render(context: ScreenContext): Bitmap
+  /** Paint the 800x100 strip face for the current state. */
+  draw(surface: Surface, context: ScreenContext): void
   /**
    * How often to repaint while this screen is the visible one, or undefined
    * when its face is static. Scrolling text is the usual reason; deriving the
-   * offset from `context.now` keeps render a pure function, exactly as an
+   * offset from `context.now` keeps drawing a pure function, exactly as an
    * animated tile does.
    */
   animationMilliseconds?(context: ScreenContext): number | undefined
@@ -58,20 +58,18 @@ export interface Screen {
   unmount?(): void
 }
 
-/** A blank strip-sized image, the starting point for every screen face. */
-export function createStrip(background = '#101820'): Bitmap {
-  return createImage(STRIP_WIDTH, STRIP_HEIGHT, background)
-}
-
 export interface StripLineOptions {
+  /** The vertical centre of the line. */
   centerY: number
-  scale: number
+  size: number
   color?: string
   /** The instant of this repaint, which is what moves a scrolling line. */
   now?: number
   margin?: number
   /** Left-align rather than centre, for a line that shares a row with something else. */
   left?: number
+  opacity?: number
+  weight?: number
 }
 
 /**
@@ -80,23 +78,28 @@ export interface StripLineOptions {
  * truncated. Returns whether it is scrolling, which is how a screen decides to
  * ask for animation frames.
  */
-export function drawStripLine(target: Bitmap, value: string, options: StripLineOptions): boolean {
-  const { centerY, scale, color = '#ffffff', now = 0, margin = STRIP_MARGIN, left } = options
-  const available = target.width - margin - (left ?? margin)
-  const width = textWidth(value, scale)
+export function drawStripLine(surface: Surface, value: string, options: StripLineOptions): boolean {
+  const { centerY, size, color = '#ffffff', now = 0, margin = STRIP_MARGIN, left, opacity, weight = BOLD } = options
+  const available = surface.width - margin - (left ?? margin)
+  // Measured at the weight it will be drawn in, or a lighter line would be
+  // judged to overflow — and scroll — at a width it actually fits.
+  const width = measureText(value, size, weight)
+  const line = { y: centerY, size, color, opacity, weight, align: 'left' as const }
+
   if (width <= available) {
-    if (left === undefined) drawTextAt(target, value, Math.round((target.width - width) / 2), centerY, scale, color)
-    else drawTextAt(target, value, left, centerY, scale, color)
+    const x = left ?? Math.round((surface.width - width) / 2)
+    surface.text(value, { ...line, x })
     return false
   }
 
   // The line and one repeat of it slide together, so the text runs continuously
-  // instead of restarting from an empty strip every cycle.
+  // instead of restarting from an empty strip every cycle. Anything outside the
+  // strip is clipped by the surface, so both copies are simply drawn.
   const cycle = width + SCROLL_GAP
   const offset = ((now / 1000) * SCROLL_PIXELS_PER_SECOND) % cycle
   const start = (left ?? margin) - offset
-  drawTextAt(target, value, start, centerY, scale, color)
-  drawTextAt(target, value, start + cycle, centerY, scale, color)
+  surface.text(value, { ...line, x: start })
+  surface.text(value, { ...line, x: start + cycle })
   return true
 }
 
@@ -105,19 +108,8 @@ export function drawStripLine(target: Bitmap, value: string, options: StripLineO
  * screen asks this to decide whether it needs animation frames, without having
  * to paint a face to find out.
  */
-export function overflows(value: string, scale: number, margin = STRIP_MARGIN): boolean {
-  return textWidth(value, scale) > STRIP_WIDTH - margin * 2
-}
-
-/**
- * The largest of `scales` at which `value` fits the strip, or the smallest one
- * offered. A readout picked this way stays as large as it can be without
- * shrinking every value to fit the longest one it might ever show.
- */
-export function fittingScale(value: string, scales: readonly number[], margin = STRIP_MARGIN): number {
-  const available = STRIP_WIDTH - margin * 2
-  const fits = [...scales].sort((a, b) => b - a).find((scale) => textWidth(value, scale) <= available)
-  return fits ?? Math.min(...scales)
+export function overflows(value: string, size: number, margin = STRIP_MARGIN): boolean {
+  return measureText(value, size) > STRIP_WIDTH - margin * 2
 }
 
 /**
@@ -126,12 +118,16 @@ export function fittingScale(value: string, scales: readonly number[], margin = 
  * reading draws a full or empty bar rather than running off the strip.
  */
 export function drawStripBar(
-  target: Bitmap,
+  surface: Surface,
   fraction: number,
   { color = '#26c6da', track = '#1c2b33', height = 6 }: { color?: string; track?: string; height?: number } = {},
 ): void {
-  const top = target.height - height
-  drawRectangle(target, 0, top, target.width, height, track)
-  const filled = Math.round(Math.max(0, Math.min(1, fraction)) * target.width)
-  drawRectangle(target, 0, top, filled, height, color)
+  surface.bar(fraction, {
+    x: 0,
+    y: surface.height - height,
+    width: surface.width,
+    height,
+    color,
+    track,
+  })
 }

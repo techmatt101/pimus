@@ -5,9 +5,9 @@
 
 import { requireEntity } from '../../actions/catalog.mjs'
 import { createBindings, type Binding, type TileServices } from '../bindings.mjs'
-import { shuffleIcon } from '../icons.mjs'
-import { labelTile, type Tile, type TileHost } from './tile.mjs'
-import type { Action, Bitmap, HomeAssistantService } from '../../types.mjs'
+import { drawLabelFace, FACE_CENTER, type Tile, type TileHost } from './tile.mjs'
+import type { Surface } from '../surface.mjs'
+import type { Action, HomeAssistantService } from '../../types.mjs'
 
 export class ShuffleTile implements Tile {
   private readonly ha: HomeAssistantService
@@ -38,18 +38,21 @@ export class ShuffleTile implements Tile {
     this.unwatch = null
   }
 
-  render(): Bitmap {
+  draw(surface: Surface): void {
     const player = this.ha.entity(this.entity)
     // Unknown is its own appearance: a dim key that says so beats a key
     // confidently claiming shuffle is off because Home Assistant is unreachable.
     if (!player) {
-      const unknown = labelTile('#1a1a1a', 'SHUFFLE')
-      shuffleIcon(unknown, 60, 46, '#424242')
-      return unknown
+      drawLabelFace(surface, '#1a1a1a', 'SHUFFLE ?')
+      this.icon(surface, '#424242')
+      return
     }
     const on = Boolean(player.attributes.shuffle)
-    const face = labelTile(on ? '#4527a0' : '#1a1329', on ? 'SHUFFLE ON' : 'SHUFFLE')
-    shuffleIcon(face, 60, 46, on ? '#ffffff' : '#7e57c2')
-    return face
+    drawLabelFace(surface, on ? '#4527a0' : '#1a1329', on ? 'SHUFFLE ON' : 'SHUFFLE')
+    this.icon(surface, on ? '#ffffff' : '#7e57c2')
+  }
+
+  private icon(surface: Surface, color: string): void {
+    surface.icon('shuffle', { x: surface.width / 2, y: FACE_CENTER, size: 56, color })
   }
 }

@@ -7,10 +7,11 @@
 // here, so a route changed by the dials or by the manager's own reconciliation
 // still shows correctly on this key.
 
-import { createImage, drawCircle, drawText } from '../bitmap.mjs'
-import { drawCaption, type Tile, type TileContext } from './tile.mjs'
+import { fittingSize, type Surface } from '../surface.mjs'
+import { drawBackground, drawCaption, drawDots, FACE_CENTER, type Tile, type TileContext } from './tile.mjs'
+import type { IconName } from '../icon-set.mjs'
 import type { TileServices } from '../bindings.mjs'
-import type { AudioState, Bitmap } from '../../types.mjs'
+import type { AudioState } from '../../types.mjs'
 
 /**
  * One selectable input. A mode with no `source` is "every route off" — the
@@ -20,6 +21,8 @@ import type { AudioState, Bitmap } from '../../types.mjs'
 export interface AudioMode {
   label: string
   color: string
+  /** The glyph for the input, so the key reads without being read. */
+  icon?: IconName
   /** The audio manager route this mode enables, if any. */
   source?: string
 }
@@ -66,22 +69,23 @@ export class AudioModeTile implements Tile {
     return undefined
   }
 
-  render({ audio }: TileContext): Bitmap {
+  draw(surface: Surface, { audio }: TileContext): void {
     const index = this.currentIndex(audio)
     const mode = this.modes[index]
     const name = mode?.label ?? '?'
-    const face = createImage(120, 120, mode?.color ?? '#263238')
-    drawText(face, name, 60, 44, name.length > 7 ? 2 : 3)
+    const x = surface.width / 2
+    drawBackground(surface, mode?.color ?? '#263238')
+
+    if (mode?.icon) {
+      surface.icon(mode.icon, { x, y: 30, size: 34, color: '#ffffff' })
+      surface.text(name, { x, y: FACE_CENTER + 16, size: fittingSize(name, [30, 24, 20], 112) })
+    } else {
+      surface.text(name, { x, y: FACE_CENTER, size: fittingSize(name, [36, 30, 24], 112) })
+    }
 
     // A dot per mode, the current one filled, so you can see how many presses
     // it takes to get back around without cycling through to find out.
-    const spacing = 16
-    const left = 60 - ((this.modes.length - 1) * spacing) / 2
-    this.modes.forEach((_, position) => {
-      drawCircle(face, left + position * spacing, 76, 5, '#ffffff', { filled: position === index })
-    })
-
-    drawCaption(face, this.label)
-    return face
+    drawDots(surface, this.modes.length, index, 78, '#ffffff')
+    drawCaption(surface, this.label)
   }
 }

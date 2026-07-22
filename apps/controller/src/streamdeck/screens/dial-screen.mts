@@ -8,22 +8,24 @@
 // that knows something the actions cannot express supplies its own `detail`, and
 // one with a level supplies `level` for the bar.
 
+import { fittingSize, type Surface } from '../surface.mjs'
 import {
-  createStrip,
   drawStripBar,
   drawStripLine,
-  fittingScale,
+  STRIP_MARGIN,
+  STRIP_WIDTH,
   type Screen,
   type ScreenContext,
 } from './screen.mjs'
 import type { StreamDeckDial } from '../grid.mjs'
 import type { TileContext } from '../tiles/tile.mjs'
-import type { Bitmap } from '../../types.mjs'
 
-/** Readout scales tried in turn, so `67%` is drawn far larger than `DISCONNECTED`. */
-const VALUE_SCALES = [7, 5, 4, 3]
-const LABEL_SCALE = 2
+/** Readout sizes tried in turn, so `67%` is drawn far larger than `DISCONNECTED`. */
+const VALUE_SIZES = [76, 60, 48, 36]
+const LABEL_SIZE = 24
 const LABEL_COLOR = '#80deea'
+/** The dial face is washed the same way a key is, so the strip matches the grid. */
+const BACKDROP = ['#1d2d38', '#101a21'] as const
 
 /**
  * The value line for a dial. A dial that knows something the bound actions
@@ -62,17 +64,25 @@ export function dialLevel(context: TileContext, dial?: StreamDeckDial): number |
 
 /** The one dial the strip is showing. Which dial that is comes from the context. */
 export class DialScreen implements Screen {
-  render(context: ScreenContext): Bitmap {
+  draw(surface: Surface, context: ScreenContext): void {
+    surface.fill(surface.verticalGradient(BACKDROP[0], BACKDROP[1]))
     const dial = context.dial
-    const face = createStrip('#16222b')
-    if (!dial) return face
+    if (!dial) return
 
     const value = dialDetail(context, dial)
-    drawStripLine(face, dial.label, { centerY: 22, scale: LABEL_SCALE, color: LABEL_COLOR, now: context.now })
-    drawStripLine(face, value, { centerY: 58, scale: fittingScale(value, VALUE_SCALES), now: context.now })
+    drawStripLine(surface, dial.label, {
+      centerY: 22,
+      size: LABEL_SIZE,
+      color: LABEL_COLOR,
+      now: context.now,
+    })
+    drawStripLine(surface, value, {
+      centerY: 58,
+      size: fittingSize(value, VALUE_SIZES, STRIP_WIDTH - STRIP_MARGIN * 2),
+      now: context.now,
+    })
 
     const level = dialLevel(context, dial)
-    if (level !== undefined) drawStripBar(face, level, { color: '#26c6da', track: '#22333d' })
-    return face
+    if (level !== undefined) drawStripBar(surface, level, { color: '#26c6da', track: '#22333d' })
   }
 }

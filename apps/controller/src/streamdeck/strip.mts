@@ -17,9 +17,10 @@
 import { DialScreen } from './screens/dial-screen.mjs'
 import { NotificationScreen } from './screens/notification-screen.mjs'
 import type { Screen, ScreenContext, ScreenHost } from './screens/screen.mjs'
+import type { Surface } from './surface.mjs'
 import type { StreamDeckDial } from './grid.mjs'
 import type { TileContext } from './tiles/tile.mjs'
-import type { Bitmap, NotificationFeed } from '../types.mjs'
+import type { NotificationFeed } from '../types.mjs'
 
 /** How long the strip keeps showing a dial after it was last moved. */
 export const DIAL_HOLD_MILLISECONDS = 2500
@@ -114,13 +115,12 @@ export class TouchStrip {
     return press ? () => press.run() : undefined
   }
 
-  /** The face for the current state, and the frame timer that goes with it. */
-  render(context: TileContext): Bitmap {
+  /** Paint the face for the current state, and arm the timers that go with it. */
+  draw(surface: Surface, context: TileContext): void {
     const screenContext = this.contextFor(context)
     const screen = this.screenFor(screenContext)
-    const face = screen.render(screenContext)
+    screen.draw(surface, screenContext)
     if (this.host) this.arm(screen, screenContext)
-    return face
   }
 
   /** Whichever subject the visible screen is being drawn for, if any. */

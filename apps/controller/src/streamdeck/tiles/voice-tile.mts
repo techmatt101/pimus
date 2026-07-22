@@ -6,16 +6,17 @@
 
 import { isAssistRunning } from '../../actions/catalog.mjs'
 import { createBindings, type Binding, type TileServices } from '../bindings.mjs'
-import { drawCircle } from '../bitmap.mjs'
-import { micIcon } from '../icons.mjs'
-import { labelTile, type Tile, type TileContext, type TileHost } from './tile.mjs'
+import { withAlpha, type Surface } from '../surface.mjs'
+import { drawBackground, drawCaption, FACE_CENTER, type Tile, type TileContext, type TileHost } from './tile.mjs'
 import type { ControlModel, Unsubscribe } from '../../state.mjs'
-import type { Action, Bitmap } from '../../types.mjs'
+import type { Action } from '../../types.mjs'
 
 /** How often the listening face is repainted while a pipeline is running. */
 const FRAME_MILLISECONDS = 120
 /** One full outward sweep of the rings. */
 const RIPPLE_PERIOD_MILLISECONDS = 1600
+/** How far a ring travels before it has faded out. */
+const RIPPLE_RADIUS = 52
 
 export class VoiceTile implements Tile {
   private readonly model: ControlModel
@@ -68,21 +69,34 @@ export class VoiceTile implements Tile {
     this.ripple = null
   }
 
-  render({ state, now }: TileContext): Bitmap {
+  draw(surface: Surface, { state, now }: TileContext): void {
     const running = isAssistRunning(state)
-    const face = labelTile(running ? '#006064' : '#00272b', running ? 'CANCEL' : 'VOICE')
+    drawBackground(surface, running ? '#006064' : '#00272b')
+    const x = surface.width / 2
+
     if (running) {
       // Two rings a half-cycle apart, each fading as it grows, so the sweep
       // reads as continuous rather than restarting.
+      const { ctx } = surface
       const phase = (now % RIPPLE_PERIOD_MILLISECONDS) / RIPPLE_PERIOD_MILLISECONDS
+      ctx.save()
+      ctx.lineWidth = 3
       for (const offset of [0, 0.5]) {
         const step = (phase + offset) % 1
-        drawCircle(face, 60, 46, 20 + Math.round(step * 26), step > 0.6 ? '#00838f' : '#00e5ff', {
-          thickness: 3,
-        })
+        ctx.strokeStyle = withAlpha('#00e5ff', 1 - step)
+        ctx.beginPath()
+        ctx.arc(x, FACE_CENTER, 18 + step * RIPPLE_RADIUS, 0, 2 * Math.PI)
+        ctx.stroke()
       }
+      ctx.restore()
     }
-    micIcon(face, 60, 44, running ? '#ffffff' : '#4dd0e1')
-    return face
+
+    surface.icon('mic', {
+      x,
+      y: FACE_CENTER,
+      size: 52,
+      color: running ? '#ffffff' : '#4dd0e1',
+    })
+    drawCaption(surface, running ? 'CANCEL' : 'VOICE')
   }
 }

@@ -100,6 +100,8 @@
   loop:
     - "{{ smartamp_app_dir }}/controller"
     - "{{ smartamp_app_dir }}/controller/src"
+    - "{{ smartamp_app_dir }}/controller/assets"
+    - "{{ smartamp_app_dir }}/controller/assets/fonts"
   when: smartamp_controller_enabled | bool
 
 # package.json pins every direct dependency to an exact version. The control
@@ -224,6 +226,44 @@
     group: root
     mode: "0644"
   loop: "{{ smartamp_controller_modules }}"
+  notify: Restart controller
+  when: smartamp_controller_enabled | bool
+
+# Raspberry Pi OS Lite ships almost no fonts, and the controller must not fall
+# back to whatever a given image happens to have: the deck would draw its labels
+# blank. The bundled face is deployed beside the modules, where
+# streamdeck/surface.mjs resolves it relative to itself.
+- name: Find compiled hardware controller assets
+  ansible.builtin.find:
+    paths: "{{ smartamp_source_dir }}/controller/dist/assets"
+    file_type: file
+    recurse: true
+  delegate_to: localhost
+  become: false
+  register: compiled_controller_assets
+  when: smartamp_controller_enabled | bool
+
+- name: Require the bundled hardware controller font
+  ansible.builtin.assert:
+    that:
+      - compiled_controller_assets.files | default([]) | length > 0
+    fail_msg: >-
+      The controller's bundled font is missing from apps/controller/dist/assets.
+      Run "make build" on this computer before provisioning.
+  when: smartamp_controller_enabled | bool
+
+- name: Install hardware controller assets
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: >-
+      {{ smartamp_app_dir }}/controller/assets/{{
+        item | relpath(smartamp_source_dir + '/controller/dist/assets') }}
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ compiled_controller_assets.files | default([]) | map(attribute='path') | sort | list }}"
+  loop_control:
+    label: "{{ item | basename }}"
   notify: Restart controller
   when: smartamp_controller_enabled | bool
 

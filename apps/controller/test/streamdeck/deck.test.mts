@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { color, createImage } from '../../src/streamdeck/bitmap.mjs'
 import { createDispatcher, findStreamDeckPlus } from '../../src/streamdeck/deck.mjs'
 import type { StreamDeckDeviceInfo } from '@elgato-stream-deck/node'
 
@@ -33,9 +32,4 @@ test('Stream Deck presses are serialized and the Plus model is selected', async 
     { model: 'plus', path: '/dev/hidraw1' },
   ] as StreamDeckDeviceInfo[]
   assert.equal(findStreamDeckPlus(devices)?.path, '/dev/hidraw1')
-})
-
-test('bitmaps encode colours as deterministic RGB buffers', () => {
-  assert.deepEqual(color('#102030'), [16, 32, 48])
-  assert.deepEqual([...createImage(1, 1, '#010203').buffer], [1, 2, 3])
 })

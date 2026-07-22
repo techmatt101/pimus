@@ -73,22 +73,40 @@ central dispatcher:
 
 | Tile | What it is |
 | --- | --- |
-| `MediaTile` | Play/pause. Draws a play triangle or pause bars from the playback state, and the bars breathe while playing. |
+| `MediaTile` | Play/pause. Draws the play or pause glyph from the playback state, and the glyph breathes while playing. |
 | `VoiceTile` | Start Assist, or cancel the pipeline already running. Expanding rings while one is live. |
 | `AudioModeTile` | Cycles the input (stream / aux / usb), turning the chosen route on and the rest off. Reads the current mode back from the audio manager rather than remembering it. |
 | `ShuffleTile` | Shuffle on the media player, set from and reflecting what Home Assistant reports. |
 | `PlaylistTile` | A one-press shortcut to a compiled-in playlist. |
 | `SceneTile` | Steps through a short list of scenes, showing the one it last applied. |
-| `EntityToggleTile` | The general Home Assistant on/off key — lights, fan, blinds, PC. Its service comes from the entity's own domain, and it takes an icon and an optional animation phase, so the four are one class configured four ways. Given the dynamic dial it also hands that dial its entity when pressed. |
+| `EntityToggleTile` | The general Home Assistant on/off key — lights, fan, blinds, PC. Its service comes from the entity's own domain, and it takes an icon plus an optional `spin` (the fan turns while it runs) and `level` (how far the blinds are down), so the four are one class configured four ways. Given the dynamic dial it also hands that dial its entity when pressed. |
 | `TimerTile` | A Home Assistant `timer` entity: a draining ring and a countdown, started and cancelled by the same key. |
 | `TemperatureTile` | A sensor reading, with the background banded by temperature. Read-only. |
 | `WeatherTile` | Condition glyph, short condition name, and the outside temperature. Read-only. |
 | `ClockTile` | Local time with a bar that sweeps once a minute. Needs nothing but the clock. |
 | `PageTile` | Page navigation in any grid slot, for a page that wants its "next" somewhere other than the reserved corner. |
 
-Icons are drawn from the primitives in `streamdeck/bitmap.mts` and shared in
-`streamdeck/icons.mts`, so the controller ships no binary assets and needs no
-image decoder on the Pi. The touch strip has the same arrangement one size up:
+A tile paints onto a `Surface` (`streamdeck/surface.mts`) the renderer owns: a
+Skia canvas (`@napi-rs/canvas`) wrapped in the operations the control surface
+repeats — a background wash, a line of text, an icon, a level bar. `surface.ctx`
+is the real 2D context, so paths, clipping, transforms, gradients, and
+compositing are available to any tile that wants them without a new helper.
+
+Icons are Hugeicons SVGs. `tools/generate-icons.mjs` (run with `make icons`)
+fetches only the icons the layout names from a pinned release and writes
+`streamdeck/icon-set.mts`, which is committed — so building, testing, and
+deploying need no icon package. `streamdeck/icons.mts` rasterizes one at the
+size and tint a tile asks for and caches the result; the artwork strokes in
+`currentColor`, so a key recolours its icon per state without touching the path
+data. Add an icon by adding a line to the tool's `ICONS` map and running
+`make icons`.
+
+Text is drawn in Barlow Condensed, bundled at `apps/controller/assets/fonts/`
+and registered explicitly at startup. Raspberry Pi OS Lite ships almost no
+fonts, so falling back to a system face would draw blank labels on the Pi while
+looking correct in the playground; bundling it also keeps the two identical.
+
+The touch strip has the same arrangement one size up:
 its faces are **screens** in `streamdeck/screens/`, described under [The touch
 strip](#the-touch-strip).
 

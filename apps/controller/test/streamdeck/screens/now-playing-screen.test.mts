@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { NowPlayingScreen, nowPlayingLines } from '../../../src/streamdeck/screens/now-playing-screen.mjs'
-import { testContext, testScreenHost, testServices } from '../../support/fixtures.mjs'
+import { screenFace, testContext, testScreenHost, testServices } from '../../support/fixtures.mjs'
 
 const PLAYER = 'media_player.office_amp'
 
@@ -47,20 +47,20 @@ test('the face follows the player and fills the strip', () => {
   const services = testServices()
   const screen = new NowPlayingScreen(services, { player: PLAYER })
 
-  const nothing = screen.render(testContext())
+  const nothing = screenFace(screen, testContext())
   assert.deepEqual([nothing.width, nothing.height], [800, 100])
 
   services.ha.put(PLAYER, playing.state, playing.attributes)
-  const track = screen.render(testContext())
+  const track = screenFace(screen, testContext())
   assert.notDeepEqual(track.buffer, nothing.buffer)
 
   // The position bar moves with the clock while the player is playing, so the
   // face is not static even when nothing about the entity changed.
-  const later = screen.render(testContext(undefined, { now: 60_000 }))
+  const later = screenFace(screen, testContext(undefined, { now: 60_000 }))
   assert.notDeepEqual(track.buffer, later.buffer)
 
   services.ha.put(PLAYER, 'paused', playing.attributes)
-  assert.notDeepEqual(screen.render(testContext()).buffer, track.buffer, 'paused reads differently')
+  assert.notDeepEqual(screenFace(screen, testContext()), track.buffer, 'paused reads differently')
 })
 
 test('a title too wide for the strip scrolls, and a short one sits still', () => {
@@ -70,8 +70,8 @@ test('a title too wide for the strip scrolls, and a short one sits still', () =>
   services.ha.put(PLAYER, 'playing', { media_title: 'Teardrop', media_artist: 'Massive Attack' })
   assert.equal(screen.animationMilliseconds(), undefined, 'a short title needs no frames')
   assert.deepEqual(
-    screen.render(testContext(undefined, { now: 0 })).buffer,
-    screen.render(testContext(undefined, { now: 400 })).buffer,
+    screenFace(screen, testContext(undefined, { now: 0 })),
+    screenFace(screen, testContext(undefined, { now: 400 })),
   )
 
   services.ha.put(PLAYER, 'playing', {
@@ -80,8 +80,8 @@ test('a title too wide for the strip scrolls, and a short one sits still', () =>
   })
   assert.ok((screen.animationMilliseconds() ?? 0) > 0, 'a long title asks for frames')
   assert.notDeepEqual(
-    screen.render(testContext(undefined, { now: 0 })).buffer,
-    screen.render(testContext(undefined, { now: 400 })).buffer,
+    screenFace(screen, testContext(undefined, { now: 0 })),
+    screenFace(screen, testContext(undefined, { now: 400 })),
     'the title slides across the strip',
   )
 })

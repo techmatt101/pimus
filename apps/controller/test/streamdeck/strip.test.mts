@@ -3,19 +3,20 @@ import test from 'node:test'
 
 import { createState } from '../../src/state.mjs'
 import type { Binding } from '../../src/streamdeck/bindings.mjs'
-import { createStrip, type Screen, type ScreenContext } from '../../src/streamdeck/screens/screen.mjs'
+import type { Screen, ScreenContext } from '../../src/streamdeck/screens/screen.mjs'
+import type { Surface } from '../../src/streamdeck/surface.mjs'
 import { TouchStrip } from '../../src/streamdeck/strip.mjs'
-import { testContext, testScreenHost } from '../support/fixtures.mjs'
-import type { Bitmap, Notification, NotificationFeed } from '../../src/types.mjs'
+import { stripFace, testContext, testScreenHost } from '../support/fixtures.mjs'
+import type { Notification, NotificationFeed } from '../../src/types.mjs'
 
 /** A resting screen that records how often it was asked to draw. */
 class RestingScreen implements Screen {
   drawn = 0
   mounted = 0
 
-  render(): Bitmap {
+  draw(surface: Surface): void {
     this.drawn += 1
-    return createStrip('#000000')
+    surface.fill('#000000')
   }
 
   mount(): void {
@@ -56,22 +57,22 @@ test('the strip rests on what is playing and hands itself to the dial being turn
   const resting = new RestingScreen()
   const strip = new TouchStrip({ resting, dials: [dial('VOLUME'), dial('MEDIA')] })
 
-  const idle = strip.render(testContext(createState(), { now: 1000 }))
+  const idle = stripFace(strip, testContext(createState(), { now: 1000 }))
   assert.deepEqual([idle.width, idle.height], [800, 100])
   assert.equal(resting.drawn, 1)
 
   // Turning a dial takes the strip over, and lets it go again afterwards.
   strip.showDial(0, 1000)
-  const turning = strip.render(testContext(createState(), { now: 1100 }))
+  const turning = stripFace(strip, testContext(createState(), { now: 1100 }))
   assert.notDeepEqual(turning.buffer, idle.buffer)
   assert.equal(resting.drawn, 1, 'the resting screen is not drawn while a dial is showing')
 
-  strip.render(testContext(createState(), { now: 1000 + 2500 }))
+  stripFace(strip, testContext(createState(), { now: 1000 + 2500 }))
   assert.equal(resting.drawn, 2, 'the hold expires and what is playing comes back')
 
   // A dial index the layout does not have is ignored rather than blanking the strip.
   strip.showDial(7, 5000)
-  strip.render(testContext(createState(), { now: 5000 }))
+  stripFace(strip, testContext(createState(), { now: 5000 }))
   assert.equal(resting.drawn, 3)
 })
 
@@ -80,18 +81,18 @@ test('a notification takes the strip, but a hand on a dial takes it back', () =>
   const feed = new TestFeed(notification())
   const strip = new TouchStrip({ resting, dials: [dial('VOLUME')], notifications: feed })
 
-  const banner = strip.render(testContext(createState(), { now: 0 }))
+  const banner = stripFace(strip, testContext(createState(), { now: 0 }))
   assert.equal(resting.drawn, 0, 'the banner is over what is playing')
 
   // Feedback you cannot see while turning is no feedback, so the dial wins.
   strip.showDial(0, 100)
-  const turning = strip.render(testContext(createState(), { now: 100 }))
+  const turning = stripFace(strip, testContext(createState(), { now: 100 }))
   assert.notDeepEqual(turning.buffer, banner.buffer)
 
   // …and the notification is still there when the hand comes off.
-  strip.render(testContext(createState(), { now: 3000 }))
+  stripFace(strip, testContext(createState(), { now: 3000 }))
   assert.equal(resting.drawn, 0)
-  strip.render(testContext(createState(), { now: 10_000 }))
+  stripFace(strip, testContext(createState(), { now: 10_000 }))
   assert.equal(resting.drawn, 1, 'an expired notification hands the strip back')
 })
 
@@ -129,7 +130,7 @@ test('the strip mounts its screens with the deck and drops its timers with it', 
   // something else to repaint the deck.
   strip.showDial(0)
   assert.equal(host.repaints, 1, 'touching a dial repaints at once')
-  strip.render(testContext(createState(), { now: Date.now() }))
+  stripFace(strip, testContext(createState(), { now: Date.now() }))
   await new Promise((resolve) => setTimeout(resolve, 60))
 
   strip.unmount()
@@ -142,8 +143,8 @@ test('the strip mounts its screens with the deck and drops its timers with it', 
 test('a scrolling screen gets frames while it is showing, and only then', async () => {
   /** A resting screen that always wants frames, standing in for a long title. */
   class ScrollingScreen implements Screen {
-    render(): Bitmap {
-      return createStrip('#000000')
+    draw(surface: Surface): void {
+      surface.fill('#000000')
     }
 
     animationMilliseconds(_context: ScreenContext): number {
@@ -154,7 +155,7 @@ test('a scrolling screen gets frames while it is showing, and only then', async 
   const strip = new TouchStrip({ resting: new ScrollingScreen(), dials: [dial('VOLUME')] })
   const host = testScreenHost()
   strip.mount(host)
-  strip.render(testContext(createState(), { now: Date.now() }))
+  stripFace(strip, testContext(createState(), { now: Date.now() }))
   await new Promise((resolve) => setTimeout(resolve, 80))
   assert.ok(host.repaints > 0, 'the strip repaints itself while something is scrolling')
 

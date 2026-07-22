@@ -14,27 +14,41 @@
 
 import { requireEntity } from '../../actions/catalog.mjs'
 import { isEntityOn } from '../../home-assistant/entity.mjs'
-import { drawRectangle } from '../bitmap.mjs'
 import { createBindings, type Binding, type TileServices } from '../bindings.mjs'
 import { entityDial, type DialControl, type DynamicDial } from '../dynamic-dial.mjs'
-import type { Icon } from '../icons.mjs'
-import { labelTile, type Tile, type TileContext, type TileHost } from './tile.mjs'
-import type { Action, Bitmap, HomeAssistantEntity, HomeAssistantService } from '../../types.mjs'
+import { withAlpha, type Surface } from '../surface.mjs'
+import {
+  drawBackground,
+  drawCaption,
+  drawLabelFace,
+  FACE_CENTER,
+  type Tile,
+  type TileContext,
+  type TileHost,
+} from './tile.mjs'
+import type { IconName } from '../icon-set.mjs'
+import type { Action, HomeAssistantEntity, HomeAssistantService } from '../../types.mjs'
 
 export interface EntityToggleTileConfig {
   label: string
   entity: string
-  icon: Icon
+  icon: IconName
   /** Background while the entity reports on. */
   onColor?: string
   /** Background while it reports off. */
   offColor?: string
   /**
-   * The 0..1 appearance phase handed to the icon. Give a time-varying value and
-   * an `animationMilliseconds` to animate — the fan turns its blades — or a
-   * state-derived constant, as the blinds do to draw their slats down.
+   * Turns clockwise to draw the icon at, for a device whose icon should be
+   * moving while it runs — the ceiling fan. Derive it from `now` and give an
+   * `animationMilliseconds` to keep it turning.
    */
-  phase?(entity: HomeAssistantEntity | undefined, now: number): number
+  spin?(entity: HomeAssistantEntity | undefined, now: number): number
+  /**
+   * A 0..1 reading to show as a bar under the icon, for a device that is not
+   * merely on or off: how far the blinds are down, how bright the lights are.
+   * Return undefined when the entity reports no such reading.
+   */
+  level?(entity: HomeAssistantEntity | undefined): number | undefined
   /** Repaint interval while the entity is on, for an animated icon. */
   animationMilliseconds?: number
   /**
@@ -51,7 +65,13 @@ const UNKNOWN_ICON = '#424242'
 
 /** The stripe marking the key that currently holds the dial. */
 const HOLDING_COLOR = '#26c6da'
-const HOLDING_HEIGHT = 5
+const HOLDING_HEIGHT = 4
+
+const ICON_SIZE = 54
+/** The level bar sits between the icon and the caption bar. */
+const LEVEL_Y = 78
+const LEVEL_WIDTH = 64
+const LEVEL_HEIGHT = 5
 
 export class EntityToggleTile implements Tile {
   private readonly ha: HomeAssistantService
@@ -121,23 +141,51 @@ export class EntityToggleTile implements Tile {
     this.animation = null
   }
 
-  render({ now }: TileContext): Bitmap {
+  draw(surface: Surface, { now }: TileContext): void {
     const { label, icon, onColor = '#1b5e20', offColor = '#12281a' } = this.config
     const entity = this.ha.entity(this.entity)
     const on = isEntityOn(entity)
-    const phase = this.config.phase?.(entity, now) ?? 0
+    const spin = this.config.spin?.(entity, now) ?? 0
+    const x = surface.width / 2
 
     if (on === undefined) {
-      const unknown = labelTile(UNKNOWN_COLOR, `${label} ?`)
-      icon(unknown, 60, 44, UNKNOWN_ICON, phase)
-      this.drawHolding(unknown)
-      return unknown
+      drawLabelFace(surface, UNKNOWN_COLOR, `${label} ?`)
+      surface.icon(icon, { x, y: FACE_CENTER, size: ICON_SIZE, color: UNKNOWN_ICON, rotate: spin })
+      this.drawHolding(surface)
+      return
     }
 
-    const face = labelTile(on ? onColor : offColor, `${label} ${on ? 'ON' : 'OFF'}`)
-    icon(face, 60, 44, on ? '#ffffff' : '#607d8b', phase)
-    this.drawHolding(face)
-    return face
+    // Painted in layers rather than through drawLabelFace: the glow has to go
+    // over the background but under the caption bar, or it washes the label.
+    drawBackground(surface, on ? onColor : offColor)
+    // A lit key gets a glow behind its icon, so on and off differ by more than
+    // a shade of the same background when glanced at from across the room.
+    if (on) {
+      surface.fill(surface.radialGradient(x, FACE_CENTER, 58, withAlpha('#ffffff', 0.16), withAlpha('#ffffff', 0)))
+    }
+    surface.icon(icon, {
+      x,
+      y: FACE_CENTER,
+      size: ICON_SIZE,
+      color: on ? '#ffffff' : '#607d8b',
+      rotate: spin,
+    })
+
+    const level = this.config.level?.(entity)
+    if (level !== undefined) {
+      surface.bar(level, {
+        x: x - LEVEL_WIDTH / 2,
+        y: LEVEL_Y,
+        width: LEVEL_WIDTH,
+        height: LEVEL_HEIGHT,
+        color: on ? '#ffffff' : '#546e7a',
+        track: withAlpha('#000000', 0.45),
+        rounded: true,
+      })
+    }
+
+    drawCaption(surface, `${label} ${on ? 'ON' : 'OFF'}`)
+    this.drawHolding(surface)
   }
 
   /**
@@ -145,8 +193,9 @@ export class EntityToggleTile implements Tile {
    * dial's own bar is drawn in, so you can see which of three keys the knob is
    * about to move without turning it to find out.
    */
-  private drawHolding(face: Bitmap): void {
+  private drawHolding(surface: Surface): void {
     if (!this.control || !this.dial?.holds(this.control)) return
-    drawRectangle(face, 0, 0, face.width, HOLDING_HEIGHT, HOLDING_COLOR)
+    surface.ctx.fillStyle = HOLDING_COLOR
+    surface.ctx.fillRect(0, 0, surface.width, HOLDING_HEIGHT)
   }
 }

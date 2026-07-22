@@ -6,6 +6,7 @@ import type { Binding } from '../../../src/streamdeck/bindings.mjs'
 import { ActionTile, actionAppearance } from '../../../src/streamdeck/tiles/action-tile.mjs'
 import type { TileContext } from '../../../src/streamdeck/tiles/tile.mjs'
 import type { ControlState } from '../../../src/types.mjs'
+import { tileFace } from '../../support/fixtures.mjs'
 
 const context = (state: ControlState = createState(), sources: Record<string, boolean> = {}): TileContext =>
   ({ state, audio: { sources }, now: 0 })
@@ -43,7 +44,7 @@ test('an action tile runs its own binding and paints a key face', () => {
   tile.press()
   assert.deepEqual(presses, ['stop'])
 
-  const face = tile.render(context())
+  const face = tileFace(tile, context())
   assert.equal(face.width, 120)
   assert.equal(face.height, 120)
 })

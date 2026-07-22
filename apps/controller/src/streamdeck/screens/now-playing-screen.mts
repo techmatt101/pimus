@@ -12,24 +12,30 @@
 import { requireEntity } from '../../actions/catalog.mjs'
 import { mediaElapsedSeconds, numericAttribute } from '../../home-assistant/entity.mjs'
 import type { TileServices } from '../bindings.mjs'
+import { fittingSize, REGULAR, type Surface } from '../surface.mjs'
 import {
-  createStrip,
   drawStripBar,
   drawStripLine,
-  fittingScale,
   overflows,
   SCROLL_FRAME_MILLISECONDS,
+  STRIP_MARGIN,
+  STRIP_WIDTH,
   type Screen,
   type ScreenContext,
   type ScreenHost,
 } from './screen.mjs'
-import type { Bitmap, HomeAssistantEntity, HomeAssistantService } from '../../types.mjs'
+import type { HomeAssistantEntity, HomeAssistantService } from '../../types.mjs'
 
-/** Title scales tried in turn, so a short title is drawn large. */
-const TITLE_SCALES = [5, 4, 3]
-const SECONDARY_SCALE = 2
+/** Title sizes tried in turn, so a short title is drawn large. */
+const TITLE_SIZES = [56, 46, 36]
+const SECONDARY_SIZE = 24
+/** The width a title has to fit before it starts scrolling. */
+const TITLE_AVAILABLE = STRIP_WIDTH - STRIP_MARGIN * 2
 /** How often the position bar creeps forward while a track plays. */
 const POSITION_FRAME_MILLISECONDS = 1000
+
+/** The resting strip is washed rather than flat, like the key faces. */
+const BACKDROP = ['#16222b', '#0b1116'] as const
 
 const PLAYING_TITLE = '#ffffff'
 const PAUSED_TITLE = '#78909c'
@@ -98,30 +104,38 @@ export class NowPlayingScreen implements Screen {
     const player = this.ha.entity(this.player)
     const { title, idle } = nowPlayingLines(player, this.ha.connected)
     if (idle) return undefined
-    if (overflows(title, fittingScale(title, TITLE_SCALES))) return SCROLL_FRAME_MILLISECONDS
+    if (overflows(title, fittingSize(title, TITLE_SIZES, TITLE_AVAILABLE))) return SCROLL_FRAME_MILLISECONDS
     const playing = player?.state === 'playing'
     return playing && hasPosition(player) ? POSITION_FRAME_MILLISECONDS : undefined
   }
 
-  render({ now }: ScreenContext): Bitmap {
+  draw(surface: Surface, { now }: ScreenContext): void {
     const player = this.ha.entity(this.player)
     const { title, secondary, idle } = nowPlayingLines(player, this.ha.connected)
-    const face = createStrip()
+    surface.fill(surface.verticalGradient(BACKDROP[0], BACKDROP[1]))
 
     if (idle) {
-      drawStripLine(face, title, { centerY: 50, scale: 3, color: IDLE, now })
-      return face
+      drawStripLine(surface, title, { centerY: 50, size: 34, color: IDLE, now })
+      return
     }
 
     const playing = player?.state === 'playing'
-    drawStripLine(face, title, {
-      centerY: secondary ? 38 : 46,
-      scale: fittingScale(title, TITLE_SCALES),
+    drawStripLine(surface, title, {
+      centerY: secondary ? 36 : 46,
+      size: fittingSize(title, TITLE_SIZES, TITLE_AVAILABLE),
       color: playing ? PLAYING_TITLE : PAUSED_TITLE,
       now,
     })
     if (secondary) {
-      drawStripLine(face, secondary, { centerY: 74, scale: SECONDARY_SCALE, color: SECONDARY, now })
+      // Lighter than the title, so the strip reads as one line with a credit
+      // under it rather than as two competing lines.
+      drawStripLine(surface, secondary, {
+        centerY: 74,
+        size: SECONDARY_SIZE,
+        color: SECONDARY,
+        weight: REGULAR,
+        now,
+      })
     }
 
     // A position bar only where the player reports one; Music Assistant does for
@@ -129,9 +143,8 @@ export class NowPlayingScreen implements Screen {
     const duration = numericAttribute(player, 'media_duration')
     const elapsed = mediaElapsedSeconds(player, now)
     if (hasPosition(player) && duration && elapsed !== undefined) {
-      drawStripBar(face, elapsed / duration, { color: playing ? '#26c6da' : '#37474f' })
+      drawStripBar(surface, elapsed / duration, { color: playing ? '#26c6da' : '#37474f' })
     }
-    return face
   }
 }
 

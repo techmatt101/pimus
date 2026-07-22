@@ -34,12 +34,13 @@ Each deployable app owns its source and tests:
 ```text
 apps/
   controller/
+    assets/fonts/        The bundled text face, deployed beside the modules
     src/                 TypeScript controller modules (.mts)
       actions/           Action catalog: specs, validation, voice/HA behaviour
       audio/             Audio manager socket, volume, ducking
       home-assistant/    HA WebSocket client, entity cache, entity reading,
                          and the notification queue automations push to
-      streamdeck/        Stream Deck lifecycle, bindings, icons, and rendering
+      streamdeck/        Stream Deck lifecycle, bindings, drawing, and icons
         screens/         One Screen class per file (a full touch-strip face)
         tiles/           One Tile class per file (key behaviour + face)
       voice/             LVA WebSocket and ReSpeaker LEDs
@@ -54,6 +55,7 @@ apps/
   playground/            Development-only debug environment; never deployed
     src/                 Fake deck, LVA, audio manager, wpctl, LEDs, web server
     ui/                  The browser page the fake deck is drawn on
+tools/                   Development-only code generators
 ansible/
   inventory/             User-editable device configuration
   playbooks/             Provisioning and verification entry points
@@ -154,6 +156,20 @@ runtime validation, and relevant documentation together.
   physical-key mapping, and dial shape live in `grid.mts`. Only the
   `streamdeck_enabled` deployment flag lives in Ansible; `layout.test.mts` and
   `tile.test.mts` validate the compiled layout and tiles against the catalog.
+- Tiles and screens paint onto a `Surface` (`streamdeck/surface.mts`), a Skia
+  canvas (`@napi-rs/canvas`) with helpers for the things every face repeats.
+  `surface.ctx` is the real 2D context: reach for it directly rather than adding
+  a wrapper for a one-off path, gradient, or clip. A face is RGBA and
+  `snapshot()` must copy, because the canvas is reused for the next key.
+- Icons are Hugeicons SVGs generated into `streamdeck/icon-set.mts` by
+  `make icons` and committed. Never add an icon package as a controller
+  dependency, and never hand-edit the generated module; add a line to
+  `tools/generate-icons.mjs` and regenerate. Icon artwork strokes in
+  `currentColor`, so a tile tints per state rather than getting its own glyph.
+- Text is drawn in the font bundled at `apps/controller/assets/`, registered
+  explicitly at startup. Pi OS Lite has almost no fonts, so never rely on a
+  system face; `make build` copies `assets/` into `dist/` and Ansible deploys it
+  beside the modules, which is what keeps the relative path valid on the Pi.
 - Keep shared display/voice state in `state.mts`; the `ControlModel` there is
   the change-notification surface — mutate state, then `notify()`.
 - Treat USB and WebSocket disconnects as normal. Log, retain useful state, and

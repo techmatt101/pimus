@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import { createState } from '../../../src/state.mjs'
 import { MediaTile } from '../../../src/streamdeck/tiles/media-tile.mjs'
-import { eventually, testContext, testHost, testServices } from '../../support/fixtures.mjs'
+import { eventually, testContext, testHost, testServices, tileFace } from '../../support/fixtures.mjs'
 import type { TileContext } from '../../../src/streamdeck/tiles/tile.mjs'
 import type { ControlState } from '../../../src/types.mjs'
 
@@ -32,20 +32,20 @@ test('the playing face pulses: it varies with time, the paused face does not', (
   const tile = new MediaTile(services())
   const playing = createState({ media: true })
   assert.notDeepEqual(
-    tile.render(context(playing, 0)).buffer,
-    tile.render(context(playing, 300)).buffer,
+    tileFace(tile, context(playing, 0)),
+    tileFace(tile, context(playing, 300)),
     'the pause bars breathe while playing',
   )
 
   const paused = createState({ media: false })
   assert.deepEqual(
-    tile.render(context(paused, 0)).buffer,
-    tile.render(context(paused, 300)).buffer,
+    tileFace(tile, context(paused, 0)),
+    tileFace(tile, context(paused, 300)),
     'the resting face is steady',
   )
   assert.notDeepEqual(
-    tile.render(context(playing, 0)).buffer,
-    tile.render(context(paused, 0)).buffer,
+    tileFace(tile, context(playing, 0)),
+    tileFace(tile, context(paused, 0)),
     'the play and pause faces differ',
   )
 })

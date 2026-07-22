@@ -4,11 +4,11 @@
 
 import { requireEntity } from '../../actions/catalog.mjs'
 import { numericAttribute } from '../../home-assistant/entity.mjs'
-import { createImage, drawText } from '../bitmap.mjs'
-import { drawCondition } from '../icons.mjs'
-import { drawCaption, type Tile, type TileHost } from './tile.mjs'
+import { conditionIcon } from '../icons.mjs'
+import { fittingSize, type Surface } from '../surface.mjs'
+import { drawBackground, drawCaption, type Tile, type TileHost } from './tile.mjs'
 import type { TileServices } from '../bindings.mjs'
-import type { Bitmap, HomeAssistantService } from '../../types.mjs'
+import type { HomeAssistantService } from '../../types.mjs'
 
 export interface WeatherTileConfig {
   /** The `weather.` entity to read. */
@@ -67,23 +67,24 @@ export class WeatherTile implements Tile {
     this.unwatch = null
   }
 
-  render(): Bitmap {
+  draw(surface: Surface): void {
+    const x = surface.width / 2
     const weather = this.ha.entity(this.entity)
     if (!weather || weather.state === 'unknown' || weather.state === 'unavailable') {
-      const unknown = createImage(120, 120, '#1a1a1a')
-      drawCondition(unknown, 60, 40, 'cloudy')
-      drawCaption(unknown, this.label)
-      return unknown
+      drawBackground(surface, '#1a1a1a')
+      surface.icon('cloud', { x, y: 44, size: 54, color: '#424242' })
+      drawCaption(surface, this.label)
+      return
     }
 
-    const face = createImage(120, 120, '#0e1b26')
-    drawCondition(face, 60, 34, weather.state)
+    drawBackground(surface, '#0e1b26')
+    const { icon, color } = conditionIcon(weather.state)
+    surface.icon(icon, { x, y: 36, size: 52, color })
 
-    const name = conditionName(weather.state).slice(0, 10)
-    drawText(face, name, 60, 78, name.length > 7 ? 1 : 2, '#b0bec5')
+    const name = conditionName(weather.state)
+    surface.text(name, { x, y: 76, size: fittingSize(name, [24, 20, 17], 112), color: '#b0bec5' })
 
     const temperature = numericAttribute(weather, 'temperature')
-    drawCaption(face, temperature === undefined ? this.label : `${Math.round(temperature)}°`)
-    return face
+    drawCaption(surface, temperature === undefined ? this.label : `${Math.round(temperature)}°`)
   }
 }

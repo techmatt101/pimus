@@ -10,13 +10,19 @@
 import { NotificationCenter } from '../../src/home-assistant/notifications.mjs'
 import { ControlModel, createState } from '../../src/state.mjs'
 import type { TileServices } from '../../src/streamdeck/bindings.mjs'
-import { createStrip, type Screen, type ScreenHost } from '../../src/streamdeck/screens/screen.mjs'
+import {
+  STRIP_HEIGHT,
+  STRIP_WIDTH,
+  type Screen,
+  type ScreenContext,
+  type ScreenHost,
+} from '../../src/streamdeck/screens/screen.mjs'
 import { TouchStrip } from '../../src/streamdeck/strip.mjs'
+import { Surface } from '../../src/streamdeck/surface.mjs'
 import type { StreamDeckDial } from '../../src/streamdeck/grid.mjs'
-import type { TileContext, TileHost } from '../../src/streamdeck/tiles/tile.mjs'
+import { KEY_SIZE, type Tile, type TileContext, type TileHost } from '../../src/streamdeck/tiles/tile.mjs'
 import type {
   AudioState,
-  Bitmap,
   ControlState,
   HomeAssistantEntity,
   HomeAssistantService,
@@ -122,9 +128,41 @@ export function testServices(
 
 /** A strip screen that draws nothing, for a test that only cares about selection. */
 export class BlankScreen implements Screen {
-  render(): Bitmap {
-    return createStrip('#000000')
+  draw(surface: Surface): void {
+    surface.fill('#000000')
   }
+}
+
+/** A painted face: its pixels, and the size it was painted at. */
+export interface Face {
+  width: number
+  height: number
+  buffer: Buffer
+}
+
+/**
+ * The face a tile paints for a context. Faces are compared whole rather than
+ * inspected: a test asserts that two states look different, or that one is
+ * stable, without depending on where anything within the key is drawn.
+ */
+export function tileFace(tile: Tile, context: TileContext = testContext()): Face {
+  return paint(new Surface(KEY_SIZE, KEY_SIZE), (surface) => tile.draw(surface, context))
+}
+
+/** The face a screen paints, the strip's equivalent of tileFace(). */
+export function screenFace(screen: Screen, context: ScreenContext): Face {
+  return paint(new Surface(STRIP_WIDTH, STRIP_HEIGHT), (surface) => screen.draw(surface, context))
+}
+
+/** The face the strip paints, which is whichever screen it selected. */
+export function stripFace(strip: TouchStrip, context: TileContext): Face {
+  return paint(new Surface(STRIP_WIDTH, STRIP_HEIGHT), (surface) => strip.draw(surface, context))
+}
+
+function paint(surface: Surface, draw: (surface: Surface) => void): Face {
+  surface.reset()
+  draw(surface)
+  return { width: surface.width, height: surface.height, buffer: surface.snapshot() }
 }
 
 /**

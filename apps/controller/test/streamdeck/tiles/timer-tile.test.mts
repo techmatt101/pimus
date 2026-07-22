@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { TimerTile } from '../../../src/streamdeck/tiles/timer-tile.mjs'
-import { eventually, testContext, testHost, testServices } from '../../support/fixtures.mjs'
+import { eventually, testContext, testHost, testServices, tileFace } from '../../support/fixtures.mjs'
 
 const NOW = Date.parse('2026-07-21T10:00:00Z')
 const RUNNING = {
@@ -39,15 +39,15 @@ test('the countdown is derived from the finish time, not from Home Assistant tic
 
   // Home Assistant reports a running timer once and then says nothing, so the
   // face has to change with `now` alone.
-  const start = tile.render(testContext(undefined, { now: NOW })).buffer
-  const later = tile.render(testContext(undefined, { now: NOW + 60_000 })).buffer
+  const start = tileFace(tile, testContext(undefined, { now: NOW }))
+  const later = tileFace(tile, testContext(undefined, { now: NOW + 60_000 }))
   assert.notDeepEqual(start, later, 'the countdown moves between reports')
 
   // A paused timer holds its reading instead of counting down to zero.
   services.ha.put('timer.office', 'paused', { duration: '0:05:00', remaining: '0:03:20' })
   assert.deepEqual(
-    tile.render(testContext(undefined, { now: NOW })).buffer,
-    tile.render(testContext(undefined, { now: NOW + 60_000 })).buffer,
+    tileFace(tile, testContext(undefined, { now: NOW })),
+    tileFace(tile, testContext(undefined, { now: NOW + 60_000 })),
   )
 })
 
@@ -55,9 +55,9 @@ test('an unknown timer draws its own face rather than a zeroed countdown', () =>
   const services = testServices()
   const tile = new TimerTile(services, { entity: 'timer.office' })
 
-  const unknown = tile.render(testContext(undefined, { now: NOW })).buffer
+  const unknown = tileFace(tile, testContext(undefined, { now: NOW }))
   services.ha.put('timer.office', 'idle', { duration: '0:05:00' })
-  const idle = tile.render(testContext(undefined, { now: NOW })).buffer
+  const idle = tileFace(tile, testContext(undefined, { now: NOW }))
   assert.notDeepEqual(unknown, idle)
 })
 

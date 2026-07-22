@@ -6,9 +6,8 @@
 // one-second interval, so the bar steps in time with the wall clock instead of
 // drifting a little further from it every minute the deck stays on one page.
 
-import { createImage, drawRectangle, drawText } from '../bitmap.mjs'
-import { drawCaption, type Tile, type TileContext, type TileHost } from './tile.mjs'
-import type { Bitmap } from '../../types.mjs'
+import { fittingSize, type Surface } from '../surface.mjs'
+import { drawBackground, drawCaption, type Tile, type TileContext, type TileHost } from './tile.mjs'
 
 export interface ClockTileConfig {
   /** Show a 24-hour clock; the caption carries the date either way. */
@@ -60,18 +59,24 @@ export class ClockTile implements Tile {
     this.tick.unref()
   }
 
-  render({ now }: TileContext): Bitmap {
+  draw(surface: Surface, { now }: TileContext): void {
     const { time, date } = clockFace(now, this.hours24)
-    const face = createImage(120, 120, this.color)
-    drawText(face, time, 60, 40, time.length > 4 ? 3 : 4)
+    drawBackground(surface, this.color)
+    surface.text(time, { x: surface.width / 2, y: 40, size: fittingSize(time, [56, 46], 104) })
 
     // A bar rather than a ring: a five-character time fills the key too widely
     // to sit inside one without the digits crossing it.
     const seconds = new Date(now).getSeconds()
-    drawRectangle(face, 18, 68, 84, 6, '#1c2b36')
-    drawRectangle(face, 18, 68, Math.round((84 * (seconds + 1)) / 60), 6, '#4dd0e1')
+    surface.bar((seconds + 1) / 60, {
+      x: 18,
+      y: 68,
+      width: 84,
+      height: 6,
+      color: '#4dd0e1',
+      track: '#1c2b36',
+      rounded: true,
+    })
 
-    drawCaption(face, date)
-    return face
+    drawCaption(surface, date)
   }
 }

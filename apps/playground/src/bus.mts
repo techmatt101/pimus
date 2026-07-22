@@ -57,28 +57,31 @@ export type Message =
 const LOG_HISTORY = 300
 
 /**
- * Run-length encodes a raw RGB bitmap for the browser. The key faces are flat
- * colour with a little text, so this turns a 43 KB key into a few hundred
- * bytes — small enough that the MediaTile pulse streams without any
- * compression dependency.
+ * Run-length encodes a raw RGBA face for the browser. The controller draws on a
+ * canvas and hands the deck RGBA, so that is what arrives here; the alpha is
+ * dropped rather than sent, since every face is painted opaque.
+ *
+ * Key faces are washes with a little text and one icon, so this turns a 57 KB
+ * key into a few hundred bytes — small enough that the MediaTile pulse streams
+ * without any compression dependency.
  */
-export function encodeRle(rgb: Buffer): string {
+export function encodeRle(rgba: Buffer): string {
   const out: number[] = []
   let index = 0
-  while (index + 2 < rgb.length) {
-    const r = rgb[index] ?? 0
-    const g = rgb[index + 1] ?? 0
-    const b = rgb[index + 2] ?? 0
+  while (index + 3 < rgba.length) {
+    const r = rgba[index] ?? 0
+    const g = rgba[index + 1] ?? 0
+    const b = rgba[index + 2] ?? 0
     let run = 1
     while (
       run < 255
-      && index + run * 3 + 2 < rgb.length
-      && rgb[index + run * 3] === r
-      && rgb[index + run * 3 + 1] === g
-      && rgb[index + run * 3 + 2] === b
+      && index + run * 4 + 3 < rgba.length
+      && rgba[index + run * 4] === r
+      && rgba[index + run * 4 + 1] === g
+      && rgba[index + run * 4 + 2] === b
     ) run += 1
     out.push(run, r, g, b)
-    index += run * 3
+    index += run * 4
   }
   return Buffer.from(out).toString('base64')
 }

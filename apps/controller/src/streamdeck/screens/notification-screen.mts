@@ -7,19 +7,19 @@
 // laundry, and drains a bar as its time runs out so it is obvious the strip is
 // about to go back to what is playing rather than having got stuck.
 
+import { fittingSize, lighten, type Surface } from '../surface.mjs'
 import {
-  createStrip,
   drawStripBar,
   drawStripLine,
-  fittingScale,
+  STRIP_MARGIN,
+  STRIP_WIDTH,
   type Screen,
   type ScreenContext,
 } from './screen.mjs'
-import type { Bitmap } from '../../types.mjs'
 
-/** Message scales tried in turn; a long message scrolls at the smallest. */
-const MESSAGE_SCALES = [5, 4, 3]
-const TITLE_SCALE = 2
+/** Message sizes tried in turn; a long message scrolls at the smallest. */
+const MESSAGE_SIZES = [56, 46, 36]
+const TITLE_SIZE = 24
 const TITLE_COLOR = '#eceff1'
 /** Repaint rate while a banner is up, which is what drains its time bar. */
 const DRAIN_FRAME_MILLISECONDS = 250
@@ -29,27 +29,32 @@ export class NotificationScreen implements Screen {
     return notification ? DRAIN_FRAME_MILLISECONDS : undefined
   }
 
-  render({ notification, now }: ScreenContext): Bitmap {
-    if (!notification) return createStrip()
-
-    const face = createStrip(notification.color)
-    const { title, message } = notification
-    if (title) {
-      drawStripLine(face, title, { centerY: 24, scale: TITLE_SCALE, color: TITLE_COLOR, now })
+  draw(surface: Surface, { notification, now }: ScreenContext): void {
+    if (!notification) {
+      surface.fill('#101820')
+      return
     }
-    drawStripLine(face, message, {
+
+    const { title, message, color } = notification
+    // Lit from the top like a key face, so a banner arriving reads as the strip
+    // lighting up rather than as a flat colour swap.
+    surface.fill(surface.verticalGradient(lighten(color, 0.22), color))
+
+    if (title) {
+      drawStripLine(surface, title, { centerY: 24, size: TITLE_SIZE, color: TITLE_COLOR, now })
+    }
+    drawStripLine(surface, message, {
       centerY: title ? 58 : 46,
-      scale: fittingScale(message, MESSAGE_SCALES),
+      size: fittingSize(message, MESSAGE_SIZES, STRIP_WIDTH - STRIP_MARGIN * 2),
       now,
     })
 
     // Time bar: full when it arrives, empty as it hands the strip back. Its
     // track is the banner colour, so only the time left is drawn.
     const total = Math.max(1, notification.expiresAt - notification.shownAt)
-    drawStripBar(face, (notification.expiresAt - now) / total, {
+    drawStripBar(surface, (notification.expiresAt - now) / total, {
       color: TITLE_COLOR,
-      track: notification.color,
+      track: color,
     })
-    return face
   }
 }

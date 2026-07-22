@@ -10,12 +10,16 @@
 import { requireEntity } from '../../actions/catalog.mjs'
 import { durationSeconds, formatDuration, timerRemainingSeconds } from '../../home-assistant/entity.mjs'
 import { createBindings, type Binding, type TileServices } from '../bindings.mjs'
-import { createImage, drawCircle, drawText } from '../bitmap.mjs'
-import { drawCaption, type Tile, type TileContext, type TileHost } from './tile.mjs'
-import type { Action, Bitmap, HomeAssistantService } from '../../types.mjs'
+import type { Surface } from '../surface.mjs'
+import { drawBackground, drawCaption, drawValue, FACE_CENTER, type Tile, type TileContext, type TileHost } from './tile.mjs'
+import type { Action, HomeAssistantService } from '../../types.mjs'
 
 /** How often a running countdown repaints. */
 const TICK_MILLISECONDS = 500
+
+/** The ring's radius, which is what leaves the reading room inside it. */
+const RING_RADIUS = 40
+const RING_WIDTH = 5
 
 export interface TimerTileConfig {
   /** The `timer.` entity this key starts, cancels, and counts down. */
@@ -83,34 +87,48 @@ export class TimerTile implements Tile {
     this.tick = null
   }
 
-  render({ now }: TileContext): Bitmap {
+  draw(surface: Surface, { now }: TileContext): void {
+    const x = surface.width / 2
     const timer = this.ha.entity(this.entity)
     if (!timer) {
-      const unknown = createImage(120, 120, '#1a1a1a')
-      drawCircle(unknown, 60, 46, 42, '#424242', { thickness: 4 })
-      drawText(unknown, '--', 60, 46, 3, '#616161')
-      drawCaption(unknown, this.label)
-      return unknown
+      drawBackground(surface, '#1a1a1a')
+      drawRing(surface, x, 1, '#424242')
+      surface.text('--', { x, y: FACE_CENTER, size: 34, color: '#616161' })
+      drawCaption(surface, this.label)
+      return
     }
 
     const active = timer.state === 'active'
     const paused = timer.state === 'paused'
     const remaining = timerRemainingSeconds(timer, now)
-    const face = createImage(120, 120, active ? '#3e2000' : paused ? '#2a2410' : '#1c1c1c')
+    drawBackground(surface, active ? '#3e2000' : paused ? '#2a2410' : '#1c1c1c')
 
     // The ring empties as the countdown runs, so the key is readable at a
-    // glance without reading the digits. Radius 42 is what leaves the reading
-    // room inside the ring rather than drawn across it.
-    drawCircle(face, 60, 46, 42, '#4e342e', { thickness: 4 })
+    // glance without reading the digits.
+    drawRing(surface, x, 1, '#4e342e')
     if (active || paused) {
       const total = durationSeconds(timer.attributes.duration)
       const fraction = total && remaining !== undefined ? Math.min(1, remaining / total) : 0
-      drawCircle(face, 60, 46, 42, active ? '#ff9100' : '#ffd54f', { thickness: 4, to: fraction })
+      drawRing(surface, x, fraction, active ? '#ff9100' : '#ffd54f')
     }
 
     const reading = active || paused ? formatDuration(remaining ?? 0) : 'SET'
-    drawText(face, reading, 60, 46, reading.length > 3 ? 3 : 4)
-    drawCaption(face, paused ? `${this.label} HELD` : this.label)
-    return face
+    drawValue(surface, reading, x, FACE_CENTER, RING_RADIUS * 2 - 12)
+    drawCaption(surface, paused ? `${this.label} HELD` : this.label)
   }
+}
+
+/** The countdown ring, drawn clockwise from twelve o'clock. */
+function drawRing(surface: Surface, x: number, fraction: number, color: string): void {
+  if (fraction <= 0) return
+  const { ctx } = surface
+  ctx.save()
+  ctx.strokeStyle = color
+  ctx.lineWidth = RING_WIDTH
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  const start = -Math.PI / 2
+  ctx.arc(x, FACE_CENTER, RING_RADIUS, start, start + Math.min(1, fraction) * 2 * Math.PI)
+  ctx.stroke()
+  ctx.restore()
 }

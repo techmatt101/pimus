@@ -9,7 +9,7 @@ import { ClockTile, clockFace } from '../../../src/streamdeck/tiles/clock-tile.m
 import { PageTile } from '../../../src/streamdeck/tiles/page-tile.mjs'
 import { TemperatureTile } from '../../../src/streamdeck/tiles/temperature-tile.mjs'
 import { WeatherTile, conditionName } from '../../../src/streamdeck/tiles/weather-tile.mjs'
-import { eventually, testContext, testHost, testServices } from '../../support/fixtures.mjs'
+import { eventually, testContext, testHost, testServices, tileFace } from '../../support/fixtures.mjs'
 
 /** A local-time instant, so the clock assertions do not depend on the timezone. */
 const at = (hours: number, minutes: number, seconds = 0): number =>
@@ -23,8 +23,8 @@ test('the clock reads local time and its face moves every second', () => {
 
   const tile = new ClockTile()
   assert.notDeepEqual(
-    tile.render(testContext(undefined, { now: at(9, 5, 10) })).buffer,
-    tile.render(testContext(undefined, { now: at(9, 5, 40) })).buffer,
+    tileFace(tile, testContext(undefined, { now: at(9, 5, 10) })),
+    tileFace(tile, testContext(undefined, { now: at(9, 5, 40) })),
     'the seconds ring sweeps within the same minute',
   )
 })
@@ -45,11 +45,11 @@ test('a temperature key shows the reading, and says so when there is none', () =
   const services = testServices()
   const tile = new TemperatureTile(services, { label: 'OFFICE', entity: 'sensor.office_temperature' })
 
-  const unknown = tile.render().buffer
+  const unknown = tileFace(tile)
   services.ha.put('sensor.office_temperature', '21.4', { unit_of_measurement: '°C' })
-  const warm = tile.render().buffer
+  const warm = tileFace(tile)
   services.ha.put('sensor.office_temperature', '11.0', { unit_of_measurement: '°C' })
-  const cold = tile.render().buffer
+  const cold = tileFace(tile)
 
   assert.notDeepEqual(unknown, warm)
   // Different bands are drawn differently, so the colour carries the reading.
@@ -57,7 +57,7 @@ test('a temperature key shows the reading, and says so when there is none', () =
 
   // A sensor that goes unavailable stops showing its last figure.
   services.ha.put('sensor.office_temperature', 'unavailable', {})
-  assert.deepEqual(tile.render().buffer, unknown)
+  assert.deepEqual(tileFace(tile), unknown)
 })
 
 test('reading keys watch their entity only while mounted and never act', () => {
@@ -91,16 +91,16 @@ test('the weather key draws the condition and falls back when it is unknown', ()
   const services = testServices()
   const tile = new WeatherTile(services, { entity: 'weather.home' })
 
-  const unknown = tile.render().buffer
+  const unknown = tileFace(tile)
   services.ha.put('weather.home', 'sunny', { temperature: 24 })
-  const sunny = tile.render().buffer
+  const sunny = tileFace(tile)
   services.ha.put('weather.home', 'rainy', { temperature: 11 })
-  const rainy = tile.render().buffer
+  const rainy = tileFace(tile)
 
   assert.notDeepEqual(sunny, rainy)
   assert.notDeepEqual(sunny, unknown)
   services.ha.put('weather.home', 'unavailable', {})
-  assert.deepEqual(tile.render().buffer, unknown)
+  assert.deepEqual(tileFace(tile), unknown)
 })
 
 test('a page key moves the deck through its host, and only while mounted', () => {
@@ -116,13 +116,13 @@ test('a page key moves the deck through its host, and only while mounted', () =>
   assert.deepEqual(host.moves, [1])
 
   // A mounted key names the page it moves to; an unmounted one cannot.
-  const named = tile.render().buffer
+  const named = tileFace(tile)
   tile.unmount()
-  assert.notDeepEqual(tile.render().buffer, named)
+  assert.notDeepEqual(tileFace(tile), named)
 
   const back = new PageTile({ delta: -1 })
   back.mount(host)
   back.press()
   assert.deepEqual(host.moves, [1, -1])
-  assert.notDeepEqual(back.render().buffer, named, 'a backwards key points the other way')
+  assert.notDeepEqual(tileFace(back), named, 'a backwards key points the other way')
 })

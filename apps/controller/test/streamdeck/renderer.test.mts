@@ -3,13 +3,12 @@ import test from 'node:test'
 import type { StreamDeck } from '@elgato-stream-deck/node'
 
 import { ControlModel, createState } from '../../src/state.mjs'
-import { createImage } from '../../src/streamdeck/bitmap.mjs'
 import type { StreamDeckLayout } from '../../src/streamdeck/grid.mjs'
 import { DeckRenderer } from '../../src/streamdeck/renderer.mjs'
 import { ActionTile } from '../../src/streamdeck/tiles/action-tile.mjs'
 import type { Tile, TileHost } from '../../src/streamdeck/tiles/tile.mjs'
+import type { Surface } from '../../src/streamdeck/surface.mjs'
 import { testStrip } from '../support/fixtures.mjs'
-import type { Bitmap } from '../../src/types.mjs'
 
 /** A layout of keys alone; what the strip shows has its own test file. */
 const rendererFor = (layout: Omit<StreamDeckLayout, 'strip'>): DeckRenderer =>
@@ -89,8 +88,8 @@ class ProbeTile implements Tile {
 
   press(): void {}
 
-  render(): Bitmap {
-    return createImage(120, 120, '#000000')
+  draw(surface: Surface): void {
+    surface.fill('#000000')
   }
 
   mount(host: TileHost): void {

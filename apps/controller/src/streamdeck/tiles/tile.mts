@@ -4,9 +4,28 @@
 // this folder; tiles are created by the layout factory (streamdeck/layout.mts)
 // with the controller's services injected, so a tile carries its behaviour
 // with it instead of handing a description to a central dispatcher.
+//
+// A tile paints onto a Surface (streamdeck/surface.mts) the renderer owns and
+// reuses, rather than returning an image of its own. The shared faces below —
+// a labelled key, a readout key, the caption bar — are what keep eight
+// independently written keys looking like one control surface.
 
-import { createImage, drawRectangle, drawText } from '../bitmap.mjs'
-import type { Action, AudioState, Bitmap, ControlState } from '../../types.mjs'
+import { lighten, withAlpha, type Surface } from '../surface.mjs'
+import type { Action, AudioState, ControlState } from '../../types.mjs'
+
+/** The pixel size of one key face. */
+export const KEY_SIZE = 120
+
+/** The caption bar at the foot of every key, and where its text sits. */
+export const CAPTION_TOP = 92
+export const CAPTION_HEIGHT = KEY_SIZE - CAPTION_TOP
+const CAPTION_CENTER = CAPTION_TOP + CAPTION_HEIGHT / 2
+const CAPTION_SIZE = 19
+/** Captions are condensed to fit rather than overrunning the key. */
+const CAPTION_WIDTH = KEY_SIZE - 8
+
+/** The centre of the area above the caption, where a tile's subject goes. */
+export const FACE_CENTER = 44
 
 /** The live state a tile consults to decide its face and behaviour. */
 export interface TileContext {
@@ -14,7 +33,7 @@ export interface TileContext {
   audio: AudioState
   /**
    * The wall-clock instant of this repaint, for animated faces. Deriving an
-   * animation phase from `now` keeps render a pure function of its context —
+   * animation phase from `now` keeps drawing a pure function of its context —
    * a tile only needs its own timer to *request* repaints (see TileHost).
    */
   now: number
@@ -46,8 +65,12 @@ export interface TileHost {
 export interface Tile {
   /** Performs the key's behaviour. Runs through the deck's dispatch queue. */
   press(context: TileContext): unknown
-  /** The 120x120 key face to show for the current state. */
-  render(context: TileContext): Bitmap
+  /**
+   * Paint the key face for the current state. The surface arrives cleared, so
+   * a tile draws everything it wants to show; the renderer reuses it for the
+   * next key, so nothing may be held on to after this returns.
+   */
+  draw(surface: Surface, context: TileContext): void
   /**
    * The declarative action this tile stands for, if any; layout.test.mts
    * validates it against the catalog. A tile whose behaviour the catalog
@@ -60,26 +83,76 @@ export interface Tile {
   unmount?(): void
 }
 
-/** The standard key face: a centred label over a black caption bar. */
-export function labelTile(background: string, label: string): Bitmap {
-  const face = createImage(120, 120, background)
-  drawCaption(face, label)
-  return face
+/**
+ * Wash the key in its background colour. Every face starts here: the wash runs
+ * from a lightened shade at the top down to the colour itself, so a lit key
+ * reads as lit from across the room rather than as a flat block.
+ */
+export function drawBackground(surface: Surface, background: string): void {
+  surface.fill(surface.verticalGradient(lighten(background, 0.16), background))
+}
+
+/** The black caption bar every key face shares, so labels line up across the grid. */
+export function drawCaption(surface: Surface, label: string, color = '#ffffff'): void {
+  surface.ctx.fillStyle = 'rgba(0,0,0,0.72)'
+  surface.ctx.fillRect(0, CAPTION_TOP, surface.width, CAPTION_HEIGHT)
+  surface.text(label, {
+    x: surface.width / 2,
+    y: CAPTION_CENTER,
+    size: CAPTION_SIZE,
+    color,
+    maxWidth: CAPTION_WIDTH,
+  })
+}
+
+/** The standard key face: a background with a caption along the foot. */
+export function drawLabelFace(surface: Surface, background: string, label: string): void {
+  drawBackground(surface, background)
+  drawCaption(surface, label)
 }
 
 /**
  * A readout key: one large value over the caption bar, for tiles that show a
  * measurement rather than a state — the clock, a temperature, a countdown.
  */
-export function valueTile(background: string, value: string, caption: string): Bitmap {
-  const face = createImage(120, 120, background)
-  drawText(face, value, 60, 46, value.length > 5 ? 3 : 4)
-  drawCaption(face, caption)
-  return face
+export function drawValueFace(surface: Surface, background: string, value: string, caption: string): void {
+  drawBackground(surface, background)
+  drawValue(surface, value, surface.width / 2, FACE_CENTER)
+  drawCaption(surface, caption)
 }
 
-/** The black caption bar every key face shares, so labels line up across the grid. */
-export function drawCaption(face: Bitmap, label: string): void {
-  drawRectangle(face, 0, 94, 120, 26, '#000000')
-  drawText(face, label, 60, 106, label.length > 8 ? 2 : 3)
+/**
+ * A dot per choice with the current one filled, for a key that cycles through a
+ * short list — the scenes, the audio inputs. It says how many presses it takes
+ * to get back around without having to cycle through and find out.
+ */
+export function drawDots(
+  surface: Surface,
+  count: number,
+  current: number,
+  y: number,
+  color: string,
+  spacing = 15,
+): void {
+  const { ctx } = surface
+  const left = surface.width / 2 - ((count - 1) * spacing) / 2
+  ctx.save()
+  ctx.lineWidth = 1.5
+  for (let position = 0; position < count; position += 1) {
+    ctx.beginPath()
+    ctx.arc(left + position * spacing, y, 3.5, 0, 2 * Math.PI)
+    if (position === current) {
+      ctx.fillStyle = color
+      ctx.fill()
+    } else {
+      ctx.strokeStyle = withAlpha(color, 0.55)
+      ctx.stroke()
+    }
+  }
+  ctx.restore()
+}
+
+/** One large reading, shrunk only as far as the value needs. */
+export function drawValue(surface: Surface, value: string, x: number, y: number, available = KEY_SIZE - 12): void {
+  surface.text(value, { x, y, size: surface.fittingSize(value, [46, 38, 30, 24], available) })
 }

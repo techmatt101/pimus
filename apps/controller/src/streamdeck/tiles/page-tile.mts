@@ -4,10 +4,8 @@
 // reaches it through its host — which it only has while it is the visible page,
 // exactly when navigating away is meaningful.
 
-import { drawCaption, type Tile, type TileHost } from './tile.mjs'
-import { createImage } from '../bitmap.mjs'
-import { pageIcon } from '../icons.mjs'
-import type { Bitmap } from '../../types.mjs'
+import { drawBackground, drawCaption, FACE_CENTER, type Tile, type TileHost } from './tile.mjs'
+import type { Surface } from '../surface.mjs'
 
 export interface PageTileConfig {
   /** How many pages to move; negative goes back. */
@@ -41,14 +39,18 @@ export class PageTile implements Tile {
     this.host = null
   }
 
-  render(): Bitmap {
+  draw(surface: Surface): void {
     const forward = this.delta >= 0
-    const face = createImage(120, 120, this.color)
-    pageIcon(forward)(face, 60, 44, '#eceff1')
+    drawBackground(surface, this.color)
+    surface.icon(forward ? 'next' : 'previous', {
+      x: surface.width / 2,
+      y: FACE_CENTER,
+      size: 52,
+      color: '#eceff1',
+    })
     // Only a mounted tile can name its target; before that the caption is the
     // configured fallback rather than a page name that might be wrong.
     const target = this.host?.pageName(this.delta)
-    drawCaption(face, target ? (forward ? `${target} >` : `< ${target}`) : this.label)
-    return face
+    drawCaption(surface, target ?? this.label)
   }
 }

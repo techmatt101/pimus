@@ -3,7 +3,7 @@
 ANSIBLE_CONFIG := $(CURDIR)/ansible/ansible.cfg
 export ANSIBLE_CONFIG
 
-.PHONY: help install build playground dev provision deploy-controller check test verify doctor
+.PHONY: help install build icons playground dev provision deploy-controller check test verify doctor
 
 help:
 	@awk 'BEGIN {FS = ":.*## "; printf "Usage: make <target>\n\n"} /^[a-zA-Z_-]+:.*## / {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -17,6 +17,12 @@ install: ## Install control computer dependencies (Ansible collections, Node wor
 build: ## Compile the TypeScript controller to apps/controller/dist
 	[ -d apps/controller/node_modules ] || pnpm install --frozen-lockfile
 	pnpm --filter pimus-controller build
+
+# Fetches only the icons listed in tools/generate-icons.mjs from a pinned
+# Hugeicons release and rewrites the committed icon set. Needed only when adding
+# an icon, never to build, test, or deploy.
+icons: ## Regenerate the Stream Deck icon set from Hugeicons
+	node tools/generate-icons.mjs
 
 # Development only. Runs the real controller against fake hardware and fake
 # services, with the Stream Deck drawn in a browser; it never contacts the Pi.

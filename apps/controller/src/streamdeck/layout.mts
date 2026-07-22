@@ -38,7 +38,6 @@ import { isEntityOn, numericAttribute } from '../home-assistant/entity.mjs'
 import { createBindings, type Binding, type TileServices } from './bindings.mjs'
 import { DynamicDial } from './dynamic-dial.mjs'
 import type { StreamDeckDial, StreamDeckPage, StreamDeckLayout } from './grid.mjs'
-import { blindsIcon, bulbIcon, fanIcon, monitorIcon } from './icons.mjs'
 import { NowPlayingScreen } from './screens/now-playing-screen.mjs'
 import { TouchStrip } from './strip.mjs'
 import { ActionTile } from './tiles/action-tile.mjs'
@@ -162,31 +161,31 @@ export function createLayout(services: TileServices): StreamDeckLayout {
         topMidLeft: new EntityToggleTile(services, {
           label: 'FAN',
           entity: HA.fan,
-          icon: fanIcon,
+          icon: 'fan',
           onColor: '#00695c',
           offColor: '#0d2320',
-          // A turning fan needs a moving phase; deriving it from the repaint
-          // instant keeps render pure while the tile drives the repaints.
-          phase: (_entity, now) => (now % 1200) / 1200,
+          // A turning fan needs a moving angle; deriving it from the repaint
+          // instant keeps drawing pure while the tile drives the repaints.
+          spin: (_entity, now) => (now % 1200) / 1200,
           animationMilliseconds: 100,
           dial: dynamic,
         }),
         topMidRight: new EntityToggleTile(services, {
           label: 'BLINDS',
           entity: HA.blinds,
-          icon: blindsIcon,
+          icon: 'blinds',
           onColor: '#455a64',
           offColor: '#1c2429',
-          // The slats hang by however far the blind is still shut, so the key
-          // tracks the dial rather than only reading open or closed. A cover
-          // reporting no position falls back to fully raised or fully down.
-          phase: (entity) => 1 - (numericAttribute(entity, 'current_position') ?? (isEntityOn(entity) ? 80 : 0)) / 100,
+          // A bar under the glyph carries how far the blind is still shut, so
+          // the key tracks the dial rather than only reading open or closed. A
+          // cover reporting no position falls back to fully raised or down.
+          level: (entity) => 1 - (numericAttribute(entity, 'current_position') ?? (isEntityOn(entity) ? 80 : 0)) / 100,
           dial: dynamic,
         }),
         topRight: new EntityToggleTile(services, {
           label: 'PC',
           entity: HA.pc,
-          icon: monitorIcon,
+          icon: 'computer',
           onColor: '#283593',
           offColor: '#151a30',
         }),
@@ -194,7 +193,7 @@ export function createLayout(services: TileServices): StreamDeckLayout {
         bottomRight: new EntityToggleTile(services, {
           label: 'LIGHTS',
           entity: HA.lights,
-          icon: bulbIcon,
+          icon: 'bulb',
           onColor: '#6b5200',
           offColor: '#1e1a0c',
           dial: dynamic,

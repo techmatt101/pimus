@@ -4,8 +4,9 @@
 
 import { indicatorFor } from '../../actions/catalog.mjs'
 import type { Binding } from '../bindings.mjs'
-import { labelTile, type Tile, type TileContext } from './tile.mjs'
-import type { Action, Bitmap } from '../../types.mjs'
+import { drawLabelFace, type Tile, type TileContext } from './tile.mjs'
+import type { Surface } from '../surface.mjs'
+import type { Action } from '../../types.mjs'
 
 /** The computed face of a labelled key: its caption and background colour. */
 export interface KeyAppearance {
@@ -51,8 +52,8 @@ export class ActionTile implements Tile {
     return this.config.binding?.run()
   }
 
-  render(context: TileContext): Bitmap {
+  draw(surface: Surface, context: TileContext): void {
     const { label, background } = actionAppearance(this.config, context)
-    return labelTile(background, label)
+    drawLabelFace(surface, background, label)
   }
 }

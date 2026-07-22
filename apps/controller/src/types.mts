@@ -194,13 +194,6 @@ export interface AudioState {
   sources: Record<string, boolean | undefined>
 }
 
-/** A raw RGB image buffer built for Stream Deck keys and the LCD strip. */
-export interface Bitmap {
-  width: number
-  height: number
-  buffer: Buffer
-}
-
 /**
  * The narrow slice of the `usb` package's Device used for XVF3800 vendor
  * control transfers. Keeping it structural lets tests inject a fake device.

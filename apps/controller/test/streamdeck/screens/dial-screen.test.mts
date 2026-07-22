@@ -4,7 +4,7 @@ import test from 'node:test'
 import { createState } from '../../../src/state.mjs'
 import type { Binding } from '../../../src/streamdeck/bindings.mjs'
 import { DialScreen, dialDetail, dialLevel } from '../../../src/streamdeck/screens/dial-screen.mjs'
-import { testContext } from '../../support/fixtures.mjs'
+import { screenFace, testContext } from '../../support/fixtures.mjs'
 import type { Action } from '../../../src/types.mjs'
 
 /** A dial binding whose behaviour is irrelevant; only its action is read. */
@@ -80,12 +80,12 @@ test('the dial face shows the dial the strip handed it, and its level', () => {
     left: bound({ type: 'audio', command: 'down' }),
     right: bound({ type: 'audio', command: 'up' }),
   }
-  const quiet = screen.render({ ...testContext(createState({ volume: 0.2 })), dial })
-  const loud = screen.render({ ...testContext(createState({ volume: 0.9 })), dial })
+  const quiet = screenFace(screen, { ...testContext(createState({ volume: 0.2 })), dial })
+  const loud = screenFace(screen, { ...testContext(createState({ volume: 0.9 })), dial })
   assert.deepEqual([quiet.width, quiet.height], [800, 100], 'the readout takes the whole strip')
   assert.notDeepEqual(quiet.buffer, loud.buffer, 'the reading and its bar follow the volume')
 
   // With no dial selected there is nothing to report, and nothing is drawn.
-  const blank = screen.render(testContext())
+  const blank = screenFace(screen, testContext())
   assert.notDeepEqual(blank.buffer, quiet.buffer)
 })

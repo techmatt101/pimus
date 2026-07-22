@@ -1,6 +1,5 @@
 import type { StreamDeck } from '@elgato-stream-deck/node'
 
-import { createImage } from './bitmap.mjs'
 import {
   NEXT_KEY,
   PREV_KEY,
@@ -8,11 +7,23 @@ import {
   type StreamDeckLayout,
   type StreamDeckPage,
 } from './grid.mjs'
-import { labelTile, type Tile, type TileContext, type TileHost } from './tiles/tile.mjs'
+import { STRIP_HEIGHT, STRIP_WIDTH } from './screens/screen.mjs'
+import { Surface } from './surface.mjs'
+import {
+  drawBackground,
+  drawCaption,
+  FACE_CENTER,
+  KEY_SIZE,
+  type Tile,
+  type TileContext,
+  type TileHost,
+} from './tiles/tile.mjs'
 import type { ControlModel } from '../state.mjs'
 
 /** Background colour of the previous/next navigation keys. */
 const NAV_COLOR = '#263238'
+/** Every face is written to the device in the format a canvas produces. */
+const FORMAT = { format: 'rgba' } as const
 
 export interface DeckRendererOptions {
   layout: StreamDeckLayout
@@ -34,6 +45,11 @@ export class DeckRenderer {
   // physical key index. Mounted tiles may hold model subscriptions and
   // animation timers, so every path that hides a tile must unmount it.
   private readonly mounted = new Map<number, Tile>()
+  // One surface per size, reused for every face rather than allocated per
+  // frame: a key repaints as often as its animation asks it to, and a canvas
+  // carries a Skia context that is not worth rebuilding sixty times a second.
+  private readonly keySurface = new Surface(KEY_SIZE, KEY_SIZE)
+  private readonly stripSurface = new Surface(STRIP_WIDTH, STRIP_HEIGHT)
 
   constructor({ layout, model, logger = console }: DeckRendererOptions) {
     this.layout = layout
@@ -167,7 +183,7 @@ export class DeckRenderer {
     const tile = this.mounted.get(index)
     if (!deck || !tile) return
     try {
-      await deck.fillKeyBuffer(index, tile.render(this.context()).buffer, { format: 'rgb' })
+      await deck.fillKeyBuffer(index, this.paintTile(tile, this.context()), FORMAT)
     } catch (error) {
       this.logger.error('render failed', error)
     }
@@ -182,7 +198,7 @@ export class DeckRenderer {
     const deck = this.deck
     if (!deck) return
     try {
-      await deck.fillLcd(0, this.layout.strip.render(this.context()).buffer, { format: 'rgb' })
+      await deck.fillLcd(0, this.paintStrip(this.context()), FORMAT)
     } catch (error) {
       this.logger.error('render failed', error)
     }
@@ -205,24 +221,46 @@ export class DeckRenderer {
       // a blank slot, or a tile each has to be painted every time.
       for (let index = 0; index < 8; index += 1) {
         const nav = this.navTarget(index)
-        if (nav) {
-          await deck.fillKeyBuffer(index, labelTile(NAV_COLOR, this.navLabel(nav)).buffer, { format: 'rgb' })
-          continue
-        }
-        const tile = page ? tileAt(page.grid, index) : undefined
-        const face = tile ? tile.render(context) : createImage(120, 120, '#000000')
-        await deck.fillKeyBuffer(index, face.buffer, { format: 'rgb' })
+        const tile = nav ? undefined : page ? tileAt(page.grid, index) : undefined
+        await deck.fillKeyBuffer(index, nav ? this.paintNav(nav) : this.paintTile(tile, context), FORMAT)
       }
 
-      await deck.fillLcd(0, this.layout.strip.render(context).buffer, { format: 'rgb' })
+      await deck.fillLcd(0, this.paintStrip(context), FORMAT)
     } catch (error) {
       this.logger.error('render failed', error)
     }
   }
 
-  /** An arrow plus the name of the page a nav key would move to. */
-  private navLabel(direction: 'prev' | 'next'): string {
-    const name = this.pageNameAt(direction === 'next' ? 1 : -1)
-    return direction === 'next' ? `${name} >`.trim() : `< ${name}`.trim()
+  /**
+   * Paint a key face and take a copy of it. The surface is cleared first, so a
+   * tile only draws what it wants to show, and an empty slot is simply the
+   * cleared surface — the deck retains its last image, so every key has to be
+   * written on every full render.
+   */
+  private paintTile(tile: Tile | undefined, context: TileContext): Buffer {
+    this.keySurface.reset()
+    tile?.draw(this.keySurface, context)
+    return this.keySurface.snapshot()
+  }
+
+  /** A navigation corner: an arrow towards the page it moves to, and its name. */
+  private paintNav(direction: 'prev' | 'next'): Buffer {
+    const surface = this.keySurface
+    surface.reset()
+    drawBackground(surface, NAV_COLOR)
+    surface.icon(direction === 'next' ? 'next' : 'previous', {
+      x: surface.width / 2,
+      y: FACE_CENTER,
+      size: 48,
+      color: '#eceff1',
+    })
+    drawCaption(surface, this.pageNameAt(direction === 'next' ? 1 : -1))
+    return surface.snapshot()
+  }
+
+  private paintStrip(context: TileContext): Buffer {
+    this.stripSurface.reset()
+    this.layout.strip.draw(this.stripSurface, context)
+    return this.stripSurface.snapshot()
   }
 }

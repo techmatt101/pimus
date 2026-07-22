@@ -21,7 +21,7 @@ own code, imported straight from `apps/controller/src/`:
 
 | Replaced | By | Still real |
 | --- | --- | --- |
-| Stream Deck+ over USB HID | a canvas in the browser | the deck loop, reconnects, dispatch queue, paging, tiles and their `mount`/`unmount`, the renderer and its bitmaps |
+| Stream Deck+ over USB HID | a canvas in the browser | the deck loop, reconnects, dispatch queue, paging, tiles and their `mount`/`unmount`, the renderer and the faces it paints |
 | LVA peripheral WebSocket | a loopback WebSocket server | `LvaClient`, its reconnect, the action catalog, voice-state handling |
 | Audio manager Unix socket | a Unix socket server speaking the same protocol | `AudioManagerClient`'s optimistic route cache, its re-assert on reconnect, ducking |
 | `wpctl` | a number standing in for the sink | `runVolumeCommand`'s argument vectors and the output monitor poll |
@@ -42,7 +42,7 @@ The controller configuration is written out and then read back through the real
 ## Using it
 
 - **Keys** — click one to press it, or use number keys `1`-`8`. The faces are
-  the actual 120×120 bitmaps the renderer produced, pixel for pixel. With more
+  the actual 120×120 faces the renderer painted, pixel for pixel. With more
   than one page the bottom corners are previous/next, exactly as on the device.
 - **Dials** — `◀`/`▶` turn, the knob presses, and scrolling over a dial turns
   it. Turning one takes over the touch strip above, which otherwise shows what

@@ -3,13 +3,12 @@ import test from 'node:test'
 
 import { DynamicDial } from '../../../src/streamdeck/dynamic-dial.mjs'
 import { EntityToggleTile } from '../../../src/streamdeck/tiles/entity-toggle-tile.mjs'
-import { fanIcon, monitorIcon } from '../../../src/streamdeck/icons.mjs'
-import { eventually, testContext, testHost, testServices } from '../../support/fixtures.mjs'
+import { eventually, testContext, testHost, testServices, tileFace } from '../../support/fixtures.mjs'
 
 test('an entity toggle key calls the service for its own domain', () => {
   const services = testServices()
-  const fan = new EntityToggleTile(services, { label: 'FAN', entity: 'fan.office_ceiling', icon: fanIcon })
-  const blinds = new EntityToggleTile(services, { label: 'BLINDS', entity: 'cover.office_blinds', icon: monitorIcon })
+  const fan = new EntityToggleTile(services, { label: 'FAN', entity: 'fan.office_ceiling', icon: 'fan' })
+  const blinds = new EntityToggleTile(services, { label: 'BLINDS', entity: 'cover.office_blinds', icon: 'computer' })
 
   assert.deepEqual(fan.action(), { type: 'ha', command: 'toggle', entity: 'fan.office_ceiling' })
   fan.press()
@@ -22,8 +21,8 @@ test('an entity toggle key calls the service for its own domain', () => {
 test('a key given the dial hands it the entity as it is pressed', () => {
   const services = testServices()
   const dial = new DynamicDial(services.model)
-  const fan = new EntityToggleTile(services, { label: 'FAN', entity: 'fan.office_ceiling', icon: fanIcon, dial })
-  const pc = new EntityToggleTile(services, { label: 'PC', entity: 'switch.office_pc', icon: monitorIcon, dial })
+  const fan = new EntityToggleTile(services, { label: 'FAN', entity: 'fan.office_ceiling', icon: 'fan', dial })
+  const pc = new EntityToggleTile(services, { label: 'PC', entity: 'switch.office_pc', icon: 'computer', dial })
 
   fan.press()
   assert.equal(dial.label, 'FAN')
@@ -45,31 +44,31 @@ test('the key holding the dial is marked on its own face', () => {
   const services = testServices()
   const dial = new DynamicDial(services.model)
   services.ha.put('fan.office_ceiling', 'off')
-  const fan = new EntityToggleTile(services, { label: 'FAN', entity: 'fan.office_ceiling', icon: fanIcon, dial })
+  const fan = new EntityToggleTile(services, { label: 'FAN', entity: 'fan.office_ceiling', icon: 'fan', dial })
 
-  const idle = fan.render(testContext()).buffer
+  const idle = tileFace(fan, testContext())
   fan.press()
   // Nothing about the fan changed — the fake records the call without applying
   // it — so any difference here is the key reporting that it has the dial.
-  assert.notDeepEqual(fan.render(testContext()).buffer, idle, 'the key shows it holds the dial')
+  assert.notDeepEqual(tileFace(fan, testContext()), idle, 'the key shows it holds the dial')
 })
 
 test('a malformed entity id fails as the tile is built, not when it is pressed', () => {
   assert.throws(
-    () => new EntityToggleTile(testServices(), { label: 'FAN', entity: 'office_ceiling', icon: fanIcon }),
+    () => new EntityToggleTile(testServices(), { label: 'FAN', entity: 'office_ceiling', icon: 'fan' }),
     /not a Home Assistant entity id/,
   )
 })
 
 test('the face distinguishes on, off, and not knowing', () => {
   const services = testServices()
-  const tile = new EntityToggleTile(services, { label: 'PC', entity: 'switch.office_pc', icon: monitorIcon })
+  const tile = new EntityToggleTile(services, { label: 'PC', entity: 'switch.office_pc', icon: 'computer' })
 
-  const unknown = tile.render(testContext()).buffer
+  const unknown = tileFace(tile, testContext())
   services.ha.put('switch.office_pc', 'off')
-  const off = tile.render(testContext()).buffer
+  const off = tileFace(tile, testContext())
   services.ha.put('switch.office_pc', 'on')
-  const on = tile.render(testContext()).buffer
+  const on = tileFace(tile, testContext())
 
   assert.notDeepEqual(on, off, 'on and off differ')
   // Unreachable Home Assistant must not draw as a switch that is simply off.
@@ -81,8 +80,8 @@ test('a mounted key follows its entity and animates only while it is on', async 
   const tile = new EntityToggleTile(services, {
     label: 'FAN',
     entity: 'fan.office_ceiling',
-    icon: fanIcon,
-    phase: (_entity, now) => (now % 1200) / 1200,
+    icon: 'fan',
+    spin: (_entity: unknown, now: number) => (now % 1200) / 1200,
     animationMilliseconds: 5,
   })
 
@@ -113,24 +112,24 @@ test('an animated icon varies with time while a still one does not', () => {
   const tile = new EntityToggleTile(services, {
     label: 'FAN',
     entity: 'fan.office_ceiling',
-    icon: fanIcon,
-    phase: (_entity, now) => (now % 1200) / 1200,
+    icon: 'fan',
+    spin: (_entity: unknown, now: number) => (now % 1200) / 1200,
   })
   services.ha.put('fan.office_ceiling', 'on')
 
   // Not a third of a cycle apart: three blades 120 degrees apart map exactly
   // onto themselves there, and the face would legitimately be identical.
   assert.notDeepEqual(
-    tile.render(testContext(undefined, { now: 0 })).buffer,
-    tile.render(testContext(undefined, { now: 200 })).buffer,
+    tileFace(tile, testContext(undefined, { now: 0 })),
+    tileFace(tile, testContext(undefined, { now: 200 })),
     'the blades turn',
   )
 
-  const still = new EntityToggleTile(services, { label: 'PC', entity: 'switch.office_pc', icon: monitorIcon })
+  const still = new EntityToggleTile(services, { label: 'PC', entity: 'switch.office_pc', icon: 'computer' })
   services.ha.put('switch.office_pc', 'on')
   assert.deepEqual(
-    still.render(testContext(undefined, { now: 0 })).buffer,
-    still.render(testContext(undefined, { now: 400 })).buffer,
+    tileFace(still, testContext(undefined, { now: 0 })),
+    tileFace(still, testContext(undefined, { now: 400 })),
     'a key with no phase is steady',
   )
 })
