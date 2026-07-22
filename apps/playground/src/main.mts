@@ -37,8 +37,9 @@ import { NOTIFY_EVENT, NotificationCenter } from '../../controller/src/home-assi
 import { RemoteTileServer } from '../../controller/src/remote/server.mjs'
 import { ControlModel, createState } from '../../controller/src/state.mjs'
 import { runDeckLoop } from '../../controller/src/streamdeck/deck.mjs'
-import { createLayout } from '../../controller/src/streamdeck/layout.mjs'
+import { createLayout, SLEEP } from '../../controller/src/streamdeck/layout.mjs'
 import { DeckRenderer } from '../../controller/src/streamdeck/renderer.mjs'
+import { SleepController } from '../../controller/src/streamdeck/sleep.mjs'
 import { LvaClient } from '../../controller/src/voice/lva-client.mjs'
 import { ReSpeakerController } from '../../controller/src/voice/respeaker.mjs'
 
@@ -204,9 +205,20 @@ notifications.start()
 remote?.start()
 lva.connect()
 startOutputMonitor({ state, onStateChange: () => model.notify(), execute: wpctl.execute })
+// The real sleep policy, on a grace period short enough to watch: the panel is
+// meant to outstay you by minutes, which is no way to develop against it.
+const sleep = new SleepController({
+  model,
+  ha: homeAssistant,
+  presenceEntity: SLEEP.presence,
+  graceMilliseconds: 5000,
+})
+sleep.start()
+
 void runDeckLoop({
   layout,
   renderer,
+  onActivity: () => sleep.touch(),
   listDevices: hardware.listDevices,
   openDevice: hardware.openDevice,
   retryMilliseconds: 500,
@@ -256,6 +268,7 @@ let lastSnapshot = ''
 const snapshotTimer = setInterval(() => {
   const snapshot: PlaygroundSnapshot = {
     deckAttached: hardware.attached,
+    deckBrightness: hardware.brightness,
     lvaConnected: lvaServer.connected,
     audioConnected: audio.connected,
     assist: state.assist,

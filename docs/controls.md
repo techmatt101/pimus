@@ -405,6 +405,51 @@ Nothing needs configuring on the Pi: the event name is compiled in
 Home Assistant connection carries it. To try one without a Pi, run
 `make playground` and use the notification buttons in the Home Assistant panel.
 
+## Sleeping when the room is empty
+
+A lit deck in an empty office is the only thing that sleeps here. The wake word,
+the ReSpeaker ring, Sendspin, and whatever is playing all keep running; the panel
+simply switches off, and its keys stop drawing, animating, and watching entities
+while nobody can see them.
+
+It follows one Home Assistant presence sensor, named beside the other entity ids
+in `layout.mts` and read over the connection the keys already use. Three things
+keep the panel lit, and each restarts the grace period rather than pinning it
+awake, so leaving the room always ends the same way:
+
+| Keeps the panel lit | Why |
+| --- | --- |
+| The presence sensor reading `on` | Somebody is in the room |
+| A live Assist pipeline — wake word, listening, thinking, speaking, a ringing timer | What Assist is doing has to be visible |
+| A key press, dial turn, or tap on the strip | The safety net for a sensor that is simply wrong |
+
+The panel goes dark two minutes after the last of those, and lights the instant
+presence returns. **The first press on a dark deck only wakes it** — that press
+is you asking to see the keys, not asking to toggle something you cannot read —
+so nothing runs until you press again.
+
+It fails towards a lit panel in every direction. An unreachable Home Assistant, a
+sensor that has never reported, one reporting `unavailable`, an LED-only unit, and
+a deployment with no `home_assistant_url` at all each mean the deck never sleeps:
+a dark panel you cannot explain is worse than a lit one you did not need.
+
+A notification pushed while the deck is asleep waits in the queue rather than
+lighting an empty room, and is on the strip when you walk back in.
+
+Both settings are compiled in, in `apps/controller/src/streamdeck/layout.mts`:
+
+```ts
+export const SLEEP = {
+  presence: HA.presence,          // clear this to keep the deck lit permanently
+  graceMilliseconds: 2 * 60_000,
+} as const
+```
+
+The policy itself is `streamdeck/sleep.mts`, which writes one field —
+`state.awake` — that the renderer follows exactly as it follows a deck being
+unplugged. To watch it without a Pi, run `make playground` and use the
+**leave room** and **enter room** buttons in the Home Assistant panel.
+
 ## Remote tiles from another computer
 
 With `remote_tiles_enabled` set and a `REMOTE_TILES_TOKEN` in the Pi's secrets

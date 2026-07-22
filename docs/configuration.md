@@ -97,6 +97,11 @@ into the layout beside the keys that use them, in the `HA` block at the top of
 `apps/controller/src/streamdeck/layout.mts`; a typo there fails `make test`
 rather than becoming a key that presses successfully and reaches nothing.
 
+The presence sensor that puts the deck to sleep is one of those entities, in the
+`SLEEP` block of the same file along with how long the panel outstays you. See
+[sleeping when the room is empty](controls.md#sleeping-when-the-room-is-empty);
+running without Home Assistant simply keeps the deck lit.
+
 Webhook actions POST to `home_assistant_webhook_base/<id>`. Configure a Home Assistant webhook trigger and set the base to `http://homeassistant.local:8123/api/webhook`. Treat webhook IDs as secrets if the endpoint is reachable outside a trusted LAN. A webhook stores no token, but it is write-only: a key bound to one can fire an automation and show nothing back.
 
 ### Remote tiles

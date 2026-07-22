@@ -7,8 +7,9 @@ import { NotificationCenter } from './home-assistant/notifications.mjs'
 import { RemoteTileServer } from './remote/server.mjs'
 import { ControlModel, createState } from './state.mjs'
 import { runDeckLoop } from './streamdeck/deck.mjs'
-import { createLayout } from './streamdeck/layout.mjs'
+import { createLayout, SLEEP } from './streamdeck/layout.mjs'
 import { DeckRenderer } from './streamdeck/renderer.mjs'
+import { SleepController } from './streamdeck/sleep.mjs'
 import { LvaClient } from './voice/lva-client.mjs'
 import { ReSpeakerController } from './voice/respeaker.mjs'
 
@@ -105,8 +106,18 @@ if (homeAssistant instanceof HomeAssistantClient) homeAssistant.connect()
 if (config.voice_enabled) lva.connect()
 
 if (config.streamdeck?.enabled) {
+  // Switches the panel off while the room is empty. Only the deck sleeps: the
+  // wake word, the ReSpeaker ring, and background playback keep running, so
+  // this belongs to the deck branch and an LED-only unit never starts it.
+  const sleep = new SleepController({
+    model,
+    ha: homeAssistant,
+    presenceEntity: SLEEP.presence,
+    graceMilliseconds: SLEEP.graceMilliseconds,
+  })
+  sleep.start()
   startOutputMonitor({ state, onStateChange: () => model.notify() })
-  await runDeckLoop({ layout, renderer })
+  await runDeckLoop({ layout, renderer, onActivity: () => sleep.touch() })
 } else {
   // The ReSpeaker watch timer and optional LVA socket do the work in LED-only
   // deployments; this explicit wait documents that the process is a daemon.

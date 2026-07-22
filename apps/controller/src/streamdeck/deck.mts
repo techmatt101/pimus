@@ -35,6 +35,12 @@ export function createDispatcher(logger: Pick<Console, 'error'> = console): Disp
 export interface DeckLoopOptions {
   layout: StreamDeckLayout
   renderer: DeckRenderer
+  /**
+   * Report a key press, dial turn, or strip tap before it is acted on, so a
+   * sleeping panel can wake (streamdeck/sleep.mts). Returning true means the
+   * input was spent waking the deck and must not also run what it landed on.
+   */
+  onActivity?: () => boolean
   listDevices?: () => Promise<StreamDeckDeviceInfo[]>
   openDevice?: (path: string) => Promise<StreamDeck>
   retryMilliseconds?: number
@@ -45,6 +51,7 @@ export interface DeckLoopOptions {
 export async function runDeckLoop({
   layout,
   renderer,
+  onActivity,
   listDevices = listStreamDecks,
   openDevice = openStreamDeck,
   retryMilliseconds = 3000,
@@ -55,6 +62,8 @@ export async function runDeckLoop({
   const pressBinding = (binding: Binding | undefined): void => {
     if (binding) void dispatch(() => binding.run())
   }
+  /** True when this input only woke the panel, so nothing else should run. */
+  const consumedByWake = (): boolean => onActivity?.() === true
 
   while (true) {
     try {
@@ -66,10 +75,10 @@ export async function runDeckLoop({
       }
 
       deck = await openDevice(device.path)
-      renderer.setDeck(deck)
       logger.log(`opened ${deck.PRODUCT_NAME}`)
-      await deck.setBrightness(layout.brightness)
-      await renderer.render()
+      // The renderer owns everything written to the panel, brightness included:
+      // a deck that reconnects while the room is empty comes back up dark.
+      await renderer.setDeck(deck)
 
       // A USB unplug can emit several errors; without a listener still
       // attached after the first one, EventEmitter would throw and kill the
@@ -77,6 +86,9 @@ export async function runDeckLoop({
       deck.on('error', () => {})
       const disconnected = new Promise<void>((resolve) => deck?.once('error', () => resolve()))
       deck.on('down', (controlDefinition) => {
+        // The first press on a dark panel is you asking to see it, so it wakes
+        // the deck and stops there rather than toggling something unreadable.
+        if (consumedByWake()) return
         if (controlDefinition.type === 'button') {
           // The bottom-corner keys page the grid when the layout has more than
           // one page; every other key presses its current page's tile.
@@ -94,12 +106,14 @@ export async function runDeckLoop({
         }
       })
       deck.on('rotate', (controlDefinition, amount) => {
+        if (consumedByWake()) return
         renderer.showDial(controlDefinition.index)
         const dial = layout.dials[controlDefinition.index]
         const selected = amount < 0 ? dial?.left : dial?.right
         for (let count = 0; count < Math.min(10, Math.abs(amount)); count += 1) pressBinding(selected)
       })
       deck.on('lcdShortPress', (_controlDefinition, position) => {
+        if (consumedByWake()) return
         // The strip decides what a tap means: acknowledging a notification if
         // one is showing, otherwise pressing the dial in that zone.
         void dispatch(renderer.stripPressAt(position.x))

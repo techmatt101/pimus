@@ -66,6 +66,8 @@ keeps a controller crash from leaving background audio quiet.
 
 The Stream Deck driver uses `@elgato-stream-deck/node`, which supports the Plus model's eight key LCDs, four rotary encoders, and 800×100 touch strip. The ReSpeaker module uses USB vendor-control transfers for XVF3800 LED effects. Everything runs headlessly.
 
+The panel switches itself off when the room is empty. `streamdeck/sleep.mts` follows a Home Assistant presence sensor over that same connection and writes one field of shared state; the renderer reacts to it exactly as it reacts to the deck being unplugged, dropping the mounted tiles so their animation timers and entity watches stop with the light. Nothing else sleeps: the wake word, the ReSpeaker ring, and background playback are untouched. It fails towards a lit panel — an unreachable Home Assistant, a sensor reporting `unavailable`, or a hand on a deck the sensor thinks nobody is near all keep it awake, and the first press on a dark panel wakes it without also running the key.
+
 Each key is a tile that owns its own behaviour and face; the touch strip is one full-width display owned by `streamdeck/strip.mts`, which picks between screens — the dial being turned, a notification, or what is playing. Home Assistant automations reach that strip by firing a `smartamp_notify` event on the same WebSocket the entity cache is built from, so a doorbell or a finished washing machine needs no entity and no inbound port on the Pi.
 
 A small local LVA launcher adapter supplies pause, idle, and natural media

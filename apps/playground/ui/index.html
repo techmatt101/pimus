@@ -64,6 +64,10 @@
      is resampled: the frames look the size and sharpness they do on the deck.
      `pixelated` only covers the odd display whose ratio is not a whole number. */
   .deck { width: calc(800px * var(--deck-scale) + 28px); background: #05070a; border-radius: 12px; padding: 14px; border: 1px solid #1a222d; }
+  /* An asleep panel: the deck is still attached and still listening, its
+     display is simply switched off because the room is empty. */
+  .deck .keys, .deck .lcd { transition: opacity 200ms ease; }
+  .deck.asleep .keys, .deck.asleep .lcd { opacity: 0.04; }
   .keys { display: grid; grid-template-columns: repeat(4, calc(120px * var(--deck-scale))); gap: calc(12px * var(--deck-scale)); justify-content: center; }
   .key { position: relative; width: calc(120px * var(--deck-scale)); height: calc(120px * var(--deck-scale)); border: 0; padding: 0; background: #000; border-radius: 8px; overflow: hidden; cursor: pointer; outline: 1px solid #1a222d; }
   .key canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
@@ -313,6 +317,10 @@ const HOUSE = [
   ['paused', { entity: 'media_player.office_amp', state: 'paused' }],
   ['warmer', { entity: 'sensor.office_temperature', state: '26.8' }],
   ['colder', { entity: 'sensor.office_temperature', state: '14.2' }],
+  // The panel sleeps a few seconds after the room empties, and lights the
+  // moment somebody is back — or when a key is pressed in the dark.
+  ['leave room', { entity: 'binary_sensor.office_presence', state: 'off' }],
+  ['enter room', { entity: 'binary_sensor.office_presence', state: 'on' }],
 ]
 for (const [label, payload] of HOUSE) {
   const button = document.createElement('button')
@@ -387,6 +395,8 @@ function renderState(state) {
   // frame looking live.
   if (wasAttached && !state.deckAttached) clearDeck()
   wasAttached = Boolean(state.deckAttached)
+  // Brightness 0 is a panel that has gone to sleep, not one that lost its deck.
+  document.querySelector('.deck').classList.toggle('asleep', Boolean(state.deckAttached) && state.deckBrightness === 0)
   for (const [id, live] of [['deck', state.deckAttached], ['lva', state.lvaConnected], ['audio', state.audioConnected]]) {
     document.getElementById(`pill-${id}`).classList.toggle('on', Boolean(live))
   }

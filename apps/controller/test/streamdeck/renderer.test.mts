@@ -11,11 +11,17 @@ import type { Surface } from '../../src/streamdeck/surface.mjs'
 import { testStrip } from '../support/fixtures.mjs'
 
 /** A layout of keys alone; what the strip shows has its own test file. */
-const rendererFor = (layout: Omit<StreamDeckLayout, 'strip'>): DeckRenderer =>
+const rendererFor = (
+  layout: Omit<StreamDeckLayout, 'strip'>,
+  model = new ControlModel(createState(), () => ({ sources: {} })),
+): DeckRenderer =>
   new DeckRenderer({
     layout: { ...layout, strip: testStrip(layout.dials) },
-    model: new ControlModel(createState(), () => ({ sources: {} })),
+    model,
   })
+
+/** Let every pending microtask of an async panel transition finish. */
+const settle = (): Promise<void> => new Promise((resolve) => { setImmediate(resolve) })
 
 /** A tile that records its label when pressed, to see which slot dispatched. */
 const recorder = (label: string, presses: string[]): ActionTile =>
@@ -107,7 +113,7 @@ class ProbeTile implements Tile {
   }
 }
 
-test('tiles are mounted while visible on an attached deck and can repaint their key', () => {
+test('tiles are mounted while visible on an attached deck and can repaint their key', async () => {
   const log: string[] = []
   const one = new ProbeTile('A', log)
   const two = new ProbeTile('G', log)
@@ -128,9 +134,11 @@ test('tiles are mounted while visible on an attached deck and can repaint their 
   const deck = {
     fillKeyBuffer: async (index: number) => { painted.push(index) },
     fillLcd: async () => {},
+    setBrightness: async () => {},
   } as unknown as StreamDeck
-  renderer.setDeck(deck)
+  await renderer.setDeck(deck)
   assert.deepEqual(log, ['mount:A'])
+  painted.length = 0
 
   // A mounted tile repaints just its own key, outside the shared schedule.
   one.poke()
@@ -146,4 +154,71 @@ test('tiles are mounted while visible on an attached deck and can repaint their 
   const afterUnmount = painted.length
   two.poke()
   assert.equal(painted.length, afterUnmount)
+})
+
+test('a sleeping panel goes dark, stops every tile, and comes back painted', async () => {
+  const log: string[] = []
+  const tile = new ProbeTile('A', log)
+  const model = new ControlModel(createState(), () => ({ sources: {} }))
+  const renderer = rendererFor({
+    brightness: 40,
+    dials: [],
+    pages: [{ name: 'ONE', grid: { topLeft: tile } }],
+  }, model)
+
+  const painted: number[] = []
+  const brightness: number[] = []
+  const deck = {
+    fillKeyBuffer: async (index: number) => { painted.push(index) },
+    fillLcd: async () => {},
+    setBrightness: async (level: number) => { brightness.push(level) },
+  } as unknown as StreamDeck
+  await renderer.setDeck(deck)
+  assert.deepEqual(brightness, [40], 'an attached deck comes up at the layout brightness')
+  assert.deepEqual(log, ['mount:A'])
+
+  // The room emptied. The panel switches off, then the tiles are dropped, so
+  // their animation timers and entity watchers stop with it.
+  model.state.awake = false
+  model.notify()
+  await settle()
+  assert.deepEqual(brightness, [40, 0])
+  assert.deepEqual(log, ['mount:A', 'unmount:A'])
+
+  // Nothing is written to a dark panel, whether by a stale timer or a state change.
+  painted.length = 0
+  tile.poke()
+  model.notify()
+  await renderer.render()
+  assert.deepEqual(painted, [])
+
+  // Waking paints first and only then brings the panel up: the deck retains its
+  // last image, so raising the brightness onto it would flash the old room.
+  model.state.awake = true
+  model.notify()
+  await settle()
+  assert.deepEqual(log, ['mount:A', 'unmount:A', 'mount:A'])
+  assert.ok(painted.length >= 8, 'the whole panel was repainted before it lit')
+  assert.deepEqual(brightness, [40, 0, 40])
+})
+
+test('a deck that reconnects while the room is empty comes back dark', async () => {
+  const log: string[] = []
+  const model = new ControlModel(createState({ awake: false }), () => ({ sources: {} }))
+  const renderer = rendererFor({
+    brightness: 40,
+    dials: [],
+    pages: [{ name: 'ONE', grid: { topLeft: new ProbeTile('A', log) } }],
+  }, model)
+
+  const brightness: number[] = []
+  const deck = {
+    fillKeyBuffer: async () => { assert.fail('a sleeping panel is not painted') },
+    fillLcd: async () => { assert.fail('a sleeping panel is not painted') },
+    setBrightness: async (level: number) => { brightness.push(level) },
+  } as unknown as StreamDeck
+  await renderer.setDeck(deck)
+
+  assert.deepEqual(brightness, [0])
+  assert.deepEqual(log, [], 'no tile is mounted for a panel nobody can see')
 })

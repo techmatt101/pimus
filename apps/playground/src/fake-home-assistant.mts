@@ -41,6 +41,9 @@ const INITIAL: Record<string, { state: string; attributes?: Record<string, unkno
   'switch.office_pc': { state: 'off' },
   'timer.office': { state: 'idle', attributes: { duration: '0:05:00', remaining: '0:05:00' } },
   'sensor.office_temperature': { state: '21.4', attributes: { unit_of_measurement: '°C' } },
+  // Somebody is in the room, so the panel starts lit; clearing this from the
+  // browser is what puts the deck to sleep (streamdeck/sleep.mts).
+  'binary_sensor.office_presence': { state: 'on' },
   'weather.home': { state: 'partlycloudy', attributes: { temperature: 14, humidity: 71 } },
   'scene.office_bright': { state: 'unknown' },
   'scene.office_work': { state: 'unknown' },

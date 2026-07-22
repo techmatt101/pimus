@@ -12,6 +12,8 @@ test('LVA snapshots and events update shared display state', () => {
     volume: 0.42,
     outputMuted: false,
     media: false,
+    // A voice event says nothing about whether anybody is in the room.
+    awake: true,
   })
 
   applyLvaEvent(state, { event: 'wake_word_detected' })

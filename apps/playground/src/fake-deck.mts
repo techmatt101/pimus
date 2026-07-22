@@ -28,7 +28,7 @@ class FakeStreamDeck extends EventEmitter {
   }
 
   async setBrightness(percent: number): Promise<void> {
-    this.owner.brightness = percent
+    this.owner.setBrightness(percent)
   }
 
   async fillKeyBuffer(index: number, buffer: Buffer, _options?: unknown): Promise<void> {
@@ -79,6 +79,13 @@ export class FakeDeckHardware {
     // The fake only supports the members the controller uses; the cast keeps
     // that boundary in one place instead of stubbing the whole device API.
     return device as unknown as StreamDeck
+  }
+
+  /** The panel's brightness, which is how a sleeping deck is seen going dark. */
+  setBrightness(percent: number): void {
+    if (this.brightness === percent) return
+    this.brightness = percent
+    this.bus.log('deck', 'out', percent === 0 ? 'panel off' : `panel brightness ${percent}`)
   }
 
   writeKey(index: number, buffer: Buffer): void {

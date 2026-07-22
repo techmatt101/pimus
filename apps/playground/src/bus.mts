@@ -31,6 +31,8 @@ export interface LogEntry {
 /** Everything the state panel shows, sampled from the live controller. */
 export interface PlaygroundSnapshot {
   deckAttached: boolean
+  /** Panel brightness, 0 while the deck is asleep because the room is empty. */
+  deckBrightness: number
   lvaConnected: boolean
   audioConnected: boolean
   assist: string

@@ -85,6 +85,8 @@ const HA = {
   /** A wake-on-LAN switch, so the key both starts the PC and reports it. */
   pc: 'switch.office_pc',
   timer: 'timer.office',
+  /** Reads `on` while somebody is in the room; the panel sleeps when it clears. */
+  presence: 'binary_sensor.office_presence',
   temperature: 'sensor.office_temperature',
   weather: 'weather.home',
   scenes: [
@@ -102,6 +104,18 @@ const HA = {
 
 /** How long a press of the timer key starts the Home Assistant timer for. */
 const TIMER_DURATION = '00:05:00'
+
+/**
+ * When the panel switches itself off (streamdeck/sleep.mts). Compiled in with
+ * the rest of the layout because how long a lit deck outstays you is part of
+ * what the surface is, and because the entity belongs beside the others above.
+ * Clear `presence` to keep the deck lit permanently.
+ */
+export const SLEEP = {
+  presence: HA.presence,
+  /** How long the panel stays lit after the room empties. */
+  graceMilliseconds: 2 * 60_000,
+} as const
 
 /**
  * Builds the layout with the controller's services injected, so every tile and

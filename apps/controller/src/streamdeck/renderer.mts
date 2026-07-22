@@ -38,6 +38,10 @@ export class DeckRenderer {
   // Null until a deck is attached; LED-only deployments never attach one, so
   // render is a no-op there without any special-casing of the layout.
   private deck: StreamDeck | null = null
+  // Whether the panel is switched off because the room is empty
+  // (streamdeck/sleep.mts). Asleep is deliberately the same shape as having no
+  // deck attached: nothing mounted, no timers, nothing written.
+  private asleep = false
   private renderPending = false
   // Which page of the key grid is showing. The dials are unaffected by paging.
   private pageIndex = 0
@@ -55,22 +59,76 @@ export class DeckRenderer {
     this.layout = layout
     this.model = model
     this.logger = logger
-    this.model.subscribe(() => this.schedule())
+    this.asleep = !model.state.awake
+    this.model.subscribe(() => {
+      void this.applyAwake()
+      this.schedule()
+    })
   }
 
-  setDeck(deck: StreamDeck): void {
+  /**
+   * Take over an attached deck: mount what is visible, paint it, then bring the
+   * panel up. Brightness is set here rather than by the deck loop so one object
+   * owns every write to the panel, including a deck that reconnects while the
+   * room is empty and has to come back dark.
+   */
+  async setDeck(deck: StreamDeck): Promise<void> {
     this.deck = deck
-    this.mountPage()
-    // The strip is not paged: it mounts with the deck and stays up, so what is
-    // playing keeps scrolling whichever page of keys is showing.
-    this.layout.strip.mount({ invalidate: () => void this.renderStrip() })
+    this.asleep = !this.model.state.awake
+    if (!this.asleep) this.mountVisible()
+    await this.render()
+    await this.applyBrightness()
   }
 
   clearDeck(deck: StreamDeck | null): void {
     if (this.deck !== deck) return
     this.deck = null
+    this.unmountVisible()
+  }
+
+  /**
+   * Follow `state.awake`. Going dark switches the panel off before dropping the
+   * tiles, so the last thing seen is never a face frozen mid-animation; waking
+   * paints the whole panel first, because the deck retains its last image and
+   * raising the brightness onto a stale one shows a flash of the old room.
+   */
+  private async applyAwake(): Promise<void> {
+    const asleep = !this.model.state.awake
+    if (asleep === this.asleep) return
+    this.asleep = asleep
+    if (!this.deck) return
+    if (asleep) {
+      await this.applyBrightness()
+      this.unmountVisible()
+    } else {
+      this.mountVisible()
+      await this.render()
+      await this.applyBrightness()
+    }
+  }
+
+  /** Mount the visible page's tiles and the strip, which is not paged. */
+  private mountVisible(): void {
+    this.mountPage()
+    // The strip mounts with the deck and stays up, so what is playing keeps
+    // scrolling whichever page of keys is showing.
+    this.layout.strip.mount({ invalidate: () => void this.renderStrip() })
+  }
+
+  private unmountVisible(): void {
     this.unmountPage()
     this.layout.strip.unmount()
+  }
+
+  /** Panel brightness for the current state: the layout's, or off. */
+  private async applyBrightness(): Promise<void> {
+    const deck = this.deck
+    if (!deck) return
+    try {
+      await deck.setBrightness(this.asleep ? 0 : this.layout.brightness)
+    } catch (error) {
+      this.logger.error('brightness failed', error)
+    }
   }
 
   /**
@@ -181,7 +239,7 @@ export class DeckRenderer {
   private async renderKey(index: number): Promise<void> {
     const deck = this.deck
     const tile = this.mounted.get(index)
-    if (!deck || !tile) return
+    if (!deck || !tile || this.asleep) return
     try {
       await deck.fillKeyBuffer(index, this.paintTile(tile, this.context()), FORMAT)
     } catch (error) {
@@ -196,7 +254,7 @@ export class DeckRenderer {
    */
   private async renderStrip(): Promise<void> {
     const deck = this.deck
-    if (!deck) return
+    if (!deck || this.asleep) return
     try {
       await deck.fillLcd(0, this.paintStrip(this.context()), FORMAT)
     } catch (error) {
@@ -205,7 +263,7 @@ export class DeckRenderer {
   }
 
   schedule(): void {
-    if (this.renderPending) return
+    if (this.renderPending || this.asleep) return
     this.renderPending = true
     setTimeout(() => void this.render(), 50)
   }
@@ -213,7 +271,7 @@ export class DeckRenderer {
   async render(): Promise<void> {
     this.renderPending = false
     const deck = this.deck
-    if (!deck) return
+    if (!deck || this.asleep) return
     try {
       const context = this.context()
       const page = this.currentPage()

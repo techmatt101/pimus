@@ -232,6 +232,13 @@ export interface ControlState {
   volume: number
   outputMuted: boolean
   media: boolean
+  /**
+   * Whether the Stream Deck's panel is lit. False switches the keys and the
+   * touch strip off and stops every tile animation, because the room is empty
+   * (streamdeck/sleep.mts). Nothing else sleeps with it: the wake word, the
+   * ReSpeaker ring, and background playback all keep running.
+   */
+  awake: boolean
 }
 
 /** Route enablement mirrored from the audio manager's control socket. */

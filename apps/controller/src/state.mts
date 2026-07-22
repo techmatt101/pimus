@@ -12,6 +12,16 @@ const ASSIST_EVENTS = new Set([
   'pipeline_error',
 ])
 
+/**
+ * The same states as they appear on `ControlState.assist`, which carries them
+ * upper-cased. A live pipeline is something you must be able to see, so this is
+ * also what wakes a sleeping panel (streamdeck/sleep.mts) — derived from the
+ * set above so the two cannot drift apart.
+ */
+export const LIVE_ASSIST_STATES: ReadonlySet<string> = new Set(
+  [...ASSIST_EVENTS].map((event) => event.toUpperCase()),
+)
+
 export function createState(overrides: Partial<ControlState> = {}): ControlState {
   return {
     assist: 'DISCONNECTED',
@@ -19,6 +29,8 @@ export function createState(overrides: Partial<ControlState> = {}): ControlState
     volume: 1,
     outputMuted: false,
     media: false,
+    // A deployment with no presence sensor never leaves this state.
+    awake: true,
     ...overrides,
   }
 }
