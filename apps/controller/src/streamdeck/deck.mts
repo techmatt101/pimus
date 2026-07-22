@@ -87,16 +87,22 @@ export async function runDeckLoop({
             void dispatch(renderer.pressAt(controlDefinition.index))
           }
         } else if (controlDefinition.type === 'encoder') {
+          // Touching a dial also puts it on the strip, so the value being
+          // changed is visible while the hand is still on the knob.
+          renderer.showDial(controlDefinition.index)
           pressBinding(layout.dials[controlDefinition.index]?.press)
         }
       })
       deck.on('rotate', (controlDefinition, amount) => {
+        renderer.showDial(controlDefinition.index)
         const dial = layout.dials[controlDefinition.index]
         const selected = amount < 0 ? dial?.left : dial?.right
         for (let count = 0; count < Math.min(10, Math.abs(amount)); count += 1) pressBinding(selected)
       })
       deck.on('lcdShortPress', (_controlDefinition, position) => {
-        pressBinding(layout.dials[Math.min(3, Math.floor(position.x / 200))]?.press)
+        // The strip decides what a tap means: acknowledging a notification if
+        // one is showing, otherwise pressing the dial in that zone.
+        void dispatch(renderer.stripPressAt(position.x))
       })
       await disconnected
     } catch (error) {

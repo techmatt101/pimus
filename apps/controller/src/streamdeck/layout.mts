@@ -15,6 +15,10 @@
 // (clockwise), and `press` (also fired by tapping the strip above it). See
 // docs/controls.md for every action and the key/dial feedback each produces.
 //
+// The strip is one full-width display rather than four labels: it shows what is
+// playing, swaps to the dial you are turning while you turn it, and shows a
+// notification pushed from Home Assistant while one is live.
+//
 // Keys are paged; dials are not. With more than one PAGE the two bottom-corner
 // keys become previous/next navigation, and each page fills the six named grid
 // slots between them:
@@ -32,6 +36,8 @@ import { isEntityOn, numericAttribute } from '../home-assistant/entity.mjs'
 import { createBindings, type Binding, type TileServices } from './bindings.mjs'
 import type { StreamDeckDial, StreamDeckPage, StreamDeckLayout } from './grid.mjs'
 import { blindsIcon, fanIcon, monitorIcon } from './icons.mjs'
+import { NowPlayingScreen } from './screens/now-playing-screen.mjs'
+import { TouchStrip } from './strip.mjs'
 import { ActionTile } from './tiles/action-tile.mjs'
 import { AudioModeTile } from './tiles/audio-mode-tile.mjs'
 import { ClockTile } from './tiles/clock-tile.mjs'
@@ -104,6 +110,11 @@ export function createLayout(services: TileServices): StreamDeckLayout {
   const { voice, volume, ha, none } = createBindings(services)
   const key = (label: string, color: string, binding: Binding): Tile =>
     new ActionTile({ label, color, binding })
+  /** The office light's brightness as a 0-1 fraction, for the dial's readout and bar. */
+  const lightLevel = (): number | undefined => {
+    const brightness = numericAttribute(services.ha.entity(HA.lights), 'brightness')
+    return brightness === undefined ? undefined : brightness / 255
+  }
 
   // Each page is a fixed grid. The two bottom corners are page navigation, so a
   // page fills the six named slots between them; an omitted slot renders blank.
@@ -189,7 +200,10 @@ export function createLayout(services: TileServices): StreamDeckLayout {
 
   // Four dials, left to right. A dial's readout follows the actions bound to
   // it, so the display stays correct however these are ordered; a dial that
-  // knows something the actions cannot express supplies its own `detail`.
+  // knows something the actions cannot express supplies its own `detail`, and
+  // one whose value is a level supplies `level` for the bar under it. The
+  // readout is shown across the whole touch strip while the dial is being
+  // turned — see the strip below.
   const dials: StreamDeckDial[] = [
     { label: 'VOLUME', left: volume('down'), right: volume('up'), press: volume('mute') },
     {
@@ -211,15 +225,27 @@ export function createLayout(services: TileServices): StreamDeckLayout {
       detail: () => {
         const light = services.ha.entity(HA.lights)
         if (!isEntityOn(light)) return light ? 'OFF' : '--'
-        const brightness = numericAttribute(light, 'brightness')
+        const brightness = lightLevel()
         // Home Assistant reports brightness 0-255; the dial reads as a percentage.
-        return brightness === undefined ? 'ON' : `${Math.round((brightness / 255) * 100)}%`
+        return brightness === undefined ? 'ON' : `${Math.round(brightness * 100)}%`
       },
+      // Dimming reads as a bar far faster than as digits while the knob is
+      // moving; an off or unknown light has no level to draw.
+      level: () => (isEntityOn(services.ha.entity(HA.lights)) ? lightLevel() : undefined),
     },
     // No `detail`: the default readout for a dial bound to neither volume nor a
     // route is already the assist state, which is what this dial is for.
     { label: 'VOICE', left: none(), right: none(), press: voice('listen_toggle') },
   ]
 
-  return { brightness: BRIGHTNESS, pages, dials }
+  // The touch strip is one display, not four dial labels: it rests on what is
+  // playing, hands itself to a dial while one is being turned, and to a
+  // notification pushed from Home Assistant while one is live.
+  const strip = new TouchStrip({
+    resting: new NowPlayingScreen(services, { player: HA.player }),
+    dials,
+    ...(services.notifications ? { notifications: services.notifications } : {}),
+  })
+
+  return { brightness: BRIGHTNESS, pages, dials, strip }
 }

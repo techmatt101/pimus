@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import { describeActionProblem } from '../../src/actions/catalog.mjs'
 import { createLayout } from '../../src/streamdeck/layout.mjs'
-import { dialDetail } from '../../src/streamdeck/renderer.mjs'
+import { dialDetail } from '../../src/streamdeck/screens/dial-screen.mjs'
 import { SceneTile } from '../../src/streamdeck/tiles/scene-tile.mjs'
 import { testContext, testServices } from '../support/fixtures.mjs'
 

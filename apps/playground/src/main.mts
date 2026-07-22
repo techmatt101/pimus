@@ -7,7 +7,8 @@
 //   audio manager socket  -> fake-audio-manager.mts, a real Unix socket server
 //   wpctl                 -> fake-wpctl.mts, a number instead of a sink
 //   ReSpeaker USB LEDs    -> fake-led.mts, drawn as a ring
-//   Home Assistant        -> fake-home-assistant.mts, a house that responds
+//   Home Assistant        -> fake-home-assistant.mts, a house that responds,
+//                            including the events automations push to the strip
 //
 // Everything above those boundaries — the deck lifecycle, paging, tiles and
 // their mount/unmount, the action catalog, ducking, the LED state machine, the
@@ -32,6 +33,7 @@ import { VoiceDucker } from '../../controller/src/audio/ducking.mjs'
 import { AudioManagerClient } from '../../controller/src/audio/manager-client.mjs'
 import { runVolumeCommand, startOutputMonitor } from '../../controller/src/audio/volume.mjs'
 import { loadConfig } from '../../controller/src/config.mjs'
+import { NOTIFY_EVENT, NotificationCenter } from '../../controller/src/home-assistant/notifications.mjs'
 import { ControlModel, createState } from '../../controller/src/state.mjs'
 import { runDeckLoop } from '../../controller/src/streamdeck/deck.mjs'
 import { createLayout } from '../../controller/src/streamdeck/layout.mjs'
@@ -143,9 +145,19 @@ const lva = new LvaClient({
   logger: busLogger(bus, 'lva'),
 })
 
+// The same push channel a real automation uses; the browser's notify buttons
+// fire the event on the fake Home Assistant and nothing below this line knows
+// the difference.
+const notifications = new NotificationCenter({
+  ha: homeAssistant,
+  onChange: () => model.notify(),
+  logger: busLogger(bus, 'home-assistant'),
+})
+
 const layout = createLayout({
   model,
   lva,
+  notifications,
   setSource: (name, command) => {
     audio.setSource(name, command)
   },
@@ -169,6 +181,7 @@ const renderer = new DeckRenderer({ layout, model, logger: busLogger(bus, 'deck'
 
 respeaker?.start()
 audio.connect()
+notifications.start()
 lva.connect()
 startOutputMonitor({ state, onStateChange: () => model.notify(), execute: wpctl.execute })
 void runDeckLoop({
@@ -204,6 +217,8 @@ function handleInput(input: PlaygroundInput): void {
     homeAssistant.put('weather.home', String(next), {
       temperature: Math.round(4 + Math.random() * 22),
     })
+  } else if (input.kind === 'notify') {
+    homeAssistant.fire(NOTIFY_EVENT, input.data ?? {})
   } else if (input.kind === 'drop-ha') {
     homeAssistant.setConnected(!homeAssistant.connected)
   } else if (input.kind === 'simulate') {

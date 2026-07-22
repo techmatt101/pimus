@@ -93,6 +93,12 @@ Dial 1 controls volume, dial 2 is media transport (previous/next, press to
 play/pause), dial 3 dims and toggles the lights, and dial 4 starts or cancels a
 voice conversation.
 
+The touch strip above the dials shows what is playing — title, artist, and a
+position bar — and swaps to the dial you are turning while you turn it. Home
+Assistant automations can also put a message on it (someone at the door, the
+washing machine has finished) by firing a `smartamp_notify` event; tap the strip
+to acknowledge one. See [controls](docs/controls.md#the-touch-strip).
+
 Everything on the Room and Info pages, plus shuffle, the playlist, and the
 lights dial, talks to Home Assistant, so those keys show live state as well as
 change it — set `home_assistant_url` and `home_assistant_token`. Without them

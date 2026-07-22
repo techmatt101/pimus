@@ -37,8 +37,10 @@ apps/
     src/                 TypeScript controller modules (.mts)
       actions/           Action catalog: specs, validation, voice/HA behaviour
       audio/             Audio manager socket, volume, ducking
-      home-assistant/    HA WebSocket client, entity cache, entity reading
+      home-assistant/    HA WebSocket client, entity cache, entity reading,
+                         and the notification queue automations push to
       streamdeck/        Stream Deck lifecycle, bindings, icons, and rendering
+        screens/         One Screen class per file (a full touch-strip face)
         tiles/           One Tile class per file (key behaviour + face)
       voice/             LVA WebSocket and ReSpeaker LEDs
     test/                Hardware-free Node tests (.mts), mirroring src/
@@ -128,6 +130,17 @@ runtime validation, and relevant documentation together.
   repaint just its key via `host.invalidate()` — e.g. a timer for animation,
   with the phase derived from `context.now` so render stays pure. Drop every
   timer and subscription in `unmount`.
+- The touch strip is one full-width display, not four dial labels. `TouchStrip`
+  (`streamdeck/strip.mts`) owns which `Screen` (`streamdeck/screens/`, one class
+  per file) is showing: the dial being turned wins for a short hold, then a live
+  notification, then the resting now-playing face. A screen paints the whole
+  800x100 strip and may use the same `mount`/`unmount` lifecycle a tile does,
+  including asking for animation frames; keep strip rendering there rather than
+  in the renderer, exactly as for keys.
+- Home Assistant automations push a message to the strip by firing the
+  `smartamp_notify` event (`home-assistant/notifications.mts`), read over the
+  existing WebSocket. Notifications are moments, not states: do not give one a
+  helper entity, and do not add an inbound HTTP listener to the Pi for them.
 - The Stream Deck layout is compiled in at `streamdeck/layout.mts` as
   `createLayout(services)`, not in inventory. Each page is a fixed named
   `PageGrid` (`streamdeck/grid.mts`) of tiles; the grid geometry,

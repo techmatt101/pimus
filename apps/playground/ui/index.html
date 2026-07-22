@@ -316,6 +316,41 @@ weather.textContent = 'next weather'
 weather.addEventListener('click', () => post({ kind: 'weather' }))
 houseEl.append(weather)
 
+// Notifications an automation pushes to the strip. Each fires the same
+// `smartamp_notify` event a real automation would; tap the strip to acknowledge
+// one, or watch its time bar drain.
+const NOTIFY = [
+  ['someone at the door', { title: 'front door', message: 'someone is at the door', color: '#b71c1c', seconds: 10 }],
+  ['washing done', { title: 'laundry', message: 'washing machine has finished', color: '#00695c', seconds: 8 }],
+  ['long message', { title: 'post', message: 'a parcel was left in the porch by the side gate', seconds: 12 }],
+]
+for (const [label, data] of NOTIFY) {
+  const button = document.createElement('button')
+  button.textContent = label
+  button.addEventListener('click', () => post({ kind: 'notify', data }))
+  houseEl.append(button)
+}
+
+// A different track, so the strip is seen changing what it rests on.
+const track = document.createElement('button')
+track.textContent = 'next track'
+const TRACKS = [
+  { media_title: 'Teardrop', media_artist: 'Massive Attack', media_duration: 330 },
+  { media_title: 'Everything In Its Right Place', media_artist: 'Radiohead', media_duration: 251 },
+  { media_title: 'Windowlicker (Original Extended Mix)', media_artist: 'Aphex Twin', media_duration: 366 },
+]
+let trackIndex = 0
+track.addEventListener('click', () => {
+  trackIndex = (trackIndex + 1) % TRACKS.length
+  post({
+    kind: 'entity',
+    entity: 'media_player.office_amp',
+    state: 'playing',
+    attributes: { ...TRACKS[trackIndex], media_position: 0, media_position_updated_at: new Date().toISOString() },
+  })
+})
+houseEl.append(track)
+
 const entitiesEl = document.getElementById('entities')
 function renderEntities(entities) {
   const rows = Object.entries(entities || {})

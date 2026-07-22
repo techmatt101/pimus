@@ -25,7 +25,7 @@ interface HomeAssistantMessage {
   result?: unknown
   event?: {
     event_type?: string
-    data?: { entity_id?: string; new_state?: HomeAssistantEntity | null }
+    data?: Record<string, unknown> & { entity_id?: string; new_state?: HomeAssistantEntity | null }
   }
 }
 
@@ -60,6 +60,10 @@ export class HomeAssistantClient implements HomeAssistantService {
   private socket: WebSocket | null = null
   private reconnectTimer: NodeJS.Timeout | null = null
   private authenticated = false
+  // Event types something on the control surface is listening for, beyond the
+  // `state_changed` stream the entity cache is built from. Kept across
+  // reconnects: the subscriptions belong to the socket, the listeners do not.
+  private readonly eventListeners = new Map<string, Set<(data: Record<string, unknown>) => void>>()
   // Home Assistant requires strictly increasing ids on an authenticated socket.
   private nextId = 1
   // Which reply carries the entity snapshot; other results are acknowledgements.
@@ -97,6 +101,25 @@ export class HomeAssistantClient implements HomeAssistantService {
     // be minutes and for a scene is never.
     if (entityIds.some((id) => !this.store.get(id))) this.queueStates()
     return unwatch
+  }
+
+  /**
+   * Listen for one Home Assistant event type. The subscription is made once per
+   * type and re-made after every reconnect, so an automation firing while the
+   * socket is down is simply missed rather than arriving late — which is the
+   * right behaviour for a doorbell.
+   */
+  listen(eventType: string, listener: (data: Record<string, unknown>) => void): () => void {
+    const listeners = this.eventListeners.get(eventType)
+    if (listeners) {
+      listeners.add(listener)
+    } else {
+      this.eventListeners.set(eventType, new Set([listener]))
+      this.subscribeEvent(eventType)
+    }
+    return () => {
+      this.eventListeners.get(eventType)?.delete(listener)
+    }
   }
 
   call(domain: string, service: string, entityId: string, data?: Record<string, unknown>): void {
@@ -149,6 +172,7 @@ export class HomeAssistantClient implements HomeAssistantService {
       this.authenticated = true
       this.logger.log('connected to Home Assistant')
       this.send({ type: 'subscribe_events', event_type: 'state_changed' })
+      for (const eventType of this.eventListeners.keys()) this.subscribeEvent(eventType)
       this.requestStates()
       this.onStateChange()
       return
@@ -164,13 +188,21 @@ export class HomeAssistantClient implements HomeAssistantService {
       return
     }
 
-    if (message.type === 'event' && message.event?.event_type === 'state_changed') {
-      const updated = message.event.data?.new_state
-      // A removed entity reports a null new_state; nothing to cache for it.
-      if (!updated?.entity_id) return
-      if (!this.store.watched().has(updated.entity_id)) return
-      this.store.set(updated)
-      this.onStateChange()
+    if (message.type === 'event') {
+      const eventType = message.event?.event_type
+      if (eventType === 'state_changed') {
+        const updated = message.event?.data?.new_state
+        // A removed entity reports a null new_state; nothing to cache for it.
+        if (!updated?.entity_id) return
+        if (!this.store.watched().has(updated.entity_id)) return
+        this.store.set(updated)
+        this.onStateChange()
+        return
+      }
+      const listeners = eventType ? this.eventListeners.get(eventType) : undefined
+      if (!listeners) return
+      // Copy first so a listener that unsubscribes mid-notification is safe.
+      for (const listener of [...listeners]) listener(message.event?.data ?? {})
     }
   }
 
@@ -190,6 +222,11 @@ export class HomeAssistantClient implements HomeAssistantService {
     this.nextId += 1
     socket.send(JSON.stringify({ id, ...payload }))
     return id
+  }
+
+  /** Ask for one event type, if there is an authenticated socket to ask on. */
+  private subscribeEvent(eventType: string): void {
+    this.send({ type: 'subscribe_events', event_type: eventType })
   }
 
   private requestStates(): void {
@@ -225,5 +262,8 @@ export function createOfflineHomeAssistant(
       logger.log(`no Home Assistant configured; dropped ${domain}.${service} on ${entityId}`)
     },
     watch: () => () => {},
+    // Nothing can push a notification without a connection, so the strip simply
+    // never has one to show.
+    listen: () => () => {},
   }
 }

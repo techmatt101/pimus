@@ -12,7 +12,7 @@ import {
   type VolumeActionName,
 } from '../actions/catalog.mjs'
 import type { ControlModel } from '../state.mjs'
-import type { Action, HomeAssistantService, LvaSender } from '../types.mjs'
+import type { Action, HomeAssistantService, LvaSender, NotificationFeed } from '../types.mjs'
 
 /**
  * The controller services injected into tiles and dial bindings. Depending on
@@ -33,6 +33,12 @@ export interface TileServices {
    * ask whether the integration exists.
    */
   ha: HomeAssistantService
+  /**
+   * Messages pushed from Home Assistant for the touch strip. Optional: a
+   * deployment with no Home Assistant simply never has one, and the strip falls
+   * back to what is playing.
+   */
+  notifications?: NotificationFeed
   webhookBase?: string
   /** Only the request is meaningful here; the response body is ignored. */
   request?(url: string, init?: { method: string }): unknown

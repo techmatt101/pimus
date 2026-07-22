@@ -44,7 +44,9 @@ The controller configuration is written out and then read back through the real
   the actual 120×120 bitmaps the renderer produced, pixel for pixel. With more
   than one page the bottom corners are previous/next, exactly as on the device.
 - **Dials** — `◀`/`▶` turn, the knob presses, and scrolling over a dial turns
-  it. Clicking the touch strip presses the dial under that point.
+  it. Turning one takes over the touch strip above, which otherwise shows what
+  is playing. Clicking the strip presses the dial under that point, or
+  acknowledges a notification when one is showing.
 - **Inject** — pushes a voice event as if Home Assistant had sent it: wake word,
   timer ringing, media playing, mute, or the assistant going offline. Pressing
   the voice key also plays a scripted pipeline (wake → listening → thinking →
@@ -58,8 +60,10 @@ The controller configuration is written out and then read back through the real
   to the terminal, so the playground is still useful with the browser closed.
 - **Home Assistant** — change an entity from "somewhere else", the way the app
   or an automation would, so you can watch a key follow state it did not set
-  itself. **toggle Home Assistant** under fault injection drops the connection,
-  which is how to see the unknown-state faces.
+  itself. **next track** changes what the strip rests on, and the notification
+  buttons fire the same `smartamp_notify` event a real automation would.
+  **toggle Home Assistant** under fault injection drops the connection, which is
+  how to see the unknown-state faces.
 - **State** — the shared control state, the audio manager's routes, whether
   background audio is ducked, the LED appearance the ReSpeaker would show, and
   every Home Assistant entity the keys read.

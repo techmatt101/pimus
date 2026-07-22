@@ -3,6 +3,7 @@ import { AudioManagerClient } from './audio/manager-client.mjs'
 import { runVolumeCommand, startOutputMonitor } from './audio/volume.mjs'
 import { loadConfig } from './config.mjs'
 import { createOfflineHomeAssistant, HomeAssistantClient } from './home-assistant/client.mjs'
+import { NotificationCenter } from './home-assistant/notifications.mjs'
 import { ControlModel, createState } from './state.mjs'
 import { runDeckLoop } from './streamdeck/deck.mjs'
 import { createLayout } from './streamdeck/layout.mjs'
@@ -43,6 +44,14 @@ const homeAssistant = config.home_assistant?.enabled
   })
   : createOfflineHomeAssistant()
 
+// Automations reach the touch strip by firing a Home Assistant event; with no
+// Home Assistant configured nothing can push one and the strip simply keeps
+// showing what is playing.
+const notifications = new NotificationCenter({
+  ha: homeAssistant,
+  onChange: () => model.notify(),
+})
+
 const lva = new LvaClient({
   uri: config.lva_uri,
   state,
@@ -67,6 +76,7 @@ const layout = createLayout({
   },
   setVolume: (command) => runVolumeCommand(command, { onExit: () => model.notify() }),
   ha: homeAssistant,
+  notifications,
   webhookBase: config.webhook_base,
 })
 
@@ -74,6 +84,7 @@ const renderer = new DeckRenderer({ layout, model })
 
 respeaker?.start()
 audio.connect()
+notifications.start()
 if (homeAssistant instanceof HomeAssistantClient) homeAssistant.connect()
 if (config.voice_enabled) lva.connect()
 

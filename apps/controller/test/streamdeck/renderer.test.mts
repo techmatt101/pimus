@@ -3,68 +3,20 @@ import test from 'node:test'
 import type { StreamDeck } from '@elgato-stream-deck/node'
 
 import { ControlModel, createState } from '../../src/state.mjs'
-import type { Binding } from '../../src/streamdeck/bindings.mjs'
 import { createImage } from '../../src/streamdeck/bitmap.mjs'
 import type { StreamDeckLayout } from '../../src/streamdeck/grid.mjs'
-import { DeckRenderer, dialDetail } from '../../src/streamdeck/renderer.mjs'
+import { DeckRenderer } from '../../src/streamdeck/renderer.mjs'
 import { ActionTile } from '../../src/streamdeck/tiles/action-tile.mjs'
 import type { Tile, TileHost } from '../../src/streamdeck/tiles/tile.mjs'
-import { testContext } from '../support/fixtures.mjs'
-import type { Action, Bitmap } from '../../src/types.mjs'
+import { testStrip } from '../support/fixtures.mjs'
+import type { Bitmap } from '../../src/types.mjs'
 
-const rendererFor = (layout: StreamDeckLayout): DeckRenderer =>
-  new DeckRenderer({ layout, model: new ControlModel(createState(), () => ({ sources: {} })) })
-
-/** A dial binding whose behaviour is irrelevant; only its action is read. */
-const bound = (action: Action): Binding => ({ action, run: () => {} })
-
-test('dial readouts follow their bound actions rather than dial position', () => {
-  const state = createState({ volume: 0.67 })
-  const volumeDial = {
-    label: 'VOLUME',
-    left: bound({ type: 'audio', command: 'down' }),
-    right: bound({ type: 'audio', command: 'up' }),
-    press: bound({ type: 'audio', command: 'mute' }),
-  }
-
-  // The volume dial reports volume wherever it sits in the layout.
-  assert.equal(dialDetail(testContext(state), volumeDial), '67%')
-  state.outputMuted = true
-  assert.equal(dialDetail(testContext(state), volumeDial), 'MUTED')
-
-  assert.equal(dialDetail(testContext(state, { sources: { aux: true } }), {
-    label: 'AUX',
-    press: bound({ type: 'audio', source: 'aux', command: 'toggle' }),
-  }), 'ON')
-  assert.equal(dialDetail(testContext(state, { sources: { usb: false } }), {
-    label: 'USB',
-    left: bound({ type: 'audio', source: 'usb', command: 'off' }),
-  }), 'OFF')
-
-  // A dial bound to neither volume nor a route falls back to the assist state.
-  assert.equal(dialDetail(testContext(createState({ assist: 'LISTENING' })), {
-    label: 'VOICE',
-    press: bound({ type: 'lva', command: 'start_listening' }),
-  }), 'LISTENING')
-})
-
-test('a dial that supplies its own readout wins over the bound actions', () => {
-  // A light dial is bound to `ha` actions the shared readout cannot interpret,
-  // so it reports brightness itself — the dial equivalent of a tile drawing its
-  // own face.
-  const lights = {
-    label: 'LIGHTS',
-    press: bound({ type: 'ha', command: 'toggle', entity: 'light.office' }),
-    detail: () => '60%',
-  }
-  assert.equal(dialDetail(testContext(), lights), '60%')
-
-  // An own readout also overrides one the actions would have produced.
-  assert.equal(dialDetail(testContext(createState({ volume: 0.2 })), {
-    ...lights,
-    left: bound({ type: 'audio', command: 'down' }),
-  }), '60%')
-})
+/** A layout of keys alone; what the strip shows has its own test file. */
+const rendererFor = (layout: Omit<StreamDeckLayout, 'strip'>): DeckRenderer =>
+  new DeckRenderer({
+    layout: { ...layout, strip: testStrip(layout.dials) },
+    model: new ControlModel(createState(), () => ({ sources: {} })),
+  })
 
 /** A tile that records its label when pressed, to see which slot dispatched. */
 const recorder = (label: string, presses: string[]): ActionTile =>

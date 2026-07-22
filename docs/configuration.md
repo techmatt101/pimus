@@ -80,7 +80,11 @@ error, and `make test` rejects any action the catalog does not understand.
 `home_assistant_url` and `home_assistant_token` connect the controller to Home
 Assistant's WebSocket API. This is what the keys that *show* house state need —
 the fan, blinds, PC, scenes, timer, temperature, weather, the lights dial, and
-the media transport — because they read entity state as well as change it.
+the media transport — because they read entity state as well as change it. The
+same connection carries what the touch strip shows: the playing track's title and
+artist, and the notifications automations push with the `smartamp_notify` event
+(see [controls](controls.md#notifications-from-home-assistant)). Neither needs
+any setting of its own.
 
 Create the token in Home Assistant under your profile → Security → Long-lived
 access tokens, and set both values together; `make check` fails if only one is

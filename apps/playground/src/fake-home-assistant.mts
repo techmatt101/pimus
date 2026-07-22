@@ -18,7 +18,21 @@ import type { HomeAssistantEntity, HomeAssistantService } from '../../controller
  * show, as a key that draws unknown state.
  */
 const INITIAL: Record<string, { state: string; attributes?: Record<string, unknown> }> = {
-  'media_player.office_amp': { state: 'paused', attributes: { shuffle: false, volume_level: 0.4 } },
+  // A track with a title, an artist, and a position is what the touch strip
+  // rests on; without one the strip only ever shows its NOTHING PLAYING face.
+  'media_player.office_amp': {
+    state: 'paused',
+    attributes: {
+      shuffle: false,
+      volume_level: 0.4,
+      media_title: 'Teardrop',
+      media_artist: 'Massive Attack',
+      media_album_name: 'Mezzanine',
+      media_duration: 330,
+      media_position: 42,
+      media_position_updated_at: new Date().toISOString(),
+    },
+  },
   'light.office': { state: 'on', attributes: { brightness: 160 } },
   'fan.office_ceiling': { state: 'off' },
   'cover.office_blinds': { state: 'open' },
@@ -41,6 +55,7 @@ export class FakeHomeAssistant implements HomeAssistantService {
   private readonly bus: PlaygroundBus
   private readonly entities = new Map<string, HomeAssistantEntity>()
   private readonly watchers = new Set<{ ids: ReadonlySet<string>; listener: () => void }>()
+  private readonly listeners = new Map<string, Set<(data: Record<string, unknown>) => void>>()
   private countdown: NodeJS.Timeout | null = null
 
   constructor(bus: PlaygroundBus) {
@@ -60,6 +75,25 @@ export class FakeHomeAssistant implements HomeAssistantService {
     return () => {
       this.watchers.delete(watcher)
     }
+  }
+
+  listen(eventType: string, listener: (data: Record<string, unknown>) => void): () => void {
+    const listeners = this.listeners.get(eventType) ?? new Set()
+    listeners.add(listener)
+    this.listeners.set(eventType, listeners)
+    return () => {
+      listeners.delete(listener)
+    }
+  }
+
+  /**
+   * Fire an event, as an automation does. This is the whole notification path:
+   * the browser button stands in for "someone pressed the doorbell".
+   */
+  fire(eventType: string, data: Record<string, unknown>): void {
+    this.bus.log('home-assistant', 'in', `${eventType} ${JSON.stringify(data)}`)
+    if (!this.connected) return
+    for (const listener of [...(this.listeners.get(eventType) ?? [])]) listener(data)
   }
 
   call(domain: string, service: string, entityId: string, data?: Record<string, unknown>): void {

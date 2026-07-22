@@ -66,6 +66,8 @@ keeps a controller crash from leaving background audio quiet.
 
 The Stream Deck driver uses `@elgato-stream-deck/node`, which supports the Plus model's eight key LCDs, four rotary encoders, and 800×100 touch strip. The ReSpeaker module uses USB vendor-control transfers for XVF3800 LED effects. Everything runs headlessly.
 
+Each key is a tile that owns its own behaviour and face; the touch strip is one full-width display owned by `streamdeck/strip.mts`, which picks between screens — the dial being turned, a notification, or what is playing. Home Assistant automations reach that strip by firing a `smartamp_notify` event on the same WebSocket the entity cache is built from, so a doorbell or a finished washing machine needs no entity and no inbound port on the Pi.
+
 A small local LVA launcher adapter supplies pause, idle, and natural media
 completion events missing from the pinned upstream peripheral protocol. This
 keeps the Stream Deck play/pause state accurate without modifying the verified

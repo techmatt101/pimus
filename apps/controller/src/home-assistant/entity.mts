@@ -75,6 +75,25 @@ export function timerRemainingSeconds(
   return durationSeconds(entity.attributes.remaining) ?? durationSeconds(entity.attributes.duration)
 }
 
+/**
+ * Seconds into the current track at `now`, or undefined when the player does
+ * not report a position. A media player reports `media_position` once, with the
+ * instant it was measured, so a progress bar that moves has to be derived the
+ * same way a running timer's countdown is. A player that is not playing holds
+ * the position it reported.
+ */
+export function mediaElapsedSeconds(
+  entity: HomeAssistantEntity | undefined,
+  now: number,
+): number | undefined {
+  const position = numericAttribute(entity, 'media_position')
+  if (position === undefined || entity?.state !== 'playing') return position
+  const measuredAt = entity.attributes.media_position_updated_at
+  const measured = typeof measuredAt === 'string' ? Date.parse(measuredAt) : Number.NaN
+  if (!Number.isFinite(measured)) return position
+  return position + Math.max(0, (now - measured) / 1000)
+}
+
 /** A countdown as `M:SS`, or `H:MM` once an hour or more is left. */
 export function formatDuration(seconds: number): string {
   const whole = Math.max(0, Math.ceil(seconds))

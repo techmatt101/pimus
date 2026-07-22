@@ -24,10 +24,12 @@ pressable, in a browser. See [playground](playground.md).
 
 ## Hardware
 
-The Stream Deck+ has an **8-key grid** (4 columns × 2 rows) and **4 dials**. Each
-dial binds three separate actions: `left` (counter-clockwise), `right`
-(clockwise), and `press`. Pressing the LCD strip above a dial triggers that
-dial's `press` action.
+The Stream Deck+ has an **8-key grid** (4 columns × 2 rows), **4 dials**, and an
+800×100 **touch strip** above the dials. Each dial binds three separate actions:
+`left` (counter-clockwise), `right` (clockwise), and `press`. Pressing the strip
+above a dial triggers that dial's `press` action — unless a notification is
+showing, in which case the tap acknowledges it (see [The touch
+strip](#the-touch-strip)).
 
 ## Pages
 
@@ -85,7 +87,9 @@ central dispatcher:
 
 Icons are drawn from the primitives in `streamdeck/bitmap.mts` and shared in
 `streamdeck/icons.mts`, so the controller ships no binary assets and needs no
-image decoder on the Pi.
+image decoder on the Pi. The touch strip has the same arrangement one size up:
+its faces are **screens** in `streamdeck/screens/`, described under [The touch
+strip](#the-touch-strip).
 
 A key that reads Home Assistant draws three states, not two: on, off, and *not
 knowing*. An unreachable instance must never look like a fan that is simply
@@ -236,11 +240,15 @@ A dial's readout follows the actions bound to it rather than its position: a
 dial with a master volume action shows the volume percentage or `MUTED`, a dial
 with a route action shows `ON` or `OFF`, and anything else shows the voice
 assistant state. Reordering the dials in `layout.mts` keeps each readout correct.
+The readout is shown across the whole strip while the dial is being turned, not
+in a column of its own.
 
 A dial reporting something the bound actions cannot express supplies its own
 `detail(context)` — the dial equivalent of a tile drawing its own face. The
 lights dial uses it to show brightness as a percentage, and the media dial to
-show `PLAYING` or `PAUSED`.
+show `PLAYING` or `PAUSED`. A dial whose value really is a level also supplies
+`level(context)`, a 0–1 fraction drawn as a bar under the readout; master volume
+needs none, since the readout derives it from the bound action.
 
 The four dials as shipped:
 
@@ -255,6 +263,70 @@ Media transport goes through the Music Assistant player rather than LVA: the LVA
 media player is the satellite's own announcement player and has no queue to skip
 through. Play/pause stays on LVA, because that is where the controller's
 playback state comes from.
+
+## The touch strip
+
+The strip is one full-width display rather than four dial labels. Which of its
+**screens** is showing is decided by `apps/controller/src/streamdeck/strip.mts`,
+in this order:
+
+| Showing | When | What it looks like |
+| --- | --- | --- |
+| Dial readout | For 2.5 s after a dial was last turned or pressed | The dial's name, its readout, and a bar for a dial with a level |
+| Notification | While a message pushed from Home Assistant is live | Its heading and message on its own colour, with a draining time bar |
+| Now playing | Otherwise | Track title, artist and album, and a position bar |
+
+A hand on a knob wins over a live notification — feedback you cannot see while
+turning is no feedback — and the notification comes back when the hold expires.
+
+Each screen is a class in `streamdeck/screens/`, the strip's equivalent of a
+tile: it paints the whole 800×100 face and may run the same `mount`/`unmount`
+lifecycle, watching an entity and asking for animation frames. `NowPlayingScreen`
+watches the media player entity itself, so the strip keeps working on pages where
+no key happens to watch it. A title too wide for the strip is drawn smaller, and
+scrolls once even the smallest size will not fit; a playing track repaints once a
+second so its position bar creeps forward, since Music Assistant reports a
+position once and then says nothing.
+
+What is playing comes from the Music Assistant player entity — Home Assistant is
+the only thing that knows a title — so a deployment with no token shows
+`NO MEDIA INFO` rather than pretending the room is quiet.
+
+## Notifications from Home Assistant
+
+An automation puts a message on the strip by firing the `smartamp_notify` event.
+This is the one thing the controller learns from Home Assistant that is not an
+entity: "someone is at the door" and "the washing machine has finished" are
+moments, not states, and a helper entity per message would be a helper per
+message.
+
+```yaml
+# Home Assistant automation
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.front_doorbell
+    to: 'on'
+actions:
+  - event: smartamp_notify
+    event_data:
+      title: FRONT DOOR
+      message: SOMEONE IS AT THE DOOR
+      color: '#b71c1c'   # optional, the banner colour
+      seconds: 10        # optional, how long it stays up (default 8, max 120)
+```
+
+Only text is required, and either field will do: with just a `message` the banner
+has no heading, and with just a `title` that line *is* the message. Messages
+queue rather than overwrite, so a doorbell during the laundry banner still gets
+its own time on the strip, and a message's clock starts when it reaches the strip
+rather than when it arrived. Tapping the strip acknowledges the one showing and
+lets the next through; anything fired while the controller is disconnected is
+missed rather than delivered late, which is the right behaviour for a doorbell.
+
+Nothing needs configuring on the Pi: the event name is compiled in
+(`apps/controller/src/home-assistant/notifications.mts`) and the existing
+`home_assistant_token` connection carries it. To try one without a Pi, run
+`make playground` and use the notification buttons in the Home Assistant panel.
 
 ## Changing the layout
 

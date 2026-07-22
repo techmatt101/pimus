@@ -1,11 +1,10 @@
 import type { StreamDeck } from '@elgato-stream-deck/node'
 
-import { createImage, drawRectangle, drawText } from './bitmap.mjs'
+import { createImage } from './bitmap.mjs'
 import {
   NEXT_KEY,
   PREV_KEY,
   tileAt,
-  type StreamDeckDial,
   type StreamDeckLayout,
   type StreamDeckPage,
 } from './grid.mjs'
@@ -14,27 +13,6 @@ import type { ControlModel } from '../state.mjs'
 
 /** Background colour of the previous/next navigation keys. */
 const NAV_COLOR = '#263238'
-
-/**
- * The value line under a dial's label. A dial that knows something the bound
- * actions cannot express — a light's brightness, say — supplies its own
- * `detail`; otherwise the readout follows from the actions bound to it rather
- * than its position, so reordering the dials in layout.mts keeps each dial's
- * readout correct.
- */
-export function dialDetail(context: TileContext, dial?: StreamDeckDial): string {
-  const own = dial?.detail?.(context)
-  if (own !== undefined) return own
-
-  const { state, audio } = context
-  const actions = [dial?.press, dial?.left, dial?.right].map((binding) => binding?.action)
-  const source = actions.find((action) => action?.source)?.source
-  if (source) return audio.sources[source] ? 'ON' : 'OFF'
-  if (actions.some((action) => action?.type === 'audio' && !action.source)) {
-    return state.outputMuted ? 'MUTED' : `${Math.round(state.volume * 100)}%`
-  }
-  return String(state.assist)
-}
 
 export interface DeckRendererOptions {
   layout: StreamDeckLayout
@@ -67,12 +45,32 @@ export class DeckRenderer {
   setDeck(deck: StreamDeck): void {
     this.deck = deck
     this.mountPage()
+    // The strip is not paged: it mounts with the deck and stays up, so what is
+    // playing keeps scrolling whichever page of keys is showing.
+    this.layout.strip.mount({ invalidate: () => void this.renderStrip() })
   }
 
   clearDeck(deck: StreamDeck | null): void {
     if (this.deck !== deck) return
     this.deck = null
     this.unmountPage()
+    this.layout.strip.unmount()
+  }
+
+  /**
+   * Report a dial being turned or pressed, so the strip shows that dial's
+   * readout for a moment before going back to what is playing.
+   */
+  showDial(index: number): void {
+    this.layout.strip.showDial(index)
+  }
+
+  /**
+   * A thunk that presses the strip at `x`, or undefined when the press was
+   * consumed — acknowledging a notification — or lands on an unbound dial.
+   */
+  stripPressAt(x: number): (() => unknown) | undefined {
+    return this.layout.strip.pressAt(x)
   }
 
   /** Paging is only offered once a layout carries more than one page. */
@@ -175,6 +173,21 @@ export class DeckRenderer {
     }
   }
 
+  /**
+   * Repaint just the touch strip, on its own request. Scrolling text and a
+   * draining notification go through here so the strip animates without
+   * redrawing all eight keys behind it.
+   */
+  private async renderStrip(): Promise<void> {
+    const deck = this.deck
+    if (!deck) return
+    try {
+      await deck.fillLcd(0, this.layout.strip.render(this.context()).buffer, { format: 'rgb' })
+    } catch (error) {
+      this.logger.error('render failed', error)
+    }
+  }
+
   schedule(): void {
     if (this.renderPending) return
     this.renderPending = true
@@ -185,7 +198,6 @@ export class DeckRenderer {
     this.renderPending = false
     const deck = this.deck
     if (!deck) return
-    const layout = this.layout
     try {
       const context = this.context()
       const page = this.currentPage()
@@ -202,14 +214,7 @@ export class DeckRenderer {
         await deck.fillKeyBuffer(index, face.buffer, { format: 'rgb' })
       }
 
-      const lcd = createImage(800, 100, '#101820')
-      layout.dials.slice(0, 4).forEach((dial, index) => {
-        drawRectangle(lcd, index * 200 + 1, 1, 198, 98, index % 2 ? '#17242d' : '#101820')
-        drawText(lcd, dial.label, index * 200 + 100, 30, 3, '#80deea')
-        const detail = dialDetail(context, dial).slice(0, 12)
-        drawText(lcd, detail, index * 200 + 100, 70, detail.length > 8 ? 2 : 3)
-      })
-      await deck.fillLcd(0, lcd.buffer, { format: 'rgb' })
+      await deck.fillLcd(0, this.layout.strip.render(context).buffer, { format: 'rgb' })
     } catch (error) {
       this.logger.error('render failed', error)
     }

@@ -104,6 +104,46 @@ export interface HomeAssistantService {
    * mounted tile watches only what it draws and drops the watch on unmount.
    */
   watch(entityIds: readonly string[], listener: () => void): () => void
+  /**
+   * Report Home Assistant events of one `event_type`, with the event's data.
+   * This is the push direction: an automation fires an event and the deck reacts
+   * without anything here polling or owning an entity for it (see
+   * home-assistant/notifications.mts). Returns an unsubscribe function.
+   */
+  listen(eventType: string, listener: (data: Record<string, unknown>) => void): () => void
+}
+
+/**
+ * A message pushed from Home Assistant for the touch strip to show — the
+ * doorbell, a finished washing machine. Automations fire these; nothing here
+ * polls for them, and nothing about the message needs an entity to exist.
+ */
+export interface Notification {
+  /** Short heading, e.g. `FRONT DOOR`. */
+  title: string
+  message: string
+  /** Banner background colour. */
+  color: string
+  /** When the strip started showing it, for the draining time bar. */
+  shownAt: number
+  /** When it stops showing. */
+  expiresAt: number
+}
+
+/**
+ * The slice of the notification queue the touch strip reads. Depending on this
+ * rather than the concrete NotificationCenter keeps the strip free of the Home
+ * Assistant subscription and lets tests hand it a plain object.
+ */
+export interface NotificationFeed {
+  /**
+   * The notification to show at `now`, or undefined when none is live. Expiry
+   * is evaluated against the instant passed in, so a repaint decides what to
+   * draw without depending on when a timer happened to fire.
+   */
+  current(now: number): Notification | undefined
+  /** Drop whatever is showing, because it was acknowledged on the strip. */
+  dismiss(): void
 }
 
 export interface ControllerConfig {

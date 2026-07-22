@@ -67,6 +67,7 @@ test('every catalogued Home Assistant action calls a service', () => {
         connected: true,
         entity: () => undefined,
         watch: () => () => {},
+        listen: () => () => {},
         call: (domain, service) => calls.push(`${domain}.${service}`),
       },
     })

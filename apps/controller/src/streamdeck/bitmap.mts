@@ -13,6 +13,18 @@ const FONT: Record<string, string[]> = {
   '/': ['00001','00010','00010','00100','01000','01000','10000'],
   '<': ['00010','00100','01000','10000','01000','00100','00010'],
   '>': ['01000','00100','00010','00001','00010','00100','01000'],
+  // Punctuation a song title or a notification message actually contains. A
+  // missing glyph draws as a space, which silently mangles "DON'T STOP ME NOW".
+  "'": ['00100','00100','00000','00000','00000','00000','00000'],
+  '"': ['01010','01010','00000','00000','00000','00000','00000'],
+  ',': ['00000','00000','00000','00000','00110','00100','01000'],
+  '!': ['00100','00100','00100','00100','00100','00000','00100'],
+  '?': ['01110','10001','00001','00010','00100','00000','00100'],
+  '(': ['00010','00100','01000','01000','01000','00100','00010'],
+  ')': ['01000','00100','00010','00010','00010','00100','01000'],
+  '&': ['01100','10010','10010','01100','10101','10010','01101'],
+  '+': ['00000','00100','00100','11111','00100','00100','00000'],
+  '=': ['00000','00000','11111','00000','11111','00000','00000'],
   '0': ['01110','10001','10011','10101','11001','10001','01110'],
   '1': ['00100','01100','00100','00100','00100','00100','01110'],
   '2': ['01110','10001','00001','00010','00100','01000','11111'],
@@ -150,6 +162,16 @@ export function drawCircle(
   }
 }
 
+/**
+ * How wide `value` draws at `scale`, so a caller can centre it itself, decide
+ * a scale that fits, or tell that a line is too long for its space and has to
+ * scroll (streamdeck/screens/screen.mts).
+ */
+export function textWidth(value: string, scale: number): number {
+  const length = String(value).length
+  return length === 0 ? 0 : length * 6 * scale - scale
+}
+
 export function drawText(
   target: Bitmap,
   value: string,
@@ -158,16 +180,37 @@ export function drawText(
   scale: number,
   valueColor = '#ffffff',
 ): void {
+  drawTextAt(target, value, Math.round(centerX - textWidth(value, scale) / 2), centerY, scale, valueColor)
+}
+
+/**
+ * Text from a left edge rather than a centre. Anything falling outside the
+ * target is clipped by drawRectangle, so a caller may pass a negative `left` to
+ * scroll a line that is wider than the space it has.
+ */
+export function drawTextAt(
+  target: Bitmap,
+  value: string,
+  left: number,
+  centerY: number,
+  scale: number,
+  valueColor = '#ffffff',
+): void {
   const label = String(value).toUpperCase()
   const glyphWidth = 5 * scale
-  const totalWidth = label.length * (glyphWidth + scale) - scale
-  let left = Math.round(centerX - totalWidth / 2)
+  let x = Math.round(left)
   const top = Math.round(centerY - (7 * scale) / 2)
   for (const character of label) {
-    const glyph = FONT[character] ?? BLANK
-    glyph.forEach((row, y) => [...row].forEach((bit, x) => {
-      if (bit === '1') drawRectangle(target, left + x * scale, top + y * scale, scale, scale, valueColor)
-    }))
-    left += glyphWidth + scale
+    // Stop once the line has run off the right edge, and skip what has already
+    // scrolled off the left: a long scrolling title otherwise pays for every
+    // character it has on every frame.
+    if (x >= target.width) return
+    if (x + glyphWidth >= 0) {
+      const glyph = FONT[character] ?? BLANK
+      glyph.forEach((row, y) => [...row].forEach((bit, column) => {
+        if (bit === '1') drawRectangle(target, x + column * scale, top + y * scale, scale, scale, valueColor)
+      }))
+    }
+    x += glyphWidth + scale
   }
 }
