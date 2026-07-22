@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { DynamicDial } from '../../../src/streamdeck/dynamic-dial.mjs'
 import { EntityToggleTile } from '../../../src/streamdeck/tiles/entity-toggle-tile.mjs'
 import { fanIcon, monitorIcon } from '../../../src/streamdeck/icons.mjs'
 import { eventually, testContext, testHost, testServices } from '../../support/fixtures.mjs'
@@ -16,6 +17,41 @@ test('an entity toggle key calls the service for its own domain', () => {
 
   // One tile class covers both because the service comes from the entity id.
   assert.deepEqual(services.ha.calls, ['fan.toggle fan.office_ceiling', 'cover.toggle cover.office_blinds'])
+})
+
+test('a key given the dial hands it the entity as it is pressed', () => {
+  const services = testServices()
+  const dial = new DynamicDial(services.model)
+  const fan = new EntityToggleTile(services, { label: 'FAN', entity: 'fan.office_ceiling', icon: fanIcon, dial })
+  const pc = new EntityToggleTile(services, { label: 'PC', entity: 'switch.office_pc', icon: monitorIcon, dial })
+
+  fan.press()
+  assert.equal(dial.label, 'FAN')
+
+  // A switch has nothing to turn, so pressing it flips the PC and leaves the
+  // dial where it was rather than handing it a knob that does nothing.
+  pc.press()
+  assert.equal(dial.label, 'FAN')
+  dial.right?.run()
+
+  assert.deepEqual(services.ha.calls, [
+    'fan.toggle fan.office_ceiling',
+    'switch.toggle switch.office_pc',
+    'fan.increase_speed fan.office_ceiling',
+  ])
+})
+
+test('the key holding the dial is marked on its own face', () => {
+  const services = testServices()
+  const dial = new DynamicDial(services.model)
+  services.ha.put('fan.office_ceiling', 'off')
+  const fan = new EntityToggleTile(services, { label: 'FAN', entity: 'fan.office_ceiling', icon: fanIcon, dial })
+
+  const idle = fan.render(testContext()).buffer
+  fan.press()
+  // Nothing about the fan changed — the fake records the call without applying
+  // it — so any difference here is the key reporting that it has the dial.
+  assert.notDeepEqual(fan.render(testContext()).buffer, idle, 'the key shows it holds the dial')
 })
 
 test('a malformed entity id fails as the tile is built, not when it is pressed', () => {

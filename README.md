@@ -86,12 +86,14 @@ navigating between them:
 | Page | Keys |
 |---|---|
 | Main | Voice (start or cancel Assist), mic mute, play/pause, shuffle, input mode (stream/aux/usb), and a playlist shortcut |
-| Room | Scenes, ceiling fan, blinds, desk PC, a Home Assistant timer, and stop |
-| Info | Clock, room temperature, weather, and a next-page key |
+| Room | Scenes, ceiling fan, blinds, desk PC, a Home Assistant timer, and the lights |
+| Info | Clock, room temperature, weather, a next-page key, and stop |
 
 Dial 1 controls volume, dial 2 is media transport (previous/next, press to
-play/pause), dial 3 dims and toggles the lights, and dial 4 starts or cancels a
-voice conversation.
+play/pause), and dial 3 is spare. Dial 4 has no fixed job: pressing the lights,
+fan, or blinds key hands it that entity, so the same knob dims, changes speed,
+and opens, and the key holding it is marked. See
+[the dynamic dial](docs/controls.md#the-dynamic-dial).
 
 The touch strip above the dials shows what is playing — title, artist, and a
 position bar — and swaps to the dial you are turning while you turn it. Home
@@ -100,7 +102,7 @@ washing machine has finished) by firing a `smartamp_notify` event; tap the strip
 to acknowledge one. See [controls](docs/controls.md#the-touch-strip).
 
 Everything on the Room and Info pages, plus shuffle, the playlist, and the
-lights dial, talks to Home Assistant, so those keys show live state as well as
+dynamic dial, talks to Home Assistant, so those keys show live state as well as
 change it — set `home_assistant_url` and `home_assistant_token`. Without them
 those keys stay in place and draw an unknown state.
 

@@ -130,6 +130,13 @@ runtime validation, and relevant documentation together.
   repaint just its key via `host.invalidate()` — e.g. a timer for animation,
   with the phase derived from `context.now` so render stays pure. Drop every
   timer and subscription in `unmount`.
+- Three of the four dials are fixed (volume, media, and a spare); the fourth is
+  the shared `DynamicDial` (`streamdeck/dynamic-dial.mts`), which controls
+  whichever entity a key last handed it. A key claims it by taking `dial` in its
+  config and calling `claim()` as it is pressed; what turning does comes from the
+  entity's own domain via `entityDial`, exactly as `EntityToggleTile` derives its
+  service. Add a domain by adding a row to `DIAL_DOMAINS` and its stepping
+  actions to the catalog — do not give a device its own dial.
 - The touch strip is one full-width display, not four dial labels. `TouchStrip`
   (`streamdeck/strip.mts`) owns which `Screen` (`streamdeck/screens/`, one class
   per file) is showing: the dial being turned wins for a short hold, then a live

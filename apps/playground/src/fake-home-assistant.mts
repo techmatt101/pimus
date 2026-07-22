@@ -34,8 +34,10 @@ const INITIAL: Record<string, { state: string; attributes?: Record<string, unkno
     },
   },
   'light.office': { state: 'on', attributes: { brightness: 160 } },
-  'fan.office_ceiling': { state: 'off' },
-  'cover.office_blinds': { state: 'open' },
+  // A speed and a position, so the dynamic dial has something to move: the
+  // three room keys hand it these entities and it steps them from here.
+  'fan.office_ceiling': { state: 'off', attributes: { percentage: 0 } },
+  'cover.office_blinds': { state: 'open', attributes: { current_position: 100 } },
   'switch.office_pc': { state: 'off' },
   'timer.office': { state: 'idle', attributes: { duration: '0:05:00', remaining: '0:05:00' } },
   'sensor.office_temperature': { state: '21.4', attributes: { unit_of_measurement: '°C' } },
@@ -172,10 +174,27 @@ export class FakeHomeAssistant implements HomeAssistantService {
       this.put('light.office', 'on', { brightness: 200 })
       return
     }
+    // A three-speed ceiling fan, so a turn of the dial is a whole speed rather
+    // than a percent nobody can hear.
+    if (service === 'increase_speed' || service === 'decrease_speed') {
+      const percentage = stepped(current.attributes.percentage, service === 'increase_speed' ? 33 : -33)
+      this.put(entityId, percentage === 0 ? 'off' : 'on', { percentage })
+      return
+    }
+    if (service === 'set_cover_position') {
+      const position = stepped(data.position, 0)
+      this.put(entityId, position === 0 ? 'closed' : 'open', { current_position: position })
+      return
+    }
 
     const opened = domain === 'cover'
     const on = service === 'toggle' ? !isOn(current.state) : service === 'turn_on'
-    this.put(entityId, on ? (opened ? 'open' : 'on') : (opened ? 'closed' : 'off'))
+    // Flipping one of these outright takes its level with it, so the dial and
+    // the key never disagree about whether the blind is up.
+    const level = opened
+      ? { current_position: on ? 100 : 0 }
+      : domain === 'fan' ? { percentage: on ? 100 : 0 } : {}
+    this.put(entityId, on ? (opened ? 'open' : 'on') : (opened ? 'closed' : 'off'), level)
   }
 
   private applyTimer(service: string, entityId: string, data: Record<string, unknown>): void {
@@ -210,3 +229,7 @@ export class FakeHomeAssistant implements HomeAssistantService {
 }
 
 const isOn = (state: string): boolean => state === 'on' || state === 'open' || state === 'playing'
+
+/** A reported 0-100 level moved by `step` and kept in range. */
+const stepped = (value: unknown, step: number): number =>
+  Math.max(0, Math.min(100, Math.round((Number(value) || 0) + step)))

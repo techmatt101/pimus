@@ -45,8 +45,9 @@ remaining six slots:
 A page is a fixed grid of named slots, not a list — you read where each tile
 sits directly. The nav keys show an arrow and the name of the page they move to,
 and paging wraps around at either end. Because the dials keep their bindings on
-every page, volume and the aux/usb routes are always one turn away whichever page
-is showing. A layout with a single page shows no nav keys, and its tiles keep the
+every page, volume and transport are always one turn away whichever page is
+showing — including the dial claimed on the ROOM page, which stays claimed while
+you look at something else. A layout with a single page shows no nav keys, and its tiles keep the
 same grid positions — adding a second page never reshuffles the keys already
 placed. Any slot may be left out; it renders blank.
 
@@ -78,7 +79,7 @@ central dispatcher:
 | `ShuffleTile` | Shuffle on the media player, set from and reflecting what Home Assistant reports. |
 | `PlaylistTile` | A one-press shortcut to a compiled-in playlist. |
 | `SceneTile` | Steps through a short list of scenes, showing the one it last applied. |
-| `EntityToggleTile` | The general Home Assistant on/off key — fan, blinds, PC. Its service comes from the entity's own domain, and it takes an icon and an optional animation phase, so the three are one class configured three ways. |
+| `EntityToggleTile` | The general Home Assistant on/off key — lights, fan, blinds, PC. Its service comes from the entity's own domain, and it takes an icon and an optional animation phase, so the four are one class configured four ways. Given the dynamic dial it also hands that dial its entity when pressed. |
 | `TimerTile` | A Home Assistant `timer` entity: a draining ring and a countdown, started and cancelled by the same key. |
 | `TemperatureTile` | A sensor reading, with the background banded by temperature. Read-only. |
 | `WeatherTile` | Condition glyph, short condition name, and the outside temperature. Read-only. |
@@ -183,6 +184,10 @@ in the layout.
 | `media_shuffle` | Toggle shuffle, from the shuffle state the player reports. |
 | `brightness_up` | Raise a light's brightness by 10%. |
 | `brightness_down` | Lower a light's brightness by 10%. |
+| `fan_speed_up` | Raise a fan's speed by one of its own steps. |
+| `fan_speed_down` | Lower a fan's speed by one of its own steps. |
+| `cover_open` | Open a cover by 10%, or fully when it reports no position. |
+| `cover_close` | Close a cover by 10%, or fully when it reports no position. |
 | `timer_toggle` | Start a Home Assistant timer, or cancel the one already running. |
 
 ```ts
@@ -215,7 +220,7 @@ Does nothing. Use the `none()` binding to blank a dial direction you do not
 want bound.
 
 ```ts
-{ label: 'VOICE', left: none(), right: none(), press: voice('start_listening') }
+{ label: 'SPARE', left: none(), right: none(), press: none(), detail: () => 'NOT IN USE' }
 ```
 
 ## Key and dial feedback
@@ -245,10 +250,11 @@ in a column of its own.
 
 A dial reporting something the bound actions cannot express supplies its own
 `detail(context)` — the dial equivalent of a tile drawing its own face. The
-lights dial uses it to show brightness as a percentage, and the media dial to
-show `PLAYING` or `PAUSED`. A dial whose value really is a level also supplies
-`level(context)`, a 0–1 fraction drawn as a bar under the readout; master volume
-needs none, since the readout derives it from the bound action.
+dynamic dial uses it to show brightness, speed, or how far open something is,
+and the media dial to show `PLAYING` or `PAUSED`. A dial whose value really is a
+level also supplies `level(context)`, a 0–1 fraction drawn as a bar under the
+readout; master volume needs none, since the readout derives it from the bound
+action.
 
 The four dials as shipped:
 
@@ -256,13 +262,48 @@ The four dials as shipped:
 | --- | --- | --- |
 | `VOLUME` | Master volume down / up | Mute |
 | `MEDIA` | Previous / next track | Play/pause |
-| `LIGHTS` | Dim / brighten | Toggle the light |
-| `VOICE` | — | Start or cancel Assist |
+| `SPARE` | — | — |
+| *dynamic* | Whatever the last room key you pressed does | Toggle that entity |
 
 Media transport goes through the Music Assistant player rather than LVA: the LVA
 media player is the satellite's own announcement player and has no queue to skip
 through. Play/pause stays on LVA, because that is where the controller's
 playback state comes from.
+
+### The dynamic dial
+
+Three dials are fixed, because a knob you have to look at before turning is a
+knob you stop using. The fourth is the opposite bargain: it has no job of its
+own and controls whatever you last pressed, so one dial covers every dimmable,
+variable-speed, part-open thing in the room without the deck growing a dial per
+device.
+
+Pressing `LIGHTS`, `FAN`, or `BLINDS` on the ROOM page does two things: it flips
+the entity as it always did, and it hands that entity to the dial. The strip
+shows the new readout straight away, so the thing you just pressed is also the
+thing under your hand, and the key that holds the dial draws a cyan stripe along
+its top edge — the same colour as the dial's own bar — so you can see which of
+the three the knob will move without turning it to find out.
+
+What turning it does comes from the entity's own domain, exactly as the toggle
+service does (`entityDial` in `streamdeck/dynamic-dial.mts`):
+
+| Domain | Turn left / right | Readout |
+| --- | --- | --- |
+| `light` | `brightness_down` / `brightness_up` | Brightness, or `ON` / `OFF` |
+| `fan` | `fan_speed_down` / `fan_speed_up` | Speed, or `ON` / `OFF` |
+| `cover` | `cover_close` / `cover_open` | How far open, or `OPEN` / `CLOSED` |
+
+A domain that is absent from that table has nothing worth turning, so a key for
+one — the desk PC switch — claims no dial when pressed and leaves the last claim
+in place. Give a key the dial by passing `dial: dynamic` to its
+`EntityToggleTile` in the layout; a new domain becomes turnable by adding a row
+to `DIAL_DOMAINS`, which needs the stepping actions to exist in the catalog
+first.
+
+Before anything has been pressed the dial reads `CONTROL` / `PICK A KEY`, and an
+unreachable Home Assistant reads `--` rather than a light turned all the way
+down — the same rule the keys follow.
 
 ## The touch strip
 

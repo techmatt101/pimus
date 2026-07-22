@@ -63,6 +63,36 @@ test('layout tiles and dials drive the injected services when pressed', () => {
   ])
 })
 
+test('the dynamic dial follows the last room key pressed', () => {
+  const services = testServices()
+  services.ha.put('light.office', 'on', { brightness: 128 })
+  const layout = createLayout(services)
+  const room = layout.pages[1]
+  const dial = layout.dials[3]
+  assert.ok(room, 'the layout has a ROOM page')
+  assert.ok(dial, 'the layout has a fourth dial')
+
+  // Before anything is pressed the dial says what it is for rather than
+  // pretending to control something.
+  assert.equal(dialDetail(CONTEXT, dial), 'PICK A KEY')
+
+  room.grid.bottomRight?.press(CONTEXT)
+  assert.equal(dial.label, 'LIGHTS')
+  assert.equal(dialDetail(CONTEXT, dial), '50%')
+  dial.right?.run()
+
+  room.grid.topMidLeft?.press(CONTEXT)
+  assert.equal(dial.label, 'FAN')
+  dial.right?.run()
+
+  assert.deepEqual(services.ha.calls, [
+    'light.toggle light.office',
+    'light.turn_on light.office {"brightness_step_pct":10}',
+    'fan.toggle fan.office_ceiling',
+    'fan.increase_speed fan.office_ceiling',
+  ])
+})
+
 test('every dial readout is a short string, whatever the deck knows', () => {
   const services = testServices()
   const layout = createLayout(services)

@@ -32,7 +32,8 @@ The Home Assistant fake replaces the whole `HomeAssistantService` rather than
 the socket under `HomeAssistantClient`: the protocol client has its own tests,
 and what the playground is for is watching the keys. In exchange it can do what
 a real house does — pressing the fan key turns the fan on, the timer really
-counts down, and the lights dial moves the brightness it reports back.
+counts down, and the dynamic dial moves the brightness, fan speed, or blind
+position it reports back.
 
 The controller configuration is written out and then read back through the real
 `loadConfig`, so the playground also exercises the validation that
@@ -46,7 +47,9 @@ The controller configuration is written out and then read back through the real
 - **Dials** — `◀`/`▶` turn, the knob presses, and scrolling over a dial turns
   it. Turning one takes over the touch strip above, which otherwise shows what
   is playing. Clicking the strip presses the dial under that point, or
-  acknowledges a notification when one is showing.
+  acknowledges a notification when one is showing. Dial 4 does nothing until a
+  room key claims it: press `LIGHTS`, `FAN`, or `BLINDS` on the Room page and
+  turn it to see what that key handed over.
 - **Inject** — pushes a voice event as if Home Assistant had sent it: wake word,
   timer ringing, media playing, mute, or the assistant going offline. Pressing
   the voice key also plays a scripted pipeline (wake → listening → thinking →

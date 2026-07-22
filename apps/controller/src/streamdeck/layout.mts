@@ -29,13 +29,16 @@
 // Every key is a Tile (streamdeck/tiles/) that runs its own behaviour and
 // renders its own face: a plain `key(...)` for a fixed button, or a dynamic
 // tile such as `MediaTile` or `TimerTile`. The dials keep their bindings on
-// every page, so volume, transport, and the lights are always one turn away
-// whichever page is showing.
+// every page, so volume and transport are always one turn away whichever page
+// is showing. The fourth dial is the exception: it has no fixed job and
+// controls whichever of the lights, fan, or blinds you last pressed
+// (streamdeck/dynamic-dial.mts).
 
 import { isEntityOn, numericAttribute } from '../home-assistant/entity.mjs'
 import { createBindings, type Binding, type TileServices } from './bindings.mjs'
+import { DynamicDial } from './dynamic-dial.mjs'
 import type { StreamDeckDial, StreamDeckPage, StreamDeckLayout } from './grid.mjs'
-import { blindsIcon, fanIcon, monitorIcon } from './icons.mjs'
+import { blindsIcon, bulbIcon, fanIcon, monitorIcon } from './icons.mjs'
 import { NowPlayingScreen } from './screens/now-playing-screen.mjs'
 import { TouchStrip } from './strip.mjs'
 import { ActionTile } from './tiles/action-tile.mjs'
@@ -110,11 +113,11 @@ export function createLayout(services: TileServices): StreamDeckLayout {
   const { voice, volume, ha, none } = createBindings(services)
   const key = (label: string, color: string, binding: Binding): Tile =>
     new ActionTile({ label, color, binding })
-  /** The office light's brightness as a 0-1 fraction, for the dial's readout and bar. */
-  const lightLevel = (): number | undefined => {
-    const brightness = numericAttribute(services.ha.entity(HA.lights), 'brightness')
-    return brightness === undefined ? undefined : brightness / 255
-  }
+
+  // The one dial with no fixed job. The lights, fan, and blinds keys below hand
+  // it their entity as they are pressed, so a single knob dims, changes speed,
+  // and opens without the deck needing a dial for each.
+  const dynamic = new DynamicDial(services.model)
 
   // Each page is a fixed grid. The two bottom corners are page navigation, so a
   // page fills the six named slots between them; an omitted slot renders blank.
@@ -153,6 +156,9 @@ export function createLayout(services: TileServices): StreamDeckLayout {
       name: 'ROOM',
       grid: {
         topLeft: new SceneTile(services, { scenes: HA.scenes }),
+        // The three keys that also drive the dynamic dial: pressing one flips
+        // it and hands the dial its entity, so the knob is always pointed at
+        // whatever you last touched.
         topMidLeft: new EntityToggleTile(services, {
           label: 'FAN',
           entity: HA.fan,
@@ -163,6 +169,7 @@ export function createLayout(services: TileServices): StreamDeckLayout {
           // instant keeps render pure while the tile drives the repaints.
           phase: (_entity, now) => (now % 1200) / 1200,
           animationMilliseconds: 100,
+          dial: dynamic,
         }),
         topMidRight: new EntityToggleTile(services, {
           label: 'BLINDS',
@@ -170,8 +177,11 @@ export function createLayout(services: TileServices): StreamDeckLayout {
           icon: blindsIcon,
           onColor: '#455a64',
           offColor: '#1c2429',
-          // A cover reads "on" when open, so the slats are drawn down when off.
-          phase: (entity) => (isEntityOn(entity) ? 0.2 : 1),
+          // The slats hang by however far the blind is still shut, so the key
+          // tracks the dial rather than only reading open or closed. A cover
+          // reporting no position falls back to fully raised or fully down.
+          phase: (entity) => 1 - (numericAttribute(entity, 'current_position') ?? (isEntityOn(entity) ? 80 : 0)) / 100,
+          dial: dynamic,
         }),
         topRight: new EntityToggleTile(services, {
           label: 'PC',
@@ -181,11 +191,18 @@ export function createLayout(services: TileServices): StreamDeckLayout {
           offColor: '#151a30',
         }),
         bottomLeft: new TimerTile(services, { entity: HA.timer, duration: TIMER_DURATION }),
-        bottomRight: key('STOP', '#b71c1c', voice('stop')),
+        bottomRight: new EntityToggleTile(services, {
+          label: 'LIGHTS',
+          entity: HA.lights,
+          icon: bulbIcon,
+          onColor: '#6b5200',
+          offColor: '#1e1a0c',
+          dial: dynamic,
+        }),
       },
     },
     {
-      // A glanceable page: nothing here changes anything when pressed.
+      // A glanceable page: the top row changes nothing when pressed.
       name: 'INFO',
       grid: {
         topLeft: new ClockTile(),
@@ -194,16 +211,21 @@ export function createLayout(services: TileServices): StreamDeckLayout {
         // The corners already navigate; this shows a page key can sit anywhere,
         // which a page that wanted its whole bottom row for tiles would need.
         topRight: new PageTile({ delta: 1 }),
+        // The one thing here that does something. It sits on the quiet page
+        // because it is the key you go looking for rather than reach for.
+        bottomLeft: key('STOP', '#b71c1c', voice('stop')),
       },
     },
   ]
 
-  // Four dials, left to right. A dial's readout follows the actions bound to
-  // it, so the display stays correct however these are ordered; a dial that
-  // knows something the actions cannot express supplies its own `detail`, and
-  // one whose value is a level supplies `level` for the bar under it. The
-  // readout is shown across the whole touch strip while the dial is being
-  // turned — see the strip below.
+  // Four dials, left to right. The first three are fixed, because a knob you
+  // have to look at before turning is a knob you stop using; the fourth is
+  // deliberately not, and follows the last room key you pressed. A dial's
+  // readout follows the actions bound to it, so the display stays correct
+  // however these are ordered; a dial that knows something the actions cannot
+  // express supplies its own `detail`, and one whose value is a level supplies
+  // `level` for the bar under it. The readout is shown across the whole touch
+  // strip while the dial is being turned — see the strip below.
   const dials: StreamDeckDial[] = [
     { label: 'VOLUME', left: volume('down'), right: volume('up'), press: volume('mute') },
     {
@@ -217,25 +239,11 @@ export function createLayout(services: TileServices): StreamDeckLayout {
       press: voice('media_toggle'),
       detail: ({ state }) => (state.media ? 'PLAYING' : 'PAUSED'),
     },
-    {
-      label: 'LIGHTS',
-      left: ha('brightness_down', HA.lights),
-      right: ha('brightness_up', HA.lights),
-      press: ha('toggle', HA.lights),
-      detail: () => {
-        const light = services.ha.entity(HA.lights)
-        if (!isEntityOn(light)) return light ? 'OFF' : '--'
-        const brightness = lightLevel()
-        // Home Assistant reports brightness 0-255; the dial reads as a percentage.
-        return brightness === undefined ? 'ON' : `${Math.round(brightness * 100)}%`
-      },
-      // Dimming reads as a bar far faster than as digits while the knob is
-      // moving; an off or unknown light has no level to draw.
-      level: () => (isEntityOn(services.ha.entity(HA.lights)) ? lightLevel() : undefined),
-    },
-    // No `detail`: the default readout for a dial bound to neither volume nor a
-    // route is already the assist state, which is what this dial is for.
-    { label: 'VOICE', left: none(), right: none(), press: voice('listen_toggle') },
+    // Held open rather than filled with something half-wanted. An explicit
+    // `detail` is what keeps it from falling back to the assist readout and
+    // looking like a voice dial that has stopped responding.
+    { label: 'SPARE', left: none(), right: none(), press: none(), detail: () => 'NOT IN USE' },
+    dynamic,
   ]
 
   // The touch strip is one display, not four dial labels: it rests on what is
@@ -246,6 +254,10 @@ export function createLayout(services: TileServices): StreamDeckLayout {
     dials,
     ...(services.notifications ? { notifications: services.notifications } : {}),
   })
+
+  // Claiming the dial also puts it on the strip, so pressing LIGHTS shows the
+  // brightness you are about to turn before you turn anything.
+  dynamic.revealOn(() => strip.showDial(dials.indexOf(dynamic)))
 
   return { brightness: BRIGHTNESS, pages, dials, strip }
 }
