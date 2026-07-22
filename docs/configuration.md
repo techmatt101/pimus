@@ -77,7 +77,7 @@ error, and `make test` rejects any action the catalog does not understand.
 
 ### Home Assistant
 
-`home_assistant_url` and `home_assistant_token` connect the controller to Home
+`home_assistant_url` connects the controller to Home
 Assistant's WebSocket API. This is what the keys that *show* house state need —
 the fan, blinds, PC, scenes, timer, temperature, weather, the lights dial, and
 the media transport — because they read entity state as well as change it. The
@@ -86,14 +86,11 @@ artist, and the notifications automations push with the `smartamp_notify` event
 (see [controls](controls.md#notifications-from-home-assistant)). Neither needs
 any setting of its own.
 
-Create the token in Home Assistant under your profile → Security → Long-lived
-access tokens, and set both values together; `make check` fails if only one is
-filled in. Leave both empty to run without Home Assistant: those keys stay on
-the deck and draw an unknown state, and nothing else is affected.
-
-The token is written into `/etc/smartamp/controller.json`, mode `0640` and
-readable only by the `smartamp` service account. Keep it out of Git by putting
-it in a `.vault.yml` override (see below) rather than in `all.yml`.
+Setting the URL turns the integration on and makes `HOME_ASSISTANT_TOKEN`
+required in the [secrets file](#secrets) — create that token in Home Assistant
+under your profile → Security → Long-lived access tokens. Leave the URL empty to
+run without Home Assistant: those keys stay on the deck and draw an unknown
+state, and nothing else is affected.
 
 Which entities the keys drive is *not* configured here. Entity ids are compiled
 into the layout beside the keys that use them, in the `HA` block at the top of
@@ -104,20 +101,45 @@ Webhook actions POST to `home_assistant_webhook_base/<id>`. Configure a Home Ass
 
 ### Remote tiles
 
-`remote_tiles_enabled`, `remote_tiles_port`, and `remote_tiles_token` run a
+`remote_tiles_enabled` and `remote_tiles_port` run a
 small WebSocket server inside the controller that lets another computer on the
 LAN push key faces onto the deck's REMOTE page and receive the presses back —
 see [controls](controls.md#remote-tiles-from-another-computer) for the protocol
 and `apps/remote-demo` for a runnable client.
 
 This is the one inbound port the controller opens, so the feature is off by
-default and never starts without a token: set `remote_tiles_enabled: true`
-*and* a long random `remote_tiles_token`, and keep the token in a `.vault.yml`
-override exactly as with the Home Assistant token. Disabling the flag again
-closes the port on the next provision, and the REMOTE page leaves the deck with
-it.
+default and never starts without a token: set `remote_tiles_enabled: true` and
+put a long random `REMOTE_TILES_TOKEN` in the [secrets file](#secrets).
+Disabling the flag again closes the port on the next provision, and the REMOTE
+page leaves the deck with it.
 
-Put private host or group overrides in files ending in `.vault.yml` under
-`ansible/inventory/host_vars` or `ansible/inventory/group_vars`, and encrypt
-them with Ansible Vault before keeping them locally. Those filenames are
-ignored by Git so an unencrypted working copy is not committed accidentally.
+### Secrets
+
+The two tokens are the only settings that do not live in `all.yml`. They are
+typed once on the Pi itself, in `/etc/smartamp/secrets.env`:
+
+```sh
+sudo mkdir -p /etc/smartamp
+sudo nano /etc/smartamp/secrets.env
+```
+
+```sh
+HOME_ASSISTANT_TOKEN=eyJhbGciOi...   # when home_assistant_url is set
+REMOTE_TILES_TOKEN=a-long-random-string   # when remote_tiles_enabled is true
+```
+
+Provisioning never writes this file and never reads the values out of it. It
+checks on the Pi that each key a switched-on feature needs has a non-empty
+value, and stops with that key named if not, so a forgotten token fails before
+anything is reconfigured rather than becoming a controller that crash-loops.
+Ansible does tighten the file to `0600 root:root` on each run; systemd loads it
+into the controller's environment as root before dropping to the service
+account, so nothing else on the Pi can read it.
+
+Because no secret ever reaches this repository or the control computer, there is
+nothing here to encrypt and no vault password to manage. After changing a value,
+restart the service for it to take effect:
+
+```sh
+sudo systemctl restart smartamp-controller
+```

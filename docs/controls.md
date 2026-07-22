@@ -183,9 +183,9 @@ key('AUX', '#4a148c', route('aux', 'toggle'))
 
 Calls a Home Assistant service over the WebSocket API and reads entity state
 back, which is what lets these keys show whether the fan is actually running.
-Set `home_assistant_url` and `home_assistant_token` (a long-lived access token)
-in inventory; with neither set every Home Assistant key stays on the deck and
-draws unknown state.
+Set `home_assistant_url` in inventory and `HOME_ASSISTANT_TOKEN` (a long-lived
+access token) in the Pi's [secrets file](configuration.md#secrets); with neither
+set every Home Assistant key stays on the deck and draws unknown state.
 
 The service's domain comes from the entity id, so one `toggle` covers lights,
 fans, covers, switches, and helpers — `fan.office_ceiling` is flipped by
@@ -402,13 +402,13 @@ missed rather than delivered late, which is the right behaviour for a doorbell.
 
 Nothing needs configuring on the Pi: the event name is compiled in
 (`apps/controller/src/home-assistant/notifications.mts`) and the existing
-`home_assistant_token` connection carries it. To try one without a Pi, run
+Home Assistant connection carries it. To try one without a Pi, run
 `make playground` and use the notification buttons in the Home Assistant panel.
 
 ## Remote tiles from another computer
 
-With `remote_tiles_enabled` and a `remote_tiles_token` configured (see
-[configuration](configuration.md#remote-tiles)), the layout gains a REMOTE page
+With `remote_tiles_enabled` set and a `REMOTE_TILES_TOKEN` in the Pi's secrets
+file (see [configuration](configuration.md#remote-tiles)), the layout gains a REMOTE page
 of six empty sockets and the controller listens on `remote_tiles_port` for
 WebSocket clients on the LAN. A client — a Slack watcher on a desktop, a build
 monitor, anything that can speak a few lines of JSON — pushes a face onto a
@@ -420,7 +420,7 @@ be the token, or the controller closes it:
 
 ```jsonc
 // client -> controller
-{ "type": "hello", "token": "<remote_tiles_token>" }
+{ "type": "hello", "token": "<REMOTE_TILES_TOKEN>" }
 { "type": "tile", "slot": 0, "label": "SLACK", "color": "#4a154b",
   "image": "<base64 PNG>" }                    // set or replace a face
 { "type": "clear", "slot": 0 }
@@ -443,7 +443,7 @@ with it, so the page can never show stale tiles.
 `apps/remote-demo` is a runnable example client for the control computer:
 
 ```sh
-pnpm --filter pimus-remote-demo start -- --token=<remote_tiles_token>
+pnpm --filter pimus-remote-demo start -- --token=<REMOTE_TILES_TOKEN>
 ```
 
 It puts an unread-message badge on slot 0 that grows every few seconds,

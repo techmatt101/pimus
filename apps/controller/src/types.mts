@@ -76,19 +76,26 @@ export interface DuckingConfig {
 export interface RemoteConfig {
   enabled: boolean
   port: number
+  /**
+   * Read from `REMOTE_TILES_TOKEN` in the Pi's secrets file rather than from
+   * controller.json, and filled in by `loadConfig`; see `config.mts`.
+   */
   token: string
 }
 
 /**
  * Home Assistant connection details. The controller reads entity state and
  * calls services over the WebSocket API, so unlike the write-only `webhook`
- * action this needs a long-lived access token; controller.json is 0640 and
- * owned by the service account.
+ * action this needs a long-lived access token.
  */
 export interface HomeAssistantConfig {
   enabled: boolean
   /** Base URL of the Home Assistant instance, e.g. `http://homeassistant.local:8123`. */
   url: string
+  /**
+   * Read from `HOME_ASSISTANT_TOKEN` in the Pi's secrets file rather than from
+   * controller.json, and filled in by `loadConfig`; see `config.mts`.
+   */
   token: string
 }
 

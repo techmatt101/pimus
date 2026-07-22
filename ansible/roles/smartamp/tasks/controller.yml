@@ -267,6 +267,21 @@
   notify: Restart controller
   when: smartamp_controller_enabled | bool
 
+# The tokens themselves are the user's file: provisioning only tightens its
+# permissions, never reads or rewrites the contents. systemd loads it as root
+# before dropping to the service account, so the account needs no access at all.
+# Editing a token afterwards takes a "systemctl restart smartamp-controller",
+# because nothing here can see that the contents changed.
+- name: Secure the controller secrets file
+  ansible.builtin.file:
+    path: "{{ smartamp_secrets_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when:
+    - smartamp_controller_enabled | bool
+    - smartamp_required_secrets | length > 0
+
 # Generate physical controls and LED state colours from inventory variables so
 # both devices can be customised without changing application source.
 - name: Install hardware controller configuration

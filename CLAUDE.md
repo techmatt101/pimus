@@ -109,13 +109,20 @@ runtime validation, and relevant documentation together.
   folders under `test/`.
 - Home Assistant is reached over its WebSocket API with a long-lived token
   (`home-assistant/client.mts`). Tiles depend on the `HomeAssistantService`
-  interface, never the client, and a deployment with no token configured gets
+  interface, never the client, and a deployment with no URL configured gets
   `createOfflineHomeAssistant()` so the layout never branches on whether the
   integration exists. A key that reads Home Assistant must draw three states —
   on, off, and unknown — so an unreachable instance never looks like a device
   that is simply switched off. Entity ids belong in `streamdeck/layout.mts`
-  beside the keys that use them, not in inventory; only the URL and token are
-  inventory settings.
+  beside the keys that use them, not in inventory; the URL is the only inventory
+  setting.
+- Secrets are never stored in this repository and never templated. The Home
+  Assistant and remote-tile tokens are hand-written on the Pi in
+  `/etc/smartamp/secrets.env`, which the controller's systemd unit loads into
+  its environment and `config.mts` folds into the parsed configuration; a
+  feature that is switched on but has no token fails preflight with the key
+  named. Do not add a token to inventory, `controller.json.j2`, or an Ansible
+  Vault file.
 - `actions/catalog.mts` is the single source of truth for the control surface.
   Declare a new action there (a voice action's `run` behaviour lives in its
   catalog entry), add it to `docs/controls.md`, then bind it in

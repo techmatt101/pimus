@@ -91,10 +91,9 @@ await fs.promises.writeFile(configPath, JSON.stringify({
   home_assistant: {
     enabled: false,
     url: '',
-    token: '',
   },
   streamdeck: { enabled: true },
-  remote: { enabled: true, port: 8470, token: 'playground' },
+  remote: { enabled: true, port: 8470 },
   respeaker: {
     enabled: true,
     vendor_id: 0x2886,
@@ -104,7 +103,9 @@ await fs.promises.writeFile(configPath, JSON.stringify({
     states: LED_STATES,
   },
 }, null, 2))
-const config = loadConfig(configPath)
+// On the Pi systemd loads these from /etc/smartamp/secrets.env; here they stand
+// in for that file, so the playground exercises the same two-source loader.
+const config = loadConfig(configPath, { REMOTE_TILES_TOKEN: 'playground' })
 
 // --- the same wiring as apps/controller/src/index.mts ------------------------
 

@@ -2,6 +2,10 @@
 smartamp_state_dir: /var/lib/smartamp
 smartamp_config_dir: /etc/smartamp
 smartamp_app_dir: /opt/smartamp
+# The one file provisioning never writes: the Home Assistant and remote-tile
+# tokens are typed on the Pi itself and loaded into the controller's service
+# environment, so no secret is ever stored in this repository or sent over SSH.
+smartamp_secrets_file: "{{ smartamp_config_dir }}/secrets.env"
 # Runtime applications live outside the Ansible role so they can be developed
 # and tested as normal source code. Override this only when embedding the role
 # in a different repository layout.

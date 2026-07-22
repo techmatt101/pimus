@@ -36,22 +36,48 @@ test('an idle ReSpeaker state is required when the LEDs are enabled', (context) 
   assert.throws(() => loadConfig(configFile), /must define an idle ReSpeaker state/)
 })
 
-test('an enabled remote-tile block must carry a port and a token', (context) => {
-  const base = {
-    voice_enabled: false,
-    audio_socket: '/run/smartamp/audio.sock',
-    ducking: { enabled: false },
-    streamdeck: { enabled: true },
-    respeaker: { enabled: false },
-  }
-  const noToken = writeConfig(context, { ...base, remote: { enabled: true, port: 8470, token: '' } })
-  assert.throws(() => loadConfig(noToken), /remote\.token/)
-  const badPort = writeConfig(context, { ...base, remote: { enabled: true, port: 'high', token: 'secret' } })
-  assert.throws(() => loadConfig(badPort), /remote\.port/)
+const BASE = {
+  voice_enabled: false,
+  audio_socket: '/run/smartamp/audio.sock',
+  ducking: { enabled: false },
+  streamdeck: { enabled: true },
+  respeaker: { enabled: false },
+}
+
+test('an enabled remote-tile block must carry a port, and a token from the environment', (context) => {
+  const configFile = writeConfig(context, { ...BASE, remote: { enabled: true, port: 8470 } })
+  // Provisioning writes no token into controller.json, so an enabled listener
+  // with nothing in the secrets file must fail by name rather than start open.
+  assert.throws(() => loadConfig(configFile, {}), /REMOTE_TILES_TOKEN/)
+  assert.equal(loadConfig(configFile, { REMOTE_TILES_TOKEN: 'secret' }).remote?.token, 'secret')
+
+  const badPort = writeConfig(context, { ...BASE, remote: { enabled: true, port: 'high' } })
+  assert.throws(() => loadConfig(badPort, { REMOTE_TILES_TOKEN: 'secret' }), /remote\.port/)
+
   // Disabled is the shipped default and needs neither; an unauthenticated
   // listener must be impossible to configure, not merely discouraged.
-  const disabled = writeConfig(context, { ...base, remote: { enabled: false, port: 0, token: '' } })
-  assert.equal(loadConfig(disabled).remote?.enabled, false)
+  const disabled = writeConfig(context, { ...BASE, remote: { enabled: false, port: 0 } })
+  assert.equal(loadConfig(disabled, {}).remote?.enabled, false)
+})
+
+test('an enabled Home Assistant block takes its token from the environment', (context) => {
+  const configFile = writeConfig(context, {
+    ...BASE,
+    home_assistant: { enabled: true, url: 'http://home-assistant.local:8123' },
+  })
+  assert.throws(() => loadConfig(configFile, {}), /HOME_ASSISTANT_TOKEN/)
+  assert.equal(loadConfig(configFile, { HOME_ASSISTANT_TOKEN: 'lltoken' }).home_assistant?.token, 'lltoken')
+})
+
+test('a token left in controller.json never wins over the secrets file', (context) => {
+  // The two would otherwise disagree silently after a token rotation, with the
+  // stale JSON copy deciding which one the controller actually authenticates with.
+  const configFile = writeConfig(context, {
+    ...BASE,
+    home_assistant: { enabled: true, url: 'http://home-assistant.local:8123', token: 'stale' },
+  })
+  assert.equal(loadConfig(configFile, { HOME_ASSISTANT_TOKEN: 'current' }).home_assistant?.token, 'current')
+  assert.throws(() => loadConfig(configFile, {}), /HOME_ASSISTANT_TOKEN/)
 })
 
 test('a minimal deployment config loads, layout is compiled in separately', (context) => {

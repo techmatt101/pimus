@@ -7,12 +7,12 @@
     "enabled": {{ voice_ducking_enabled | to_json }}
   },
   "webhook_base": {{ home_assistant_webhook_base | to_json }},
-  {# Enabled only once both halves are present: a URL with no token cannot
-     authenticate, and the controller rejects a half-filled block at startup. #}
+  {# Setting the URL turns the integration on; the matching token is read from
+     HOME_ASSISTANT_TOKEN in the Pi's secrets file, which preflight requires and
+     this file deliberately never carries. #}
   "home_assistant": {
-    "enabled": {{ ((home_assistant_url | length > 0) and (home_assistant_token | length > 0)) | to_json }},
-    "url": {{ home_assistant_url | to_json }},
-    "token": {{ home_assistant_token | to_json }}
+    "enabled": {{ (home_assistant_url | length > 0) | to_json }},
+    "url": {{ home_assistant_url | to_json }}
   },
   {# The key/dial layout is compiled into the controller (streamdeck/layout.mts);
      only whether this unit drives a deck is a deployment choice. #}
@@ -20,12 +20,12 @@
     "enabled": {{ streamdeck_enabled | bool | to_json }}
   },
   {# The remote-tile WebSocket server, the controller's one inbound listener.
-     Enabled only with a token: an unauthenticated listener must be impossible
-     to configure, and the controller re-checks the same rule at startup. #}
+     Its REMOTE_TILES_TOKEN lives in the secrets file alongside the Home
+     Assistant one; the controller refuses to open the port without it, so an
+     unauthenticated listener stays impossible to configure. #}
   "remote": {
-    "enabled": {{ ((remote_tiles_enabled | bool) and (remote_tiles_token | length > 0)) | to_json }},
-    "port": {{ remote_tiles_port | int }},
-    "token": {{ remote_tiles_token | to_json }}
+    "enabled": {{ (remote_tiles_enabled | bool) | to_json }},
+    "port": {{ remote_tiles_port | int }}
   },
   "respeaker": {
     "enabled": {{ respeaker_led_enabled | bool | to_json }},

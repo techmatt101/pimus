@@ -13,6 +13,12 @@ User={{ smartamp_service_user }}
 Group={{ smartamp_service_user }}
 Environment=NODE_ENV=production
 Environment=SMARTAMP_CONFIG={{ smartamp_config_dir }}/controller.json
+{% if (home_assistant_url | length > 0) or (remote_tiles_enabled | bool) %}
+# Hand-written on this Pi, never templated. The path carries no "-" prefix on
+# purpose: a missing or unreadable secrets file must fail the unit rather than
+# start a controller that cannot authenticate or, worse, an open listener.
+EnvironmentFile={{ smartamp_secrets_file }}
+{% endif %}
 Environment=XDG_RUNTIME_DIR=/run/user/{{ smartamp_uid }}
 Environment=PULSE_SERVER=/run/user/{{ smartamp_uid }}/pulse/native
 WorkingDirectory={{ smartamp_app_dir }}/controller

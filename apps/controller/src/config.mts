@@ -4,8 +4,32 @@ import type { ControllerConfig } from './types.mjs'
 
 export const DEFAULT_CONFIG_PATH = '/etc/smartamp/controller.json'
 
+/**
+ * Tokens are deliberately absent from controller.json. They are hand-written on
+ * the Pi in this file, which the systemd unit loads into the service
+ * environment, so provisioning never carries a secret and never rewrites it.
+ * Only the path is named here; the controller reads the values from its own
+ * environment.
+ */
+export const SECRETS_PATH = '/etc/smartamp/secrets.env'
+
+const HOME_ASSISTANT_TOKEN = 'HOME_ASSISTANT_TOKEN'
+const REMOTE_TILES_TOKEN = 'REMOTE_TILES_TOKEN'
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/**
+ * Folds the tokens systemd loaded from the secrets file into the parsed
+ * configuration. Doing it here means every module below sees one resolved
+ * shape and none of them needs to know a secret arrived by a different route.
+ */
+function applySecrets(value: Record<string, unknown>, env: Record<string, string | undefined>): void {
+  // Always overwrite, so a token pasted into controller.json by hand cannot
+  // become a second, stale source for the one the secrets file is meant to own.
+  if (isRecord(value.home_assistant)) value.home_assistant.token = env[HOME_ASSISTANT_TOKEN] ?? ''
+  if (isRecord(value.remote)) value.remote.token = env[REMOTE_TILES_TOKEN] ?? ''
+}
 
 function validateControllerConfig(value: unknown, configPath: string): asserts value is ControllerConfig {
   if (!isRecord(value)) throw new Error(`Controller configuration at ${configPath} must be a JSON object`)
@@ -24,7 +48,7 @@ function validateControllerConfig(value: unknown, configPath: string): asserts v
 
   // The Home Assistant tiles read state over the WebSocket API, which needs a
   // reachable base URL and a long-lived access token. Checking them here means
-  // a half-filled inventory fails at startup with a clear message instead of
+  // a half-filled deployment fails at startup with a clear message instead of
   // producing a deck of keys that quietly never connect.
   if (isRecord(value.home_assistant) && value.home_assistant.enabled) {
     const { url, token } = value.home_assistant
@@ -32,7 +56,9 @@ function validateControllerConfig(value: unknown, configPath: string): asserts v
       throw new Error(`Controller configuration at ${configPath} must define an http(s) home_assistant.url`)
     }
     if (typeof token !== 'string' || token.length === 0) {
-      throw new Error(`Controller configuration at ${configPath} must define a home_assistant.token`)
+      throw new Error(
+        `Home Assistant is enabled in ${configPath}, so ${SECRETS_PATH} must set a non-empty ${HOME_ASSISTANT_TOKEN}`,
+      )
     }
   }
 
@@ -45,7 +71,9 @@ function validateControllerConfig(value: unknown, configPath: string): asserts v
       throw new Error(`Controller configuration at ${configPath} must define a TCP remote.port`)
     }
     if (typeof token !== 'string' || token.length === 0) {
-      throw new Error(`Controller configuration at ${configPath} must define a remote.token`)
+      throw new Error(
+        `The remote-tile server is enabled in ${configPath}, so ${SECRETS_PATH} must set a non-empty ${REMOTE_TILES_TOKEN}`,
+      )
     }
   }
 
@@ -59,8 +87,10 @@ function validateControllerConfig(value: unknown, configPath: string): asserts v
 
 export function loadConfig(
   path: string = process.env.SMARTAMP_CONFIG || DEFAULT_CONFIG_PATH,
+  env: Record<string, string | undefined> = process.env,
 ): ControllerConfig {
   const config: unknown = JSON.parse(fs.readFileSync(path, 'utf8'))
+  if (isRecord(config)) applySecrets(config, env)
   validateControllerConfig(config, path)
   return config
 }

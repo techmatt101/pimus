@@ -104,7 +104,8 @@ to acknowledge one. See [controls](docs/controls.md#the-touch-strip).
 
 Everything on the Room and Info pages, plus shuffle, the playlist, and the
 dynamic dial, talks to Home Assistant, so those keys show live state as well as
-change it — set `home_assistant_url` and `home_assistant_token`. Without them
+change it — set `home_assistant_url` in inventory and put a long-lived access
+token in the Pi's [secrets file](docs/configuration.md#secrets). Without them
 those keys stay in place and draw an unknown state.
 
 The layout is defined in `apps/controller/src/streamdeck/layout.mts`, with the

@@ -96,32 +96,41 @@ streamdeck_enabled: true
 # Home Assistant, for the Stream Deck keys that show and change house state:
 # the fan, blinds, PC, scenes, timer, temperature, weather, lights dial, and
 # media transport. The controller reads entity state and calls services over
-# the WebSocket API, which needs a long-lived access token (Home Assistant
-# profile -> Security -> Long-lived access tokens).
+# the WebSocket API.
 #
-# Leave both empty to run without it: those keys stay on the deck and draw an
-# unknown state, and nothing else is affected. Which entities the keys drive is
-# compiled into apps/controller/src/streamdeck/layout.mts, not set here.
-#
-# The token is written into /etc/smartamp/controller.json, which is 0640 and
-# readable only by the service account. Keep it out of Git by supplying it from
-# a vault or an environment variable rather than editing it in here.
+# Setting this URL turns the integration on and makes HOME_ASSISTANT_TOKEN
+# required in the Pi's secrets file (see the note at the bottom of this file).
+# Leave it empty to run without Home Assistant: those keys stay on the deck and
+# draw an unknown state, and nothing else is affected. Which entities the keys
+# drive is compiled into apps/controller/src/streamdeck/layout.mts, not set here.
 home_assistant_url: ""
-home_assistant_token: ""
 
 # Remote tiles: a WebSocket server inside the controller that lets another
 # computer on the LAN push key faces onto the deck's REMOTE page and receive
 # the presses back — see apps/remote-demo for a runnable client. Enabling it
-# opens this TCP port on the Pi, so it is off by default and never starts
-# without a shared token; pick a long random one and, as with the Home
-# Assistant token above, supply it from a vault or environment variable rather
-# than editing it in here.
+# opens this TCP port on the Pi, so it is off by default and requires
+# REMOTE_TILES_TOKEN in the secrets file; the controller refuses to listen
+# without one. Pick a long random value.
 remote_tiles_enabled: false
 remote_tiles_port: 8470
-remote_tiles_token: ""
 
 # Optional Home Assistant webhook base URL, an alternative that stores no token.
 # A Stream Deck action of type "webhook" with an "id" (bound in
 # streamdeck/layout.mts) posts to <base>/<id>. Write-only: a key bound to a
 # webhook can fire an automation but cannot show any state.
 home_assistant_webhook_base: ""
+
+# Secrets are not configured here. Tokens are typed once on the Pi itself, in
+# /etc/smartamp/secrets.env, which provisioning reads only to confirm each
+# required key has a value and never writes:
+#
+#   sudo mkdir -p /etc/smartamp
+#   sudo nano /etc/smartamp/secrets.env
+#
+#   HOME_ASSISTANT_TOKEN=...   # profile -> Security -> Long-lived access tokens
+#   REMOTE_TILES_TOKEN=...     # only when remote_tiles_enabled is true
+#
+# systemd loads that file into the controller's environment. Provisioning fails
+# with the missing key named if it is absent, so no token can reach this
+# repository, the control computer, or Git by accident. Editing a value there
+# needs "sudo systemctl restart smartamp-controller" to take effect.

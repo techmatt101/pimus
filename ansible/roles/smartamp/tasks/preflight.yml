@@ -97,17 +97,61 @@
       Hardware/controller inventory contains an out-of-range value, conflicting
       voice ports, or an invalid Home Assistant, webhook, or Sendspin server URL.
 
-# Reading entity state needs both halves. Setting only one silently disables the
-# Home Assistant keys, which looks like a broken deck rather than a missing
-# setting, so fail here with the reason instead.
-- name: Validate Home Assistant credentials are complete
+# Tokens are typed on the Pi itself, in a file this repository never writes and
+# never reads the values of, so provisioning has to confirm they are actually
+# there. Which ones are needed follows from the features that are switched on:
+# a Home Assistant URL implies a token to authenticate with, and the remote-tile
+# listener must not open without its shared secret.
+- name: Select the controller secrets this deployment requires
+  ansible.builtin.set_fact:
+    smartamp_required_secrets: >-
+      {{ (['HOME_ASSISTANT_TOKEN'] if home_assistant_url | length > 0 else [])
+         + (['REMOTE_TILES_TOKEN'] if remote_tiles_enabled | bool else []) }}
+
+- name: Check the controller secrets file exists
+  ansible.builtin.stat:
+    path: "{{ smartamp_secrets_file }}"
+  register: smartamp_secrets_stat
+  when: smartamp_required_secrets | length > 0
+
+# Failing here, before anything has been reconfigured, beats a controller that
+# installs cleanly and then crash-loops on a token nobody remembered to write.
+- name: Require the controller secrets file
   ansible.builtin.assert:
     that:
-      - (home_assistant_url | length > 0) == (home_assistant_token | length > 0)
+      - smartamp_secrets_stat.stat.exists
     fail_msg: >-
-      home_assistant_url and home_assistant_token must be set together. Leave
-      both empty to run without Home Assistant; the keys that read it then draw
-      an unknown state.
+      {{ smartamp_secrets_file }} does not exist on {{ inventory_hostname }}.
+      Create it on the Pi and re-run: "sudo mkdir -p {{ smartamp_config_dir }}"
+      then "sudo nano {{ smartamp_secrets_file }}", with one KEY=value line for
+      each of {{ smartamp_required_secrets | join(', ') }}.
+  when: smartamp_required_secrets | length > 0
+
+# grep runs on the Pi and reports only whether a line matched, so the token
+# values stay on the device instead of travelling back over SSH into task
+# output. An empty or commented-out assignment counts as missing.
+- name: Check the controller secrets file defines every required token
+  ansible.builtin.command:
+    argv:
+      - grep
+      - -Eq
+      - '^[[:space:]]*{{ item }}=[[:space:]]*"?[^"[:space:]]'
+      - "{{ smartamp_secrets_file }}"
+  register: smartamp_secrets_present
+  changed_when: false
+  failed_when: false
+  loop: "{{ smartamp_required_secrets }}"
+
+- name: Require every controller token to have a value
+  ansible.builtin.assert:
+    that:
+      - smartamp_secrets_present.results | rejectattr('rc', 'equalto', 0) | list | length == 0
+    fail_msg: >-
+      {{ smartamp_secrets_file }} has no value for
+      {{ smartamp_secrets_present.results | rejectattr('rc', 'equalto', 0)
+         | map(attribute='item') | join(', ') }}.
+      Add one KEY=value line per token and re-run.
+  when: smartamp_required_secrets | length > 0
 
 # The Stream Deck key/dial layout is compiled into the controller
 # (streamdeck/layout.mts) and validated by its own Node test, so there is no
