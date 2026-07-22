@@ -18,44 +18,24 @@
       - python3-venv
     state: present
 
-# Building wake-word dependencies is comparatively expensive. A commit marker
-# skips healthy re-runs while rebuilding when the reviewed source changes.
+# Building wake-word dependencies is comparatively expensive. A release marker
+# skips healthy re-runs while rebuilding when the pinned release changes.
 - name: Check native Linux Voice Assistant installation
   ansible.builtin.stat:
-    path: "{{ smartamp_app_dir }}/linux-voice-assistant/.smartamp-setup-{{ voice_assistant_commit }}"
+    path: "{{ smartamp_app_dir }}/linux-voice-assistant/.smartamp-setup-{{ voice_assistant_version }}"
   register: voice_assistant_setup_marker
 
-# Use the immutable commit behind the documented release. A shallow checkout
-# avoids keeping unrelated upstream history on the SD card.
+# Check out the pinned release tag. A shallow, single-branch clone avoids
+# keeping unrelated upstream history on the SD card.
 - name: Check out pinned Linux Voice Assistant release
   ansible.builtin.git:
     repo: https://github.com/OHF-Voice/linux-voice-assistant.git
     dest: "{{ smartamp_app_dir }}/linux-voice-assistant"
-    version: "{{ voice_assistant_commit }}"
-    # Fetch only the release ref that reaches the pinned commit; supplying it
-    # explicitly lets Ansible keep a SHA checkout shallow.
-    refspec: "+refs/tags/v{{ voice_assistant_version }}:refs/tags/v{{ voice_assistant_version }}"
+    version: "v{{ voice_assistant_version }}"
     depth: 1
     single_branch: true
     update: true
   register: voice_assistant_checkout
-
-# Fail closed if the remote ref or checkout behavior ever resolves to different
-# code than the commit reviewed with this project.
-- name: Read checked out Linux Voice Assistant commit
-  ansible.builtin.command: git rev-parse HEAD
-  args:
-    chdir: "{{ smartamp_app_dir }}/linux-voice-assistant"
-  register: voice_assistant_checked_out_commit
-  changed_when: false
-
-- name: Verify Linux Voice Assistant commit
-  ansible.builtin.assert:
-    that: voice_assistant_checked_out_commit.stdout == voice_assistant_commit
-    fail_msg: >-
-      Linux Voice Assistant resolved to
-      {{ voice_assistant_checked_out_commit.stdout }}, expected
-      {{ voice_assistant_commit }}.
 
 # Older revisions installed a pip constraints file. Upstream's own dependency
 # ranges now drive setup, so remove the retired file to avoid implying otherwise.
@@ -63,6 +43,24 @@
   ansible.builtin.file:
     path: "{{ smartamp_app_dir }}/linux-voice-assistant/.smartamp-constraints.txt"
     state: absent
+
+# Markers from superseded releases (and from the retired commit pin) would
+# otherwise accumulate and imply installs that are no longer present.
+- name: Find superseded Linux Voice Assistant setup markers
+  ansible.builtin.find:
+    paths: "{{ smartamp_app_dir }}/linux-voice-assistant"
+    patterns: ".smartamp-setup-*"
+    excludes: ".smartamp-setup-{{ voice_assistant_version }}"
+    hidden: true
+  register: voice_assistant_stale_markers
+
+- name: Remove superseded Linux Voice Assistant setup markers
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ voice_assistant_stale_markers.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
 
 # A release marker alone does not prove that the virtual environment survived
 # an interrupted setup or later SD-card damage. Import the core runtime modules
@@ -101,7 +99,7 @@
 # retried on the next provisioning run.
 - name: Record installed Linux Voice Assistant release
   ansible.builtin.file:
-    path: "{{ smartamp_app_dir }}/linux-voice-assistant/.smartamp-setup-{{ voice_assistant_commit }}"
+    path: "{{ smartamp_app_dir }}/linux-voice-assistant/.smartamp-setup-{{ voice_assistant_version }}"
     state: touch
     owner: root
     group: root

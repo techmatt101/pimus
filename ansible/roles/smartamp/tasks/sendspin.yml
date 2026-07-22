@@ -31,7 +31,7 @@
       Raspberry Pi OS release that ships it, or set sendspin_enabled: false.
 
 # Pinning the release keeps provisioning reproducible, mirroring the pinned
-# Linux Voice Assistant commit. Bump sendspin_version deliberately.
+# Linux Voice Assistant release. Bump sendspin_version deliberately.
 - name: Install pinned Sendspin client
   ansible.builtin.pip:
     name: "sendspin=={{ sendspin_version }}"
