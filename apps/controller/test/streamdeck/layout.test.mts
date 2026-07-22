@@ -42,6 +42,18 @@ test('every bound action is understood by the catalog', () => {
   assert.deepEqual(problems, [])
 })
 
+test('the REMOTE page exists exactly when the remote-tile feed does', () => {
+  // Without the feature nothing could ever fill the slots, so the page—unlike
+  // the Home Assistant keys, which show unknown state instead—is not built.
+  const without = createLayout(testServices())
+  assert.ok(!without.pages.some((page) => page.name === 'REMOTE'))
+
+  const layout = createLayout({ ...testServices(), remote: { tile: () => undefined, press: () => {} } })
+  const page = layout.pages.find((candidate) => candidate.name === 'REMOTE')
+  assert.ok(page, 'a configured feed adds the page')
+  assert.equal(Object.values(page.grid).filter(Boolean).length, 6, 'every slot is a socket')
+})
+
 test('layout tiles and dials drive the injected services when pressed', () => {
   const services = testServices()
   const layout = createLayout(services)

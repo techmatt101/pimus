@@ -54,6 +54,7 @@ import { EntityToggleTile } from './tiles/entity-toggle-tile.mjs'
 import { MediaTile } from './tiles/media-tile.mjs'
 import { PageTile } from './tiles/page-tile.mjs'
 import { PlaylistTile } from './tiles/playlist-tile.mjs'
+import { RemoteTile } from './tiles/remote-tile.mjs'
 import { SceneTile } from './tiles/scene-tile.mjs'
 import { ShuffleTile } from './tiles/shuffle-tile.mjs'
 import { TemperatureTile } from './tiles/temperature-tile.mjs'
@@ -222,6 +223,24 @@ export function createLayout(services: TileServices): StreamDeckLayout {
         bottomLeft: key('STOP', '#b71c1c', voice('stop')),
       },
     },
+    // Six sockets for another computer to fill over the remote-tile server
+    // (remote/server.mts): a client pushes a face onto a slot and gets the
+    // presses back. The page exists only when the feature is configured —
+    // unlike the Home Assistant keys there is no unknown state to show, just
+    // slots nothing could ever fill.
+    ...(services.remote
+      ? [{
+        name: 'REMOTE',
+        grid: {
+          topLeft: new RemoteTile(services, { slot: 0 }),
+          topMidLeft: new RemoteTile(services, { slot: 1 }),
+          topMidRight: new RemoteTile(services, { slot: 2 }),
+          topRight: new RemoteTile(services, { slot: 3 }),
+          bottomLeft: new RemoteTile(services, { slot: 4 }),
+          bottomRight: new RemoteTile(services, { slot: 5 }),
+        },
+      }]
+      : []),
   ]
 
   // Four dials, left to right. The first three are fixed, because a knob you

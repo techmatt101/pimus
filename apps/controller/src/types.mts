@@ -1,6 +1,8 @@
 // Shapes shared across controller modules. The configuration types mirror
 // ansible/roles/smartamp/templates/controller.json.j2; change both together.
 
+import type { Image } from '@napi-rs/canvas'
+
 /**
  * A declarative control-surface action. A `Binding` (streamdeck/bindings.mts)
  * pairs one with the behaviour that runs it; the catalog
@@ -63,6 +65,18 @@ export interface ReSpeakerConfig {
  */
 export interface DuckingConfig {
   enabled: boolean
+}
+
+/**
+ * The remote-tile WebSocket server (remote/server.mts): another computer on
+ * the LAN pushes key faces onto the deck's REMOTE page and receives presses
+ * back. This is the controller's one inbound listener, so it stays off unless
+ * both the flag and the shared token are set.
+ */
+export interface RemoteConfig {
+  enabled: boolean
+  port: number
+  token: string
 }
 
 /**
@@ -131,6 +145,29 @@ export interface Notification {
 }
 
 /**
+ * One key face pushed over the remote-tile socket. The image arrives as a PNG
+ * and is decoded when it is accepted (remote/server.mts), so a repaint only
+ * ever draws a ready image; a face may also be just a colour and a label.
+ */
+export interface RemoteTileFace {
+  label: string
+  color: string
+  image?: Image
+}
+
+/**
+ * The slice of the remote-tile server a RemoteTile key reads and drives.
+ * Depending on this rather than the concrete server keeps the tile free of the
+ * socket lifecycle and lets tests hand it a plain object.
+ */
+export interface RemoteTileFeed {
+  /** The face pushed for a REMOTE-page slot, or undefined while it is empty. */
+  tile(slot: number): RemoteTileFace | undefined
+  /** Report a press back to whichever client owns the slot's face. */
+  press(slot: number): void
+}
+
+/**
  * The slice of the notification queue the touch strip reads. Depending on this
  * rather than the concrete NotificationCenter keeps the strip free of the Home
  * Assistant subscription and lets tests hand it a plain object.
@@ -156,6 +193,7 @@ export interface ControllerConfig {
   streamdeck?: StreamDeckDeployment
   respeaker?: ReSpeakerConfig
   home_assistant?: HomeAssistantConfig
+  remote?: RemoteConfig
 }
 
 /** Fields the controller reads out of Linux Voice Assistant event payloads. */

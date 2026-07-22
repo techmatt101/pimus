@@ -62,6 +62,15 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
 
+  apps/remote-demo:
+    dependencies:
+      '@napi-rs/canvas':
+        specifier: 1.0.2
+        version: 1.0.2
+      ws:
+        specifier: 8.21.1
+        version: 8.21.1
+
 packages:
 
   '@elgato-stream-deck/core@7.6.3':

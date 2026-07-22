@@ -44,7 +44,7 @@ The initialisation service selects the DAC2 ADC Pro unbalanced line inputs, sets
 - `smartamp-audio-manager`: maintains PipeWire defaults, switchable routes, the background bus, and its ducking gain, driven by `pactl subscribe` events and a Unix control socket.
 - `smartamp-sendspin`: runs the Sendspin player that Music Assistant discovers and streams to.
 - `smartamp-voice-assistant`: pinned OHF Linux Voice Assistant checkout and Python virtual environment.
-- `smartamp-controller`: maps Assist events to background ducking and XVF3800 effects, and renders/handles Stream Deck+ controls without Elgato desktop software.
+- `smartamp-controller`: maps Assist events to background ducking and XVF3800 effects, and renders/handles Stream Deck+ controls without Elgato desktop software. When remote tiles are enabled it also listens on one authenticated WebSocket port, through which another computer on the LAN pushes key faces onto the deck's REMOTE page and receives the presses back (`apps/controller/src/remote/server.mts`); the controller remains the only owner of the deck.
 
 The controller is one long-running Node process because ducking and both control
 surfaces consume the same voice, mute, media, and audio-route state.

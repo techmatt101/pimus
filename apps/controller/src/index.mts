@@ -4,6 +4,7 @@ import { runVolumeCommand, startOutputMonitor } from './audio/volume.mjs'
 import { loadConfig } from './config.mjs'
 import { createOfflineHomeAssistant, HomeAssistantClient } from './home-assistant/client.mjs'
 import { NotificationCenter } from './home-assistant/notifications.mjs'
+import { RemoteTileServer } from './remote/server.mjs'
 import { ControlModel, createState } from './state.mjs'
 import { runDeckLoop } from './streamdeck/deck.mjs'
 import { createLayout } from './streamdeck/layout.mjs'
@@ -52,6 +53,19 @@ const notifications = new NotificationCenter({
   onChange: () => model.notify(),
 })
 
+// Another computer on the LAN pushes key faces onto the REMOTE page and gets
+// presses back over this socket; its notify messages join the same strip queue
+// Home Assistant's do. Off unless configured with a shared token, so an
+// unconfigured deployment keeps accepting no inbound connections at all.
+const remote = config.remote?.enabled
+  ? new RemoteTileServer({
+    port: config.remote.port,
+    token: config.remote.token,
+    onChange: () => model.notify(),
+    postNotification: (data) => notifications.post(data),
+  })
+  : null
+
 const lva = new LvaClient({
   uri: config.lva_uri,
   state,
@@ -77,6 +91,7 @@ const layout = createLayout({
   setVolume: (command) => runVolumeCommand(command, { onExit: () => model.notify() }),
   ha: homeAssistant,
   notifications,
+  ...(remote ? { remote } : {}),
   webhookBase: config.webhook_base,
 })
 
@@ -85,6 +100,7 @@ const renderer = new DeckRenderer({ layout, model })
 respeaker?.start()
 audio.connect()
 notifications.start()
+remote?.start()
 if (homeAssistant instanceof HomeAssistantClient) homeAssistant.connect()
 if (config.voice_enabled) lva.connect()
 

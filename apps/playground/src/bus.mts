@@ -17,6 +17,7 @@ export type LogCategory =
   | 'duck'
   | 'webhook'
   | 'home-assistant'
+  | 'remote'
 
 export interface LogEntry {
   time: number

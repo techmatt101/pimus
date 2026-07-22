@@ -80,14 +80,15 @@ Pi, which installs the controller's exact pins with plain npm.
 
 ## Everyday control
 
-The default Stream Deck+ layout has three pages, with the two bottom corners
-navigating between them:
+The default Stream Deck+ layout has three pages — four with remote tiles
+enabled — with the two bottom corners navigating between them:
 
 | Page | Keys |
 |---|---|
 | Main | Voice (start or cancel Assist), mic mute, play/pause, shuffle, input mode (stream/aux/usb), and a playlist shortcut |
 | Room | Scenes, ceiling fan, blinds, desk PC, a Home Assistant timer, and the lights |
 | Info | Clock, room temperature, weather, a next-page key, and stop |
+| Remote | Only with remote tiles enabled: six keys another computer on the LAN fills over an authenticated WebSocket, receiving the presses back — see [remote tiles](docs/controls.md#remote-tiles-from-another-computer) |
 
 Dial 1 controls volume, dial 2 is media transport (previous/next, press to
 play/pause), and dial 3 is spare. Dial 4 has no fixed job: pressing the lights,

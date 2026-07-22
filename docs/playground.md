@@ -28,6 +28,17 @@ own code, imported straight from `apps/controller/src/`:
 | ReSpeaker XVF3800 USB LEDs | a ring drawn in the state panel | `ReSpeakerController`'s state-to-appearance mapping and write de-duplication |
 | Home Assistant | a house that responds to service calls | every tile's entity watch and `mount`/`unmount`, the catalog's service composition, the unknown-state faces |
 
+One boundary is not faked at all: the remote-tile server is real code with no
+hardware behind it, so the playground runs it on `ws://127.0.0.1:8470` with the
+token `playground`. Point a client at it — for example
+
+```sh
+pnpm --filter pimus-remote-demo start -- --url=ws://127.0.0.1:8470 --token=playground
+```
+
+— and its keys appear on the REMOTE page of the browser deck, presses and
+strip banners included.
+
 The Home Assistant fake replaces the whole `HomeAssistantService` rather than
 the socket under `HomeAssistantClient`: the protocol client has its own tests,
 and what the playground is for is watching the keys. In exchange it can do what

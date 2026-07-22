@@ -102,6 +102,21 @@ rather than becoming a key that presses successfully and reaches nothing.
 
 Webhook actions POST to `home_assistant_webhook_base/<id>`. Configure a Home Assistant webhook trigger and set the base to `http://homeassistant.local:8123/api/webhook`. Treat webhook IDs as secrets if the endpoint is reachable outside a trusted LAN. A webhook stores no token, but it is write-only: a key bound to one can fire an automation and show nothing back.
 
+### Remote tiles
+
+`remote_tiles_enabled`, `remote_tiles_port`, and `remote_tiles_token` run a
+small WebSocket server inside the controller that lets another computer on the
+LAN push key faces onto the deck's REMOTE page and receive the presses back —
+see [controls](controls.md#remote-tiles-from-another-computer) for the protocol
+and `apps/remote-demo` for a runnable client.
+
+This is the one inbound port the controller opens, so the feature is off by
+default and never starts without a token: set `remote_tiles_enabled: true`
+*and* a long random `remote_tiles_token`, and keep the token in a `.vault.yml`
+override exactly as with the Home Assistant token. Disabling the flag again
+closes the port on the next provision, and the REMOTE page leaves the deck with
+it.
+
 Put private host or group overrides in files ending in `.vault.yml` under
 `ansible/inventory/host_vars` or `ansible/inventory/group_vars`, and encrypt
 them with Ansible Vault before keeping them locally. Those filenames are

@@ -12,7 +12,7 @@ import {
   type VolumeActionName,
 } from '../actions/catalog.mjs'
 import type { ControlModel } from '../state.mjs'
-import type { Action, HomeAssistantService, LvaSender, NotificationFeed } from '../types.mjs'
+import type { Action, HomeAssistantService, LvaSender, NotificationFeed, RemoteTileFeed } from '../types.mjs'
 
 /**
  * The controller services injected into tiles and dial bindings. Depending on
@@ -39,6 +39,13 @@ export interface TileServices {
    * back to what is playing.
    */
   notifications?: NotificationFeed
+  /**
+   * Key faces pushed over the remote-tile socket (remote/server.mts). Optional,
+   * and unlike Home Assistant its absence removes the surface: the layout only
+   * builds the REMOTE page when the feature is configured, because a page of
+   * sockets nothing can ever fill is noise rather than unknown state.
+   */
+  remote?: RemoteTileFeed
   webhookBase?: string
   /** Only the request is meaningful here; the response body is ignored. */
   request?(url: string, init?: { method: string }): unknown

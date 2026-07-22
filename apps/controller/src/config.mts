@@ -36,6 +36,19 @@ function validateControllerConfig(value: unknown, configPath: string): asserts v
     }
   }
 
+  // The remote-tile server is the controller's one inbound listener, so an
+  // enabled block must carry a real port and a non-empty shared token; an
+  // unauthenticated listener must be impossible to configure by accident.
+  if (isRecord(value.remote) && value.remote.enabled) {
+    const { port, token } = value.remote
+    if (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new Error(`Controller configuration at ${configPath} must define a TCP remote.port`)
+    }
+    if (typeof token !== 'string' || token.length === 0) {
+      throw new Error(`Controller configuration at ${configPath} must define a remote.token`)
+    }
+  }
+
   if (isRecord(value.respeaker) && value.respeaker.enabled) {
     if (!isRecord(value.respeaker.states) || !isRecord(value.respeaker.states.idle)) {
       throw new Error(`Controller configuration at ${configPath} must define an idle ReSpeaker state`)

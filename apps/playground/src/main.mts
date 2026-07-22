@@ -34,6 +34,7 @@ import { AudioManagerClient } from '../../controller/src/audio/manager-client.mj
 import { runVolumeCommand, startOutputMonitor } from '../../controller/src/audio/volume.mjs'
 import { loadConfig } from '../../controller/src/config.mjs'
 import { NOTIFY_EVENT, NotificationCenter } from '../../controller/src/home-assistant/notifications.mjs'
+import { RemoteTileServer } from '../../controller/src/remote/server.mjs'
 import { ControlModel, createState } from '../../controller/src/state.mjs'
 import { runDeckLoop } from '../../controller/src/streamdeck/deck.mjs'
 import { createLayout } from '../../controller/src/streamdeck/layout.mjs'
@@ -93,6 +94,7 @@ await fs.promises.writeFile(configPath, JSON.stringify({
     token: '',
   },
   streamdeck: { enabled: true },
+  remote: { enabled: true, port: 8470, token: 'playground' },
   respeaker: {
     enabled: true,
     vendor_id: 0x2886,
@@ -154,10 +156,26 @@ const notifications = new NotificationCenter({
   logger: busLogger(bus, 'home-assistant'),
 })
 
+// The real remote-tile server, bound to the loopback with a fixed token, so a
+// client can put keys on the browser deck without a Pi:
+//
+//   pnpm --filter pimus-remote-demo start -- --url=ws://127.0.0.1:8470 --token=playground
+const remote = config.remote?.enabled
+  ? new RemoteTileServer({
+    port: config.remote.port,
+    token: config.remote.token,
+    host: '127.0.0.1',
+    onChange: () => model.notify(),
+    postNotification: (data) => notifications.post(data),
+    logger: busLogger(bus, 'remote'),
+  })
+  : null
+
 const layout = createLayout({
   model,
   lva,
   notifications,
+  ...(remote ? { remote } : {}),
   setSource: (name, command) => {
     audio.setSource(name, command)
   },
@@ -182,6 +200,7 @@ const renderer = new DeckRenderer({ layout, model, logger: busLogger(bus, 'deck'
 respeaker?.start()
 audio.connect()
 notifications.start()
+remote?.start()
 lva.connect()
 startOutputMonitor({ state, onStateChange: () => model.notify(), execute: wpctl.execute })
 void runDeckLoop({

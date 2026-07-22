@@ -19,6 +19,14 @@
   "streamdeck": {
     "enabled": {{ streamdeck_enabled | bool | to_json }}
   },
+  {# The remote-tile WebSocket server, the controller's one inbound listener.
+     Enabled only with a token: an unauthenticated listener must be impossible
+     to configure, and the controller re-checks the same rule at startup. #}
+  "remote": {
+    "enabled": {{ ((remote_tiles_enabled | bool) and (remote_tiles_token | length > 0)) | to_json }},
+    "port": {{ remote_tiles_port | int }},
+    "token": {{ remote_tiles_token | to_json }}
+  },
   "respeaker": {
     "enabled": {{ respeaker_led_enabled | bool | to_json }},
     "vendor_id": 10374,

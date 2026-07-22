@@ -8,6 +8,7 @@
 packages:
   - apps/controller
   - apps/playground
+  - apps/remote-demo
 # Which dependencies may run install scripts. usb and node-hid fetch the
 # prebuilt native binding they need to load at all, so both apps need them
 # built. The optional jpeg-turbo peer is deliberately left unbuilt to match the

@@ -40,6 +40,8 @@ apps/
       audio/             Audio manager socket, volume, ducking
       home-assistant/    HA WebSocket client, entity cache, entity reading,
                          and the notification queue automations push to
+      remote/            The authenticated LAN WebSocket server other
+                         computers push REMOTE-page tile faces to
       streamdeck/        Stream Deck lifecycle, bindings, drawing, and icons
         dials/           One Dial class per file (a knob's behaviour + readout)
         screens/         One Screen class per file (a full touch-strip face)
@@ -56,6 +58,8 @@ apps/
   playground/            Development-only debug environment; never deployed
     src/                 Fake deck, LVA, audio manager, wpctl, LEDs, web server
     ui/                  The browser page the fake deck is drawn on
+  remote-demo/           Development-only example client for the controller's
+                         remote-tile socket; runs on the control computer
 tools/                   Development-only code generators
 ansible/
   inventory/             User-editable device configuration
@@ -100,7 +104,7 @@ runtime validation, and relevant documentation together.
 - Keep `index.mts` as composition/root wiring; put device or domain logic in a
   focused module.
 - Group modules by the boundary they own: `actions/`, `audio/`,
-  `home-assistant/`, `streamdeck/`, and `voice/`, with `index.mts`,
+  `home-assistant/`, `remote/`, `streamdeck/`, and `voice/`, with `index.mts`,
   `config.mts`, `state.mts`, and `types.mts` at the root. Mirror the same
   folders under `test/`.
 - Home Assistant is reached over its WebSocket API with a long-lived token

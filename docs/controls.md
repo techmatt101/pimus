@@ -405,6 +405,50 @@ Nothing needs configuring on the Pi: the event name is compiled in
 `home_assistant_token` connection carries it. To try one without a Pi, run
 `make playground` and use the notification buttons in the Home Assistant panel.
 
+## Remote tiles from another computer
+
+With `remote_tiles_enabled` and a `remote_tiles_token` configured (see
+[configuration](configuration.md#remote-tiles)), the layout gains a REMOTE page
+of six empty sockets and the controller listens on `remote_tiles_port` for
+WebSocket clients on the LAN. A client — a Slack watcher on a desktop, a build
+monitor, anything that can speak a few lines of JSON — pushes a face onto a
+socket and gets the presses back; it never touches the deck itself, which stays
+owned by the controller the same way it does for Home Assistant.
+
+The whole protocol is five messages. The first thing on a new connection must
+be the token, or the controller closes it:
+
+```jsonc
+// client -> controller
+{ "type": "hello", "token": "<remote_tiles_token>" }
+{ "type": "tile", "slot": 0, "label": "SLACK", "color": "#4a154b",
+  "image": "<base64 PNG>" }                    // set or replace a face
+{ "type": "clear", "slot": 0 }
+{ "type": "notify", "title": "SLACK", "message": "DM FROM SAM",
+  "color": "#4a154b", "seconds": 8 }           // a touch-strip banner, exactly
+                                               // as smartamp_notify above
+// controller -> client
+{ "type": "welcome", "slots": 6 }
+{ "type": "press", "slot": 0 }
+{ "type": "error", "message": "..." }          // the offending message was ignored
+```
+
+Slots are numbered 0–5 in reading order across the page. Everything but the
+slot is optional on a `tile`: the image (any size; drawn to fill the 120x120
+key, with the caption bar over its foot when a `label` is sent too) or just a
+`color` and `label` like any other key. A face lives exactly as long as the
+connection that pushed it — a client that disconnects or crashes takes its keys
+with it, so the page can never show stale tiles.
+
+`apps/remote-demo` is a runnable example client for the control computer:
+
+```sh
+pnpm --filter pimus-remote-demo start -- --token=<remote_tiles_token>
+```
+
+It puts an unread-message badge on slot 0 that grows every few seconds,
+clears when the key is pressed, and raises a strip banner in reply.
+
 ## Changing the layout
 
 Edit `apps/controller/src/streamdeck/layout.mts`, then `make deploy-controller`.
