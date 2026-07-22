@@ -170,10 +170,12 @@ runtime validation, and relevant documentation together.
   a wrapper for a one-off path, gradient, or clip. A face is RGBA and
   `snapshot()` must copy, because the canvas is reused for the next key.
 - Icons are Hugeicons SVGs generated into `streamdeck/icon-set.mts` by
-  `make icons` and committed. Never add an icon package as a controller
-  dependency, and never hand-edit the generated module; add a line to
-  `tools/generate-icons.mjs` and regenerate. Icon artwork strokes in
-  `currentColor`, so a tile tints per state rather than getting its own glyph.
+  `make icons` and committed. The artwork comes from `@hugeicons/core-free-icons`,
+  a devDependency of the workspace root only: never add an icon package as a
+  controller dependency, so the Pi keeps receiving none. Never hand-edit the
+  generated module; add a line to `tools/generate-icons.mjs` and regenerate.
+  Icon artwork strokes in `currentColor`, so a tile tints per state rather than
+  getting its own glyph.
 - Text is drawn in the font bundled at `apps/controller/assets/`, registered
   explicitly at startup. Pi OS Lite has almost no fonts, so never rely on a
   system face; `make build` copies `assets/` into `dist/` and Ansible deploys it

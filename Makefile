@@ -18,10 +18,12 @@ build: ## Compile the TypeScript controller to apps/controller/dist
 	[ -d apps/controller/node_modules ] || pnpm install --frozen-lockfile
 	pnpm --filter pimus-controller build
 
-# Fetches only the icons listed in tools/generate-icons.mjs from a pinned
-# Hugeicons release and rewrites the committed icon set. Needed only when adding
-# an icon, never to build, test, or deploy.
+# Rewrites the committed icon set from only the icons listed in
+# tools/generate-icons.mjs, read from the @hugeicons/core-free-icons
+# devDependency. Needed only when adding an icon, never to build, test, or
+# deploy; the icon package is installed on this computer and never on the Pi.
 icons: ## Regenerate the Stream Deck icon set from Hugeicons
+	[ -d node_modules/@hugeicons/core-free-icons ] || pnpm install --frozen-lockfile
 	node tools/generate-icons.mjs
 
 # Development only. Runs the real controller against fake hardware and fake

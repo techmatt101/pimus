@@ -16,3 +16,8 @@ allowBuilds:
   '@julusian/jpeg-turbo': false
   node-hid: true
   usb: true
+# Recorded by pnpm's supply-chain policy when the icon artwork source was
+# added. It is a development-only devDependency of the root, read by
+# tools/generate-icons.mjs; nothing here reaches the controller or the Pi.
+minimumReleaseAgeExclude:
+  - '@hugeicons/core-free-icons@4.2.3'

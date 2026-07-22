@@ -2,17 +2,27 @@
 // Regenerates apps/controller/src/streamdeck/icon-set.mts from the Hugeicons
 // free set (MIT). Run it with `make icons` after editing the ICONS map below.
 //
-// The icons are fetched one module at a time from a pinned version on unpkg
-// rather than taken from a dependency: @hugeicons/core-free-icons unpacks to
-// 125MB for 5,448 icons, and this project uses roughly thirty. The generated
-// module is committed, so neither this tool nor any icon package is needed to
-// build, test, or deploy the controller — only to add an icon.
+// @hugeicons/core-free-icons is a devDependency of the workspace root, never of
+// the controller: it unpacks to 83MB for 5,448 icons and this project draws
+// roughly thirty. It publishes one ESM module per icon, so only the icons named
+// below are ever imported. The generated module is committed, so neither this
+// tool nor any icon package is needed to build, test, or deploy the controller —
+// only to add an icon.
 
-import { writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
-/** The Hugeicons release the committed icon set was generated from. */
-const VERSION = '4.2.3'
+/**
+ * The installed Hugeicons release, stamped into the generated header so it
+ * cannot drift from what the icons were actually taken from. The package is a
+ * root devDependency; pnpm-lock.yaml is what pins it.
+ */
+const PACKAGE = new URL('../node_modules/@hugeicons/core-free-icons/', import.meta.url)
+const VERSION = await readFile(new URL('package.json', PACKAGE), 'utf8')
+  .then((raw) => JSON.parse(raw).version)
+  .catch(() => {
+    throw new Error('@hugeicons/core-free-icons is not installed. Run `pnpm install` first.')
+  })
 
 /**
  * The icons the control surface draws, as `name in the controller` ->
@@ -56,18 +66,15 @@ const ICONS = {
 const OUTPUT = fileURLToPath(new URL('../apps/controller/src/streamdeck/icon-set.mts', import.meta.url))
 
 /**
- * One icon's element list. A Hugeicons module is a plain array literal of
- * `[tag, attributes]` pairs assigned to a const and default-exported, so the
- * literal is lifted out and evaluated rather than parsed: the attribute keys
- * are unquoted JavaScript identifiers, not JSON.
+ * One icon's element list: a Hugeicons module default-exports an array of
+ * `[tag, attributes]` pairs. Each is imported by its own path so adding an icon
+ * costs one module rather than loading all 5,448.
  */
-async function fetchIcon(exportName) {
-  const url = `https://unpkg.com/@hugeicons/core-free-icons@${VERSION}/dist/esm/${exportName}.js`
-  const response = await fetch(url)
-  if (!response.ok) throw new Error(`${exportName}: ${response.status} ${response.statusText} from ${url}`)
-  const source = await response.text()
-  const literal = source.replace(/^\s*const\s+\w+\s*=\s*/, '').replace(/;?\s*export default\s+\w+;?\s*$/, '')
-  const elements = new Function(`return ${literal}`)()
+async function loadIcon(exportName) {
+  const module = await import(new URL(`dist/esm/${exportName}.js`, PACKAGE)).catch(() => {
+    throw new Error(`${exportName}: no such icon in @hugeicons/core-free-icons@${VERSION}`)
+  })
+  const elements = module.default
   if (!Array.isArray(elements) || elements.length === 0) throw new Error(`${exportName}: no elements`)
   return elements
 }
@@ -93,7 +100,7 @@ const names = Object.keys(ICONS).sort()
 const markup = new Map()
 for (const name of names) {
   const exportName = ICONS[name]
-  markup.set(name, toMarkup(await fetchIcon(exportName)))
+  markup.set(name, toMarkup(await loadIcon(exportName)))
   process.stdout.write(`  ${name} <- ${exportName}\n`)
 }
 

@@ -13,5 +13,8 @@
     "test": "pnpm --filter pimus-controller test",
     "playground": "pnpm --filter pimus-playground start",
     "dev": "pnpm --filter pimus-playground dev"
+  },
+  "devDependencies": {
+    "@hugeicons/core-free-icons": "4.2.3"
   }
 }

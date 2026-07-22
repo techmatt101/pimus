@@ -93,12 +93,14 @@ is the real 2D context, so paths, clipping, transforms, gradients, and
 compositing are available to any tile that wants them without a new helper.
 
 Icons are Hugeicons SVGs. `tools/generate-icons.mjs` (run with `make icons`)
-fetches only the icons the layout names from a pinned release and writes
-`streamdeck/icon-set.mts`, which is committed — so building, testing, and
-deploying need no icon package. `streamdeck/icons.mts` rasterizes one at the
-size and tint a tile asks for and caches the result; the artwork strokes in
-`currentColor`, so a key recolours its icon per state without touching the path
-data. Add an icon by adding a line to the tool's `ICONS` map and running
+imports only the icons the layout names from the `@hugeicons/core-free-icons`
+devDependency — a root development dependency, never the controller's — and
+writes `streamdeck/icon-set.mts`, which is committed. So building, testing, and
+deploying need no icon package, and the Pi never receives one; the full set is
+5,448 icons and roughly thirty are drawn. `streamdeck/icons.mts` rasterizes one
+at the size and tint a tile asks for and caches the result; the artwork strokes
+in `currentColor`, so a key recolours its icon per state without touching the
+path data. Add an icon by adding a line to the tool's `ICONS` map and running
 `make icons`.
 
 Text is drawn in Barlow Condensed, bundled at `apps/controller/assets/fonts/`
