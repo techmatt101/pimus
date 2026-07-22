@@ -70,21 +70,12 @@ voice_assistant_port: 6053
 voice_assistant_peripheral_port: 6055
 voice_assistant_debug: false
 
-# ReSpeaker state colours. Effects: off, breath, rainbow, single, doa, ring.
+# Whether this unit drives the ReSpeaker LED ring, and how bright it runs in
+# this room. Which appearance each voice state shows is compiled into the
+# controller and edited in apps/controller/src/voice/led-states.mts, exactly
+# as the deck layout is; see docs/configuration.md.
 respeaker_led_enabled: true
 respeaker_led_brightness: 64
-respeaker_led_states:
-  idle: { effect: doa, color: "#102030", accent: "#00bcd4" }
-  wake_word_detected: { effect: breath, color: "#00bcd4" }
-  listening: { effect: doa, color: "#001018", accent: "#00e5ff" }
-  thinking: { effect: rainbow, color: "#7c4dff" }
-  tts_speaking: { effect: breath, color: "#00c853" }
-  media_player_playing: { effect: single, color: "#1565c0" }
-  timer_ticking: { effect: single, color: "#ffab00" }
-  timer_ringing: { effect: breath, color: "#ff6d00" }
-  muted: { effect: single, color: "#d50000" }
-  disconnected: { effect: breath, color: "#d50000" }
-  pipeline_error: { effect: breath, color: "#ff1744" }
 
 # Whether this unit drives a Stream Deck+. The key and dial layout itself is
 # compiled into the controller and edited in

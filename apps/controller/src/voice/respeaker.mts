@@ -1,9 +1,14 @@
 // Maps voice state to a ReSpeaker LED appearance. The vendor protocol and USB
-// transport live in xvf3800-device.mts; this module only decides which
-// appearance the current state should show.
+// transport live in xvf3800-device.mts and the frame streaming in
+// led-renderer.mts; this module only decides which appearance the current
+// state should show.
 
-import { clampByte, Xvf3800Device } from './xvf3800-device.mjs'
-import type { LedDevice, LedStateSpec, LvaMessage, ReSpeakerConfig } from '../types.mjs'
+import { Leds } from './led-appearance.mjs'
+import type { LedAppearance } from './led-appearance.mjs'
+import { LedRenderer } from './led-renderer.mjs'
+import { VOICE_LED_STATES } from './led-states.mjs'
+import { Xvf3800Device } from './xvf3800-device.mjs'
+import type { LedDevice, LvaMessage, ReSpeakerConfig } from '../types.mjs'
 
 export interface ReSpeakerControllerOptions {
   config: ReSpeakerConfig
@@ -16,89 +21,59 @@ export interface ReSpeakerControllerOptions {
 
 export class ReSpeakerController {
   readonly config: ReSpeakerConfig
-  readonly device: LedDevice
-  private readonly logger: Pick<Console, 'warn'>
-  private readonly now: () => number
-  private readonly warningIntervalMilliseconds: number
+  private readonly states: ReadonlyMap<string, LedAppearance> = VOICE_LED_STATES
+  private readonly renderer: LedRenderer
   private assistState = 'disconnected'
   private muted = false
-  private lastSignature = ''
-  private lastWarningAt = Number.NEGATIVE_INFINITY
-  private lastWarningSignature = ''
-  private renderQueue: Promise<void> = Promise.resolve()
-  private watchTimer: NodeJS.Timeout | null = null
 
   constructor({
     config,
     device,
     voiceEnabled = true,
-    now = Date.now,
-    warningIntervalMilliseconds = 30_000,
-    logger = console,
+    now,
+    warningIntervalMilliseconds,
+    logger,
   }: ReSpeakerControllerOptions) {
     this.config = config
-    this.device = device ?? new Xvf3800Device({
-      vendorId: Number(config.vendor_id),
-      productId: Number(config.product_id),
+    this.renderer = new LedRenderer({
+      device: device ?? new Xvf3800Device({
+        vendorId: Number(config.vendor_id),
+        productId: Number(config.product_id),
+      }),
+      brightness: config.brightness ?? 64,
+      // The firmware speed for breath and rainbow; a state that needs its own
+      // pace sets it on the appearance in led-states.mts instead.
+      speed: 2,
+      now,
+      warningIntervalMilliseconds,
+      logger,
     })
-    this.logger = logger
-    this.now = now
-    this.warningIntervalMilliseconds = warningIntervalMilliseconds
     // An LED-only installation has no LVA socket to transition away from the
     // disconnected state, so begin at the normal idle appearance instead.
     if (!voiceEnabled) this.assistState = 'idle'
   }
 
-  desired(): LedStateSpec {
+  desired(): LedAppearance {
     const current = this.muted ? 'muted' : this.assistState
-    return { ...(this.config.states[current] ?? this.config.states.idle) }
+    return this.states.get(current) ?? this.states.get('idle') ?? Leds.off()
   }
 
-  render(force = false): Promise<void> {
-    this.renderQueue = this.renderQueue.then(async () => {
-      const spec = this.desired()
-      const signature = JSON.stringify(spec, Object.keys(spec).sort())
-      if (!force && signature === this.lastSignature) return
-      try {
-        await this.device.apply(
-          spec,
-          clampByte(spec.brightness ?? this.config.brightness ?? 64),
-          clampByte(this.config.speed ?? 2),
-        )
-        this.lastSignature = signature
-        this.lastWarningSignature = ''
-        this.lastWarningAt = Number.NEGATIVE_INFINITY
-      } catch (error) {
-        // USB devices can be unplugged or re-enumerated; the next watch tick
-        // retries and Xvf3800Device opens a fresh handle.
-        const warningSignature = String(error)
-        const now = this.now()
-        if (warningSignature !== this.lastWarningSignature
-            || now - this.lastWarningAt >= this.warningIntervalMilliseconds) {
-          this.logger.warn('Unable to update ReSpeaker LEDs', error)
-          this.lastWarningSignature = warningSignature
-          this.lastWarningAt = now
-        }
-      }
-    })
-    return this.renderQueue
+  render(): Promise<void> {
+    return this.renderer.show(this.desired())
   }
 
   start(): void {
-    void this.render(true)
-    // State changes arrive through handleEvent; this tick exists to retry USB
-    // delivery after an unplug or enumeration failure.
-    this.watchTimer = setInterval(() => void this.render(), 500)
+    this.renderer.start()
+    void this.render()
   }
 
   stop(): void {
-    if (this.watchTimer) clearInterval(this.watchTimer)
-    this.watchTimer = null
+    this.renderer.stop()
   }
 
   setDisconnected(): Promise<void> {
     this.assistState = 'disconnected'
-    return this.render(true)
+    return this.render()
   }
 
   async handleEvent(message: LvaMessage | undefined): Promise<void> {
@@ -112,7 +87,7 @@ export class ReSpeakerController {
       if (!this.muted) this.assistState = 'idle'
     } else if (event === 'zeroconf' && data.status === 'connected') {
       this.assistState = 'idle'
-    } else if (event && Object.hasOwn(this.config.states, event)) {
+    } else if (event && this.states.has(event)) {
       this.assistState = String(event)
     } else if ((event === 'media_player_paused' || event === 'media_player_idle')
         && this.assistState === 'media_player_playing') {
@@ -122,6 +97,6 @@ export class ReSpeakerController {
     } else if (event === 'timer_updated') {
       this.assistState = 'timer_ticking'
     }
-    await this.render(true)
+    await this.render()
   }
 }

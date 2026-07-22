@@ -77,11 +77,6 @@ function validateControllerConfig(value: unknown, configPath: string): asserts v
     }
   }
 
-  if (isRecord(value.respeaker) && value.respeaker.enabled) {
-    if (!isRecord(value.respeaker.states) || !isRecord(value.respeaker.states.idle)) {
-      throw new Error(`Controller configuration at ${configPath} must define an idle ReSpeaker state`)
-    }
-  }
 
 }
 

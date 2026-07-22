@@ -43,24 +43,6 @@ import { SleepController } from '../../controller/src/streamdeck/sleep.mjs'
 import { LvaClient } from '../../controller/src/voice/lva-client.mjs'
 import { ReSpeakerController } from '../../controller/src/voice/respeaker.mjs'
 
-/**
- * Mirrors the ReSpeaker LED defaults in ansible/inventory/group_vars/all.yml so
- * the ring in the browser shows the colours a provisioned Pi would show.
- */
-const LED_STATES = {
-  idle: { effect: 'doa', color: '#102030', accent: '#00bcd4' },
-  wake_word_detected: { effect: 'breath', color: '#00bcd4' },
-  listening: { effect: 'doa', color: '#001018', accent: '#00e5ff' },
-  thinking: { effect: 'rainbow', color: '#7c4dff' },
-  tts_speaking: { effect: 'breath', color: '#00c853' },
-  media_player_playing: { effect: 'single', color: '#1565c0' },
-  timer_ticking: { effect: 'single', color: '#ffab00' },
-  timer_ringing: { effect: 'breath', color: '#ff6d00' },
-  muted: { effect: 'single', color: '#d50000' },
-  disconnected: { effect: 'breath', color: '#d50000' },
-  pipeline_error: { effect: 'breath', color: '#ff1744' },
-}
-
 const argument = (name: string, fallback: string): string => {
   const match = process.argv.find((value) => value.startsWith(`--${name}=`))
   return match ? match.slice(name.length + 3) : fallback
@@ -100,8 +82,6 @@ await fs.promises.writeFile(configPath, JSON.stringify({
     vendor_id: 0x2886,
     product_id: 0x001a,
     brightness: 64,
-    speed: 2,
-    states: LED_STATES,
   },
 }, null, 2))
 // On the Pi systemd loads these from /etc/smartamp/secrets.env; here they stand

@@ -25,17 +25,6 @@ test('a controller socket is required, since it now carries duck requests too', 
   assert.throws(() => loadConfig(configFile), /must define audio_socket/)
 })
 
-test('an idle ReSpeaker state is required when the LEDs are enabled', (context) => {
-  const configFile = writeConfig(context, {
-    voice_enabled: false,
-    audio_socket: '/run/smartamp/audio.sock',
-    ducking: { enabled: false },
-    streamdeck: { enabled: false },
-    respeaker: { enabled: true },
-  })
-  assert.throws(() => loadConfig(configFile), /must define an idle ReSpeaker state/)
-})
-
 const BASE = {
   voice_enabled: false,
   audio_socket: '/run/smartamp/audio.sock',

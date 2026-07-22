@@ -35,27 +35,16 @@ export interface StreamDeckDeployment {
   enabled: boolean
 }
 
-/** One LED appearance: an effect name plus its colours and brightness. */
-export interface LedStateSpec {
-  effect?: string
-  color?: string
-  accent?: string
-  brightness?: number
-}
-
-/** Voice states map to LED appearances; `idle` is the required fallback. */
-export interface ReSpeakerStates {
-  idle: LedStateSpec
-  [state: string]: LedStateSpec | undefined
-}
-
+/**
+ * Which appearance each voice state shows is compiled into the controller at
+ * voice/led-states.mts, exactly as the deck layout is; deployment carries only
+ * the flag, the device match, and the room's brightness.
+ */
 export interface ReSpeakerConfig {
   enabled: boolean
   vendor_id: number
   product_id: number
   brightness: number
-  speed: number
-  states: ReSpeakerStates
 }
 
 /**
@@ -266,7 +255,42 @@ export interface UsbControlDevice {
 
 export type UsbDeviceFinder = (vendorId: number, productId: number) => UsbControlDevice | undefined
 
+/**
+ * XVF3800 firmware LED effect codes. The values are dictated by the XMOS
+ * firmware behind the 2886:001a vendor-control protocol; preserve them when
+ * changing LED behaviour. `Doa` is the firmware's direction-of-arrival mode:
+ * it lights the LEDs facing the detected voice.
+ */
+export enum LedEffect {
+  Off = 0,
+  Breath = 1,
+  Rainbow = 2,
+  Solid = 3,
+  Doa = 4,
+  Ring = 5,
+}
+
+/** The XVF3800 ring has twelve LEDs; LED_RING_COLOR takes one colour each. */
+export const LED_COUNT = 12
+
+/**
+ * One fully resolved LED write: everything the vendor protocol needs, with
+ * colours packed as 0xRRGGBB numbers. Animated appearances resolve to a fresh
+ * frame per tick, and the device writes only the commands whose values
+ * changed since the last frame.
+ */
+export interface LedFrame {
+  effect: LedEffect
+  brightness: number
+  speed: number
+  color: number
+  /** One colour per LED, exactly LED_COUNT entries, for the Ring effect. */
+  ring?: readonly number[]
+  /** Base and highlight colours for the Doa effect. */
+  direction?: { base: number; highlight: number }
+}
+
 /** The LED transport the ReSpeaker controller drives. */
 export interface LedDevice {
-  apply(spec: LedStateSpec, brightness: number, speed: number): Promise<void>
+  apply(frame: LedFrame): Promise<void>
 }

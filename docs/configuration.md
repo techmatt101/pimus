@@ -41,17 +41,32 @@ The XVF3800 already performs AEC, beamforming, dereverberation, noise suppressio
 
 ## ReSpeaker effects
 
-Each `respeaker_led_states` entry accepts:
+Inventory carries only `respeaker_led_enabled` and `respeaker_led_brightness`.
+Which appearance each voice state shows is compiled into the controller and
+edited in `apps/controller/src/voice/led-states.mts`, exactly as the deck
+layout is: one line per state, built with the `Leds` helpers, so restyling the
+ring is an edit and a redeploy rather than an inventory change.
 
-```yaml
-listening:
-  effect: doa        # off, breath, rainbow, single, doa, ring
-  color: "#001018"
-  accent: "#00e5ff" # DOA highlight
+```ts
+thinking: Leds.spin('#7c4dff'),
+listening: Leds.direction('#001018', '#00e5ff'),
 ```
 
-The `ring` effect writes all 12 XVF3800 ring-colour slots using `color`.
-The `doa` effect uses `color` for the base plus `accent` for its highlight.
+| Helper | What the ring shows |
+| --- | --- |
+| `Leds.off()` | Every LED dark. |
+| `Leds.solid(color)` | One steady colour. |
+| `Leds.pulse(color)` | The colour swelling and fading (firmware breathing). |
+| `Leds.rainbow()` | The firmware rainbow cycle. |
+| `Leds.colors([…])` | A fixed colour per LED — the list repeats around the ring, so an explicit rainbow (`rainbowColors()`) or a gradient is just a list. |
+| `Leds.spin(color \| [...])` | The colours rotating like a loading spinner; a single colour gets a comet tail. `periodMs` sets the rotation time. |
+| `Leds.blink(color)` | The whole ring flashing on and off. |
+| `Leds.progress(fraction, color)` | A fraction of the ring lit, for readouts. |
+| `Leds.direction(base, highlight)` | The LEDs facing the detected voice light in the highlight colour (the XVF3800's direction-of-arrival tracking). |
+
+Every helper accepts a `brightness` override; `spin` and `blink` are animated
+by the controller, which streams per-LED frames over USB, while the other
+effects run inside the XVF3800 firmware.
 
 The ring is purely reactive: it renders the configured appearance for the
 current voice, media, timer, mute, or error state and nothing else. There is

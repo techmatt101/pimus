@@ -415,7 +415,9 @@ function renderState(state) {
     <div class="cell" style="grid-column: span 2">
       <div class="k">respeaker ring</div>
       <div class="ring">
-        <span class="halo" style="border-color:${led.color || '#222'};background:${led.accent || 'transparent'}"></span>
+        <span class="halo" style="${led.colors
+          ? `border-color:transparent;background:conic-gradient(${led.colors.join(',')})`
+          : `border-color:${led.color || '#222'};background:${led.accent || 'transparent'}`}"></span>
         <span class="v">${led.effect || 'off'}<br><span style="font-size:11px;color:var(--dim)">${led.color || ''}</span></span>
       </div>
     </div>`

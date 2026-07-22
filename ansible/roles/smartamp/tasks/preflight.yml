@@ -157,17 +157,13 @@
 # (streamdeck/layout.mts) and validated by its own Node test, so there is no
 # YAML layout to schema-check here.
 
-# The XVF3800 protocol accepts only the documented effects and byte brightness.
-# Check every state colour here so a typo cannot turn into an unintended LED.
-- name: Validate ReSpeaker LED states
+# The ReSpeaker state-to-appearance map is compiled into the controller
+# (voice/led-states.mts) and validated by its own Node test, exactly as the
+# deck layout is; only the ring brightness deploys from inventory.
+- name: Validate ReSpeaker LED brightness
   ansible.builtin.assert:
     that:
-      - item.value.effect in ['off', 'breath', 'rainbow', 'single', 'doa', 'ring']
-      - item.value.color is match('^#[0-9A-Fa-f]{6}$')
-      - item.value.accent is not defined or item.value.accent is match('^#[0-9A-Fa-f]{6}$')
-      - item.value.brightness is not defined or ((item.value.brightness | int) >= 0 and (item.value.brightness | int) <= 255)
-    fail_msg: "ReSpeaker state {{ item.key }} has an invalid effect, colour, or brightness."
-  loop: "{{ respeaker_led_states | dict2items }}"
-  loop_control:
-    label: "{{ item.key }}"
+      - (respeaker_led_brightness | int) >= 0
+      - (respeaker_led_brightness | int) <= 255
+    fail_msg: "respeaker_led_brightness must be a byte (0-255)."
   when: respeaker_led_enabled | bool

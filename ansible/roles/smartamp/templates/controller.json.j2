@@ -27,12 +27,13 @@
     "enabled": {{ (remote_tiles_enabled | bool) | to_json }},
     "port": {{ remote_tiles_port | int }}
   },
+  {# Which appearance each voice state shows is compiled into the controller
+     (voice/led-states.mts), as the deck layout is; only the flag and the
+     room's brightness deploy from here. #}
   "respeaker": {
     "enabled": {{ respeaker_led_enabled | bool | to_json }},
     "vendor_id": 10374,
     "product_id": 26,
-    "brightness": {{ respeaker_led_brightness | int }},
-    "speed": 2,
-    "states": {{ respeaker_led_states | to_nice_json }}
+    "brightness": {{ respeaker_led_brightness | int }}
   }
 }

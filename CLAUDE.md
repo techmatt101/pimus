@@ -199,7 +199,11 @@ runtime validation, and relevant documentation together.
   ReSpeaker attached.
 - Keep `voice/xvf3800-device.mts` limited to the vendor protocol and USB
   transport; which appearance a voice state should show belongs in
-  `voice/respeaker.mts`.
+  `voice/respeaker.mts`. The state-to-appearance map itself is compiled in at
+  `voice/led-states.mts` (built with the `Leds` helpers from
+  `voice/led-appearance.mts`), exactly as the deck layout is; only the
+  `respeaker_led_enabled` flag and `respeaker_led_brightness` live in
+  inventory. Do not reintroduce LED styling as deployed configuration.
 - Preserve the XVF3800 vendor-control protocol and the `2886:001a` device match
   when changing LED behavior.
 

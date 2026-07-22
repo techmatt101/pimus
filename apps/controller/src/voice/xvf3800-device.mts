@@ -1,15 +1,12 @@
 // The XVF3800 vendor-control protocol and its USB transport. Keeping this
-// separate from respeaker.mts draws the line between how LED commands reach the
-// hardware and which appearance the voice state asks for.
+// separate from respeaker.mts and led-renderer.mts draws the line between how
+// LED commands reach the hardware and which appearance should be showing.
 //
 // The protocol constants and the 2886:001a device match are dictated by the
 // XMOS firmware; preserve them when changing LED behaviour.
 
-import type { LedDevice, LedStateSpec, UsbControlDevice, UsbDeviceFinder } from '../types.mjs'
+import type { LedDevice, LedFrame, UsbControlDevice, UsbDeviceFinder } from '../types.mjs'
 
-export const EFFECTS = Object.freeze({ off: 0, breath: 1, rainbow: 2, single: 3, doa: 4, ring: 5 })
-
-export type EffectName = keyof typeof EFFECTS
 export type DataType = 'uint8' | 'uint32'
 export type CommandName =
   | 'LED_EFFECT'
@@ -34,14 +31,7 @@ export const COMMANDS: Readonly<Record<CommandName, readonly [number, number, Da
 export const clampByte = (value: number): number =>
   Math.max(0, Math.min(255, Math.round(Number(value))))
 
-const isEffectName = (value: string): value is EffectName => Object.hasOwn(EFFECTS, value)
-
-export function rgb(value: string): number {
-  const parsed = Number.parseInt(String(value).replace(/^#/, ''), 16)
-  return Number.isFinite(parsed) ? parsed & 0xFFFFFF : 0
-}
-
-export function encodePayload(dataType: DataType, values: number[]): Buffer {
+export function encodePayload(dataType: DataType, values: readonly number[]): Buffer {
   if (dataType === 'uint8') return Buffer.from(values.map(clampByte))
   const payload = Buffer.alloc(values.length * 4)
   values.forEach((value, index) => payload.writeUInt32LE(Number(value) >>> 0, index * 4))
@@ -59,6 +49,7 @@ export class Xvf3800Device implements LedDevice {
   readonly productId: number
   private findDevice: UsbDeviceFinder | null
   private device: UsbControlDevice | null = null
+  private written = new Map<CommandName, string>()
 
   constructor({ vendorId, productId, findDevice = null }: Xvf3800Options) {
     this.vendorId = vendorId
@@ -81,10 +72,13 @@ export class Xvf3800Device implements LedDevice {
     device.open()
     device.timeout = 8000
     this.device = device
+    // A fresh handle may be a re-enumerated device in an unknown state, so
+    // nothing it was previously sent can be assumed to still be set.
+    this.written.clear()
     return device
   }
 
-  async write(name: CommandName, values: number[]): Promise<void> {
+  async write(name: CommandName, values: readonly number[]): Promise<void> {
     const device = this.device ?? await this.connect()
     const [resourceId, command, dataType] = COMMANDS[name]
     const payload = encodePayload(dataType, values)
@@ -98,23 +92,29 @@ export class Xvf3800Device implements LedDevice {
     } catch (error) {
       try { this.device?.close() } catch {}
       this.device = null
+      this.written.clear()
       throw error
     }
   }
 
-  async apply(spec: LedStateSpec, brightness: number, speed: number): Promise<void> {
-    const requestedEffect = String(spec.effect || 'off').toLowerCase()
-    const effect: EffectName = isEffectName(requestedEffect) ? requestedEffect : 'single'
-    await this.write('LED_BRIGHTNESS', [brightness])
-    await this.write('LED_SPEED', [speed])
-    await this.write('LED_COLOR', [rgb(spec.color || '#000000')])
-    if (effect === 'doa') {
-      await this.write('LED_DOA_COLOR', [rgb(spec.color || '#000000'), rgb(spec.accent || '#00bcd4')])
-    } else if (effect === 'ring') {
-      // XVF3800 ring mode reads a separate colour for each of its 12 LEDs.
-      // The current config exposes one colour, so fill the entire ring with it.
-      await this.write('LED_RING_COLOR', Array(12).fill(rgb(spec.color || '#000000')))
+  /** Writes a command only when its values differ from the last delivery. */
+  private async writeChanged(name: CommandName, values: readonly number[]): Promise<void> {
+    const signature = values.join(',')
+    if (this.written.get(name) === signature) return
+    await this.write(name, values)
+    this.written.set(name, signature)
+  }
+
+  async apply(frame: LedFrame): Promise<void> {
+    await this.writeChanged('LED_BRIGHTNESS', [clampByte(frame.brightness)])
+    await this.writeChanged('LED_SPEED', [clampByte(frame.speed)])
+    await this.writeChanged('LED_COLOR', [frame.color])
+    if (frame.direction) {
+      await this.writeChanged('LED_DOA_COLOR', [frame.direction.base, frame.direction.highlight])
     }
-    await this.write('LED_EFFECT', [EFFECTS[effect]])
+    if (frame.ring) await this.writeChanged('LED_RING_COLOR', frame.ring)
+    // The effect goes last so the firmware never briefly runs a new effect
+    // with the previous frame's colours.
+    await this.writeChanged('LED_EFFECT', [frame.effect])
   }
 }
