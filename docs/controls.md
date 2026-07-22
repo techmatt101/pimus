@@ -238,7 +238,7 @@ Does nothing. Use the `none()` binding to blank a dial direction you do not
 want bound.
 
 ```ts
-{ label: 'SPARE', left: none(), right: none(), press: none(), detail: () => 'NOT IN USE' }
+new ActionDial({ label: 'SPARE', left: none(), right: none(), press: none(), readout: 'NOT IN USE' })
 ```
 
 ## Key and dial feedback
@@ -259,20 +259,36 @@ indicator: it draws a play or pause icon and colours itself from the playback
 state. That state-driven rendering lives in the tile (see [Tiles](#tiles)), not
 in the catalog.
 
-A dial's readout follows the actions bound to it rather than its position: a
-dial with a master volume action shows the volume percentage or `MUTED`, a dial
-with a route action shows `ON` or `OFF`, and anything else shows the voice
-assistant state. Reordering the dials in `layout.mts` keeps each readout correct.
-The readout is shown across the whole strip while the dial is being turned, not
-in a column of its own.
+## Dials
 
-A dial reporting something the bound actions cannot express supplies its own
-`detail(context)` — the dial equivalent of a tile drawing its own face. The
-dynamic dial uses it to show brightness, speed, or how far open something is,
-and the media dial to show `PLAYING` or `PAUSED`. A dial whose value really is a
-level also supplies `level(context)`, a 0–1 fraction drawn as a bar under the
-readout; master volume needs none, since the readout derives it from the bound
-action.
+Each knob is a **`Dial`** — an interface in `streamdeck/dials/dial.mts`, with one
+implementing class per file in `streamdeck/dials/`. A dial is the rotary
+counterpart of a tile: it owns what turning and pressing it does *and* what it
+reads out, so reordering the dials in `layout.mts` keeps every readout correct
+and nothing has to work out what a knob means from what it happens to be bound
+to.
+
+Unlike a tile, a dial does not paint. The four share one face, drawn across the
+whole strip by `DialScreen` while a knob is being turned; what a dial owns is
+the content of that face:
+
+- `detail(context)` is required and is the value line — `67%`, `PLAYING`,
+  `NOT IN USE`. It has to read short and true even with nothing connected, since
+  the strip shows it the instant a hand touches the knob.
+- `level(context)` is optional: a 0–1 fraction drawn as a bar under the reading,
+  for a value that really is a level. A bar is what makes a value readable while
+  the knob is still moving. A dial with nothing to plot omits it.
+
+| Dial | What it is |
+| --- | --- |
+| `ActionDial` | The default: a fixed name, up to three bindings, and a readout it is told. Also how a knob is held open — bound to nothing and saying so. |
+| `VolumeDial` | Master output volume, read from the controller's own state so it is right with nothing else reachable. `MUTED` is its own reading, and an empty bar. |
+| `MediaDial` | Transport: skip through the Music Assistant player, press to play or pause through LVA, and read `PLAYING` / `PAUSED`. |
+| `EntityDial` | A Home Assistant entity turned by its own domain. Built by `EntityDial.for(...)`, which returns nothing for a domain with nothing to turn. |
+| `DynamicDial` | The shared knob, delegating to whichever `Dial` a key last handed it. |
+
+Write a new `Dial` class when a knob needs a reading it has to work out for
+itself; use `ActionDial` when it can be told.
 
 The four dials as shipped:
 
@@ -304,7 +320,7 @@ its top edge — the same colour as the dial's own bar — so you can see which 
 the three the knob will move without turning it to find out.
 
 What turning it does comes from the entity's own domain, exactly as the toggle
-service does (`entityDial` in `streamdeck/dynamic-dial.mts`):
+service does (`EntityDial` in `streamdeck/dials/entity-dial.mts`):
 
 | Domain | Turn left / right | Readout |
 | --- | --- | --- |

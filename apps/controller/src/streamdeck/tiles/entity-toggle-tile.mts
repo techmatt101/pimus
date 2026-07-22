@@ -8,14 +8,16 @@
 // `fan.office_ceiling` is toggled by `fan.toggle` and `cover.office_blinds` by
 // `cover.toggle` without the layout naming a service.
 //
-// Given the shared dial (streamdeck/dynamic-dial.mts), a press also hands it
+// Given the shared dial (streamdeck/dials/dynamic-dial.mts), a press also hands it
 // this entity, so the same three keys that flip the fan, blinds, and lights are
 // how you pick which of them the dial is turning.
 
 import { requireEntity } from '../../actions/catalog.mjs'
 import { isEntityOn } from '../../home-assistant/entity.mjs'
 import { createBindings, type Binding, type TileServices } from '../bindings.mjs'
-import { entityDial, type DialControl, type DynamicDial } from '../dynamic-dial.mjs'
+import type { Dial } from '../dials/dial.mjs'
+import { DynamicDial } from '../dials/dynamic-dial.mjs'
+import { EntityDial } from '../dials/entity-dial.mjs'
 import { withAlpha, type Surface } from '../surface.mjs'
 import {
   drawBackground,
@@ -79,7 +81,7 @@ export class EntityToggleTile implements Tile {
   private readonly entity: string
   private readonly toggle: Binding
   private readonly dial: DynamicDial | undefined
-  private readonly control: DialControl | undefined
+  private readonly control: Dial | undefined
   private host: TileHost | null = null
   private unwatch: (() => void) | null = null
   private animation: NodeJS.Timeout | null = null
@@ -90,7 +92,7 @@ export class EntityToggleTile implements Tile {
     this.entity = requireEntity(config.entity, `${config.label} tile`)
     this.toggle = createBindings(services).ha('toggle', this.entity)
     this.dial = config.dial
-    this.control = config.dial ? entityDial(services, config.label, this.entity) : undefined
+    this.control = config.dial ? EntityDial.for(services, config.label, this.entity) : undefined
   }
 
   action(): Action {

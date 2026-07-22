@@ -9,9 +9,9 @@
 // navigation, leaving six slots for a page's tiles. Those six are named so a
 // page reads as a fixed grid rather than a count-the-positions array.
 
-import type { Binding } from './bindings.mjs'
+import type { Dial } from './dials/dial.mjs'
 import type { TouchStrip } from './strip.mjs'
-import type { Tile, TileContext } from './tiles/tile.mjs'
+import type { Tile } from './tiles/tile.mjs'
 
 /** Physical key index of the previous-page corner. */
 export const PREV_KEY = 4
@@ -58,35 +58,6 @@ export interface StreamDeckPage {
 }
 
 /**
- * One physical dial: a name plus the bindings run on counter-clockwise turn,
- * clockwise turn, and press. The bindings' declarative actions also drive the
- * dial's readout (screens/dial-screen.mts) and layout validation.
- *
- * The label and readout are shown across the whole touch strip while the dial is
- * being turned, not as a permanent column of its own; the strip's resting face
- * is what is playing (streamdeck/strip.mts).
- *
- * A dial reporting something the bound actions cannot express — a light's
- * brightness, or which track a player is on — supplies its own `detail`, the
- * dial equivalent of a Tile drawing its own face.
- */
-export interface StreamDeckDial {
-  label: string
-  left?: Binding
-  right?: Binding
-  press?: Binding
-  /** The value line under the label. Falls back to the bound actions' readout. */
-  detail?(context: TileContext): string
-  /**
-   * The dial's value as a 0-1 fraction, drawn as a bar under the readout. Only
-   * for a dial whose value really is a level — volume, brightness — since a bar
-   * is what makes one readable mid-turn. Master volume needs no `level` of its
-   * own; the readout derives it from the bound action.
-   */
-  level?(context: TileContext): number | undefined
-}
-
-/**
  * The compiled control surface: panel brightness, the paged tile grid, the
  * persistent dial bindings, and the touch strip. The dials and the strip are
  * shared across every page; only the grid changes when you navigate.
@@ -94,7 +65,7 @@ export interface StreamDeckDial {
 export interface StreamDeckLayout {
   brightness: number
   pages: StreamDeckPage[]
-  dials: StreamDeckDial[]
+  dials: Dial[]
   /** The 800x100 display above the dials, and which screen it shows when. */
   strip: TouchStrip
 }

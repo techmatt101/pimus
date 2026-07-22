@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { createState } from '../../src/state.mjs'
-import type { Binding } from '../../src/streamdeck/bindings.mjs'
+import type { Dial } from '../../src/streamdeck/dials/dial.mjs'
 import type { Screen, ScreenContext } from '../../src/streamdeck/screens/screen.mjs'
 import type { Surface } from '../../src/streamdeck/surface.mjs'
 import { TouchStrip } from '../../src/streamdeck/strip.mjs'
@@ -48,9 +48,10 @@ const notification = (expiresAt = 10_000): Notification =>
   ({ title: 'FRONT DOOR', message: 'SOMEONE IS AT THE DOOR', color: '#b71c1c', shownAt: 0, expiresAt })
 
 const pressed: string[] = []
-const dial = (label: string): { label: string; press: Binding } => ({
+const dial = (label: string): Dial => ({
   label,
   press: { action: { type: 'noop' }, run: () => pressed.push(label) },
+  detail: () => label,
 })
 
 test('the strip rests on what is playing and hands itself to the dial being turned', () => {

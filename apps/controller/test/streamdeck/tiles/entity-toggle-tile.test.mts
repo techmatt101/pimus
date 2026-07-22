@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { DynamicDial } from '../../../src/streamdeck/dynamic-dial.mjs'
+import { DynamicDial } from '../../../src/streamdeck/dials/dynamic-dial.mjs'
 import { EntityToggleTile } from '../../../src/streamdeck/tiles/entity-toggle-tile.mjs'
 import { eventually, testContext, testHost, testServices, tileFace } from '../../support/fixtures.mjs'
 

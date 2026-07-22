@@ -9,7 +9,7 @@
 
 import { BOLD, measureText, type Surface } from '../surface.mjs'
 import type { TileContext } from '../tiles/tile.mjs'
-import type { StreamDeckDial } from '../grid.mjs'
+import type { Dial } from '../dials/dial.mjs'
 import type { Notification } from '../../types.mjs'
 
 /** The touch strip's pixel size, shared by every screen that draws on it. */
@@ -32,7 +32,7 @@ export const SCROLL_FRAME_MILLISECONDS = 80
  * screen never has to ask the strip what it is being drawn for.
  */
 export interface ScreenContext extends TileContext {
-  dial?: StreamDeckDial | undefined
+  dial?: Dial | undefined
   notification?: Notification | undefined
 }
 

@@ -19,7 +19,7 @@ import {
 } from '../../src/streamdeck/screens/screen.mjs'
 import { TouchStrip } from '../../src/streamdeck/strip.mjs'
 import { Surface } from '../../src/streamdeck/surface.mjs'
-import type { StreamDeckDial } from '../../src/streamdeck/grid.mjs'
+import type { Dial } from '../../src/streamdeck/dials/dial.mjs'
 import { KEY_SIZE, type Tile, type TileContext, type TileHost } from '../../src/streamdeck/tiles/tile.mjs'
 import type {
   AudioState,
@@ -170,7 +170,7 @@ function paint(surface: Surface, draw: (surface: Surface) => void): Face {
  * layout without caring what the strip rests on.
  */
 export function testStrip(
-  dials: readonly StreamDeckDial[] = [],
+  dials: readonly Dial[] = [],
   notifications?: NotificationFeed,
 ): TouchStrip {
   return new TouchStrip({ resting: new BlankScreen(), dials, ...(notifications ? { notifications } : {}) })

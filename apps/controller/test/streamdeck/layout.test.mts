@@ -3,7 +3,6 @@ import test from 'node:test'
 
 import { describeActionProblem } from '../../src/actions/catalog.mjs'
 import { createLayout } from '../../src/streamdeck/layout.mjs'
-import { dialDetail } from '../../src/streamdeck/screens/dial-screen.mjs'
 import { SceneTile } from '../../src/streamdeck/tiles/scene-tile.mjs'
 import { testContext, testServices } from '../support/fixtures.mjs'
 
@@ -74,11 +73,11 @@ test('the dynamic dial follows the last room key pressed', () => {
 
   // Before anything is pressed the dial says what it is for rather than
   // pretending to control something.
-  assert.equal(dialDetail(CONTEXT, dial), 'PICK A KEY')
+  assert.equal(dial.detail(CONTEXT), 'PICK A KEY')
 
   room.grid.bottomRight?.press(CONTEXT)
   assert.equal(dial.label, 'LIGHTS')
-  assert.equal(dialDetail(CONTEXT, dial), '50%')
+  assert.equal(dial.detail(CONTEXT), '50%')
   dial.right?.run()
 
   room.grid.topMidLeft?.press(CONTEXT)
@@ -99,7 +98,7 @@ test('every dial readout is a short string, whatever the deck knows', () => {
   // Nothing is connected in this fixture, which is the worst case for a
   // readout: it must still render rather than throw or print "undefined".
   for (const dial of layout.dials) {
-    const detail = dialDetail(CONTEXT, dial)
+    const detail = dial.detail(CONTEXT)
     assert.equal(typeof detail, 'string')
     assert.ok(detail.length > 0 && detail.length <= 12, `${dial.label} readout "${detail}" fits the strip`)
   }

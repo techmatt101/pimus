@@ -41,6 +41,7 @@ apps/
       home-assistant/    HA WebSocket client, entity cache, entity reading,
                          and the notification queue automations push to
       streamdeck/        Stream Deck lifecycle, bindings, drawing, and icons
+        dials/           One Dial class per file (a knob's behaviour + readout)
         screens/         One Screen class per file (a full touch-strip face)
         tiles/           One Tile class per file (key behaviour + face)
       voice/             LVA WebSocket and ReSpeaker LEDs
@@ -132,13 +133,20 @@ runtime validation, and relevant documentation together.
   repaint just its key via `host.invalidate()` — e.g. a timer for animation,
   with the phase derived from `context.now` so render stays pure. Drop every
   timer and subscription in `unmount`.
-- Three of the four dials are fixed (volume, media, and a spare); the fourth is
-  the shared `DynamicDial` (`streamdeck/dynamic-dial.mts`), which controls
-  whichever entity a key last handed it. A key claims it by taking `dial` in its
-  config and calling `claim()` as it is pressed; what turning does comes from the
-  entity's own domain via `entityDial`, exactly as `EntityToggleTile` derives its
-  service. Add a domain by adding a row to `DIAL_DOMAINS` and its stepping
-  actions to the catalog — do not give a device its own dial.
+- Each dial is a `Dial` — an interface in `streamdeck/dials/dial.mts`, with one
+  implementing class per file in `streamdeck/dials/`, exactly as tiles are
+  arranged. A dial owns what turning and pressing it does and what it reads out;
+  `detail(context)` is required, so no code outside a dial ever infers a readout
+  from what the dial happens to be bound to. Dials do not paint: the four share
+  one face drawn by `screens/dial-screen.mts`. Use `ActionDial` for a knob that
+  can be told its readout; write a new class when it must work one out.
+- Three of the four dials are fixed (`VolumeDial`, `MediaDial`, and a spare
+  `ActionDial`); the fourth is the shared `DynamicDial`, which controls whichever
+  entity a key last handed it. A key claims it by taking `dial` in its config and
+  calling `claim()` as it is pressed; what turning does comes from the entity's
+  own domain via `EntityDial.for()`, exactly as `EntityToggleTile` derives its
+  service. Add a domain by adding a row to `DIAL_DOMAINS` (in `entity-dial.mts`)
+  and its stepping actions to the catalog — do not give a device its own dial.
 - The touch strip is one full-width display, not four dial labels. `TouchStrip`
   (`streamdeck/strip.mts`) owns which `Screen` (`streamdeck/screens/`, one class
   per file) is showing: the dial being turned wins for a short hold, then a live

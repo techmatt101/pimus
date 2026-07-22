@@ -32,12 +32,19 @@
 // every page, so volume and transport are always one turn away whichever page
 // is showing. The fourth dial is the exception: it has no fixed job and
 // controls whichever of the lights, fan, or blinds you last pressed
-// (streamdeck/dynamic-dial.mts).
+// (streamdeck/dials/dynamic-dial.mts). Every dial is a Dial class in
+// streamdeck/dials/, the rotary counterpart of a Tile: it owns what turning it
+// does and what it reads out, so the strip never has to work that out.
+
 
 import { isEntityOn, numericAttribute } from '../home-assistant/entity.mjs'
 import { createBindings, type Binding, type TileServices } from './bindings.mjs'
-import { DynamicDial } from './dynamic-dial.mjs'
-import type { StreamDeckDial, StreamDeckPage, StreamDeckLayout } from './grid.mjs'
+import { ActionDial } from './dials/action-dial.mjs'
+import type { Dial } from './dials/dial.mjs'
+import { DynamicDial } from './dials/dynamic-dial.mjs'
+import { MediaDial } from './dials/media-dial.mjs'
+import { VolumeDial } from './dials/volume-dial.mjs'
+import type { StreamDeckPage, StreamDeckLayout } from './grid.mjs'
 import { NowPlayingScreen } from './screens/now-playing-screen.mjs'
 import { TouchStrip } from './strip.mjs'
 import { ActionTile } from './tiles/action-tile.mjs'
@@ -109,7 +116,7 @@ const TIMER_DURATION = '00:05:00'
 export function createLayout(services: TileServices): StreamDeckLayout {
   // `route` is still available for a key bound straight to one audio route; the
   // AudioModeTile below owns aux and usb together, so nothing here uses it.
-  const { voice, volume, ha, none } = createBindings(services)
+  const { voice, none } = createBindings(services)
   const key = (label: string, color: string, binding: Binding): Tile =>
     new ActionTile({ label, color, binding })
 
@@ -219,29 +226,17 @@ export function createLayout(services: TileServices): StreamDeckLayout {
 
   // Four dials, left to right. The first three are fixed, because a knob you
   // have to look at before turning is a knob you stop using; the fourth is
-  // deliberately not, and follows the last room key you pressed. A dial's
-  // readout follows the actions bound to it, so the display stays correct
-  // however these are ordered; a dial that knows something the actions cannot
-  // express supplies its own `detail`, and one whose value is a level supplies
-  // `level` for the bar under it. The readout is shown across the whole touch
-  // strip while the dial is being turned — see the strip below.
-  const dials: StreamDeckDial[] = [
-    { label: 'VOLUME', left: volume('down'), right: volume('up'), press: volume('mute') },
-    {
-      label: 'MEDIA',
-      // Transport goes through the Music Assistant player rather than LVA: the
-      // LVA media player is the satellite's own announcement player and has no
-      // queue to skip through. Play/pause stays on LVA because that is where
-      // the controller's playback state comes from.
-      left: ha('media_previous', HA.player),
-      right: ha('media_next', HA.player),
-      press: voice('media_toggle'),
-      detail: ({ state }) => (state.media ? 'PLAYING' : 'PAUSED'),
-    },
-    // Held open rather than filled with something half-wanted. An explicit
-    // `detail` is what keeps it from falling back to the assist readout and
-    // looking like a voice dial that has stopped responding.
-    { label: 'SPARE', left: none(), right: none(), press: none(), detail: () => 'NOT IN USE' },
+  // deliberately not, and follows the last room key you pressed. Each carries
+  // its own readout, so the display stays correct however these are ordered.
+  // That readout is shown across the whole touch strip while the dial is being
+  // turned — see the strip below.
+  const dials: Dial[] = [
+    new VolumeDial(services),
+    new MediaDial(services, { player: HA.player }),
+    // Held open rather than filled with something half-wanted. Bound to nothing
+    // and saying so, rather than left to look like a dial that has stopped
+    // responding.
+    new ActionDial({ label: 'SPARE', left: none(), right: none(), press: none(), readout: 'NOT IN USE' }),
     dynamic,
   ]
 

@@ -18,7 +18,7 @@ import { DialScreen } from './screens/dial-screen.mjs'
 import { NotificationScreen } from './screens/notification-screen.mjs'
 import type { Screen, ScreenContext, ScreenHost } from './screens/screen.mjs'
 import type { Surface } from './surface.mjs'
-import type { StreamDeckDial } from './grid.mjs'
+import type { Dial } from './dials/dial.mjs'
 import type { TileContext } from './tiles/tile.mjs'
 import type { NotificationFeed } from '../types.mjs'
 
@@ -32,7 +32,7 @@ export interface TouchStripOptions {
   /** What the strip shows when nothing else is claiming it. */
   resting: Screen
   /** The layout's dials, so a press on the strip runs the dial beneath it. */
-  dials: readonly StreamDeckDial[]
+  dials: readonly Dial[]
   /** Messages pushed from Home Assistant; omitted when nothing can push any. */
   notifications?: NotificationFeed
   dialHoldMilliseconds?: number
@@ -40,7 +40,7 @@ export interface TouchStripOptions {
 
 export class TouchStrip {
   private readonly resting: Screen
-  private readonly dials: readonly StreamDeckDial[]
+  private readonly dials: readonly Dial[]
   private readonly notifications: NotificationFeed | undefined
   private readonly dialHoldMilliseconds: number
   private readonly dialScreen = new DialScreen()
