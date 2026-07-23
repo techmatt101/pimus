@@ -10,7 +10,7 @@ Device match expressions search every PipeWire/Pulse node property. Use `pactl l
 
 Set `smartamp_aux_enabled` to choose whether aux monitoring starts on boot. USB monitoring is initially enabled when `usb_audio_gadget_enabled` is true. Stream Deck route toggles last until the next reboot; every boot starts from these inventory defaults.
 
-Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Sendspin and USB computer audio share the `smartamp_background_sink_name` bus and fade to `smartamp_voice_duck_volume_percent` during an Assist interaction. `smartamp_voice_duck_fade_ms` controls the transition. The controller requests ducking over the audio manager's control socket, which releases the request automatically if the controller disconnects.
+Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Sendspin and USB computer audio share the `smartamp_background_sink_name` bus and fade down to `smartamp_voice_duck_volume_percent` per cent of their normal level during an Assist interaction — the value is the level the music plays *at* while ducked (reduced to 15%, not by 15%), and it returns to 100% afterwards. `smartamp_voice_duck_fade_ms` controls the transition. The controller requests ducking over the audio manager's control socket, which releases the request automatically if the controller disconnects.
 
 Aux is deliberately not on the duckable bus. It continues at its selected level during voice interactions. Set the generated source target to `background` as a code-level extension if aux should follow the same policy.
 
@@ -118,8 +118,6 @@ The presence sensor that puts the deck to sleep is one of those entities, in the
 `SLEEP` block of the same file along with how long the panel outstays you. See
 [sleeping when the room is empty](controls.md#sleeping-when-the-room-is-empty);
 running without Home Assistant simply keeps the deck lit.
-
-Webhook actions POST to `home_assistant_webhook_base/<id>`. Configure a Home Assistant webhook trigger and set the base to `http://homeassistant.local:8123/api/webhook`. Treat webhook IDs as secrets if the endpoint is reachable outside a trusted LAN. A webhook stores no token, but it is write-only: a key bound to one can fire an automation and show nothing back.
 
 ### Remote tiles
 

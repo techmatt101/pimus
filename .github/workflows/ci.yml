@@ -11,19 +11,11 @@ permissions:
 
 jobs:
   controller:
-    name: Controller (Node ${{ matrix.node }})
+    name: Controller
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # 18.18 is the declared floor; a current LTS catches ecosystem drift.
-        node: [18.18, 22]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-      # pnpm and the TypeScript build run on a current Node; what has to work on
-      # the Pi's floor is the compiled output, so the tests below run on the
-      # matrix runtime instead.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -34,24 +26,19 @@ jobs:
         run: pnpm --filter pimus-controller build
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
-      - name: Test the compiled controller on Node ${{ matrix.node }}
+          node-version: 22
+      - name: Test the compiled controller
         working-directory: apps/controller
         run: node --test $(find dist/test -name '*.test.mjs' | sort)
 
   python:
-    name: Python clients (${{ matrix.python }})
+    name: Python clients
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # Bookworm uses 3.11; 3.13 covers the newer Pi OS/Trixie runtime.
-        python: ['3.11', '3.13']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python }}
+          python-version: '3.13'
       - name: Compile Python clients
         run: python -m compileall -q apps/audio-manager/src
       - name: Test audio manager

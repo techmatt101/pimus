@@ -15,7 +15,6 @@ export type LogCategory =
   | 'wpctl'
   | 'led'
   | 'duck'
-  | 'webhook'
   | 'home-assistant'
   | 'remote'
 

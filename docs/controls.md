@@ -62,7 +62,7 @@ central dispatcher:
 
 - `ActionTile` (`tiles/action-tile.mts`) is the default: a fixed label and
   colour that runs one binding (a declarative action paired with its
-  behaviour, built by the `voice`, `volume`, `route`, and `webhook` builders in
+  behaviour, built by the `voice`, `volume`, `route`, and `ha` builders in
   `streamdeck/bindings.mts`). Its active-state feedback comes from the bound
   action's catalog indicator (see below), so most keys need nothing more than
   `key('LABEL', '#colour', binding)` in the layout.
@@ -221,18 +221,6 @@ such as the scene cycle — from the tile's own constructor.
 Entity ids are compiled into `layout.mts` alongside the keys that use them,
 gathered in the `HA` block at the top of the file. Which fan a key toggles is
 part of what the key is; only the connection itself is inventory configuration.
-
-## Home Assistant webhooks — `type: webhook`
-
-POSTs to `<home_assistant_webhook_base>/<id>`. Set the base URL in
-`home_assistant_webhook_base`; with no base configured the action does nothing.
-This needs no token, so it stays useful for firing an automation on an instance
-you would rather not hand the controller a token for — but it is write-only, and
-a key bound to one can show no state.
-
-```ts
-key('MOVIE', '#37474f', webhook('movie_mode'))
-```
 
 ## Nothing — `type: noop`
 

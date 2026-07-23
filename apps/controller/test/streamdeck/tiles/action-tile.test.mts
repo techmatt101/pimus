@@ -28,7 +28,7 @@ test('an action tile takes its face from the bound action catalog indicator', ()
   })
 
   // An action with no indicator keeps exactly what the layout configured.
-  const lights = { label: 'LIGHTS', color: '#333333', binding: binding({ type: 'webhook', id: 'office_lights' }) }
+  const lights = { label: 'LIGHTS', color: '#333333', binding: binding({ type: 'ha', command: 'activate', entity: 'scene.office_bright' }) }
   assert.deepEqual(actionAppearance(lights, context()), { label: 'LIGHTS', background: '#333333' })
 })
 

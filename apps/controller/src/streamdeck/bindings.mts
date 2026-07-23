@@ -46,9 +46,6 @@ export interface TileServices {
    * sockets nothing can ever fill is noise rather than unknown state.
    */
   remote?: RemoteTileFeed
-  webhookBase?: string
-  /** Only the request is meaningful here; the response body is ignored. */
-  request?(url: string, init?: { method: string }): unknown
 }
 
 /**
@@ -90,15 +87,6 @@ export function createBindings(services: TileServices) {
     ha: (command: HaActionName, entity: string, data?: Record<string, unknown>): Binding => ({
       action: { type: 'ha', command, entity, ...(data ? { data } : {}) },
       run: () => runHaCommand(command, { ha: services.ha, entity, data }),
-    }),
-    webhook: (id: string): Binding => ({
-      action: { type: 'webhook', id },
-      run: async () => {
-        if (!services.webhookBase) return
-        const base = services.webhookBase.replace(/\/$/, '')
-        const request = services.request ?? globalThis.fetch
-        await request(`${base}/${encodeURIComponent(id)}`, { method: 'POST' })
-      },
     }),
     /** An explicitly blank binding, for a dial direction you do not want bound. */
     none: (): Binding => ({ action: { type: 'noop' }, run: () => {} }),

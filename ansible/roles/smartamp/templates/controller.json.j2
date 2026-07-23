@@ -6,7 +6,6 @@
   "ducking": {
     "enabled": {{ voice_ducking_enabled | to_json }}
   },
-  "webhook_base": {{ home_assistant_webhook_base | to_json }},
   {# Setting the URL turns the integration on; the matching token is read from
      HOME_ASSISTANT_TOKEN in the Pi's secrets file, which preflight requires and
      this file deliberately never carries. #}

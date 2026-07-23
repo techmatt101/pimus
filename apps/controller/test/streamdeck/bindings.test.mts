@@ -91,21 +91,3 @@ test('a timer binding starts an idle timer and cancels a running one', () => {
     'timer.cancel timer.office',
   ])
 })
-
-test('webhook bindings encode their identifier and need a configured base', async () => {
-  const requests: unknown[][] = []
-  const services = recordingServices()
-  services.webhookBase = 'http://homeassistant.local:8123/api/webhook/'
-  services.request = async (...args: unknown[]) => { requests.push(args) }
-
-  await createBindings(services).webhook('movie mode').run()
-  assert.deepEqual(requests, [[
-    'http://homeassistant.local:8123/api/webhook/movie%20mode',
-    { method: 'POST' },
-  ]])
-
-  // Without a base URL the binding does nothing rather than fetching nowhere.
-  services.webhookBase = undefined
-  await createBindings(services).webhook('movie mode').run()
-  assert.equal(requests.length, 1)
-})

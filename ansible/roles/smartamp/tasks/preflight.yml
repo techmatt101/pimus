@@ -92,12 +92,11 @@
       - (voice_assistant_port | int) != (voice_assistant_peripheral_port | int)
       - (respeaker_led_brightness | int) >= 0
       - (respeaker_led_brightness | int) <= 255
-      - home_assistant_webhook_base == '' or home_assistant_webhook_base is match('^https?://')
       - home_assistant_url == '' or home_assistant_url is match('^https?://')
       - sendspin_server_url == '' or sendspin_server_url is match('^wss?://')
     fail_msg: >-
       Hardware/controller inventory contains an out-of-range value, conflicting
-      voice ports, or an invalid Home Assistant, webhook, or Sendspin server URL.
+      voice ports, or an invalid Home Assistant or Sendspin server URL.
 
 # Tokens are typed on the Pi itself, in a file this repository never writes and
 # never reads the values of, so provisioning has to confirm they are actually

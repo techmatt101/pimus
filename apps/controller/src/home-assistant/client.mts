@@ -2,10 +2,10 @@
 // access token, keeps the entities the control surface watches in an
 // EntityStore, and calls services on the same socket.
 //
-// Unlike the write-only `webhook` action, tiles need to *read* state — a fan
-// key that cannot show whether the fan is on is a light switch with no
-// indicator — so this connection is what makes the Home Assistant tiles in
-// streamdeck/tiles/ possible. A deployment with no Home Assistant configured
+// Tiles need to *read* state — a fan key that cannot show whether the fan is
+// on is a light switch with no indicator — so this connection is what makes
+// the Home Assistant tiles in streamdeck/tiles/ possible. A deployment with
+// no Home Assistant configured
 // injects `createOfflineHomeAssistant()` instead, and those tiles draw unknown
 // state without any special-casing.
 //

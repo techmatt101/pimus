@@ -121,8 +121,7 @@ export const SLEEP = {
  * action's catalog indicator. Voice commands are a free string because anything
  * uncatalogued is forwarded to LVA verbatim (see actions/catalog.mts); routes,
  * volume, and Home Assistant commands are checked against the catalog at
- * compile time. To post to a Home Assistant webhook instead of calling a
- * service, bind `webhook('my_automation')` from the same builders.
+ * compile time.
  */
 export function createLayout(services: TileServices): StreamDeckLayout {
   // `route` binds a key straight to one audio route: MAIN carries a dedicated

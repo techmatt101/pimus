@@ -70,7 +70,6 @@ await fs.promises.writeFile(configPath, JSON.stringify({
   lva_uri: lvaUri,
   audio_socket: socketPath,
   ducking: { enabled: true },
-  webhook_base: 'http://home-assistant.playground/api/webhook',
   home_assistant: {
     enabled: false,
     url: '',
@@ -169,12 +168,6 @@ const layout = createLayout({
   // The real client speaks the WebSocket API and has its own tests; what the
   // playground is for is watching the keys, so this replaces the whole service.
   ha: homeAssistant,
-  webhookBase: config.webhook_base,
-  // The layout binds no webhook today; logging the request keeps one visible
-  // the moment someone binds `webhook(...)` to a key.
-  request: (url, init) => {
-    bus.log('webhook', 'out', `${init?.method ?? 'GET'} ${url}`)
-  },
 })
 
 const renderer = new DeckRenderer({ layout, model, logger: busLogger(bus, 'deck') })

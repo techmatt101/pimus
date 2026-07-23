@@ -26,7 +26,6 @@ test('valid actions from the catalog pass configuration validation', () => {
     ...Object.keys(ROUTE_ACTIONS).map((command) => ({ type: 'audio', source: 'aux', command })),
     ...Object.keys(HA_ACTIONS).map((command) => ({ type: 'ha', command, entity: 'light.office' })),
     { type: 'lva', command: 'some_future_lva_command' },
-    { type: 'webhook', id: 'office_lights' },
   ]
   for (const action of valid) {
     assert.equal(describeActionProblem(action), null, `rejected ${JSON.stringify(action)}`)
@@ -41,7 +40,6 @@ test('mistyped actions are rejected with an actionable message', () => {
   )
   assert.match(String(describeActionProblem({ type: 'audio' })), /needs a command/)
   assert.match(String(describeActionProblem({ type: 'lva' })), /needs a command/)
-  assert.match(String(describeActionProblem({ type: 'webhook' })), /needs an id/)
   assert.match(
     String(describeActionProblem({ type: 'ha', command: 'levitate', entity: 'fan.office' })),
     /unknown Home Assistant command/,
@@ -116,10 +114,9 @@ test('voice runners keep local state in step with what they send', () => {
 test('only actions that report a live state expose an indicator', () => {
   assert.ok(indicatorFor({ type: 'lva', command: 'mute_toggle' }))
   assert.ok(indicatorFor({ type: 'audio', source: 'aux', command: 'toggle' }))
-  // A plain command, a master volume action, and a webhook have nothing to show.
+  // A plain command and a master volume action have nothing to show.
   assert.equal(indicatorFor({ type: 'lva', command: 'stop' }), undefined)
   assert.equal(indicatorFor({ type: 'audio', command: 'up' }), undefined)
-  assert.equal(indicatorFor({ type: 'webhook', id: 'lights' }), undefined)
   assert.equal(indicatorFor(undefined), undefined)
 })
 

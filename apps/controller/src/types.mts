@@ -9,12 +9,10 @@ import type { Image } from '@napi-rs/canvas'
  * (actions/catalog.mts) validates it and describes its key feedback.
  */
 export interface Action {
-  type: 'noop' | 'lva' | 'audio' | 'webhook' | 'ha'
+  type: 'noop' | 'lva' | 'audio' | 'ha'
   command?: string
   /** Named audio route for `audio` actions; absent means the master volume. */
   source?: string
-  /** Home Assistant webhook identifier for `webhook` actions. */
-  id?: string
   /** Home Assistant entity id for `ha` actions, e.g. `fan.office_ceiling`. */
   entity?: string
   /** Extra service data for `ha` actions, merged into the call. */
@@ -74,8 +72,7 @@ export interface RemoteConfig {
 
 /**
  * Home Assistant connection details. The controller reads entity state and
- * calls services over the WebSocket API, so unlike the write-only `webhook`
- * action this needs a long-lived access token.
+ * calls services over the WebSocket API, which needs a long-lived access token.
  */
 export interface HomeAssistantConfig {
   enabled: boolean
@@ -184,7 +181,6 @@ export interface ControllerConfig {
   lva_uri: string
   /** Unix control socket of the audio manager daemon. */
   audio_socket: string
-  webhook_base?: string
   ducking?: DuckingConfig
   streamdeck?: StreamDeckDeployment
   respeaker?: ReSpeakerConfig

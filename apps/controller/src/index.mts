@@ -93,7 +93,6 @@ const layout = createLayout({
   ha: homeAssistant,
   notifications,
   ...(remote ? { remote } : {}),
-  webhookBase: config.webhook_base,
 })
 
 const renderer = new DeckRenderer({ layout, model })

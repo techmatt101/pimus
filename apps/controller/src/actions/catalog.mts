@@ -285,9 +285,9 @@ function stepCover({ ha, entity }: HaContext, step: number): void {
 
 /**
  * Home Assistant actions (`type: ha`). Each targets one entity over the
- * WebSocket API (home-assistant/client.mts), so unlike a `webhook` action they
- * can also be read back — which is what lets the tiles in streamdeck/tiles/
- * show whether the fan is actually running.
+ * WebSocket API (home-assistant/client.mts), so the entity can also be read
+ * back — which is what lets the tiles in streamdeck/tiles/ show whether the
+ * fan is actually running.
  */
 export const HA_ACTIONS = {
   toggle: {
@@ -390,11 +390,6 @@ export function isShuffled(ha: HomeAssistantService, entityId: string): boolean 
   return Boolean(ha.entity(entityId)?.attributes.shuffle)
 }
 
-export const WEBHOOK_ACTION: ActionSpec = {
-  summary: 'POST to <home_assistant_webhook_base>/<id>. Does nothing if no base URL is configured.',
-  example: '{ type: webhook, id: office_lights }',
-}
-
 export const NOOP_ACTION: ActionSpec = {
   summary: 'Do nothing. Use it to blank a dial direction you do not want bound.',
   example: '{ type: noop }',
@@ -461,7 +456,7 @@ export function describeActionProblem(action: unknown): string | null {
   if (typeof action !== 'object' || action === null || Array.isArray(action)) {
     return 'an action must be an object'
   }
-  const { type, command, source, id } = action as Record<string, unknown>
+  const { type, command, source } = action as Record<string, unknown>
 
   if (type === 'noop' || type === undefined) return null
 
@@ -488,10 +483,6 @@ export function describeActionProblem(action: unknown): string | null {
       : `unknown route command "${command}"; expected ${Object.keys(ROUTE_ACTIONS).join(', ')}`
   }
 
-  if (type === 'webhook') {
-    return typeof id === 'string' && id.length > 0 ? null : 'a "webhook" action needs an id'
-  }
-
   if (type === 'ha') {
     const { entity } = action as Record<string, unknown>
     if (typeof command !== 'string' || !isHaAction(command)) {
@@ -504,5 +495,5 @@ export function describeActionProblem(action: unknown): string | null {
       : 'a "ha" action needs an entity id such as "fan.office_ceiling"'
   }
 
-  return `unknown action type "${String(type)}"; expected noop, lva, audio, webhook, or ha`
+  return `unknown action type "${String(type)}"; expected noop, lva, audio, or ha`
 }

@@ -54,7 +54,16 @@ smartamp_aec_reference_enabled: true
 # computer input share this background path; LVA voice playback bypasses it.
 smartamp_voice_ducking_enabled: true
 smartamp_background_sink_name: smartamp_background
+# The level background audio plays AT while ducked - reduced TO this share of
+# its normal level, not BY it. 15 drops the music to 15% (a strong dip; Pulse
+# percentages are perceptual, so 50 sounds roughly half as loud). 100 leaves
+# it untouched, 0 silences it. It scales only the background bridge stream,
+# so the master volume and what plays after the dip are unaffected.
 smartamp_voice_duck_volume_percent: 15
+# The duration of each fade, applied in both directions: the music takes this
+# long to ramp down when Assist starts and this long again to ramp back up
+# when it finishes. It is not a delay before or after the dip - ducking always
+# starts immediately, in up to ten volume steps spread over this time.
 smartamp_voice_duck_fade_ms: 250
 
 # Make the Pi appear as a 48 kHz 24-bit stereo USB sound card to a computer
@@ -119,7 +128,7 @@ streamdeck_enabled: true
 # Leave it empty to run without Home Assistant: those keys stay on the deck and
 # draw an unknown state, and nothing else is affected. Which entities the keys
 # drive is compiled into apps/controller/src/streamdeck/layout.mts, not set here.
-home_assistant_url: ""
+home_assistant_url: "https://home.techmatt101.xyz"
 
 # Remote tiles: a WebSocket server inside the controller that lets another
 # computer on the LAN push key faces onto the deck's REMOTE page and receive
@@ -129,12 +138,6 @@ home_assistant_url: ""
 # without one. Pick a long random value.
 remote_tiles_enabled: false
 remote_tiles_port: 8470
-
-# Optional Home Assistant webhook base URL, an alternative that stores no token.
-# A Stream Deck action of type "webhook" with an "id" (bound in
-# streamdeck/layout.mts) posts to <base>/<id>. Write-only: a key bound to a
-# webhook can fire an automation but cannot show any state.
-home_assistant_webhook_base: ""
 
 # Secrets are not configured here. Tokens are typed once on the Pi itself, in
 # /etc/smartamp/secrets.env, which provisioning reads only to confirm each
