@@ -90,14 +90,9 @@ export async function runDeckLoop({
         // the deck and stops there rather than toggling something unreadable.
         if (consumedByWake()) return
         if (controlDefinition.type === 'button') {
-          // The bottom-corner keys page the grid when the layout has more than
-          // one page; every other key presses its current page's tile.
-          const nav = renderer.navTarget(controlDefinition.index)
-          if (nav) {
-            renderer.changePage(nav === 'next' ? 1 : -1)
-          } else {
-            void dispatch(renderer.pressAt(controlDefinition.index))
-          }
+          // Every key presses its current page's tile; paging moved to the
+          // page-switcher dial (streamdeck/dials/page-dial.mts).
+          void dispatch(renderer.pressAt(controlDefinition.index))
         } else if (controlDefinition.type === 'encoder') {
           // Touching a dial also puts it on the strip, so the value being
           // changed is visible while the hand is still on the knob.

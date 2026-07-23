@@ -12,7 +12,7 @@ const CONTEXT = testContext()
 test('the compiled layout fits the Stream Deck+ hardware', () => {
   const layout = createLayout(testServices())
   assert.ok(layout.pages.length >= 1, 'at least one page')
-  // The fixed grid caps each page at six slots; only the naming needs asserting.
+  // The fixed grid caps each page at eight slots; only the naming needs asserting.
   for (const page of layout.pages) {
     assert.ok(page.name.length > 0, `page ${page.name} is named for the nav keys`)
   }
@@ -64,8 +64,8 @@ test('layout tiles and dials drive the injected services when pressed', () => {
 
   main.grid.topLeft?.press(CONTEXT)
   // Each audio route has its own key now, toggling just that route on or off.
-  main.grid.bottomLeft?.press(CONTEXT)
-  main.grid.bottomRight?.press(CONTEXT)
+  main.grid.bottomMidLeft?.press(CONTEXT)
+  main.grid.bottomMidRight?.press(CONTEXT)
   layout.dials[0]?.right?.run()
 
   assert.deepEqual(services.calls, [
@@ -89,7 +89,7 @@ test('the dynamic dial follows the last room key pressed', () => {
   // pretending to control something.
   assert.equal(dial.detail(CONTEXT), 'PICK A KEY')
 
-  room.grid.bottomRight?.press(CONTEXT)
+  room.grid.bottomMidRight?.press(CONTEXT)
   assert.equal(dial.label, 'LIGHTS')
   assert.equal(dial.detail(CONTEXT), '50%')
   dial.right?.run()

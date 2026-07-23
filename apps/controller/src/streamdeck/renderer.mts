@@ -1,8 +1,7 @@
 import type { StreamDeck } from '@elgato-stream-deck/node'
 
+import { PageDial, type PageNavigator } from './dials/page-dial.mjs'
 import {
-  NEXT_KEY,
-  PREV_KEY,
   tileAt,
   type StreamDeckLayout,
   type StreamDeckPage,
@@ -10,9 +9,6 @@ import {
 import { STRIP_HEIGHT, STRIP_WIDTH } from './screens/screen.mjs'
 import { Surface } from './surface.mjs'
 import {
-  drawBackground,
-  drawCaption,
-  FACE_CENTER,
   KEY_SIZE,
   type Tile,
   type TileContext,
@@ -20,8 +16,6 @@ import {
 } from './tiles/tile.mjs'
 import type { ControlModel } from '../state.mjs'
 
-/** Background colour of the previous/next navigation keys. */
-const NAV_COLOR = '#263238'
 /** Every face is written to the device in the format a canvas produces. */
 const FORMAT = { format: 'rgba' } as const
 
@@ -31,7 +25,7 @@ export interface DeckRendererOptions {
   logger?: Pick<Console, 'error'>
 }
 
-export class DeckRenderer {
+export class DeckRenderer implements PageNavigator {
   readonly layout: StreamDeckLayout
   private readonly model: ControlModel
   private readonly logger: Pick<Console, 'error'>
@@ -63,6 +57,9 @@ export class DeckRenderer {
     this.model = model
     this.logger = logger
     this.asleep = !model.state.awake
+    // The renderer owns paging, so it hands its paging to any page-switcher dial
+    // in the layout. The dial is built before the renderer and reaches it here.
+    for (const dial of layout.dials) if (dial instanceof PageDial) dial.connect(this)
     this.model.subscribe(() => {
       const wasAsleep = this.asleep
       void this.applyAwake()
@@ -164,26 +161,14 @@ export class DeckRenderer {
     return this.layout.strip.pressAt(x)
   }
 
-  /** Paging is only offered once a layout carries more than one page. */
-  private get paged(): boolean {
-    return this.layout.pages.length > 1
-  }
-
   /** The page currently showing, or undefined if the layout carries none. */
   private currentPage(): StreamDeckPage | undefined {
     return this.layout.pages[this.pageIndex]
   }
 
-  /**
-   * Whether a physical key is a navigation corner, and which way it moves. Only
-   * reports a target when paging is active, so single-page layouts dispatch the
-   * bottom corners as ordinary blank slots.
-   */
-  navTarget(index: number): 'prev' | 'next' | undefined {
-    if (!this.paged) return undefined
-    if (index === PREV_KEY) return 'prev'
-    if (index === NEXT_KEY) return 'next'
-    return undefined
+  /** PageNavigator: the name of the page showing, for a page-switcher dial. */
+  currentName(): string {
+    return this.pageNameAt(0)
   }
 
   /** Live state passed to each tile so it can pick its face and behaviour. */
@@ -197,7 +182,6 @@ export class DeckRenderer {
    * lets the deck's dispatch queue keep presses in physical order.
    */
   pressAt(index: number): (() => unknown) | undefined {
-    if (this.navTarget(index)) return undefined
     const page = this.currentPage()
     const tile = page ? tileAt(page.grid, index) : undefined
     if (!tile) return undefined
@@ -220,7 +204,6 @@ export class DeckRenderer {
     const page = this.currentPage()
     if (!page) return
     for (let index = 0; index < 8; index += 1) {
-      if (this.navTarget(index)) continue
       const tile = tileAt(page.grid, index)
       if (!tile) continue
       this.mounted.set(index, tile)
@@ -292,12 +275,11 @@ export class DeckRenderer {
     try {
       const context = this.context()
       const page = this.currentPage()
-      // Draw all eight keys: the deck retains its last image, so a nav corner,
-      // a blank slot, or a tile each has to be painted every time.
+      // Draw all eight keys: the deck retains its last image, so a blank slot or
+      // a tile each has to be painted every time.
       for (let index = 0; index < 8; index += 1) {
-        const nav = this.navTarget(index)
-        const tile = nav ? undefined : page ? tileAt(page.grid, index) : undefined
-        await deck.fillKeyBuffer(index, nav ? this.paintNav(nav) : this.paintTile(tile, context), FORMAT)
+        const tile = page ? tileAt(page.grid, index) : undefined
+        await deck.fillKeyBuffer(index, this.paintTile(tile, context), FORMAT)
       }
 
       await deck.fillLcd(0, this.paintStrip(context), FORMAT)
@@ -316,21 +298,6 @@ export class DeckRenderer {
     this.keySurface.reset()
     tile?.draw(this.keySurface, context)
     return this.keySurface.snapshot()
-  }
-
-  /** A navigation corner: an arrow towards the page it moves to, and its name. */
-  private paintNav(direction: 'prev' | 'next'): Buffer {
-    const surface = this.keySurface
-    surface.reset()
-    drawBackground(surface, NAV_COLOR)
-    surface.icon(direction === 'next' ? 'next' : 'previous', {
-      x: surface.width / 2,
-      y: FACE_CENTER,
-      size: 48,
-      color: '#eceff1',
-    })
-    drawCaption(surface, this.pageNameAt(direction === 'next' ? 1 : -1))
-    return surface.snapshot()
   }
 
   private paintStrip(context: TileContext): Buffer {

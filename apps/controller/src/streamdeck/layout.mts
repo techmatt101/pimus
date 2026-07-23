@@ -19,12 +19,11 @@
 // playing, swaps to the dial you are turning while you turn it, and shows a
 // notification pushed from Home Assistant while one is live.
 //
-// Keys are paged; dials are not. With more than one PAGE the two bottom-corner
-// keys become previous/next navigation, and each page fills the six named grid
-// slots between them:
+// Keys are paged; dials are not. The third dial pages the grid (PageDial), so
+// every one of the eight keys is free to carry a page's tiles, named as a grid:
 //
-//     [ topLeft ][ topMidLeft ][ topMidRight ][ topRight ]
-//     [  PREV   ][ bottomLeft ][ bottomRight ][   NEXT   ]
+//     [ topLeft    ][ topMidLeft    ][ topMidRight    ][ topRight    ]
+//     [ bottomLeft ][ bottomMidLeft ][ bottomMidRight ][ bottomRight ]
 //
 // Every key is a Tile (streamdeck/tiles/) that runs its own behaviour and
 // renders its own face: a plain `key(...)` for a fixed button, or a dynamic
@@ -39,10 +38,10 @@
 
 import { isEntityOn, numericAttribute } from '../home-assistant/entity.mjs'
 import { createBindings, type Binding, type TileServices } from './bindings.mjs'
-import { ActionDial } from './dials/action-dial.mjs'
 import type { Dial } from './dials/dial.mjs'
 import { DynamicDial } from './dials/dynamic-dial.mjs'
 import { MediaDial } from './dials/media-dial.mjs'
+import { PageDial } from './dials/page-dial.mjs'
 import { VolumeDial } from './dials/volume-dial.mjs'
 import type { StreamDeckPage, StreamDeckLayout } from './grid.mjs'
 import { NowPlayingScreen } from './screens/now-playing-screen.mjs'
@@ -126,7 +125,7 @@ export const SLEEP = {
 export function createLayout(services: TileServices): StreamDeckLayout {
   // `route` binds a key straight to one audio route: MAIN carries a dedicated
   // AUX and USB key, each toggling its own route independently.
-  const { voice, route, none } = createBindings(services)
+  const { voice, route } = createBindings(services)
   const key = (label: string, color: string, binding: Binding): Tile =>
     new ActionTile({ label, color, binding })
 
@@ -135,12 +134,11 @@ export function createLayout(services: TileServices): StreamDeckLayout {
   // and opens without the deck needing a dial for each.
   const dynamic = new DynamicDial(services.model)
 
-  // Each page is a fixed grid. The two bottom corners are page navigation, so a
-  // page fills the six named slots between them; an omitted slot renders blank.
-  // Every tile keeps its grid position whether or not paging is active, so
-  // adding a page never reshuffles the keys already placed. A slot can hold any
-  // Tile: a plain `key(...)` or a dynamic one that draws its own face from live
-  // state, such as MediaTile, TimerTile, or WeatherTile.
+  // Each page is a fixed grid of eight named slots; an omitted slot renders
+  // blank. Every tile keeps its grid position across pages, so adding a page
+  // never reshuffles the keys already placed. A slot can hold any Tile: a plain
+  // `key(...)` or a dynamic one that draws its own face from live state, such as
+  // MediaTile, TimerTile, or WeatherTile. The third dial pages between them.
   const pages: StreamDeckPage[] = [
     {
       // Everything you reach for while music is playing or you are talking to
@@ -154,8 +152,8 @@ export function createLayout(services: TileServices): StreamDeckLayout {
         // One dedicated key per audio route, each toggling its own route on or
         // off; both routes off is the network player through its own sink. Each
         // key lights green while its route is on (the catalog route indicator).
-        bottomLeft: key('AUX', '#4a148c', route('aux', 'toggle')),
-        bottomRight: key('USB', '#0d47a1', route('usb', 'toggle')),
+        bottomMidLeft: key('AUX', '#4a148c', route('aux', 'toggle')),
+        bottomMidRight: key('USB', '#0d47a1', route('usb', 'toggle')),
       },
     },
     {
@@ -197,8 +195,8 @@ export function createLayout(services: TileServices): StreamDeckLayout {
           onColor: '#283593',
           offColor: '#151a30',
         }),
-        bottomLeft: new TimerTile(services, { entity: HA.timer, duration: TIMER_DURATION }),
-        bottomRight: new EntityToggleTile(services, {
+        bottomMidLeft: new TimerTile(services, { entity: HA.timer, duration: TIMER_DURATION }),
+        bottomMidRight: new EntityToggleTile(services, {
           label: 'LIGHTS',
           entity: HA.lights,
           icon: 'bulb',
@@ -218,10 +216,10 @@ export function createLayout(services: TileServices): StreamDeckLayout {
         // Panel brightness sits on the quiet page: a setting you go looking for
         // rather than reach for, like the stop key below it.
         topRight: new BrightnessTile(services),
-        bottomLeft: key('STOP', '#b71c1c', voice('stop')),
+        bottomMidLeft: key('STOP', '#b71c1c', voice('stop')),
         // The playlist shortcut lives here rather than on MAIN so the two audio
         // route keys can share the bottom row there.
-        bottomRight: new PlaylistTile(services, {
+        bottomMidRight: new PlaylistTile(services, {
           label: 'FOCUS',
           player: HA.player,
           media: HA.playlist,
@@ -241,26 +239,25 @@ export function createLayout(services: TileServices): StreamDeckLayout {
           topMidLeft: new RemoteTile(services, { slot: 1 }),
           topMidRight: new RemoteTile(services, { slot: 2 }),
           topRight: new RemoteTile(services, { slot: 3 }),
-          bottomLeft: new RemoteTile(services, { slot: 4 }),
-          bottomRight: new RemoteTile(services, { slot: 5 }),
+          bottomMidLeft: new RemoteTile(services, { slot: 4 }),
+          bottomMidRight: new RemoteTile(services, { slot: 5 }),
         },
       }]
       : []),
   ]
 
-  // Four dials, left to right. The first three are fixed, because a knob you
-  // have to look at before turning is a knob you stop using; the fourth is
-  // deliberately not, and follows the last room key you pressed. Each carries
-  // its own readout, so the display stays correct however these are ordered.
-  // That readout is shown across the whole touch strip while the dial is being
-  // turned — see the strip below.
+  // Four dials, left to right. Volume and media are fixed, because a knob you
+  // have to look at before turning is a knob you stop using; the third pages the
+  // key grid, taking over the job the bottom-corner keys used to do; the fourth
+  // follows the last room key you pressed. Each carries its own readout, so the
+  // display stays correct however these are ordered. That readout is shown
+  // across the whole touch strip while the dial is being turned — see below.
   const dials: Dial[] = [
     new VolumeDial(services),
     new MediaDial(services, { player: HA.player }),
-    // Held open rather than filled with something half-wanted. Bound to nothing
-    // and saying so, rather than left to look like a dial that has stopped
-    // responding.
-    new ActionDial({ label: 'SPARE', left: none(), right: none(), press: none(), readout: 'NOT IN USE' }),
+    // Turning it moves between pages; it reads out the page you land on. The
+    // renderer hands it its paging once it exists (streamdeck/dials/page-dial.mts).
+    new PageDial(),
     dynamic,
   ]
 

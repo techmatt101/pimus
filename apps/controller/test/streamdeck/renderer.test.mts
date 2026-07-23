@@ -27,7 +27,7 @@ const settle = (): Promise<void> => new Promise((resolve) => { setImmediate(reso
 const recorder = (label: string, presses: string[]): ActionTile =>
   new ActionTile({ label, color: '#000000', binding: { action: { type: 'noop' }, run: () => presses.push(label) } })
 
-test('a multi-page layout maps the grid around the two nav corners', () => {
+test('the grid fills all eight slots and pages with changePage', () => {
   const presses: string[] = []
   const tile = (label: string): ActionTile => recorder(label, presses)
   const renderer = rendererFor({
@@ -41,47 +41,48 @@ test('a multi-page layout maps the grid around the two nav corners', () => {
           topMidRight: tile('C'),
           topRight: tile('D'),
           bottomLeft: tile('E'),
-          bottomRight: tile('F'),
+          bottomMidLeft: tile('F'),
+          bottomMidRight: tile('G'),
+          bottomRight: tile('H'),
         },
       },
-      { name: 'TWO', grid: { topLeft: tile('G') } },
+      { name: 'TWO', grid: { topLeft: tile('I') } },
     ],
   })
 
-  // The bottom corners navigate; the other six slots carry the page's tiles.
-  assert.equal(renderer.navTarget(4), 'prev')
-  assert.equal(renderer.navTarget(7), 'next')
-  assert.equal(renderer.navTarget(0), undefined)
-  assert.equal(renderer.pressAt(4), undefined, 'nav corners dispatch nothing')
-  assert.equal(renderer.pressAt(7), undefined)
+  // Every one of the eight keys carries a tile now that paging moved to a dial.
+  for (const slot of [0, 1, 2, 3, 4, 5, 6, 7]) renderer.pressAt(slot)?.()
+  assert.deepEqual(presses, ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'])
 
-  // Physical slots 0-3 then the two inner bottom keys 5,6 hold the six tiles.
-  for (const slot of [0, 1, 2, 3, 5, 6]) renderer.pressAt(slot)?.()
-  assert.deepEqual(presses, ['A', 'B', 'C', 'D', 'E', 'F'])
-
-  // Next wraps forward to page TWO, whose single tile lands in the first slot.
+  // changePage wraps forward to page TWO, whose single tile lands in the first slot.
   renderer.changePage(1)
+  assert.equal(renderer.currentName(), 'TWO', 'the page dial reads out where it landed')
   renderer.pressAt(0)?.()
-  assert.deepEqual(presses.at(-1), 'G')
+  assert.deepEqual(presses.at(-1), 'I')
   assert.equal(renderer.pressAt(1), undefined, 'the rest of page TWO is blank')
 
-  // Previous wraps back around to page ONE.
+  // ...and wraps back around to page ONE, including its bottom corners.
   renderer.changePage(-1)
-  renderer.pressAt(6)?.()
-  assert.deepEqual(presses.at(-1), 'F')
+  assert.equal(renderer.currentName(), 'ONE')
+  renderer.pressAt(7)?.()
+  assert.deepEqual(presses.at(-1), 'H')
 })
 
-test('a single-page layout offers no navigation and reserves no corners', () => {
+test('a single-page layout stays on its one page when the dial is turned', () => {
   const presses: string[] = []
   const renderer = rendererFor({
     dials: [],
-    pages: [{ name: 'ONE', grid: { topLeft: recorder('A', presses) } }],
+    pages: [{ name: 'ONE', grid: { topLeft: recorder('A', presses), bottomRight: recorder('Z', presses) } }],
   })
 
-  assert.equal(renderer.navTarget(4), undefined, 'no paging without a second page')
-  assert.equal(renderer.navTarget(7), undefined)
+  // Both corners are ordinary keys now, so a single page can use all of them.
   renderer.pressAt(0)?.()
-  assert.deepEqual(presses, ['A'])
+  renderer.pressAt(7)?.()
+  assert.deepEqual(presses, ['A', 'Z'])
+
+  // One page: paging the dial wraps harmlessly back to the same page.
+  renderer.changePage(1)
+  assert.equal(renderer.currentName(), 'ONE')
 })
 
 /** A lifecycle probe: records mounts and unmounts, and can poke its host. */

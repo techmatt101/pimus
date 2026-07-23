@@ -5,26 +5,21 @@
 //     [ 0 ][ 1 ][ 2 ][ 3 ]
 //     [ 4 ][ 5 ][ 6 ][ 7 ]
 //
-// With more than one page the two bottom corners (4 and 7) become previous/next
-// navigation, leaving six slots for a page's tiles. Those six are named so a
+// Every key is a tile slot. Paging is no longer a pair of corner keys: the
+// page-switcher dial (streamdeck/dials/page-dial.mts) moves between pages, so
+// all eight keys are free to carry a page's tiles. The slots are named so a
 // page reads as a fixed grid rather than a count-the-positions array.
 
 import type { Dial } from './dials/dial.mjs'
 import type { TouchStrip } from './strip.mjs'
 import type { Tile } from './tiles/tile.mjs'
 
-/** Physical key index of the previous-page corner. */
-export const PREV_KEY = 4
-/** Physical key index of the next-page corner. */
-export const NEXT_KEY = 7
-
 /**
  * A page's tiles by fixed grid position. Every slot is optional; an empty slot
- * renders blank. The two bottom corners are navigation, so the bottom row only
- * exposes its two inner keys:
+ * renders blank. The two rows mirror each other, so a page reads as a grid:
  *
- *     [ topLeft ][ topMidLeft ][ topMidRight ][ topRight ]
- *     [   nav   ][ bottomLeft ][ bottomRight ][   nav    ]
+ *     [ topLeft    ][ topMidLeft    ][ topMidRight    ][ topRight    ]
+ *     [ bottomLeft ][ bottomMidLeft ][ bottomMidRight ][ bottomRight ]
  */
 export interface PageGrid {
   topLeft?: Tile
@@ -32,6 +27,8 @@ export interface PageGrid {
   topMidRight?: Tile
   topRight?: Tile
   bottomLeft?: Tile
+  bottomMidLeft?: Tile
+  bottomMidRight?: Tile
   bottomRight?: Tile
 }
 
@@ -41,18 +38,20 @@ const SLOT_INDEX: ReadonlyArray<readonly [keyof PageGrid, number]> = [
   ['topMidLeft', 1],
   ['topMidRight', 2],
   ['topRight', 3],
-  ['bottomLeft', 5],
-  ['bottomRight', 6],
+  ['bottomLeft', 4],
+  ['bottomMidLeft', 5],
+  ['bottomMidRight', 6],
+  ['bottomRight', 7],
 ]
 
-/** The tile at a physical key index, or undefined for a nav corner or empty slot. */
+/** The tile at a physical key index, or undefined for an empty slot. */
 export function tileAt(grid: PageGrid, index: number): Tile | undefined {
   const slot = SLOT_INDEX.find(([, physical]) => physical === index)
   return slot ? grid[slot[0]] : undefined
 }
 
 export interface StreamDeckPage {
-  /** Shown on the navigation keys so you can see which page you are moving to. */
+  /** Shown by the page-switcher dial while you turn it, so you see where you land. */
   name: string
   grid: PageGrid
 }

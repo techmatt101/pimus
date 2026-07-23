@@ -33,23 +33,23 @@ strip](#the-touch-strip)).
 
 ## Pages
 
-The keys are paged; the dials are not. With more than one page the two
-bottom-corner keys become previous/next navigation and each page fills the
-remaining six slots:
+The keys are paged; the dials are not. The **third dial pages the grid** — turn
+it to move between pages — so every one of the eight keys is free to carry a
+page's tiles:
 
 ```text
-[ topLeft ][ topMidLeft ][ topMidRight ][ topRight ]
-[   PREV   ][ bottomLeft ][ bottomRight ][   NEXT   ]
+[ topLeft    ][ topMidLeft    ][ topMidRight    ][ topRight    ]
+[ bottomLeft ][ bottomMidLeft ][ bottomMidRight ][ bottomRight ]
 ```
 
 A page is a fixed grid of named slots, not a list — you read where each tile
-sits directly. The nav keys show an arrow and the name of the page they move to,
-and paging wraps around at either end. Because the dials keep their bindings on
+sits directly. The page dial reads out the name of the page you land on, and
+paging wraps around at either end. Because the dials keep their bindings on
 every page, volume and transport are always one turn away whichever page is
 showing — including the dial claimed on the ROOM page, which stays claimed while
-you look at something else. A layout with a single page shows no nav keys, and its tiles keep the
-same grid positions — adding a second page never reshuffles the keys already
-placed. Any slot may be left out; it renders blank.
+you look at something else. Tiles keep the same grid positions across pages —
+adding a page never reshuffles the keys already placed. Any slot may be left
+out; it renders blank.
 
 ## Tiles
 
@@ -84,7 +84,7 @@ central dispatcher:
 | `TemperatureTile` | A sensor reading, with the background banded by temperature. Read-only. |
 | `WeatherTile` | Condition glyph, short condition name, and the outside temperature. Read-only. |
 | `ClockTile` | Local time with a bar that sweeps once a minute. Needs nothing but the clock. |
-| `PageTile` | Page navigation in any grid slot, for a page that wants its "next" somewhere other than the reserved corner. |
+| `PageTile` | Page navigation from a grid slot, for a page that wants a "next" key of its own in addition to the page dial. |
 
 A tile paints onto a `Surface` (`streamdeck/surface.mts`) the renderer owns: a
 Skia canvas (`@napi-rs/canvas`) wrapped in the operations the control surface
@@ -228,7 +228,7 @@ Does nothing. Use the `none()` binding to blank a dial direction you do not
 want bound.
 
 ```ts
-new ActionDial({ label: 'SPARE', left: none(), right: none(), press: none(), readout: 'NOT IN USE' })
+new ActionDial({ label: 'MONITOR', right: volume('up'), left: none(), readout: 'LEVEL' })
 ```
 
 ## Key and dial feedback
@@ -276,6 +276,7 @@ the content of that face:
 | `VolumeDial` | Master output volume, read from the controller's own state so it is right with nothing else reachable. `MUTED` is its own reading, and an empty bar. |
 | `MediaDial` | Transport: skip through the Music Assistant player, press to play or pause through LVA, and read `PLAYING` / `PAUSED`. |
 | `EntityDial` | A Home Assistant entity turned by its own domain. Built by `EntityDial.for(...)`, which returns nothing for a domain with nothing to turn. |
+| `PageDial` | Pages the key grid — turn to move between pages — and reads out the page you land on. Takes over the job the bottom-corner keys used to do. |
 | `DynamicDial` | The shared knob, delegating to whichever `Dial` a key last handed it. |
 
 Write a new `Dial` class when a knob needs a reading it has to work out for
@@ -287,7 +288,7 @@ The four dials as shipped:
 | --- | --- | --- |
 | `VOLUME` | Master volume down / up | Mute |
 | `MEDIA` | Previous / next track | Play/pause |
-| `SPARE` | — | — |
+| `PAGE` | Previous / next page of keys | — |
 | *dynamic* | Whatever the last room key you pressed does | Toggle that entity |
 
 Media transport goes through the Music Assistant player rather than LVA: the LVA
@@ -490,9 +491,10 @@ The layout is built by `createLayout(services)` and its `pages` and `dials` are
 ordinary TypeScript. Place a tile in a page slot with
 `key('LABEL', '#colour', binding)`, or drop in a dynamic tile such as
 `new MediaTile(services)`. Add a page by adding another `{ name, grid }` entry
-to `pages`; each page's `grid` has the six named slots (`topLeft`,
-`topMidLeft`, `topMidRight`, `topRight`, `bottomLeft`, `bottomRight`), and its
-short `name` labels the nav keys.
+to `pages`; each page's `grid` has the eight named slots (`topLeft`,
+`topMidLeft`, `topMidRight`, `topRight`, `bottomLeft`, `bottomMidLeft`,
+`bottomMidRight`, `bottomRight`), and its short `name` is what the page dial
+reads out.
 
 ## Adding a new action
 
