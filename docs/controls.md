@@ -75,7 +75,7 @@ central dispatcher:
 | --- | --- |
 | `MediaTile` | Play/pause. Draws the play or pause glyph from the playback state, and the glyph breathes while playing. |
 | `VoiceTile` | Start Assist, or cancel the pipeline already running. Expanding rings while one is live. |
-| `AudioModeTile` | Cycles the input (stream / aux / usb), turning the chosen route on and the rest off. Reads the current mode back from the audio manager rather than remembering it. |
+| `BrightnessTile` | Steps the Stream Deck panel's own brightness through a few levels, showing the current percentage. Mutates display state on the model; the renderer re-lights the panel. |
 | `ShuffleTile` | Shuffle on the media player, set from and reflecting what Home Assistant reports. |
 | `PlaylistTile` | A one-press shortcut to a compiled-in playlist. |
 | `SceneTile` | Steps through a short list of scenes, showing the one it last applied. |

@@ -228,6 +228,13 @@ export interface ControlState {
    * ReSpeaker ring, and background playback all keep running.
    */
   awake: boolean
+  /**
+   * The Stream Deck panel's own brightness, 0 to 100. Display state like the
+   * rest of this model: the BrightnessTile mutates it and notifies, and the
+   * renderer (streamdeck/renderer.mts) is what re-lights the panel. A sleeping
+   * panel goes to 0 regardless, and comes back to this level.
+   */
+  brightness: number
 }
 
 /** Route enablement mirrored from the audio manager's control socket. */

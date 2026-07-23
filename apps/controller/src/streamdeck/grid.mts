@@ -58,12 +58,13 @@ export interface StreamDeckPage {
 }
 
 /**
- * The compiled control surface: panel brightness, the paged tile grid, the
- * persistent dial bindings, and the touch strip. The dials and the strip are
- * shared across every page; only the grid changes when you navigate.
+ * The compiled control surface: the paged tile grid, the persistent dial
+ * bindings, and the touch strip. The dials and the strip are shared across
+ * every page; only the grid changes when you navigate. Panel brightness is
+ * runtime state on the ControlModel (state.mts), not compiled in here, because
+ * the BrightnessTile changes it while the deck is running.
  */
 export interface StreamDeckLayout {
-  brightness: number
   pages: StreamDeckPage[]
   dials: Dial[]
   /** The 800x100 display above the dials, and which screen it shows when. */

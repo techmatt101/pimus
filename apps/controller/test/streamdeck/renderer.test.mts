@@ -31,7 +31,6 @@ test('a multi-page layout maps the grid around the two nav corners', () => {
   const presses: string[] = []
   const tile = (label: string): ActionTile => recorder(label, presses)
   const renderer = rendererFor({
-    brightness: 40,
     dials: [],
     pages: [
       {
@@ -75,7 +74,6 @@ test('a multi-page layout maps the grid around the two nav corners', () => {
 test('a single-page layout offers no navigation and reserves no corners', () => {
   const presses: string[] = []
   const renderer = rendererFor({
-    brightness: 40,
     dials: [],
     pages: [{ name: 'ONE', grid: { topLeft: recorder('A', presses) } }],
   })
@@ -118,7 +116,6 @@ test('tiles are mounted while visible on an attached deck and can repaint their 
   const one = new ProbeTile('A', log)
   const two = new ProbeTile('G', log)
   const renderer = rendererFor({
-    brightness: 40,
     dials: [],
     pages: [
       { name: 'ONE', grid: { topLeft: one } },
@@ -161,7 +158,6 @@ test('a sleeping panel goes dark, stops every tile, and comes back painted', asy
   const tile = new ProbeTile('A', log)
   const model = new ControlModel(createState(), () => ({ sources: {} }))
   const renderer = rendererFor({
-    brightness: 40,
     dials: [],
     pages: [{ name: 'ONE', grid: { topLeft: tile } }],
   }, model)
@@ -174,7 +170,7 @@ test('a sleeping panel goes dark, stops every tile, and comes back painted', asy
     setBrightness: async (level: number) => { brightness.push(level) },
   } as unknown as StreamDeck
   await renderer.setDeck(deck)
-  assert.deepEqual(brightness, [40], 'an attached deck comes up at the layout brightness')
+  assert.deepEqual(brightness, [40], 'an attached deck comes up at the default brightness')
   assert.deepEqual(log, ['mount:A'])
 
   // The room emptied. The panel switches off, then the tiles are dropped, so
@@ -202,11 +198,38 @@ test('a sleeping panel goes dark, stops every tile, and comes back painted', asy
   assert.deepEqual(brightness, [40, 0, 40])
 })
 
+test('a brightness change while awake re-lights the panel, and only when it changes', async () => {
+  const model = new ControlModel(createState(), () => ({ sources: {} }))
+  const renderer = rendererFor({
+    dials: [],
+    pages: [{ name: 'ONE', grid: { topLeft: recorder('A', []) } }],
+  }, model)
+
+  const brightness: number[] = []
+  const deck = {
+    fillKeyBuffer: async () => {},
+    fillLcd: async () => {},
+    setBrightness: async (level: number) => { brightness.push(level) },
+  } as unknown as StreamDeck
+  await renderer.setDeck(deck)
+  assert.deepEqual(brightness, [40])
+
+  // A BrightnessTile press mutates the model and notifies; the panel follows.
+  model.state.brightness = 100
+  model.notify()
+  await settle()
+  assert.deepEqual(brightness, [40, 100])
+
+  // A notify that leaves brightness alone does not re-issue the same level.
+  model.notify()
+  await settle()
+  assert.deepEqual(brightness, [40, 100], 'unchanged brightness is not re-written')
+})
+
 test('a deck that reconnects while the room is empty comes back dark', async () => {
   const log: string[] = []
   const model = new ControlModel(createState({ awake: false }), () => ({ sources: {} }))
   const renderer = rendererFor({
-    brightness: 40,
     dials: [],
     pages: [{ name: 'ONE', grid: { topLeft: new ProbeTile('A', log) } }],
   }, model)

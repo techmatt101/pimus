@@ -48,11 +48,10 @@ import type { StreamDeckPage, StreamDeckLayout } from './grid.mjs'
 import { NowPlayingScreen } from './screens/now-playing-screen.mjs'
 import { TouchStrip } from './strip.mjs'
 import { ActionTile } from './tiles/action-tile.mjs'
-import { AudioModeTile } from './tiles/audio-mode-tile.mjs'
+import { BrightnessTile } from './tiles/brightness-tile.mjs'
 import { ClockTile } from './tiles/clock-tile.mjs'
 import { EntityToggleTile } from './tiles/entity-toggle-tile.mjs'
 import { MediaTile } from './tiles/media-tile.mjs'
-import { PageTile } from './tiles/page-tile.mjs'
 import { PlaylistTile } from './tiles/playlist-tile.mjs'
 import { RemoteTile } from './tiles/remote-tile.mjs'
 import { SceneTile } from './tiles/scene-tile.mjs'
@@ -62,9 +61,6 @@ import { TimerTile } from './tiles/timer-tile.mjs'
 import { WeatherTile } from './tiles/weather-tile.mjs'
 import type { Tile } from './tiles/tile.mjs'
 import { VoiceTile } from './tiles/voice-tile.mjs'
-
-/** Panel brightness, 0 to 100. */
-const BRIGHTNESS = 40
 
 /**
  * The Home Assistant entities this layout drives. They are compiled in with the
@@ -129,9 +125,9 @@ export const SLEEP = {
  * service, bind `webhook('my_automation')` from the same builders.
  */
 export function createLayout(services: TileServices): StreamDeckLayout {
-  // `route` is still available for a key bound straight to one audio route; the
-  // AudioModeTile below owns aux and usb together, so nothing here uses it.
-  const { voice, none } = createBindings(services)
+  // `route` binds a key straight to one audio route: MAIN carries a dedicated
+  // AUX and USB key, each toggling its own route independently.
+  const { voice, route, none } = createBindings(services)
   const key = (label: string, color: string, binding: Binding): Tile =>
     new ActionTile({ label, color, binding })
 
@@ -156,20 +152,11 @@ export function createLayout(services: TileServices): StreamDeckLayout {
         topMidLeft: key('MIC', '#7f0000', voice('mute_toggle')),
         topMidRight: new MediaTile(services),
         topRight: new ShuffleTile(services, HA.player),
-        // One key cycles the input instead of one key per route, which is what
-        // frees the two dials the transport and lights now use.
-        bottomLeft: new AudioModeTile(services, {
-          modes: [
-            { label: 'STREAM', color: '#004d40' },
-            { label: 'AUX', color: '#4a148c', source: 'aux' },
-            { label: 'USB', color: '#0d47a1', source: 'usb' },
-          ],
-        }),
-        bottomRight: new PlaylistTile(services, {
-          label: 'FOCUS',
-          player: HA.player,
-          media: HA.playlist,
-        }),
+        // One dedicated key per audio route, each toggling its own route on or
+        // off; both routes off is the network player through its own sink. Each
+        // key lights green while its route is on (the catalog route indicator).
+        bottomLeft: key('AUX', '#4a148c', route('aux', 'toggle')),
+        bottomRight: key('USB', '#0d47a1', route('usb', 'toggle')),
       },
     },
     {
@@ -229,12 +216,17 @@ export function createLayout(services: TileServices): StreamDeckLayout {
         topLeft: new ClockTile(),
         topMidLeft: new TemperatureTile(services, { label: 'OFFICE', entity: HA.temperature }),
         topMidRight: new WeatherTile(services, { entity: HA.weather }),
-        // The corners already navigate; this shows a page key can sit anywhere,
-        // which a page that wanted its whole bottom row for tiles would need.
-        topRight: new PageTile({ delta: 1 }),
-        // The one thing here that does something. It sits on the quiet page
-        // because it is the key you go looking for rather than reach for.
+        // Panel brightness sits on the quiet page: a setting you go looking for
+        // rather than reach for, like the stop key below it.
+        topRight: new BrightnessTile(services),
         bottomLeft: key('STOP', '#b71c1c', voice('stop')),
+        // The playlist shortcut lives here rather than on MAIN so the two audio
+        // route keys can share the bottom row there.
+        bottomRight: new PlaylistTile(services, {
+          label: 'FOCUS',
+          player: HA.player,
+          media: HA.playlist,
+        }),
       },
     },
     // Six sockets for another computer to fill over the remote-tile server
@@ -286,5 +278,5 @@ export function createLayout(services: TileServices): StreamDeckLayout {
   // brightness you are about to turn before you turn anything.
   dynamic.revealOn(() => strip.showDial(dials.indexOf(dynamic)))
 
-  return { brightness: BRIGHTNESS, pages, dials, strip }
+  return { pages, dials, strip }
 }

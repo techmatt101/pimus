@@ -22,6 +22,9 @@ export const LIVE_ASSIST_STATES: ReadonlySet<string> = new Set(
   [...ASSIST_EVENTS].map((event) => event.toUpperCase()),
 )
 
+/** The panel brightness a fresh deck comes up at, before any BrightnessTile press. */
+export const DEFAULT_BRIGHTNESS = 40
+
 export function createState(overrides: Partial<ControlState> = {}): ControlState {
   return {
     assist: 'DISCONNECTED',
@@ -31,6 +34,7 @@ export function createState(overrides: Partial<ControlState> = {}): ControlState
     media: false,
     // A deployment with no presence sensor never leaves this state.
     awake: true,
+    brightness: DEFAULT_BRIGHTNESS,
     ...overrides,
   }
 }

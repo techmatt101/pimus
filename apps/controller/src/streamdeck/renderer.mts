@@ -43,6 +43,9 @@ export class DeckRenderer {
   // deck attached: nothing mounted, no timers, nothing written.
   private asleep = false
   private renderPending = false
+  // The brightness last written to the panel, so a stream of unrelated state
+  // changes does not re-issue the same setBrightness; null until one is written.
+  private lastBrightness: number | null = null
   // Which page of the key grid is showing. The dials are unaffected by paging.
   private pageIndex = 0
   // The tiles of the current page, mounted while a deck is attached, keyed by
@@ -61,7 +64,12 @@ export class DeckRenderer {
     this.logger = logger
     this.asleep = !model.state.awake
     this.model.subscribe(() => {
+      const wasAsleep = this.asleep
       void this.applyAwake()
+      // A sleep/wake transition brightens the panel in careful order inside
+      // applyAwake (paint first, then light); a plain brightness change with the
+      // panel staying up is all that is left for this path to apply.
+      if (!this.asleep && this.asleep === wasAsleep) void this.applyBrightness()
       this.schedule()
     })
   }
@@ -120,13 +128,22 @@ export class DeckRenderer {
     this.layout.strip.unmount()
   }
 
-  /** Panel brightness for the current state: the layout's, or off. */
+  /**
+   * Panel brightness for the current state: the model's, or off while asleep.
+   * Idempotent — it skips a write that would set the level already showing — so
+   * both the sleep/wake path and a BrightnessTile press can call it freely.
+   */
   private async applyBrightness(): Promise<void> {
     const deck = this.deck
     if (!deck) return
+    const target = this.asleep ? 0 : this.model.state.brightness
+    if (target === this.lastBrightness) return
+    this.lastBrightness = target
     try {
-      await deck.setBrightness(this.asleep ? 0 : this.layout.brightness)
+      await deck.setBrightness(target)
     } catch (error) {
+      // Leave the panel able to retry: the level did not take, so do not record it.
+      this.lastBrightness = null
       this.logger.error('brightness failed', error)
     }
   }

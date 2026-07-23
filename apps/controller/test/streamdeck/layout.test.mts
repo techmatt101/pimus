@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { describeActionProblem } from '../../src/actions/catalog.mjs'
+import { createState } from '../../src/state.mjs'
 import { createLayout } from '../../src/streamdeck/layout.mjs'
 import { SceneTile } from '../../src/streamdeck/tiles/scene-tile.mjs'
 import { testContext, testServices } from '../support/fixtures.mjs'
@@ -16,7 +17,8 @@ test('the compiled layout fits the Stream Deck+ hardware', () => {
     assert.ok(page.name.length > 0, `page ${page.name} is named for the nav keys`)
   }
   assert.ok(layout.dials.length <= 4, 'the deck has 4 dials')
-  const brightness = layout.brightness
+  // Brightness is runtime state now, not a layout field; it starts a percentage.
+  const brightness = createState().brightness
   assert.ok(brightness >= 0 && brightness <= 100, 'brightness is a percentage')
 })
 
@@ -61,15 +63,15 @@ test('layout tiles and dials drive the injected services when pressed', () => {
   assert.ok(main, 'the layout has a first page')
 
   main.grid.topLeft?.press(CONTEXT)
-  // The audio mode key reconciles every route it owns, not just the one it is
-  // moving to, so no press can leave two inputs enabled at once.
+  // Each audio route has its own key now, toggling just that route on or off.
   main.grid.bottomLeft?.press(CONTEXT)
+  main.grid.bottomRight?.press(CONTEXT)
   layout.dials[0]?.right?.run()
 
   assert.deepEqual(services.calls, [
     'lva:start_listening',
-    'source:aux:on',
-    'source:usb:off',
+    'source:aux:toggle',
+    'source:usb:toggle',
     'volume:up',
   ])
 })
