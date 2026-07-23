@@ -75,6 +75,7 @@
     that:
       - (hifiberry_output_volume_percent | int) >= 0
       - (hifiberry_output_volume_percent | int) <= 100
+      - (smartamp_loopback_latency_ms | int) >= 0
       - (smartamp_aux_latency_ms | int) >= 0
       - (usb_audio_sample_rate | int) >= 8000
       - (usb_audio_sample_rate | int) <= 192000

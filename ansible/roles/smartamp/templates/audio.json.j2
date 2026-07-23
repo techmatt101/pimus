@@ -5,12 +5,12 @@
   "aec_reference": {
     "enabled": {{ smartamp_aec_reference_enabled | bool | to_json }},
     "sink_match": {{ smartamp_aec_reference_match | to_json }},
-    "latency_ms": 40
+    "latency_ms": {{ smartamp_loopback_latency_ms | int }}
   },
   "background": {
     "enabled": {{ voice_ducking_enabled | to_json }},
     "sink_name": {{ smartamp_background_sink_name | to_json }},
-    "latency_ms": 40,
+    "latency_ms": {{ smartamp_loopback_latency_ms | int }},
     "duck_volume_percent": {{ smartamp_voice_duck_volume_percent | int }},
     "fade_ms": {{ smartamp_voice_duck_fade_ms | int }}
   },
@@ -25,7 +25,7 @@
       "match": {{ smartamp_usb_gadget_match | to_json }},
       "enabled": {{ usb_audio_gadget_enabled | bool | to_json }},
       "target": {{ ('background' if voice_ducking_enabled else 'output') | to_json }},
-      "latency_ms": 40
+      "latency_ms": {{ smartamp_loopback_latency_ms | int }}
     }
   }
 }

@@ -14,7 +14,7 @@ smartamp_swapfile_enabled: false
 # HiFiBerry DAC2 ADC Pro + AAmp60
 hifiberry_overlay: hifiberry-dacplusadcpro
 hifiberry_card_name: sndrpihifiberry
-hifiberry_output_volume_percent: 70
+hifiberry_output_volume_percent: 30
 hifiberry_aux_gain_db: 0
 hifiberry_aux_input_left: "VINL1[SE]"
 hifiberry_aux_input_right: "VINR1[SE]"
@@ -25,9 +25,20 @@ smartamp_output_match: "HiFiBerry|snd_rpi_hifiberry|soc_sound"
 smartamp_aux_match: "HiFiBerry|snd_rpi_hifiberry|soc_sound"
 smartamp_voice_input_match: "reSpeaker.*XVF3800|XVF3800|2886.*001A"
 smartamp_aec_reference_match: "reSpeaker.*XVF3800|XVF3800|2886.*001A"
-smartamp_usb_gadget_match: "UAC2Gadget|Office Amp USB Audio"
+# The kernel's f_uac2 driver always names the local capture card UAC2Gadget,
+# independent of usb_audio_product (the host-facing name), so this rarely needs
+# changing. Override only if a future kernel renames that card.
+smartamp_usb_gadget_match: "UAC2Gadget"
 smartamp_aux_enabled: true
-smartamp_aux_latency_ms: 40
+# Target buffer depth for every PipeWire loopback bridge the audio manager
+# builds (aux, USB, ducking bus, and the AEC reference). Lower tightens sync but
+# risks dropouts. PipeWire's stock quantum on the Pi is ~21 ms (48 kHz / 1024),
+# so ~20 ms is the practical floor: going lower needs a pipewire.conf.d quantum
+# override and on-Pi xrun testing. The USB->speakers path crosses two loopbacks
+# when ducking is on, so its delay is roughly double this. The aux line-in is
+# the one path monitored live, so it inherits this default but can override it.
+smartamp_loopback_latency_ms: 20
+smartamp_aux_latency_ms: "{{ smartamp_loopback_latency_ms }}"
 smartamp_aec_reference_enabled: true
 
 # Keep background playback audible but quieter while Assist is listening,
@@ -38,12 +49,14 @@ smartamp_background_sink_name: smartamp_background
 smartamp_voice_duck_volume_percent: 15
 smartamp_voice_duck_fade_ms: 250
 
-# Make the Pi appear as a 48 kHz stereo USB sound card to a computer connected
-# to the Pi 5 USB-C port. The AAmp60/DAC stack must power the Pi through GPIO.
+# Make the Pi appear as a 48 kHz 24-bit stereo USB sound card to a computer
+# connected to the Pi 5 USB-C port. The AAmp60/DAC stack must power the Pi
+# through GPIO. Sample size is bytes per sample: 2 = 16-bit, 3 = 24-bit,
+# 4 = 32-bit; 24-bit matches the HiFiBerry DAC's depth for a bit-perfect path.
 usb_audio_gadget_enabled: true
-usb_audio_product: "Office Amp USB Audio"
+usb_audio_product: "Office Amp USB"
 usb_audio_sample_rate: 48000
-usb_audio_sample_size_bytes: 2
+usb_audio_sample_size_bytes: 3
 
 # Sendspin, Music Assistant's native player protocol. Leave the URL empty so
 # the player advertises itself over mDNS and Music Assistant discovers it, or
@@ -62,8 +75,22 @@ voice_assistant_enabled: true
 # virtual environment, matching how sendspin_version pins its client.
 voice_assistant_version: "1.1.13"
 voice_assistant_name: "Office Amp Voice"
+# Wake and stop words are microWakeWord models bundled with the pinned release.
+# v1.1.13 ships: okay_nabu, okay_computer, hey_jarvis, hey_mycroft, hey_luna,
+# hey_morgan, hey_home_assistant, choo_choo_homie, alexa, and stop. Custom
+# OpenWakeWord models dropped in /var/lib/smartamp/lva/wakewords work by name.
 voice_assistant_wake_model: okay_nabu
+# The stop model listens for "stop" during a response; "stop" is the only
+# bundled one, but any wake model name above is accepted here too.
 voice_assistant_stop_model: stop
+# Channels captured from the XVF3800, NOT its four mics: the chip beamforms all
+# four into a processed stream, so the array is invisible to Linux. Its USB
+# capture presents two channels - ch0 the enhanced, echo-cancelled voice (the
+# only one wake-word detection uses, so detection is already mono) and ch1 a raw
+# reference LVA forwards to Home Assistant for optional server-side AEC. Keep 2
+# to match what the firmware enumerates (verify with `arecord --dump-hw-params`);
+# this box already cancels echo in hardware, so ch1 is redundant insurance, not a
+# second mic. Set 1 only for a genuinely mono capture device.
 voice_assistant_mic_channels: 2
 voice_assistant_mic_volume: 100
 voice_assistant_port: 6053
@@ -75,7 +102,7 @@ voice_assistant_debug: false
 # controller and edited in apps/controller/src/voice/led-states.mts, exactly
 # as the deck layout is; see docs/configuration.md.
 respeaker_led_enabled: true
-respeaker_led_brightness: 64
+respeaker_led_brightness: 128 # 0 - 255
 
 # Whether this unit drives a Stream Deck+. The key and dial layout itself is
 # compiled into the controller and edited in
