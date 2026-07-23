@@ -363,6 +363,130 @@ class AudioManagerTests(unittest.TestCase):
             {"enabled": True, "available": True, "sink": "xvf_playback"},
         )
 
+    def test_voice_capture_publishes_the_asr_channel_as_the_default_source(self) -> None:
+        manager = self._reconciling_manager()
+        manager.config["voice_capture_channel"] = 1
+        manager.config["aec_reference"] = {"enabled": False}
+        loaded = []
+
+        def load_module(name: str, module: str, *arguments: str) -> int:
+            manager.modules[name] = 40
+            loaded.append((name, module, arguments))
+            return 40
+
+        manager.load_module = load_module
+        responses = {
+            "modules": [],
+            "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
+            "sources": [
+                # Listed first, and naming its master in a property, to prove
+                # the remap source can never be matched as the voice device.
+                {
+                    "name": "smartamp_voice_capture",
+                    "monitor_of_sink": 4294967295,
+                    "properties": {"device.master_device": "alsa_input.usb-XVF3800"},
+                },
+                {
+                    "name": "xvf_mic",
+                    "description": "reSpeaker XVF3800 Mic Array",
+                    "monitor_of_sink": 4294967295,
+                    "channel_map": "front-left,front-right",
+                },
+            ],
+        }
+        with mock.patch.object(
+            audio_manager, "pactl_json", side_effect=lambda kind: responses[kind]
+        ), mock.patch.object(
+            audio_manager, "run", side_effect=self._fake_run
+        ) as pactl_run, mock.patch.object(audio_manager, "atomic_json") as status_write:
+            manager.reconcile()
+
+        # Channel 1 is the XVF3800's ASR output; front-right is its label in
+        # the device channel map. remix=no keeps the Conference channel out.
+        self.assertEqual(loaded, [
+            (
+                "_voice_capture",
+                "module-remap-source",
+                (
+                    "source_name=smartamp_voice_capture",
+                    "master=xvf_mic",
+                    "channels=1",
+                    "channel_map=mono",
+                    "master_channel_map=front-right",
+                    "remix=no",
+                    "source_properties=device.description=SmartAmp_Voice_Capture",
+                ),
+            )
+        ])
+        self.assertIn(
+            ("pactl", "set-default-source", "smartamp_voice_capture"),
+            [call.args for call in pactl_run.call_args_list],
+        )
+        status = status_write.call_args.args[1]
+        self.assertEqual(status["voice_input"], "xvf_mic")
+        self.assertEqual(
+            status["voice_capture"],
+            {"channel": 1, "source": "smartamp_voice_capture"},
+        )
+
+    def test_voice_capture_falls_back_to_the_device_without_that_channel(self) -> None:
+        manager = self._reconciling_manager()
+        manager.config["voice_capture_channel"] = 1
+        manager.config["aec_reference"] = {"enabled": False}
+        manager.load_module = mock.Mock()
+        responses = {
+            "modules": [],
+            "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
+            "sources": [
+                {
+                    "name": "mono_mic",
+                    "description": "reSpeaker XVF3800 Mic Array",
+                    "monitor_of_sink": 4294967295,
+                    "channel_map": "mono",
+                }
+            ],
+        }
+        with mock.patch.object(
+            audio_manager, "pactl_json", side_effect=lambda kind: responses[kind]
+        ), mock.patch.object(
+            audio_manager, "run", side_effect=self._fake_run
+        ) as pactl_run, mock.patch.object(audio_manager, "atomic_json") as status_write:
+            manager.reconcile()
+
+        manager.load_module.assert_not_called()
+        self.assertIn(
+            ("pactl", "set-default-source", "mono_mic"),
+            [call.args for call in pactl_run.call_args_list],
+        )
+        status = status_write.call_args.args[1]
+        self.assertEqual(
+            status["voice_capture"], {"channel": 1, "source": None}
+        )
+
+    def test_voice_capture_is_released_when_the_xvf3800_disappears(self) -> None:
+        manager = self._reconciling_manager()
+        manager.config["voice_capture_channel"] = 1
+        manager.config["aec_reference"] = {"enabled": False}
+        manager.modules = {"_voice_capture": 40}
+        manager.bindings = {"_voice_capture": ("xvf_mic", "front-right")}
+        responses = {
+            "modules": [{"index": 40}],
+            "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
+            "sources": [{"name": "hifiberry.monitor", "monitor_of_sink": 0}],
+        }
+        with mock.patch.object(
+            audio_manager, "pactl_json", side_effect=lambda kind: responses[kind]
+        ), mock.patch.object(
+            audio_manager, "run", side_effect=self._fake_run
+        ) as pactl_run, mock.patch.object(audio_manager, "atomic_json"):
+            manager.reconcile()
+
+        self.assertNotIn("_voice_capture", manager.modules)
+        self.assertIn(
+            ("pactl", "unload-module", "40"),
+            [call.args for call in pactl_run.call_args_list],
+        )
+
     def test_aec_reference_is_released_when_the_xvf3800_disappears(self) -> None:
         manager = self._reconciling_manager()
         manager.modules = {"_aec": 30}

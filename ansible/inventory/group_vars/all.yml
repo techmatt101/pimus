@@ -25,6 +25,14 @@ smartamp_output_match: "HiFiBerry|snd_rpi_hifiberry|soc_sound"
 smartamp_aux_match: "HiFiBerry|snd_rpi_hifiberry|soc_sound"
 smartamp_voice_input_match: "reSpeaker.*XVF3800|XVF3800|2886.*001A"
 smartamp_aec_reference_match: "reSpeaker.*XVF3800|XVF3800|2886.*001A"
+# The XVF3800's USB capture is two DSP outputs, not a stereo pair: channel 0
+# carries its Conference stream (post-processed for human listeners) and
+# channel 1 its ASR stream (tuned for wake-word and speech recognition). The
+# audio manager remaps exactly this one channel into a mono source and makes
+# that the default, so the voice assistant hears the ASR stream - capturing
+# the device in mono would instead downmix Conference and ASR together. Set to
+# null to use the device unmapped (for a genuinely mono microphone).
+smartamp_voice_capture_channel: 1
 # The kernel's f_uac2 driver always names the local capture card UAC2Gadget,
 # independent of usb_audio_product (the host-facing name), so this rarely needs
 # changing. Override only if a future kernel renames that card.
@@ -83,15 +91,6 @@ voice_assistant_wake_model: okay_nabu
 # The stop model listens for "stop" during a response; "stop" is the only
 # bundled one, but any wake model name above is accepted here too.
 voice_assistant_stop_model: stop
-# Channels captured from the XVF3800, NOT its four mics: the chip beamforms all
-# four into a processed stream, so the array is invisible to Linux. Its USB
-# capture presents two channels - ch0 the enhanced, echo-cancelled voice (the
-# only one wake-word detection uses, so detection is already mono) and ch1 a raw
-# reference LVA forwards to Home Assistant for optional server-side AEC. Keep 2
-# to match what the firmware enumerates (verify with `arecord --dump-hw-params`);
-# this box already cancels echo in hardware, so ch1 is redundant insurance, not a
-# second mic. Set 1 only for a genuinely mono capture device.
-voice_assistant_mic_channels: 2
 voice_assistant_mic_volume: 100
 voice_assistant_port: 6053
 voice_assistant_peripheral_port: 6055

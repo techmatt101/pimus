@@ -56,4 +56,11 @@ inspect `/run/user/*/smartamp-audio-status.json`. Both `sink` and `voice_input`
 must contain device names. Then check `smartamp-audio-manager` logs for the
 HiFiBerry or ReSpeaker match that is missing.
 
+`voice_capture` in the same file shows the ASR-channel remap: `source` should
+read `smartamp_voice_capture`, and that source should be the PipeWire default
+(`pactl get-default-source`). If `source` is null with a channel configured,
+the device's channel map did not contain that channel — the manager logs the
+map it saw — and the assistant is hearing the raw device instead, which on the
+XVF3800 means a Conference/ASR downmix rather than the ASR stream.
+
 Ensure the Pi and Home Assistant share an mDNS-capable LAN/VLAN, and ports 6053/tcp and mDNS are not filtered. Add it manually through **Settings → Devices & services → ESPHome** using the Pi IP and port 6053 if discovery is blocked.

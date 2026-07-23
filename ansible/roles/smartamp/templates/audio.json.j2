@@ -2,6 +2,7 @@
 {
   "output_match": {{ smartamp_output_match | to_json }},
   "voice_input_match": {{ smartamp_voice_input_match | to_json }},
+  "voice_capture_channel": {{ smartamp_voice_capture_channel | to_json }},
   "aec_reference": {
     "enabled": {{ smartamp_aec_reference_enabled | bool | to_json }},
     "sink_match": {{ smartamp_aec_reference_match | to_json }},

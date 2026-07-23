@@ -17,6 +17,12 @@ Environment=PYTHONUNBUFFERED=1
 # The audio manager chooses the real PipeWire defaults after discovering the
 # HiFiBerry and ReSpeaker. Waiting avoids racing that first hardware scan.
 ExecStartPre={{ smartamp_app_dir }}/wait-audio-ready.sh /run/user/{{ smartamp_uid }}/smartamp-audio-status.json 60
+# Capture is fixed at one channel: the audio manager publishes a mono default
+# source (the XVF3800's ASR channel, or the raw device when
+# smartamp_voice_capture_channel is null). Never raise this to 2 here - LVA
+# forwards a second channel to Home Assistant advertised as a far-end echo
+# reference for server-side AEC, and the XVF3800's channel 1 carries the ASR
+# voice itself, so HA would be told to cancel the speech against itself.
 ExecStart={{ smartamp_app_dir }}/linux-voice-assistant/.venv/bin/python {{ smartamp_app_dir }}/smartamp_lva.py \
   --name {{ voice_assistant_name | quote }} \
   --preferences-file {{ smartamp_state_dir }}/lva/configuration/preferences.json \
@@ -24,7 +30,7 @@ ExecStart={{ smartamp_app_dir }}/linux-voice-assistant/.venv/bin/python {{ smart
   --wake-word-dir {{ smartamp_state_dir }}/lva/wakewords \
   --host 0.0.0.0 \
   --port {{ voice_assistant_port }} \
-  --audio-input-channels {{ voice_assistant_mic_channels }} \
+  --audio-input-channels 1 \
   --mic-volume {{ voice_assistant_mic_volume }} \
   --wake-model {{ voice_assistant_wake_model | quote }} \
   --stop-model {{ voice_assistant_stop_model | quote }} \

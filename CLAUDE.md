@@ -298,6 +298,13 @@ Provisioning can reboot the Pi when boot overlays change.
   reset or the throttle flags are non-zero.
 - The XVF3800 playback endpoint carries the far-end AEC reference even though
   its physical speaker jack is unused. Do not remove that route as "unused."
+- The XVF3800 USB capture is two DSP outputs, not stereo: channel 0 is the
+  Conference stream (tuned for human listeners), channel 1 the ASR stream the
+  voice assistant must hear. Keep the audio manager's mono ASR remap source and
+  the voice unit's hardcoded single-channel capture: recording the device
+  directly downmixes the two streams, and a second LVA channel would be
+  forwarded to Home Assistant as a far-end echo reference, which on this
+  device it is not.
 - Device discovery must use stable properties or USB IDs, not ALSA card numbers
   that change with enumeration order.
 

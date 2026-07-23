@@ -117,6 +117,10 @@ EVENT_DEBOUNCE_SECONDS = 0.3
 # newline is broken and must not grow the buffer without limit.
 MAX_CLIENT_BUFFER_BYTES = 64 * 1024
 
+# The mono source published for the voice assistant when a capture channel is
+# selected; see ensure_voice_capture for why the device is not used directly.
+VOICE_CAPTURE_SOURCE = "smartamp_voice_capture"
+
 # Facilities whose subscribe events can invalidate the reconciled graph.
 # `client` is deliberately excluded: every pactl invocation this process makes
 # emits client events, which would schedule reconciles forever.
@@ -261,6 +265,79 @@ class AudioManager:
         self.bindings[name] = binding
         return True
 
+    def ensure_voice_capture(
+        self, voice: dict[str, Any] | None, sources: list[dict[str, Any]]
+    ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+        """Publish one capture channel of the voice device as a mono source.
+
+        The XVF3800's two USB capture channels are different DSP outputs, not a
+        stereo pair: channel 0 carries its Conference stream (post-processed
+        for human listeners) and channel 1 its ASR stream (tuned for wake-word
+        and speech recognition). The voice assistant must hear exactly the ASR
+        channel; recording the device in mono would instead downmix the two.
+        Returns the source the assistant should record from and its status.
+        """
+        channel = self.config.get("voice_capture_channel")
+        status: dict[str, Any] = {
+            "channel": None if channel is None else int(channel),
+            "source": None,
+        }
+        if channel is None or voice is None:
+            self.unload("_voice_capture")
+            return voice, status
+        labels = [
+            label.strip()
+            for label in str(voice.get("channel_map", "")).split(",")
+            if label.strip()
+        ]
+        if int(channel) >= len(labels):
+            LOG.warning(
+                "Voice capture channel %s is outside %s channel map %r; capturing unmapped",
+                channel,
+                voice.get("name"),
+                voice.get("channel_map"),
+            )
+            self.unload("_voice_capture")
+            return voice, status
+        master_channel = labels[int(channel)]
+        binding = (voice["name"], master_channel)
+        if self.bindings.get("_voice_capture") not in (None, binding):
+            self.unload("_voice_capture")
+        if "_voice_capture" not in self.modules:
+            existing = find_loaded_module(
+                pactl_json("modules"),
+                "module-remap-source",
+                (f"master={voice['name']}", f"master_channel_map={master_channel}"),
+            )
+            if existing is not None:
+                self.modules["_voice_capture"] = int(existing["index"])
+                self.bindings["_voice_capture"] = binding
+        if "_voice_capture" not in self.modules:
+            self.load_module(
+                "_voice_capture",
+                "module-remap-source",
+                f"source_name={VOICE_CAPTURE_SOURCE}",
+                f"master={voice['name']}",
+                "channels=1",
+                "channel_map=mono",
+                f"master_channel_map={master_channel}",
+                "remix=no",
+                "source_properties=device.description=SmartAmp_Voice_Capture",
+            )
+            self.bindings["_voice_capture"] = binding
+            sources = pactl_json("sources")
+            LOG.info(
+                "Publishing %s channel %s as the voice capture source",
+                voice["name"],
+                channel,
+            )
+        capture = next(
+            (node for node in sources if node.get("name") == VOICE_CAPTURE_SOURCE),
+            None,
+        )
+        status["source"] = capture.get("name") if capture else None
+        return capture or voice, status
+
     def desired_ducking(self) -> bool:
         background_config = self.config.get("background", {})
         if not background_config.get("enabled", False):
@@ -389,11 +466,19 @@ class AudioManager:
         sources = pactl_json("sources")
         sink = find_node(sinks, self.config["output_match"])
         background_sink, sinks, sources = self.ensure_background(sinks, sources, sink)
-        voice = find_node(sources, self.config["voice_input_match"])
+        # The remap source's properties name its master device, so it would
+        # match voice_input_match itself; exclude it or it becomes its own
+        # master on the next reconcile.
+        voice_device = find_node(
+            [node for node in sources if node.get("name") != VOICE_CAPTURE_SOURCE],
+            self.config["voice_input_match"],
+        )
+        voice, voice_capture = self.ensure_voice_capture(voice_device, sources)
         ducked = self.reconcile_ducking()
         status: dict[str, Any] = {
             "sink": sink.get("name") if sink else None,
-            "voice_input": voice.get("name") if voice else None,
+            "voice_input": voice_device.get("name") if voice_device else None,
+            "voice_capture": voice_capture,
             "background": {
                 "available": bool(
                     background_sink and self.background_stream_index is not None

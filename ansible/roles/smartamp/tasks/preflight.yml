@@ -80,8 +80,9 @@
       - (usb_audio_sample_rate | int) >= 8000
       - (usb_audio_sample_rate | int) <= 192000
       - (usb_audio_sample_size_bytes | int) in [2, 3, 4]
-      - (voice_assistant_mic_channels | int) >= 1
-      - (voice_assistant_mic_channels | int) <= 8
+      - smartamp_voice_capture_channel is none or
+        ((smartamp_voice_capture_channel | int) >= 0 and
+         (smartamp_voice_capture_channel | int) <= 7)
       - (voice_assistant_mic_volume | int) >= 0
       - (voice_assistant_mic_volume | int) <= 100
       - (voice_assistant_port | int) >= 1

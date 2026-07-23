@@ -39,6 +39,8 @@ conversation handling, and text-to-speech.
 
 The XVF3800 already performs AEC, beamforming, dereverberation, noise suppression and gain control. Leave LVA software noise suppression and auto-gain disabled initially to avoid processing the signal twice.
 
+The device's two USB capture channels are separate DSP outputs, not a stereo pair: channel 0 is the Conference stream (tuned for human listeners), channel 1 the ASR stream (tuned for recognition). `smartamp_voice_capture_channel` (default `1`) tells the audio manager which channel to publish as the mono default source; set it to `null` to capture a device unmapped (a genuinely mono microphone). The voice assistant's capture is hardcoded to one channel in its systemd unit because that mono source is the entire capture either way — a second LVA channel would be forwarded to Home Assistant labelled as a far-end echo reference for server-side AEC, and on the XVF3800 that channel carries the voice, not an echo reference.
+
 ## ReSpeaker effects
 
 Inventory carries only `respeaker_led_enabled` and `respeaker_led_brightness`.
