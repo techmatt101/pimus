@@ -85,9 +85,9 @@ enabled — with the two bottom corners navigating between them:
 
 | Page | Keys |
 |---|---|
-| Main | Voice (start or cancel Assist), mic mute, play/pause, shuffle, input mode (stream/aux/usb), and a playlist shortcut |
+| Main | Voice (start or cancel Assist), mic mute, play/pause, shuffle, and the AUX and USB route toggles |
 | Room | Scenes, ceiling fan, blinds, desk PC, a Home Assistant timer, and the lights |
-| Info | Clock, room temperature, weather, a next-page key, and stop |
+| Info | Clock, room temperature, weather, panel brightness, stop, and a playlist shortcut |
 | Remote | Only with remote tiles enabled: six keys another computer on the LAN fills over an authenticated WebSocket, receiving the presses back — see [remote tiles](docs/controls.md#remote-tiles-from-another-computer) |
 
 Dial 1 controls volume, dial 2 is media transport (previous/next, press to

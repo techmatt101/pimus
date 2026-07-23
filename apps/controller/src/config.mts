@@ -76,8 +76,6 @@ function validateControllerConfig(value: unknown, configPath: string): asserts v
       )
     }
   }
-
-
 }
 
 export function loadConfig(

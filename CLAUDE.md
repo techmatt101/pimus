@@ -174,7 +174,8 @@ runtime validation, and relevant documentation together.
   `PageGrid` (`streamdeck/grid.mts`) of tiles; the grid geometry,
   physical-key mapping, and dial shape live in `grid.mts`. Only the
   `streamdeck_enabled` deployment flag lives in Ansible; `layout.test.mts` and
-  `tile.test.mts` validate the compiled layout and tiles against the catalog.
+  `actions/catalog.test.mts` validate the compiled layout and tiles against the
+  catalog.
 - Tiles and screens paint onto a `Surface` (`streamdeck/surface.mts`), a Skia
   canvas (`@napi-rs/canvas`) with helpers for the things every face repeats.
   `surface.ctx` is the real 2D context: reach for it directly rather than adding

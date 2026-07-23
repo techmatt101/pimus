@@ -8,8 +8,9 @@
 //     new catalog entry fails to compile until its behaviour exists.
 //   - layout.test.mts rejects a bound action the catalog does not understand,
 //     instead of leaving a silently dead key on the deck.
-//   - streamdeck/tile.mts reads the `indicator` below to decide the active
-//     colour and label, so key feedback lives with the action it belongs to.
+//   - streamdeck/tiles/action-tile.mts reads the `indicator` below to decide
+//     the active colour and label, so key feedback lives with the action it
+//     belongs to.
 //
 // Bindings themselves are built in streamdeck/layout.mts from the injected
 // controller services; docs/controls.md is the reference table. When you add
@@ -76,7 +77,7 @@ export const isAssistRunning = (state: ControlState): boolean => ASSIST_ACTIVE.i
  * socket.
  *
  * LVA accepts more commands than these. Any command not listed is forwarded
- * verbatim (see FORWARDED_VOICE_COMMAND below), so upstream additions work
+ * verbatim with no local state or key feedback, so upstream additions work
  * without a controller change; list one here when it needs local state
  * bookkeeping, key feedback, or expands to several LVA commands.
  */
@@ -157,12 +158,6 @@ export const VOICE_ACTIONS = {
 } as const satisfies Record<string, VoiceActionSpec>
 
 export type VoiceActionName = keyof typeof VOICE_ACTIONS
-
-/** Documents the escape hatch for LVA commands with no catalog entry. */
-export const FORWARDED_VOICE_COMMAND: ActionSpec = {
-  summary: 'Any other command is forwarded to LVA unchanged, with no local state or key feedback.',
-  example: '{ type: lva, command: <any LVA command> }',
-}
 
 /**
  * Master volume actions (`type: audio` with no `source`). These drive the
@@ -388,11 +383,6 @@ export type HaActionName = keyof typeof HA_ACTIONS
 /** Whether a media player last reported shuffle on. */
 export function isShuffled(ha: HomeAssistantService, entityId: string): boolean {
   return Boolean(ha.entity(entityId)?.attributes.shuffle)
-}
-
-export const NOOP_ACTION: ActionSpec = {
-  summary: 'Do nothing. Use it to blank a dial direction you do not want bound.',
-  example: '{ type: noop }',
 }
 
 const has = <T extends object>(table: T, key: string): key is Extract<keyof T, string> =>

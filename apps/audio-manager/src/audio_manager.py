@@ -438,7 +438,7 @@ class AudioManager:
                 "_background_bridge",
                 monitor_name,
                 output["name"],
-                int(background_config.get("latency_ms", 40)),
+                int(background_config["latency_ms"]),
             )
             if created:
                 self.background_ducked = None
@@ -512,7 +512,7 @@ class AudioManager:
                 "_aec",
                 monitor["name"],
                 aec_sink["name"],
-                int(aec_config.get("latency_ms", 40)),
+                int(aec_config["latency_ms"]),
             )
             if created:
                 LOG.info("Enabled XVF3800 AEC far-end reference")
@@ -538,7 +538,7 @@ class AudioManager:
                     name,
                     node["name"],
                     target["name"],
-                    int(source_config.get("latency_ms", 40)),
+                    int(source_config["latency_ms"]),
                 )
                 if created:
                     LOG.info("Enabled %s input monitor", name)

@@ -112,16 +112,6 @@ export function drawLabelFace(surface: Surface, background: string, label: strin
 }
 
 /**
- * A readout key: one large value over the caption bar, for tiles that show a
- * measurement rather than a state — the clock, a temperature, a countdown.
- */
-export function drawValueFace(surface: Surface, background: string, value: string, caption: string): void {
-  drawBackground(surface, background)
-  drawValue(surface, value, surface.width / 2, FACE_CENTER)
-  drawCaption(surface, caption)
-}
-
-/**
  * A dot per choice with the current one filled, for a key that cycles through a
  * short list — the scenes, the audio inputs. It says how many presses it takes
  * to get back around without having to cycle through and find out.

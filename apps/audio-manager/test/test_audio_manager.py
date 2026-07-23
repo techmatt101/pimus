@@ -245,7 +245,7 @@ class AudioManagerTests(unittest.TestCase):
 
     def test_background_sink_is_bridged_and_identifiable(self) -> None:
         manager = audio_manager.AudioManager.__new__(audio_manager.AudioManager)
-        manager.config = {"background": {"enabled": True, "sink_name": "background"}}
+        manager.config = {"background": {"enabled": True, "sink_name": "background", "latency_ms": 40}}
         manager.modules = {}
         manager.bindings = {}
         manager.background_stream_index = None

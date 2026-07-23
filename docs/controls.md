@@ -242,6 +242,7 @@ configuration. Everything else keeps the label and colour you configured.
 | `lva` / `mute_toggle` | Label becomes `MIC OFF`, background red. |
 | `lva` / `media_toggle` | Label becomes `PAUSE`, background green. |
 | `lva` / `start_listening` | Background cyan while the pipeline is running. |
+| `lva` / `listen_toggle` | Label becomes `CANCEL`, background cyan while the pipeline is running. |
 | `audio` route (`on`/`off`/`toggle`) | Label gains ` ON` or ` OFF`, background green when on. |
 
 The `MediaTile` used on the MAIN page goes further than the `media_toggle`
