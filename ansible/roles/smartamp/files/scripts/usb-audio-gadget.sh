@@ -1,6 +1,12 @@
 #!/bin/sh
 set -eu
 
+# Configuration is injected by the smartamp-usb-audio-gadget.service unit's
+# Environment= lines, generated from inventory. Fail loudly if any is missing.
+PRODUCT="${USB_AUDIO_PRODUCT:?USB_AUDIO_PRODUCT is required}"
+SAMPLE_RATE="${USB_AUDIO_SAMPLE_RATE:?USB_AUDIO_SAMPLE_RATE is required}"
+SAMPLE_SIZE_BYTES="${USB_AUDIO_SAMPLE_SIZE_BYTES:?USB_AUDIO_SAMPLE_SIZE_BYTES is required}"
+
 GADGET=/sys/kernel/config/usb_gadget/smartamp
 
 start_gadget() {
@@ -24,7 +30,7 @@ start_gadget() {
     /usr/bin/mkdir -p strings/0x409
     /usr/bin/awk '/Serial/ {print $3}' /proc/cpuinfo > strings/0x409/serialnumber
     printf 'Pimus' > strings/0x409/manufacturer
-    printf '%s' {{ usb_audio_product | quote }} > strings/0x409/product
+    printf '%s' "$PRODUCT" > strings/0x409/product
 
     /usr/bin/mkdir -p configs/c.1/strings/0x409
     printf 'UAC2 stereo input' > configs/c.1/strings/0x409/configuration
@@ -34,8 +40,8 @@ start_gadget() {
     # "Playback" is from the USB host into the Pi. Disable the opposite path.
     printf '0x3' > functions/uac2.usb0/p_chmask
     printf '0x0' > functions/uac2.usb0/c_chmask
-    printf '%s' {{ usb_audio_sample_rate | int }} > functions/uac2.usb0/p_srate
-    printf '%s' {{ usb_audio_sample_size_bytes | int }} > functions/uac2.usb0/p_ssize
+    printf '%s' "$SAMPLE_RATE" > functions/uac2.usb0/p_srate
+    printf '%s' "$SAMPLE_SIZE_BYTES" > functions/uac2.usb0/p_ssize
     [ ! -e configs/c.1/uac2.usb0 ] && /usr/bin/ln -s functions/uac2.usb0 configs/c.1/
 
     UDC=$(/usr/bin/ls /sys/class/udc | /usr/bin/head -n 1)

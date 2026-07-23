@@ -55,6 +55,10 @@ test: build ## Run local source and Ansible checks without contacting the Pi
 	python3 -m compileall -q apps/audio-manager/src
 	python3 -m unittest discover -s apps/audio-manager/test
 	node --test $$(find apps/controller/dist/test -name '*.test.mjs' | sort)
+	@# The role's shell scripts are plain files (values injected via their unit's
+	@# Environment=), so unlike the .j2 templates they can be statically checked.
+	@command -v shellcheck >/dev/null || { echo "shellcheck is required for make test: brew install shellcheck (or apt-get install shellcheck)"; exit 1; }
+	shellcheck ansible/roles/smartamp/files/scripts/*.sh
 	ansible-playbook ansible/playbooks/site.yml --syntax-check
 
 verify: test ## Run local checks, then inspect the configured Pi

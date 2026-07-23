@@ -53,8 +53,8 @@
 # ALSA mixer defaults are not guaranteed after a clean image. Apply the chosen
 # ADC pins/gain and a conservative amplifier level on every boot.
 - name: Install HiFiBerry mixer initialisation
-  ansible.builtin.template:
-    src: hifiberry-init.sh.j2
+  ansible.builtin.copy:
+    src: scripts/hifiberry-init.sh
     dest: "{{ smartamp_app_dir }}/hifiberry-init.sh"
     owner: root
     group: root

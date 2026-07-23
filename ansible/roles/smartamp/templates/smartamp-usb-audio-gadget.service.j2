@@ -4,6 +4,11 @@ After=systemd-modules-load.service sys-kernel-config.mount
 Before=smartamp-audio-manager.service
 
 [Service]
+# Injected into the plain usb-audio-gadget.sh (in the role's files/scripts). The
+# product name is quoted so a value with spaces survives as one assignment.
+Environment="USB_AUDIO_PRODUCT={{ usb_audio_product }}"
+Environment=USB_AUDIO_SAMPLE_RATE={{ usb_audio_sample_rate | int }}
+Environment=USB_AUDIO_SAMPLE_SIZE_BYTES={{ usb_audio_sample_size_bytes | int }}
 Type=oneshot
 ExecStart={{ smartamp_app_dir }}/usb-audio-gadget.sh start
 ExecStop={{ smartamp_app_dir }}/usb-audio-gadget.sh stop

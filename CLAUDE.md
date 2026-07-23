@@ -220,6 +220,15 @@ runtime validation, and relevant documentation together.
   feature should stop stale services and remove configuration that would remain
   active or misleading.
 - Use handlers to coalesce service restarts and daemon reloads.
+- A shell script that only substitutes scalar values is a plain file in
+  `roles/smartamp/files/scripts/`, deployed with `copy`, and its values are
+  injected through its systemd unit's `Environment=` lines (quote any value
+  with spaces). This keeps the script lintable: `make test` runs `shellcheck`
+  over that folder. Reserve `.sh.j2` templates for scripts whose structure is
+  genuinely conditional (loops, `{% if %}`), such as `smartamp-doctor.sh.j2`.
+  When a value moves into a unit's `Environment=`, make sure that unit's task
+  notifies whatever a change to the value requires (a reboot for the USB
+  gadget, a service restart for HiFiBerry).
 - Run long-lived processes as the restricted `smartamp` service account, not
   root. Grant hardware access through narrow group/udev permissions.
 - Every package entry and non-obvious task needs a nearby comment explaining

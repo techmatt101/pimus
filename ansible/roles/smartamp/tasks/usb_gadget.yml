@@ -25,8 +25,8 @@
 # ConfigFS gadgets are runtime kernel objects, not permanent files. Recreate the
 # stereo 48 kHz sound-card function deterministically after each boot.
 - name: Install UAC2 gadget setup script
-  ansible.builtin.template:
-    src: usb-audio-gadget.sh.j2
+  ansible.builtin.copy:
+    src: scripts/usb-audio-gadget.sh
     dest: "{{ smartamp_app_dir }}/usb-audio-gadget.sh"
     owner: root
     group: root
@@ -42,4 +42,9 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Reload systemd
+  # The gadget's descriptors now live in this unit's Environment=. The setup
+  # script only writes them when it creates the gadget cold, so a changed value
+  # needs a reboot to re-create it, exactly as the script template did before.
+  notify:
+    - Reload systemd
+    - Reboot Smart Amp

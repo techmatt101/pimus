@@ -4,6 +4,13 @@ After=sound.target
 Wants=sound.target
 
 [Service]
+# Injected into the plain hifiberry-init.sh (in the role's files/scripts). ALSA
+# control names are quoted so a value with spaces survives as one assignment.
+Environment=HIFIBERRY_CARD_NAME={{ hifiberry_card_name }}
+Environment="HIFIBERRY_AUX_INPUT_LEFT={{ hifiberry_aux_input_left }}"
+Environment="HIFIBERRY_AUX_INPUT_RIGHT={{ hifiberry_aux_input_right }}"
+Environment=HIFIBERRY_AUX_GAIN_DB={{ hifiberry_aux_gain_db }}
+Environment=HIFIBERRY_OUTPUT_VOLUME_PERCENT={{ hifiberry_output_volume_percent }}
 Type=oneshot
 ExecStart={{ smartamp_app_dir }}/hifiberry-init.sh
 RemainAfterExit=yes

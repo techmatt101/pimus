@@ -123,8 +123,8 @@
 # small gate checks the manager's fresh status file and produces a clear systemd
 # failure instead of an obscure SoundCard device-lookup exception.
 - name: Install voice audio readiness check
-  ansible.builtin.template:
-    src: wait-audio-ready.sh.j2
+  ansible.builtin.copy:
+    src: scripts/wait-audio-ready.sh
     dest: "{{ smartamp_app_dir }}/wait-audio-ready.sh"
     owner: root
     group: root
