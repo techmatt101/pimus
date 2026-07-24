@@ -5,11 +5,17 @@
 // opposite bargain: pressing the lights, fan, or blinds key hands it that
 // entity, so one dial covers every dimmable, variable-speed, part-open thing in
 // the room without the deck growing a dial per device. A playlist key hands it a
-// list to pick from the same way (streamdeck/dials/selection-dial.mts).
+// list to pick from the same way (streamdeck/selection-dial.mts).
 //
 // A key claims the dial as it is pressed (streamdeck/tiles/entity-toggle-tile.mts)
 // and the strip shows the new readout straight away, so the thing you just
 // pressed is also the thing under your hand.
+//
+// What turning does for an entity comes from its own domain, derived here from
+// the `DIAL_DOMAINS` table exactly as `EntityToggleTile` derives its toggle
+// service: a light dims, a fan changes speed, a cover opens further. A domain
+// with nothing worth turning — a switch, a lock — is simply absent from the
+// table, and `controlEntity` claims nothing rather than a knob that does nothing.
 //
 // A claim comes in two flavours. A room key's claim is sticky: the light stays
 // under the knob while you page away and look at something else, until you claim
@@ -19,9 +25,12 @@
 // `autoRelease`). Both fall back to the idle prompt; only the transient one lets
 // go on its own.
 
-import type {Binding} from '../bindings.mjs'
-import type {Dial} from './dial.mjs'
+import {entityDomain, type HaActionName} from '../../actions/catalog.mjs'
+import {isEntityOn, numericAttribute} from '../../home-assistant/entity.mjs'
+import {type Binding, createBindings, type TileServices} from '../bindings.mjs'
+import {type Dial, fraction, percent} from '../dial.mjs'
 import type {ControlModel} from '../../state.mjs'
+import type {HomeAssistantEntity} from '../../types.mjs'
 
 /** Shown before any key has claimed the dial, so it explains itself. */
 const IDLE_LABEL = 'CONTROL'
@@ -29,6 +38,50 @@ const IDLE_DETAIL = 'PICK A KEY'
 
 /** How long a claim survives with no turn or press before it releases itself. */
 export const CLAIM_TIMEOUT_MILLISECONDS = 15_000
+
+/** How one Home Assistant domain reads and moves as a dial. */
+interface DialDomain {
+    /** Bound to a counter-clockwise turn. */
+    down: HaActionName
+    /** Bound to a clockwise turn. */
+    up: HaActionName
+
+    /** The entity's value as a 0-1 fraction, or undefined when it reports none. */
+    level(entity: HomeAssistantEntity | undefined): number | undefined
+
+    /** Readout while on with no level to show, and while off. */
+    on: string
+    off: string
+}
+
+/**
+ * The domains worth turning, keyed by entity domain. Add a domain here and its
+ * stepping actions to the catalog; never give a device a dial of its own.
+ */
+const DIAL_DOMAINS: Record<string, DialDomain> = {
+    light: {
+        down: 'brightness_down',
+        up: 'brightness_up',
+        // Home Assistant reports brightness on 0-255, not as a percentage.
+        level: (entity) => fraction(numericAttribute(entity, 'brightness'), 255),
+        on: 'ON',
+        off: 'OFF',
+    },
+    fan: {
+        down: 'fan_speed_down',
+        up: 'fan_speed_up',
+        level: (entity) => fraction(numericAttribute(entity, 'percentage'), 100),
+        on: 'ON',
+        off: 'OFF',
+    },
+    cover: {
+        down: 'cover_close',
+        up: 'cover_open',
+        level: (entity) => fraction(numericAttribute(entity, 'current_position'), 100),
+        on: 'OPEN',
+        off: 'CLOSED',
+    },
+}
 
 /**
  * The shared dial, delegating to whichever dial currently holds it. It is a
@@ -39,6 +92,9 @@ export const CLAIM_TIMEOUT_MILLISECONDS = 15_000
 export class DynamicDial implements Dial {
     readonly #model: ControlModel
     #held: Dial | null = null
+    // The entity a room key is controlling, or null when the claim is a playlist
+    // picker or nothing is held. Keys read this to draw their holding stripe.
+    #entity: string | null = null
     #reveal: (() => void) | null = null
     // Whether the current claim is the transient, self-expiring kind. A sticky
     // claim (a room key) has no timer and ignores another dial being touched.
@@ -105,6 +161,7 @@ export class DynamicDial implements Dial {
     claim(dial: Dial, transient = false): void {
         const changed = this.#held !== dial
         this.#held = dial
+        this.#entity = null
         this.#transient = transient
         if (transient) this.#rearm()
         else this.#stopIdle()
@@ -116,6 +173,24 @@ export class DynamicDial implements Dial {
     }
 
     /**
+     * Hand the dial a Home Assistant entity to turn — what a room key does as it
+     * is pressed. The turn and readout come from the entity's domain; a domain
+     * with nothing to turn (a switch) claims nothing and leaves the last claim in
+     * place. The claim is sticky, so the entity stays under the knob across pages.
+     */
+    controlEntity(services: TileServices, label: string, entity: string): void {
+        const domain = DIAL_DOMAINS[entityDomain(entity)]
+        if (!domain) return
+        this.claim(this.#entityDial(services, label, entity, domain))
+        this.#entity = entity
+    }
+
+    /** Whether the dial is currently turning `entity`, for a room key's stripe. */
+    controls(entity: string): boolean {
+        return this.#entity === entity
+    }
+
+    /**
      * Let go of the current claim, falling back to the idle prompt. Called by the
      * idle timer and by a key that has finished with the dial (a confirmed
      * selection, or a picker paged out of sight). Safe to call when nothing is
@@ -124,6 +199,7 @@ export class DynamicDial implements Dial {
     release(): void {
         this.#stopIdle()
         this.#transient = false
+        this.#entity = null
         if (!this.#held) return
         this.#held = null
         this.#model.notify()
@@ -141,6 +217,33 @@ export class DynamicDial implements Dial {
     /** Whether `dial` is the one holding it, for a key's own face. */
     holds(dial: Dial): boolean {
         return this.#held === dial
+    }
+
+    /**
+     * A Home Assistant entity as a delegated dial, derived from its own domain: a
+     * light dims, a fan changes speed, a cover opens further. Pressing the knob
+     * toggles the entity, so the dial is the key without reaching back across the
+     * deck. An unreachable Home Assistant reads `--` rather than a light turned
+     * down to nothing, the same rule the Home Assistant keys follow.
+     */
+    #entityDial(services: TileServices, label: string, entity: string, domain: DialDomain): Dial {
+        const {ha} = createBindings(services)
+        const read = (): HomeAssistantEntity | undefined => services.ha.entity(entity)
+        return {
+            label,
+            left: ha(domain.down, entity),
+            right: ha(domain.up, entity),
+            press: ha('toggle', entity),
+            detail: () => {
+                const current = read()
+                const on = isEntityOn(current)
+                if (on === undefined) return '--'
+                const level = domain.level(current)
+                if (level === undefined) return on ? domain.on : domain.off
+                return percent(level)
+            },
+            level: () => domain.level(read()),
+        }
     }
 
     /**

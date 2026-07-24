@@ -9,7 +9,7 @@
 // the layout on its own never has to wire one up.
 
 import type {Binding} from '../bindings.mjs'
-import type {Dial} from './dial.mjs'
+import type {Dial} from '../dial.mjs'
 
 /** How the page dial reaches paging, once the renderer that owns it exists. */
 export interface PageNavigator {

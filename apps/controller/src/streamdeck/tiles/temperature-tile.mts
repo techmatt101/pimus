@@ -4,7 +4,7 @@
 
 import {requireEntity} from '../../actions/catalog.mjs'
 import {numericState} from '../../home-assistant/entity.mjs'
-import {bar, fittingSize, icon, type Surface, text} from '../surface.mjs'
+import {drawBar, fittingSize, drawIcon, type Surface, drawText} from '../surface.mjs'
 import {drawBackground, drawCaption, FACE_CENTER, type Tile, type TileHost} from '../tile.mjs'
 import type {TileServices} from '../bindings.mjs'
 import type {HomeAssistantService} from '../../types.mjs'
@@ -65,8 +65,8 @@ export class TemperatureTile implements Tile {
         const reading = numericState(sensor)
         if (reading === undefined) {
             drawBackground(surface, '#1a1a1a')
-            icon(surface, 'thermometer', {x: ICON_X, y: FACE_CENTER, size: ICON_SIZE, color: '#424242'})
-            text(surface, '--', {x: VALUE_X, y: FACE_CENTER, size: 34, color: '#616161'})
+            drawIcon(surface, 'thermometer', {x: ICON_X, y: FACE_CENTER, size: ICON_SIZE, color: '#424242'})
+            drawText(surface, '--', {x: VALUE_X, y: FACE_CENTER, size: 34, color: '#616161'})
             drawCaption(surface, this.#config.label)
             return
         }
@@ -78,8 +78,8 @@ export class TemperatureTile implements Tile {
         // The glyph is drawn in the band's accent so the key carries the reading in
         // colour as well as digits, and a level bar under it says where in the
         // 5..35°C range that sits.
-        icon(surface, 'thermometer', {x: ICON_X, y: FACE_CENTER - 4, size: ICON_SIZE, color: accent})
-        bar(surface, scaleOf(reading), {
+        drawIcon(surface, 'thermometer', {x: ICON_X, y: FACE_CENTER - 4, size: ICON_SIZE, color: accent})
+        drawBar(surface, scaleOf(reading), {
             x: ICON_X - 18,
             y: 76,
             width: 36,
@@ -92,7 +92,7 @@ export class TemperatureTile implements Tile {
         // One decimal place is what a room sensor is worth; anything longer stops
         // fitting beside the thermometer.
         const digits = `${Math.abs(reading) < 100 ? reading.toFixed(1) : Math.round(reading)}°`
-        text(surface, digits, {
+        drawText(surface, digits, {
             x: VALUE_X,
             y: FACE_CENTER,
             size: fittingSize(digits, [40, 34, 28], VALUE_WIDTH),

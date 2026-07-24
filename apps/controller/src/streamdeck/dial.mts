@@ -11,7 +11,7 @@
 // and whether that reading is a level — which is why `detail` is required. A
 // dial that cannot say what it reads has nothing to show mid-turn.
 
-import type {Binding} from '../bindings.mjs'
+import type {Binding} from './bindings.mjs'
 
 export interface Dial {
     /** The name shown above the reading while this dial is being turned. */

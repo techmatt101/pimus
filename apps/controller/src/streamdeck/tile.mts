@@ -10,7 +10,7 @@
 // a labelled key, a readout key, the caption bar — are what keep eight
 // independently written keys looking like one control surface.
 
-import {fittingSize, lighten, type Surface, text, verticalGradient, withAlpha} from './surface.mjs'
+import {fittingSize, lighten, type Surface, drawText, verticalGradient, withAlpha} from './surface.mjs'
 import type {Action} from '../types.mjs'
 
 /** The pixel size of one key face. */
@@ -96,7 +96,7 @@ export function drawBackground(surface: Surface, background: string): void {
 export function drawCaption(surface: Surface, label: string, color = '#ffffff'): void {
     surface.ctx.fillStyle = 'rgba(0,0,0,0.72)'
     surface.ctx.fillRect(0, CAPTION_TOP, surface.width, CAPTION_HEIGHT)
-    text(surface, label, {
+    drawText(surface, label, {
         x: surface.width / 2,
         y: CAPTION_CENTER,
         size: CAPTION_SIZE,
@@ -144,7 +144,7 @@ export function drawDots(
 
 /** One large reading, shrunk only as far as the value needs. */
 export function drawValue(surface: Surface, value: string, x: number, y: number, available = KEY_SIZE - 12): void {
-    text(surface, value, {x, y, size: fittingSize(value, [46, 38, 30, 24], available)})
+    drawText(surface, value, {x, y, size: fittingSize(value, [46, 38, 30, 24], available)})
 }
 
 /** The colour a key glows in while it holds the shared dial. */

@@ -6,7 +6,7 @@
 
 import {isAssistRunning} from '../../actions/catalog.mjs'
 import {type Binding, createBindings, type TileServices} from '../bindings.mjs'
-import {icon, type Surface, withAlpha} from '../surface.mjs'
+import {drawIcon, type Surface, withAlpha} from '../surface.mjs'
 import {drawBackground, drawCaption, FACE_CENTER, type Tile, type TileHost} from '../tile.mjs'
 import type {ControlModel, Unsubscribe} from '../../state.mjs'
 import type {Action} from '../../types.mjs'
@@ -99,7 +99,7 @@ export class VoiceTile implements Tile {
             ctx.restore()
         }
 
-        icon(surface, 'mic', {
+        drawIcon(surface, 'mic', {
             x,
             y: FACE_CENTER,
             size: 52,

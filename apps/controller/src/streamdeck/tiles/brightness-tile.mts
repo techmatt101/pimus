@@ -5,7 +5,7 @@
 // what actually re-lights the panel. Unlike a room light there is no entity to
 // read back — this is the deck itself — so the level it shows is the one it set.
 
-import {fittingSize, icon, type Surface, text} from '../surface.mjs'
+import {fittingSize, drawIcon, type Surface, drawText} from '../surface.mjs'
 import {drawBackground, drawCaption, drawDots, FACE_CENTER, type Tile} from '../tile.mjs'
 import type {TileServices} from '../bindings.mjs'
 import type {ControlModel} from '../../state.mjs'
@@ -59,9 +59,9 @@ export class BrightnessTile implements Tile {
         const index = this.#currentIndex(brightness)
         const x = surface.width / 2
         drawBackground(surface, '#37474f')
-        icon(surface, 'sun', {x, y: 28, size: 34, color: '#ffffff'})
+        drawIcon(surface, 'sun', {x, y: 28, size: 34, color: '#ffffff'})
         const value = `${brightness}%`
-        text(surface, value, {x, y: FACE_CENTER + 18, size: fittingSize(value, [28, 24, 20], 112)})
+        drawText(surface, value, {x, y: FACE_CENTER + 18, size: fittingSize(value, [28, 24, 20], 112)})
         // A dot per level, the current one filled, exactly as the scene and input
         // cycles read, so you can see how many presses bring it back around.
         drawDots(surface, this.#levels.length, index, 78, '#ffffff')

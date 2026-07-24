@@ -6,7 +6,7 @@
 // minute boundary rather than ticking every second — the key redraws when the
 // digits actually change and stays idle the rest of the minute.
 
-import {fittingSize, type Surface, text} from '../surface.mjs'
+import {fittingSize, type Surface, drawText} from '../surface.mjs'
 import {drawBackground, drawCaption, FACE_CENTER, type Tile, type TileHost} from '../tile.mjs'
 
 export interface ClockTileConfig {
@@ -65,7 +65,7 @@ export class ClockTile implements Tile {
     draw(surface: Surface): void {
         const {time, date} = clockFace(Date.now(), this.#hours24)
         drawBackground(surface, this.#color)
-        text(surface, time, {x: surface.width / 2, y: FACE_CENTER, size: fittingSize(time, [56, 46], 104)})
+        drawText(surface, time, {x: surface.width / 2, y: FACE_CENTER, size: fittingSize(time, [56, 46], 104)})
         drawCaption(surface, date)
     }
 }

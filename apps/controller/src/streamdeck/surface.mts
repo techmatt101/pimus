@@ -214,7 +214,7 @@ export function verticalGradient(surface: Surface, from: string, to: string): Gr
 }
 
 /** A soft radial glow behind an icon, for a key that is on. */
-export function radialGradient(
+export function drawRadialGradient(
     surface: Surface,
     x: number,
     y: number,
@@ -229,7 +229,7 @@ export function radialGradient(
 }
 
 /** One line of text, centred on `y` rather than sitting on a baseline. */
-export function text(surface: Surface, value: string, options: TextOptions): void {
+export function drawText(surface: Surface, value: string, options: TextOptions): void {
     const {ctx} = surface
     const {x, y, size, color = '#ffffff', weight = BOLD, align = 'center', maxWidth, opacity} = options
     ctx.save()
@@ -250,7 +250,7 @@ export function text(surface: Surface, value: string, options: TextOptions): voi
  * Rasterizing is cached per size and colour (streamdeck/icons.mts), so an
  * animated key redraws its icon without re-parsing any SVG.
  */
-export function icon(surface: Surface, name: IconName, options: IconOptions): void {
+export function drawIcon(surface: Surface, name: IconName, options: IconOptions): void {
     const {ctx} = surface
     const {x, y, size, color, rotate, opacity} = options
     const image = iconImage(name, size, color)
@@ -263,7 +263,7 @@ export function icon(surface: Surface, name: IconName, options: IconOptions): vo
 }
 
 /** A level bar: a track with the filled part of it drawn over the top. */
-export function bar(surface: Surface, fraction: number, options: BarOptions): void {
+export function drawBar(surface: Surface, fraction: number, options: BarOptions): void {
     const {ctx} = surface
     const {x, y, width, height, color = '#26c6da', track = '#1c2b33', rounded = false} = options
     const filled = Math.max(0, Math.min(1, fraction)) * width
@@ -282,7 +282,7 @@ export function bar(surface: Surface, fraction: number, options: BarOptions): vo
 }
 
 /** Draw `paint` clipped to a rectangle, for revealing part of a face. */
-export function clipped(
+export function darwClipped(
     surface: Surface,
     x: number,
     y: number,

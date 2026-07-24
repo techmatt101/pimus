@@ -8,7 +8,7 @@
 // some other dial's reading and look like a dial that has stopped responding.
 
 import type {Binding} from '../bindings.mjs'
-import type {Dial} from './dial.mjs'
+import type {Dial} from '../dial.mjs'
 
 export interface ActionDialConfig {
     label: string

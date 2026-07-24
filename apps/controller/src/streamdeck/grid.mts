@@ -10,7 +10,7 @@
 // all eight keys are free to carry a page's tiles. The slots are named so a
 // page reads as a fixed grid rather than a count-the-positions array.
 
-import type {Dial} from './dials/dial.mjs'
+import type {Dial} from './dial.mjs'
 import type {TouchStrip} from './strip.mjs'
 import type {Tile} from './tile.mjs'
 

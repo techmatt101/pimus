@@ -7,7 +7,7 @@
 // to when you unmute is still the level the deck remembers.
 
 import {type Binding, createBindings, type TileServices} from '../bindings.mjs'
-import {type Dial, percent} from './dial.mjs'
+import {type Dial, percent} from '../dial.mjs'
 import type {ControlModel} from '../../state.mjs'
 
 export class VolumeDial implements Dial {

@@ -5,13 +5,13 @@
 // to choose from (a playlist, a source, a preset) can hand this to the shared
 // dial and get the same select-then-confirm behaviour.
 //
-// A key claims it exactly as the room keys claim EntityDial
+// A key claims it exactly as the room keys hand the shared dial their entity
 // (streamdeck/dials/dynamic-dial.mts): press the key to arm the dial, turn to
 // choose, press again — the key or the knob — to confirm. The 15-second timeout
 // and "another dial cancels" belong to the shared dial, not here, so this class
 // stays a plain readout-and-step.
 
-import type {Binding} from '../bindings.mjs'
+import type {Binding} from './bindings.mjs'
 import type {Dial} from './dial.mjs'
 
 /** The least a choice must carry: the label shown while it is the pick. */

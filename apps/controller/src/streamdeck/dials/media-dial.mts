@@ -7,7 +7,7 @@
 // reads out, so the knob reports the same thing the play key does.
 
 import {type Binding, createBindings, type TileServices} from '../bindings.mjs'
-import type {Dial} from './dial.mjs'
+import type {Dial} from '../dial.mjs'
 import type {ControlModel} from '../../state.mjs'
 
 export interface MediaDialConfig {

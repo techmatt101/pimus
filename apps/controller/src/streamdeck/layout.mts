@@ -38,7 +38,7 @@
 
 import {isEntityOn, numericAttribute} from '../home-assistant/entity.mjs'
 import {type Binding, createBindings, type TileServices} from './bindings.mjs'
-import type {Dial} from './dials/dial.mjs'
+import type {Dial} from './dial.mjs'
 import {DynamicDial} from './dials/dynamic-dial.mjs'
 import {MediaDial} from './dials/media-dial.mjs'
 import {PageDial} from './dials/page-dial.mjs'
@@ -166,12 +166,7 @@ export function createLayout(services: TileServices): StreamDeckLayout {
                 // to pick, press again to play. It claims the shared dial exactly as
                 // the room keys do, so the same knob that dims the lights picks a
                 // playlist while this key glows.
-                bottomMidRight: new PlaylistTile(services.ha, {
-                    label: 'MUSIC',
-                    player: HA.player,
-                    dial: dynamic,
-                    playlists: HA.playlists,
-                }),
+                bottomMidRight: new PlaylistTile(services.ha, dynamic, HA.player, HA.playlists),
             },
         },
         {

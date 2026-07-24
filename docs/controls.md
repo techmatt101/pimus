@@ -285,9 +285,8 @@ the content of that face:
 | `ActionDial`  | The default: a fixed name, up to three bindings, and a readout it is told. Also how a knob is held open — bound to nothing and saying so.            |
 | `VolumeDial`  | Master output volume, read from the controller's own state so it is right with nothing else reachable. `MUTED` is its own reading, and an empty bar. |
 | `MediaDial`   | Transport: skip through the Music Assistant player, press to play or pause through LVA, and read `PLAYING` / `PAUSED`.                               |
-| `EntityDial`  | A Home Assistant entity turned by its own domain. Built by `EntityDial.for(...)`, which returns nothing for a domain with nothing to turn.           |
 | `PageDial`    | Pages the key grid — turn to move between pages — and reads out the page you land on. Takes over the job the bottom-corner keys used to do.          |
-| `DynamicDial` | The shared knob, delegating to whichever `Dial` a key last handed it.                                                                                |
+| `DynamicDial` | The shared knob. A playlist key hands it a `Dial` to delegate to; a room key hands it an entity, which it turns by that entity's own domain.         |
 
 Write a new `Dial` class when a knob needs a reading it has to work out for
 itself; use `ActionDial` when it can be told.
@@ -321,8 +320,9 @@ thing under your hand, and the key that holds the dial draws a cyan stripe along
 its top edge — the same colour as the dial's own bar — so you can see which of
 the three the knob will move without turning it to find out.
 
-What turning it does comes from the entity's own domain, exactly as the toggle
-service does (`EntityDial` in `streamdeck/dials/entity-dial.mts`):
+What turning it does comes from the entity's own domain, which `DynamicDial`
+derives itself (`streamdeck/dials/dynamic-dial.mts`) exactly as the toggle
+service does:
 
 | Domain  | Turn left / right                   | Readout                            |
 |---------|-------------------------------------|------------------------------------|

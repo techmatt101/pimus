@@ -7,7 +7,7 @@
 // across the whole width, and a dial being turned or a notification arriving
 // takes the width over for as long as it is relevant.
 
-import {bar, BOLD, measureText, type Surface, text} from '../surface.mjs'
+import {drawBar, BOLD, measureText, type Surface, drawText} from '../surface.mjs'
 
 /** The touch strip's pixel size, shared by every screen that draws on it. */
 export const STRIP_WIDTH = 800
@@ -83,7 +83,7 @@ export function drawStripLine(surface: Surface, value: string, options: StripLin
 
     if (width <= available) {
         const x = left ?? Math.round((surface.width - width) / 2)
-        text(surface, value, {...line, x})
+        drawText(surface, value, {...line, x})
         return false
     }
 
@@ -93,8 +93,8 @@ export function drawStripLine(surface: Surface, value: string, options: StripLin
     const cycle = width + SCROLL_GAP
     const offset = ((now / 1000) * SCROLL_PIXELS_PER_SECOND) % cycle
     const start = (left ?? margin) - offset
-    text(surface, value, {...line, x: start})
-    text(surface, value, {...line, x: start + cycle})
+    drawText(surface, value, {...line, x: start})
+    drawText(surface, value, {...line, x: start + cycle})
     return true
 }
 
@@ -117,7 +117,7 @@ export function drawStripBar(
     fraction: number,
     {color = '#26c6da', track = '#1c2b33', height = 6}: { color?: string; track?: string; height?: number } = {},
 ): void {
-    bar(surface, fraction, {
+    drawBar(surface, fraction, {
         x: 0,
         y: surface.height - height,
         width: surface.width,

@@ -11,7 +11,7 @@
 import {requireEntity} from '../../actions/catalog.mjs'
 import {durationSeconds, formatDuration, timerRemainingSeconds} from '../../home-assistant/entity.mjs'
 import {type Binding, createBindings, type TileServices} from '../bindings.mjs'
-import {type Surface, text} from '../surface.mjs'
+import {type Surface, drawText} from '../surface.mjs'
 import {drawBackground, drawCaption, drawValue, FACE_CENTER, type Tile, type TileHost} from '../tile.mjs'
 import type {Action, HomeAssistantService} from '../../types.mjs'
 
@@ -97,7 +97,7 @@ export class TimerTile implements Tile {
         if (!timer) {
             drawBackground(surface, '#1a1a1a')
             drawRing(surface, x, 1, '#424242')
-            text(surface, '--', {x, y: FACE_CENTER, size: 34, color: '#616161'})
+            drawText(surface, '--', {x, y: FACE_CENTER, size: 34, color: '#616161'})
             drawCaption(surface, this.#label)
             return
         }

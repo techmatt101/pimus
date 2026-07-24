@@ -6,7 +6,7 @@
 import {requireEntity} from '../../actions/catalog.mjs'
 import {type Binding, createBindings, type TileServices} from '../bindings.mjs'
 import {drawLabelFace, FACE_CENTER, type Tile, type TileHost} from '../tile.mjs'
-import {icon, type Surface} from '../surface.mjs'
+import {drawIcon, type Surface} from '../surface.mjs'
 import type {Action, HomeAssistantService} from '../../types.mjs'
 
 export class ShuffleTile implements Tile {
@@ -53,6 +53,6 @@ export class ShuffleTile implements Tile {
     }
 
     #icon(surface: Surface, color: string): void {
-        icon(surface, 'shuffle', {x: surface.width / 2, y: FACE_CENTER, size: 56, color})
+        drawIcon(surface, 'shuffle', {x: surface.width / 2, y: FACE_CENTER, size: 56, color})
     }
 }

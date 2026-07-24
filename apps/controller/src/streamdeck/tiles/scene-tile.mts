@@ -6,7 +6,7 @@
 
 import {requireEntity} from '../../actions/catalog.mjs'
 import {type Binding, createBindings, type TileServices} from '../bindings.mjs'
-import {fittingSize, icon, type Surface, text} from '../surface.mjs'
+import {fittingSize, drawIcon, type Surface, drawText} from '../surface.mjs'
 import {drawBackground, drawCaption, drawDots, type Tile} from '../tile.mjs'
 
 /** One scene in the cycle: what to call it and which entity to activate. */
@@ -60,8 +60,8 @@ export class SceneTile implements Tile {
 
         // Stacked rather than side by side: a scene name is up to eight characters,
         // which leaves no room beside an icon on a 120px key.
-        icon(surface, 'bulb', {x, y: 24, size: 34, color: active ? '#ffe082' : '#6d5a34'})
-        text(surface, name, {x, y: 58, size: fittingSize(name, [30, 26, 22], 112)})
+        drawIcon(surface, 'bulb', {x, y: 24, size: 34, color: active ? '#ffe082' : '#6d5a34'})
+        drawText(surface, name, {x, y: 58, size: fittingSize(name, [30, 26, 22], 112)})
 
         drawDots(surface, this.#scenes.length, showing, 82, active ? '#ffffff' : '#6d6d6d')
         drawCaption(surface, this.#label)

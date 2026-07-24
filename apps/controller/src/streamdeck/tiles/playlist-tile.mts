@@ -5,7 +5,7 @@
 // it. A single playlist is just a list of one: press, then press to confirm.
 //
 // The pick-and-confirm itself is the reusable SelectionDial
-// (streamdeck/dials/selection-dial.mts); the glow and the fifteen-second timeout
+// (streamdeck/selection-dial.mts); the glow and the fifteen-second timeout
 // are the shared dial's (streamdeck/dials/dynamic-dial.mts). This key only says
 // what a choice is (a media id for its player) and what confirming does, so it
 // takes only the Home Assistant service — not the whole tile-services bag.
@@ -19,9 +19,9 @@
 import {requireEntity} from '../../actions/catalog.mjs'
 import {haBinding} from '../bindings.mjs'
 import {DynamicDial} from '../dials/dynamic-dial.mjs'
-import {SelectionDial, type SelectionOption} from '../dials/selection-dial.mjs'
+import {SelectionDial, type SelectionOption} from '../selection-dial.mjs'
 import {drawActiveGlow, drawDots, drawLabelFace, FACE_CENTER, type Tile, type TileHost} from '../tile.mjs'
-import {icon, type Surface} from '../surface.mjs'
+import {drawIcon, type Surface} from '../surface.mjs'
 import type {HomeAssistantEntity, HomeAssistantService} from '../../types.mjs'
 
 /** One entry in the key's list: a label to show and what to play. */
@@ -34,36 +34,33 @@ export interface PlaylistChoice extends SelectionOption {
     }
 }
 
-export interface PlaylistTileConfig {
-    label: string
-    /** The media player entity the chosen playlist is sent to. */
-    player: string
-    /** The playlists this key chooses between; one is allowed. */
-    playlists: readonly PlaylistChoice[]
-    /** The shared dial this key claims to choose a playlist while active. */
-    dial: DynamicDial
-    /** Background while active or while one of these playlists is playing. */
-    color?: string
-}
-
+/** The key's heading, shown on the strip while picking and as its resting caption. */
+const TITLE = 'MUSIC'
+/** Background while active or while one of these playlists is playing. */
+const COLOR = '#00695c'
 /** The dots sit between the note glyph and the caption bar. */
 const DOTS_Y = 80
 
 export class PlaylistTile implements Tile {
     readonly #ha: HomeAssistantService
-    readonly #config: PlaylistTileConfig
-    readonly #player: string
     readonly #dial: DynamicDial
+    readonly #player: string
+    readonly #playlists: readonly PlaylistChoice[]
     readonly #selection: SelectionDial<PlaylistChoice>
     #host: TileHost | null = null
     #unwatch: (() => void) | null = null
 
-    constructor(ha: HomeAssistantService, config: PlaylistTileConfig) {
+    constructor(
+        ha: HomeAssistantService,
+        dial: DynamicDial,
+        player: string,
+        playlists: readonly PlaylistChoice[],
+    ) {
         this.#ha = ha
-        this.#config = config
-        this.#player = requireEntity(config.player, `${config.label} playlist tile`)
-        this.#dial = config.dial
-        this.#selection = new SelectionDial(config.label, config.playlists, {
+        this.#dial = dial
+        this.#player = requireEntity(player, `${TITLE} playlist tile`)
+        this.#playlists = playlists
+        this.#selection = new SelectionDial(TITLE, playlists, {
             onConfirm: () => this.#confirm(),
             // A turn moves the pick with no device call, so only this key's own face
             // (its caption and dot) is stale; the strip repaints on the turn itself.
@@ -106,14 +103,13 @@ export class PlaylistTile implements Tile {
         const active = this.#dial.holds(this.#selection)
         const playing = this.#playingIndex()
         const lit = active || playing >= 0
-        const color = this.#config.color ?? '#00695c'
         // The face points at the pick while choosing, otherwise at the playlist that
         // is playing, and rests on its own name when neither applies.
         const shown = active ? this.#selection.index : playing
-        const label = active ? this.#selection.detail() : this.#config.playlists[shown]?.label ?? this.#config.label
+        const label = active ? this.#selection.detail() : this.#playlists[shown]?.label ?? TITLE
 
-        drawLabelFace(surface, lit ? color : '#0d2622', label)
-        icon(surface, 'note', {
+        drawLabelFace(surface, lit ? COLOR : '#0d2622', label)
+        drawIcon(surface, 'note', {
             x: surface.width / 2,
             y: FACE_CENTER,
             size: 54,
@@ -122,8 +118,8 @@ export class PlaylistTile implements Tile {
 
         // A dot per playlist with the shown one filled, so a glance says how many
         // there are and where you are in them — pointless for a list of one.
-        if (this.#config.playlists.length > 1) {
-            drawDots(surface, this.#config.playlists.length, Math.max(0, shown), DOTS_Y, lit ? '#ffffff' : '#4db6ac')
+        if (this.#playlists.length > 1) {
+            drawDots(surface, this.#playlists.length, Math.max(0, shown), DOTS_Y, lit ? '#ffffff' : '#4db6ac')
         }
 
         if (active) drawActiveGlow(surface)
@@ -140,6 +136,6 @@ export class PlaylistTile implements Tile {
         if (player?.state !== 'playing') return -1
         const current = player.attributes['media_content_id']
         if (typeof current !== 'string') return -1
-        return this.#config.playlists.findIndex((choice) => choice.media.media_content_id === current)
+        return this.#playlists.findIndex((choice) => choice.media.media_content_id === current)
     }
 }

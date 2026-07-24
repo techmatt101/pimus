@@ -156,10 +156,11 @@ runtime validation, and relevant documentation together.
 - Three of the four dials are fixed (`VolumeDial`, `MediaDial`, and a spare
   `ActionDial`); the fourth is the shared `DynamicDial`, which controls whichever
   entity a key last handed it. A key claims it by taking `dial` in its config and
-  calling `claim()` as it is pressed; what turning does comes from the entity's
-  own domain via `EntityDial.for()`, exactly as `EntityToggleTile` derives its
-  service. Add a domain by adding a row to `DIAL_DOMAINS` (in `entity-dial.mts`)
-  and its stepping actions to the catalog — do not give a device its own dial.
+  calling `controlEntity()` as it is pressed; what turning does comes from the
+  entity's own domain, which `DynamicDial` derives itself, exactly as
+  `EntityToggleTile` derives its toggle service. Add a domain by adding a row to
+  `DIAL_DOMAINS` (in `dynamic-dial.mts`) and its stepping actions to the catalog
+  — do not give a device its own dial.
 - The touch strip is one full-width display, not four dial labels. `TouchStrip`
   (`streamdeck/strip.mts`) owns which `Screen` (`streamdeck/screens/`, one class
   per file) is showing: the dial being turned wins for a short hold, then a live

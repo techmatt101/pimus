@@ -10,7 +10,7 @@
 
 import {fittingSize, type Surface, verticalGradient} from '../surface.mjs'
 import {drawStripBar, drawStripLine, type Screen, STRIP_MARGIN, STRIP_WIDTH,} from './screen.mjs'
-import type {Dial} from '../dials/dial.mjs'
+import type {Dial} from '../dial.mjs'
 
 /** Readout sizes tried in turn, so `67%` is drawn far larger than `NOT IN USE`. */
 const VALUE_SIZES = [76, 60, 48, 36]

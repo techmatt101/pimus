@@ -15,9 +15,7 @@
 import {requireEntity} from '../../actions/catalog.mjs'
 import {isEntityOn} from '../../home-assistant/entity.mjs'
 import {type Binding, createBindings, type TileServices} from '../bindings.mjs'
-import type {Dial} from '../dials/dial.mjs'
 import {DynamicDial} from '../dials/dynamic-dial.mjs'
-import {EntityDial} from '../dials/entity-dial.mjs'
 import {bar, icon, radialGradient, type Surface, withAlpha} from '../surface.mjs'
 import {drawBackground, drawCaption, drawLabelFace, FACE_CENTER, type Tile, type TileHost,} from '../tile.mjs'
 import type {IconName} from '../icon-set.mjs'
@@ -73,11 +71,11 @@ const LEVEL_HEIGHT = 5
 
 export class EntityToggleTile implements Tile {
     readonly #ha: HomeAssistantService
+    readonly #services: TileServices
     readonly #config: EntityToggleTileConfig
     readonly #entity: string
     readonly #toggle: Binding
     readonly #dial: DynamicDial | undefined
-    readonly #control: Dial | undefined
     #host: TileHost | null = null
     #unwatch: (() => void) | null = null
     #animation: NodeJS.Timeout | null = null
@@ -87,11 +85,11 @@ export class EntityToggleTile implements Tile {
 
     constructor(services: TileServices, config: EntityToggleTileConfig) {
         this.#ha = services.ha
+        this.#services = services
         this.#config = config
         this.#entity = requireEntity(config.entity, `${config.label} tile`)
         this.#toggle = createBindings(services).ha('toggle', this.#entity)
         this.#dial = config.dial
-        this.#control = config.dial ? EntityDial.for(services, config.label, this.#entity) : undefined
     }
 
     action(): Action {
@@ -100,8 +98,8 @@ export class EntityToggleTile implements Tile {
 
     press(): void {
         // Claim first: the strip then shows what this key controls as it flips,
-        // rather than a beat later.
-        if (this.#control) this.#dial?.claim(this.#control)
+        // rather than a beat later. A domain with nothing to turn claims nothing.
+        this.#dial?.controlEntity(this.#services, this.#config.label, this.#entity)
         this.#toggle.run()
     }
 
@@ -198,7 +196,7 @@ export class EntityToggleTile implements Tile {
      * about to move without turning it to find out.
      */
     #drawHolding(surface: Surface): void {
-        if (!this.#control || !this.#dial?.holds(this.#control)) return
+        if (!this.#dial?.controls(this.#entity)) return
         surface.ctx.fillStyle = HOLDING_COLOR
         surface.ctx.fillRect(0, 0, surface.width, HOLDING_HEIGHT)
     }

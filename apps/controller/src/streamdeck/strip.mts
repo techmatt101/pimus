@@ -22,7 +22,7 @@ import {DialScreen} from './screens/dial-screen.mjs'
 import {NotificationScreen} from './screens/notification-screen.mjs'
 import type {Screen, ScreenHost} from './screens/screen.mjs'
 import type {Surface} from './surface.mjs'
-import type {Dial} from './dials/dial.mjs'
+import type {Dial} from './dial.mjs'
 import type {Notification, NotificationFeed} from '../types.mjs'
 
 /** How long the strip keeps showing a dial after it was last moved. */
