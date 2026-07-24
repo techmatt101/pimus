@@ -166,7 +166,7 @@ export function createLayout(services: TileServices): StreamDeckLayout {
                 // to pick, press again to play. It claims the shared dial exactly as
                 // the room keys do, so the same knob that dims the lights picks a
                 // playlist while this key glows.
-                bottomMidRight: new PlaylistTile(services, {
+                bottomMidRight: new PlaylistTile(services.ha, {
                     label: 'MUSIC',
                     player: HA.player,
                     dial: dynamic,

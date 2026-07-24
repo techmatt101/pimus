@@ -70,6 +70,24 @@ export interface Binding {
 }
 
 /**
+ * A Home Assistant binding from just the Home Assistant service — the one slice
+ * of the injected bag it needs. A tile that only calls Home Assistant (the
+ * playlist key) depends on this and `HomeAssistantService` rather than the whole
+ * `TileServices`, so its dependencies say what it actually touches.
+ */
+export function haBinding(
+    ha: HomeAssistantService,
+    command: HaActionName,
+    entity: string,
+    data?: Record<string, unknown>,
+): Binding {
+    return {
+        action: {type: 'ha', command, entity, ...(data ? {data} : {})},
+        run: () => runHaCommand(command, {ha, entity, data}),
+    }
+}
+
+/**
  * Binding builders closed over the injected services. The layout factory uses
  * these to give every key and dial its behaviour. Route, volume, and Home
  * Assistant commands are checked against the catalog at compile time; voice
@@ -95,10 +113,8 @@ export function createBindings(services: TileServices) {
             action: {type: 'audio', source, command},
             run: () => services.setSource(source, command),
         }),
-        ha: (command: HaActionName, entity: string, data?: Record<string, unknown>): Binding => ({
-            action: {type: 'ha', command, entity, ...(data ? {data} : {})},
-            run: () => runHaCommand(command, {ha: services.ha, entity, data}),
-        }),
+        ha: (command: HaActionName, entity: string, data?: Record<string, unknown>): Binding =>
+            haBinding(services.ha, command, entity, data),
         /** An explicitly blank binding, for a dial direction you do not want bound. */
         none: (): Binding => ({
             action: {type: 'noop'}, run: () => {

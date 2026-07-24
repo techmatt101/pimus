@@ -7,20 +7,22 @@
 // The pick-and-confirm itself is the reusable SelectionDial
 // (streamdeck/dials/selection-dial.mts); the glow and the fifteen-second timeout
 // are the shared dial's (streamdeck/dials/dynamic-dial.mts). This key only says
-// what a choice is (a media id for its player) and what confirming does.
+// what a choice is (a media id for its player) and what confirming does, so it
+// takes only the Home Assistant service — not the whole tile-services bag.
 //
-// While that player is playing, the key also lights up — it cannot tell whether
-// one of these playlists is the thing playing (Home Assistant does not report
-// the queue source consistently across integrations), so it reports the player's
-// own state and nothing more precise than that.
+// It listens to the player and lights the playlist that is playing: when the
+// player reports a `media_content_id` matching one of these, that entry is drawn
+// lit even when the key is idle, so a glance says which of them is on. A player
+// that does not report the id back simply lights nothing, rather than the key
+// guessing from bare playback that any of its playlists is the one running.
 
 import {requireEntity} from '../../actions/catalog.mjs'
-import {createBindings, type TileServices} from '../bindings.mjs'
+import {haBinding} from '../bindings.mjs'
 import {DynamicDial} from '../dials/dynamic-dial.mjs'
 import {SelectionDial, type SelectionOption} from '../dials/selection-dial.mjs'
 import {drawActiveGlow, drawDots, drawLabelFace, FACE_CENTER, type Tile, type TileHost} from '../tile.mjs'
 import {icon, type Surface} from '../surface.mjs'
-import type {HomeAssistantService} from '../../types.mjs'
+import type {HomeAssistantEntity, HomeAssistantService} from '../../types.mjs'
 
 /** One entry in the key's list: a label to show and what to play. */
 export interface PlaylistChoice extends SelectionOption {
@@ -40,7 +42,7 @@ export interface PlaylistTileConfig {
     playlists: readonly PlaylistChoice[]
     /** The shared dial this key claims to choose a playlist while active. */
     dial: DynamicDial
-    /** Background while active or while the player is playing. */
+    /** Background while active or while one of these playlists is playing. */
     color?: string
 }
 
@@ -48,25 +50,22 @@ export interface PlaylistTileConfig {
 const DOTS_Y = 80
 
 export class PlaylistTile implements Tile {
-    private readonly ha: HomeAssistantService
     private readonly config: PlaylistTileConfig
     private readonly player: string
     private readonly dial: DynamicDial
     private readonly selection: SelectionDial<PlaylistChoice>
-    private readonly bindings: ReturnType<typeof createBindings>
+    private host: TileHost | null = null
     private unwatch: (() => void) | null = null
 
-    constructor(services: TileServices, config: PlaylistTileConfig) {
-        this.ha = services.ha
+    constructor(private readonly ha: HomeAssistantService, config: PlaylistTileConfig) {
         this.config = config
         this.player = requireEntity(config.player, `${config.label} playlist tile`)
         this.dial = config.dial
-        this.bindings = createBindings(services)
         this.selection = new SelectionDial(config.label, config.playlists, {
             onConfirm: () => this.confirm(),
-            // A turn moves the pick with no device call, so nothing else repaints
-            // the face and the dot: mutate, then notify like everywhere else.
-            onChange: () => services.model.notify(),
+            // A turn moves the pick with no device call, so only this key's own face
+            // (its caption and dot) is stale; the strip repaints on the turn itself.
+            onChange: () => this.host?.invalidate(),
         })
     }
 
@@ -85,16 +84,18 @@ export class PlaylistTile implements Tile {
         const choice = this.selection.selected
         this.dial.release()
         if (!choice) return undefined
-        return this.bindings.ha('play_media', this.player, {...choice.media}).run()
+        return haBinding(this.ha, 'play_media', this.player, {...choice.media}).run()
     }
 
     mount(host: TileHost): void {
+        this.host = host
         this.unwatch = this.ha.watch([this.player], () => host.invalidate())
     }
 
     unmount(): void {
         this.unwatch?.()
         this.unwatch = null
+        this.host = null
         // Paging away hides the key, so it must not leave the shared dial pointed
         // at a playlist picker the user can no longer see.
         if (this.dial.holds(this.selection)) this.dial.release()
@@ -102,13 +103,15 @@ export class PlaylistTile implements Tile {
 
     draw(surface: Surface): void {
         const active = this.dial.holds(this.selection)
-        const playing = this.ha.entity(this.player)?.state === 'playing'
-        const lit = active || playing
+        const playing = this.playingIndex()
+        const lit = active || playing >= 0
         const color = this.config.color ?? '#00695c'
+        // The face points at the pick while choosing, otherwise at the playlist that
+        // is playing, and rests on its own name when neither applies.
+        const shown = active ? this.selection.index : playing
+        const label = active ? this.selection.detail() : this.config.playlists[shown]?.label ?? this.config.label
 
-        // While active the caption is the pick you are about to confirm; otherwise
-        // it is the key's own name.
-        drawLabelFace(surface, lit ? color : '#0d2622', active ? this.selection.detail() : this.config.label)
+        drawLabelFace(surface, lit ? color : '#0d2622', label)
         icon(surface, 'note', {
             x: surface.width / 2,
             y: FACE_CENTER,
@@ -116,12 +119,26 @@ export class PlaylistTile implements Tile {
             color: lit ? '#ffffff' : '#4db6ac',
         })
 
-        // A dot per playlist with the pick filled, so a glance says how many there
-        // are and where you are in them — pointless for a list of one.
+        // A dot per playlist with the shown one filled, so a glance says how many
+        // there are and where you are in them — pointless for a list of one.
         if (this.config.playlists.length > 1) {
-            drawDots(surface, this.config.playlists.length, this.selection.index, DOTS_Y, active ? '#ffffff' : '#4db6ac')
+            drawDots(surface, this.config.playlists.length, Math.max(0, shown), DOTS_Y, lit ? '#ffffff' : '#4db6ac')
         }
 
         if (active) drawActiveGlow(surface)
+    }
+
+    /**
+     * Which of this key's playlists the player is currently playing, or -1. Best
+     * effort: it matches the player's reported `media_content_id` against the ids
+     * this key sends, so it only lights up when the integration reports the source
+     * back.
+     */
+    private playingIndex(): number {
+        const player: HomeAssistantEntity | undefined = this.ha.entity(this.player)
+        if (player?.state !== 'playing') return -1
+        const current = player.attributes['media_content_id']
+        if (typeof current !== 'string') return -1
+        return this.config.playlists.findIndex((choice) => choice.media.media_content_id === current)
     }
 }
