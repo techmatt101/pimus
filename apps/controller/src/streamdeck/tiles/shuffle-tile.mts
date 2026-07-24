@@ -25,8 +25,8 @@ export class ShuffleTile implements Tile {
         return this.toggle.action
     }
 
-    press(): unknown {
-        return this.toggle.run()
+    press(): void {
+        this.toggle.run()
     }
 
     mount(host: TileHost): void {

@@ -43,9 +43,9 @@ export class SceneTile implements Tile {
         this.bindings = scenes.map((scene) => ha('activate', requireEntity(scene.entity, `${scene.label} scene`)))
     }
 
-    press(): unknown {
+    press(): void {
         this.applied = (this.applied + 1) % this.scenes.length
-        return this.bindings[this.applied]?.run()
+        this.bindings[this.applied]?.run()
     }
 
     draw(surface: Surface): void {

@@ -69,22 +69,21 @@ export class PlaylistTile implements Tile {
         })
     }
 
-    press(): unknown {
+    press(): void {
         // Already listening: this press is the confirm. Otherwise it arms the dial
         // and lights the key, and it is the next press that plays.
         if (this.dial.holds(this.selection)) return this.confirm()
         // A transient claim: it glows, times out after 15s, and lets go the moment
         // another dial is turned — a "pick one now", not the sticky hold a light gets.
         this.dial.claim(this.selection, true)
-        return undefined
     }
 
     /** Play the choice now showing and hand the dial back. */
-    private confirm(): unknown {
+    private confirm(): void {
         const choice = this.selection.selected
         this.dial.release()
         if (!choice) return undefined
-        return haBinding(this.ha, 'play_media', this.player, {...choice.media}).run()
+        haBinding(this.ha, 'play_media', this.player, {...choice.media}).run()
     }
 
     mount(host: TileHost): void {

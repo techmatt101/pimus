@@ -98,11 +98,11 @@ export class EntityToggleTile implements Tile {
         return this.toggle.action
     }
 
-    press(): unknown {
+    press(): void {
         // Claim first: the strip then shows what this key controls as it flips,
         // rather than a beat later.
         if (this.control) this.dial?.claim(this.control)
-        return this.toggle.run()
+        this.toggle.run()
     }
 
     mount(host: TileHost): void {

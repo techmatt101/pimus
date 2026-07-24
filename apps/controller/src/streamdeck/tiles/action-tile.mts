@@ -61,8 +61,8 @@ export class ActionTile implements Tile {
         return this.config.binding?.action
     }
 
-    press(): unknown {
-        return this.config.binding?.run()
+    press(): void {
+        this.config.binding?.run()
     }
 
     draw(surface: Surface): void {

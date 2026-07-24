@@ -54,7 +54,7 @@ export interface TileHost {
  */
 export interface Tile {
     /** Performs the key's behaviour. Runs through the deck's dispatch queue. */
-    press(): unknown
+    press(): void
 
     /**
      * Paint the key face. The surface arrives cleared, so a tile draws everything

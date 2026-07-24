@@ -47,12 +47,11 @@ export class BrightnessTile implements Tile {
         return nearest
     }
 
-    press(): unknown {
+    press(): void {
         const state = this.model.state
         const next = (this.currentIndex(state.brightness) + 1) % this.levels.length
         state.brightness = this.levels[next] ?? state.brightness
         this.model.notify()
-        return undefined
     }
 
     draw(surface: Surface): void {
