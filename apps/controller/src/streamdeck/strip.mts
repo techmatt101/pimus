@@ -133,14 +133,28 @@ export class TouchStrip {
     /** Paint the face for the current state, and arm the timers that go with it. */
     draw(surface: Surface, deltaTime: number): void {
         const now = this.clock()
-        const dial = now < this.dialUntil ? this.dials[this.dialIndex] : undefined
+        // A dial that pins itself (a mid-pick claim) holds the strip until it
+        // releases, so the choice stays up for the whole claim; otherwise the strip
+        // shows the dial being turned for its short after-turn hold.
+        const pinned = this.pinnedDial()
+        const held = now < this.dialUntil ? this.dials[this.dialIndex] : undefined
+        const dial = pinned ?? held
         // Nothing is asked of the queue while a dial is showing: a message's time
         // starts when it reaches the strip, so one that arrives mid-turn waits its
         // full length rather than expiring behind the readout.
         const notification = dial ? undefined : this.notifications?.current(now)
         const screen = this.select(dial, notification)
         screen.draw(surface, deltaTime)
-        if (this.host) this.arm(screen, dial)
+        // Only the short hold needs a wake-up to fall back on expiry; a pinned dial
+        // repaints when its claim releases (the model notifies), so arming a wake at
+        // its already-passed hold would spin the strip at 16ms.
+        if (this.host) this.arm(screen, pinned ? undefined : held)
+    }
+
+    /** The dial currently pinning the strip to its readout, if any. */
+    private pinnedDial(): Dial | undefined {
+        const index = this.dials.findIndex((dial) => dial.pinned?.())
+        return index >= 0 ? this.dials[index] : undefined
     }
 
     /**
@@ -160,6 +174,9 @@ export class TouchStrip {
     }
 
     private showingNotification(now: number): boolean {
+        // A pinned dial is over the strip, so a tap belongs to it, not to a
+        // notification waiting behind it.
+        if (this.pinnedDial()) return false
         return now >= this.dialUntil && this.notifications?.current(now) !== undefined
     }
 

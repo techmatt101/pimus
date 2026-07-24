@@ -146,3 +146,25 @@ export function drawDots(
 export function drawValue(surface: Surface, value: string, x: number, y: number, available = KEY_SIZE - 12): void {
     text(surface, value, {x, y, size: fittingSize(value, [46, 38, 30, 24], available)})
 }
+
+/** The colour a key glows in while it holds the shared dial. */
+const ACTIVE_GLOW = '#26c6da'
+
+/**
+ * A bright, softly-blurred border marking the key that currently holds the
+ * shared dial: while it glows, turning the dynamic dial and pressing to confirm
+ * act on this key. Drawn last, over the finished face, so any tile that claims
+ * the dial for a pick-then-confirm can call it to say "I am the one listening".
+ */
+export function drawActiveGlow(surface: Surface, color = ACTIVE_GLOW): void {
+    const {ctx} = surface
+    ctx.save()
+    ctx.strokeStyle = color
+    ctx.lineWidth = 4
+    ctx.shadowColor = color
+    ctx.shadowBlur = 12
+    // Inset by half the stroke so the whole 4px line lands on the face rather
+    // than half of it falling off the edge.
+    ctx.strokeRect(2, 2, surface.width - 4, surface.height - 4)
+    ctx.restore()
+}

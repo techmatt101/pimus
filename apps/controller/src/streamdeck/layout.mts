@@ -89,11 +89,16 @@ const HA = {
         {label: 'WARM', entity: 'scene.office_warm', color: '#bf360c'},
         {label: 'OFF', entity: 'scene.office_off', color: '#37474f'},
     ],
-    /** The playlist the shortcut key starts. Take the id from Music Assistant. */
-    playlist: {
-        media_content_id: 'library://playlist/1',
-        media_content_type: 'playlist',
-    },
+    /**
+     * The playlists the music key chooses between: press it to arm, turn the
+     * dynamic dial to pick, press again to play. Take each id from Music
+     * Assistant; a single entry is fine, it just becomes press-then-confirm.
+     */
+    playlists: [
+        {label: 'MELLOW', media: {media_content_id: 'library://playlist/1', media_content_type: 'playlist'}},
+        {label: 'ROCK', media: {media_content_id: 'library://playlist/2', media_content_type: 'playlist'}},
+        {label: 'FOCUS', media: {media_content_id: 'library://playlist/3', media_content_type: 'playlist'}},
+    ],
 } as const
 
 /** How long a press of the timer key starts the Home Assistant timer for. */
@@ -157,16 +162,16 @@ export function createLayout(services: TileServices): StreamDeckLayout {
 
                 bottomLeft: new VoiceTile(services),
                 bottomMidLeft: new ShuffleTile(services, HA.player),
+                // One key for several playlists: press to arm, turn the dynamic dial
+                // to pick, press again to play. It claims the shared dial exactly as
+                // the room keys do, so the same knob that dims the lights picks a
+                // playlist while this key glows.
                 bottomMidRight: new PlaylistTile(services, {
-                    label: 'MELLOW',
+                    label: 'MUSIC',
                     player: HA.player,
-                    media: HA.playlist,
+                    dial: dynamic,
+                    playlists: HA.playlists,
                 }),
-                bottomRight: new PlaylistTile(services, {
-                    label: 'ROCK',
-                    player: HA.player,
-                    media: HA.playlist,
-                })
             },
         },
         {

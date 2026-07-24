@@ -39,6 +39,16 @@ export interface Dial {
      * with nothing to plot omits this.
      */
     level?(): number | undefined
+
+    /**
+     * Whether this dial should hold the strip on its own readout regardless of
+     * the strip's short after-turn hold, until it says otherwise. The shared dial
+     * pins itself while a key is mid-pick (a transient claim) so the selection
+     * stays on the strip for the whole claim rather than dropping to now-playing
+     * a couple of seconds after the last turn. Almost every dial omits this and
+     * gets only the short hold.
+     */
+    pinned?(): boolean
 }
 
 /** A reported value as a fraction of its full scale, or undefined. */

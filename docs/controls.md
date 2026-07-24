@@ -77,7 +77,7 @@ central dispatcher:
 | `VoiceTile`        | Start Assist, or cancel the pipeline already running. Expanding rings while one is live.                                                                                                                                                                                                                                                                       |
 | `BrightnessTile`   | Steps the Stream Deck panel's own brightness through a few levels, showing the current percentage. Mutates display state on the model; the renderer re-lights the panel.                                                                                                                                                                                       |
 | `ShuffleTile`      | Shuffle on the media player, set from and reflecting what Home Assistant reports.                                                                                                                                                                                                                                                                              |
-| `PlaylistTile`     | A one-press shortcut to a compiled-in playlist.                                                                                                                                                                                                                                                                                                                |
+| `PlaylistTile`     | Picks and plays one of a short list of playlists. Press to arm (the key glows and claims the dynamic dial), turn the dynamic dial to choose, press again — the key or the knob — to confirm. A single playlist is just press-then-confirm. The armed state releases itself after 15s, when another dial is turned, or when a different key claims the dial.        |
 | `SceneTile`        | Steps through a short list of scenes, showing the one it last applied.                                                                                                                                                                                                                                                                                         |
 | `EntityToggleTile` | The general Home Assistant on/off key — lights, fan, blinds, PC. Its service comes from the entity's own domain, and it takes an icon plus an optional `spin` (the fan turns while it runs) and `level` (how far the blinds are down), so the four are one class configured four ways. Given the dynamic dial it also hands that dial its entity when pressed. |
 | `TimerTile`        | A Home Assistant `timer` entity: a draining ring and a countdown, started and cancelled by the same key.                                                                                                                                                                                                                                                       |
@@ -341,6 +341,15 @@ Before anything has been pressed the dial reads `CONTROL` / `PICK A KEY`, and an
 unreachable Home Assistant reads `--` rather than a light turned all the way
 down — the same rule the keys follow.
 
+A room key's claim is **sticky**: it stays under the knob while you page away, so
+you can adjust a light from any page until you claim something else. A
+`PlaylistTile`'s claim is **transient** — a modal "pick one now" (the key glows,
+`streamdeck/dials/selection-dial.mts`) — so it times out after 15 seconds of no
+turning, is dropped the instant a different dial is touched, and releases as soon
+as it is confirmed. The two are the same `claim(...)` call with one flag; a tile
+that wants the same pick-then-confirm hands the shared dial a `SelectionDial` and
+draws `drawActiveGlow` while it holds it.
+
 ## The touch strip
 
 The strip is one full-width display rather than four dial labels. Which of its
@@ -349,7 +358,7 @@ in this order:
 
 | Showing      | When                                               | What it looks like                                                  |
 |--------------|----------------------------------------------------|---------------------------------------------------------------------|
-| Dial readout | For 2.5 s after a dial was last turned or pressed  | The dial's name, its readout, and a bar for a dial with a level     |
+| Dial readout | For 2.5 s after a dial was last turned or pressed, or the whole time a key is mid-pick on the shared dial | The dial's name, its readout, and a bar for a dial with a level     |
 | Notification | While a message pushed from Home Assistant is live | Its heading and message on its own colour, with a draining time bar |
 | Now playing  | Otherwise                                          | Track title, artist and album, and a position bar                   |
 

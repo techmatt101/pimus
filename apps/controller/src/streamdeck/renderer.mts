@@ -1,5 +1,6 @@
 import type {StreamDeck} from '@elgato-stream-deck/node'
 
+import {DynamicDial} from './dials/dynamic-dial.mjs'
 import {PageDial, type PageNavigator} from './dials/page-dial.mjs'
 import {type StreamDeckLayout, type StreamDeckPage, tileAt,} from './grid.mjs'
 import {STRIP_HEIGHT, STRIP_WIDTH} from './screens/screen.mjs'
@@ -50,6 +51,12 @@ export class DeckRenderer implements PageNavigator {
     // delta is zero rather than the whole span the deck spent on another page.
     private readonly lastKeyDrawAt = new Map<number, number>()
     private lastStripDrawAt = 0
+    // The shared dial and where it sits, if the layout carries one. A touch of any
+    // other dial drops a transient claim (see showDial), so reaching for volume
+    // abandons a playlist you were part-way through picking; a sticky light claim
+    // is left alone.
+    private readonly sharedDial: DynamicDial | null
+    private readonly sharedDialIndex: number
 
     constructor({layout, model, logger = console}: DeckRendererOptions) {
         this.layout = layout
@@ -59,6 +66,9 @@ export class DeckRenderer implements PageNavigator {
         // The renderer owns paging, so it hands its paging to any page-switcher dial
         // in the layout. The dial is built before the renderer and reaches it here.
         for (const dial of layout.dials) if (dial instanceof PageDial) dial.connect(this)
+        this.sharedDialIndex = layout.dials.findIndex((dial) => dial instanceof DynamicDial)
+        const shared = layout.dials[this.sharedDialIndex]
+        this.sharedDial = shared instanceof DynamicDial ? shared : null
         this.model.subscribe(() => {
             const wasAsleep = this.asleep
             void this.applyAwake()
@@ -149,6 +159,10 @@ export class DeckRenderer implements PageNavigator {
      * readout for a moment before going back to what is playing.
      */
     showDial(index: number): void {
+        // Reaching for a different knob abandons a transient claim on the shared
+        // dial, so the picking key stops glowing. Touching the shared dial itself
+        // is not abandoning it, and a sticky claim ignores this entirely.
+        if (this.sharedDial && index !== this.sharedDialIndex) this.sharedDial.autoRelease()
         this.layout.strip.showDial(index)
     }
 
