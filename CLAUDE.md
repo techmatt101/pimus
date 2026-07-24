@@ -47,8 +47,7 @@ apps/
         screens/         One Screen class per file (a full touch-strip face)
         tiles/           One Tile class per file (key behaviour + face)
       voice/             LVA WebSocket and ReSpeaker LEDs
-    test/                Hardware-free Node tests (.mts), mirroring src/
-      support/           Shared test doubles; the one folder not mirroring src/
+    test/                A few high-level behaviour tests (.mts); see Validation
     dist/                Compiled .mjs output; build artifact, not tracked
     package.json
     tsconfig.json
@@ -105,8 +104,7 @@ runtime validation, and relevant documentation together.
   focused module.
 - Group modules by the boundary they own: `actions/`, `audio/`,
   `home-assistant/`, `remote/`, `streamdeck/`, and `voice/`, with `index.mts`,
-  `config.mts`, `state.mts`, and `types.mts` at the root. Mirror the same
-  folders under `test/`.
+  `config.mts`, `state.mts`, and `types.mts` at the root.
 - Home Assistant is reached over its WebSocket API with a long-lived token
   (`home-assistant/client.mts`). Tiles depend on the `HomeAssistantService`
   interface, never the client, and a deployment with no URL configured gets
@@ -177,9 +175,7 @@ runtime validation, and relevant documentation together.
   `createLayout(services)`, not in inventory. Each page is a fixed named
   `PageGrid` (`streamdeck/grid.mts`) of tiles; the grid geometry,
   physical-key mapping, and dial shape live in `grid.mts`. Only the
-  `streamdeck_enabled` deployment flag lives in Ansible; `layout.test.mts` and
-  `actions/catalog.test.mts` validate the compiled layout and tiles against the
-  catalog.
+  `streamdeck_enabled` deployment flag lives in Ansible.
 - Tiles and screens paint onto a `Surface` (`streamdeck/surface.mts`), a
   lightweight holder for a Skia canvas (`@napi-rs/canvas`) and its 2D context.
   The helpers for the things every face repeats — `text`, `icon`, `bar`,
@@ -280,6 +276,16 @@ direct pins exact, and prefer dependencies with shallow trees.
 
 Keep tests deterministic and hardware-free. Use injected fake USB, HID,
 WebSocket, process, and filesystem boundaries where needed.
+
+The controller test suite is deliberately small (a stance the user may revisit
+later): a few high-level behaviour tests covering how the amp, voice pipeline,
+and speaker work — ducking, the audio-manager socket, volume, shared voice/media
+state, the LVA connection, and voice-state LED behaviour. This is not a
+production app, so do not add fine-grained unit tests around Stream Deck display
+logic (tiles, dials, screens, rendering, layout) or other presentation code;
+the strict type check is the guard there. When touching core audio or voice
+behaviour, extend the existing high-level tests rather than adding new
+narrowly-scoped ones.
 
 `apps/playground` is deliberately outside `make test`, which never installs it.
 It compiles `apps/controller/src` with the controller's own strict settings, so
