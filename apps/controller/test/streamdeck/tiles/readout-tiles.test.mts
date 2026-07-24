@@ -9,39 +9,38 @@ import { ClockTile, clockFace } from '../../../src/streamdeck/tiles/clock-tile.m
 import { PageTile } from '../../../src/streamdeck/tiles/page-tile.mjs'
 import { TemperatureTile } from '../../../src/streamdeck/tiles/temperature-tile.mjs'
 import { WeatherTile, conditionName } from '../../../src/streamdeck/tiles/weather-tile.mjs'
-import { eventually, testHost, testServices, tileFace } from '../../support/fixtures.mjs'
+import { testHost, testServices, tileFace } from '../../support/fixtures.mjs'
 
 /** A local-time instant, so the clock assertions do not depend on the timezone. */
 const at = (hours: number, minutes: number, seconds = 0): number =>
   new Date(2026, 6, 21, hours, minutes, seconds).getTime()
 
-test('the clock reads local time and its face moves every second', () => {
+test('the clock reads local time', () => {
   assert.deepEqual(clockFace(at(9, 5), true), { time: '09:05', date: 'TUE 21' })
   assert.deepEqual(clockFace(at(21, 5), true).time, '21:05')
   assert.deepEqual(clockFace(at(21, 5), false).time, '9:05')
   assert.deepEqual(clockFace(at(0, 30), false).time, '12:30', 'midnight is 12, not 0')
-
-  const services = testServices()
-  const tile = new ClockTile(services)
-  services.setNow(at(9, 5, 10))
-  const early = tileFace(tile)
-  services.setNow(at(9, 5, 40))
-  assert.notDeepEqual(early, tileFace(tile), 'the seconds ring sweeps within the same minute')
 })
 
-test('a mounted clock repaints itself and stops when it is hidden', async () => {
-  const services = testServices()
-  // Just before a second boundary, so the tile's next-second tick fires soon.
-  services.setNow(999)
-  const tile = new ClockTile(services)
+test('a mounted clock repaints on the minute and stops when it is hidden', (t) => {
+  // Own the wall clock the tile reads, so a minute can pass without waiting one.
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] })
+  // Ten seconds into a minute, so the first tick lands fifty seconds later.
+  t.mock.timers.setTime(at(9, 5, 10))
+  const tile = new ClockTile()
   const host = testHost()
+  const before = tileFace(tile)
+
   tile.mount(host)
-  await eventually(() => host.repaints >= 1)
+  t.mock.timers.tick(49_000)
+  assert.equal(host.repaints, 0, 'the clock stays idle within the minute')
+  t.mock.timers.tick(1_000)
+  assert.equal(host.repaints, 1, 'the clock repaints on the minute boundary')
+  assert.notDeepEqual(before, tileFace(tile), 'and its face has moved to the new minute')
 
   tile.unmount()
-  const settled = host.repaints
-  await new Promise((resolve) => setTimeout(resolve, 1200))
-  assert.equal(host.repaints, settled, 'a hidden clock stops its timer')
+  t.mock.timers.tick(120_000)
+  assert.equal(host.repaints, 1, 'a hidden clock stops its timer')
 })
 
 test('a temperature key shows the reading, and says so when there is none', () => {

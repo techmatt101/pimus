@@ -144,7 +144,7 @@ export function createLayout(services: TileServices): StreamDeckLayout {
       // the house.
       name: 'MAIN',
       grid: {
-        topLeft: new ClockTile(services),
+        topLeft: new ClockTile(),
         topMidLeft: new WeatherTile(services, { entity: HA.weather }),
         topMidRight: new EntityToggleTile(services, {
           label: 'PC',
