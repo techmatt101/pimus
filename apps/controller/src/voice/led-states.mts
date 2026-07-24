@@ -1,11 +1,6 @@
-// Which LED appearance each voice state shows. This is compiled in, exactly
-// as the deck layout is (streamdeck/layout.mts): restyling the ring is an
-// edit here and a redeploy, not an inventory change. Only the
-// respeaker_led_enabled flag and the room's brightness live in Ansible.
-//
-// The keys are Linux Voice Assistant event names, plus the controller's own
-// muted and disconnected states; respeaker.mts treats any event with an entry
-// here as a state to show, so adding a row is all a new event needs.
+// Keys are Linux Voice Assistant event names, plus the controller's own muted
+// and disconnected states; respeaker.mts treats any event with an entry here
+// as a state to show, so adding a row is all a new event needs.
 
 import type {LedAppearance} from './led-appearance.mjs'
 import {Leds} from './led-appearance.mjs'

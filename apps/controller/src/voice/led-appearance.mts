@@ -1,27 +1,17 @@
-// The vocabulary of ReSpeaker LED appearances. An appearance says what the
-// ring should look like in semantic terms — solid, pulse, spin — and
-// resolveFrame() turns one into the vendor-protocol frame for a given moment.
-// Deriving animation phase from the clock keeps this module pure: the renderer
-// (led-renderer.mts) owns timers, the device (xvf3800-device.mts) owns USB.
-// Which state shows which appearance is declared in led-states.mts.
-
 import type {LedFrame} from '../types.mjs'
 import {LED_COUNT, LedEffect} from '../types.mjs'
 
 export type LedAppearance =
-/** Every LED dark. */
     | { kind: 'off' }
-    /** One steady colour across the whole ring. */
     | { kind: 'solid'; color: number; brightness?: number }
     /** The firmware breathing effect: the colour swells and fades. */
     | { kind: 'pulse'; color: number; brightness?: number; speed?: number }
     /** The firmware rainbow cycle across the ring. */
     | { kind: 'rainbow'; brightness?: number; speed?: number }
-    /** A fixed colour per LED; a listed rainbow, a gradient, anything. */
+    /** A fixed colour per LED. */
     | { kind: 'colors'; colors: readonly number[]; brightness?: number }
     /** The colour list rotating around the ring — a loading spinner. */
     | { kind: 'spin'; colors: readonly number[]; periodMs: number; brightness?: number }
-    /** The whole ring flashing the colour on and off. */
     | { kind: 'blink'; color: number; periodMs: number; brightness?: number }
     /** A fraction of the ring lit, for readouts such as volume. */
     | { kind: 'progress'; fraction: number; color: number; background: number; brightness?: number }
@@ -29,7 +19,6 @@ export type LedAppearance =
      *  voice light in the highlight colour over the base. */
     | { kind: 'direction'; base: number; highlight: number; brightness?: number }
 
-/** A colour as packed 0xRRGGBB or a `#rrggbb` string. */
 export type ColorInput = number | string
 
 /** Packs a `#rrggbb` string (or passes a packed number through) as 0xRRGGBB. */
@@ -83,11 +72,6 @@ interface Timing {
     periodMs?: number
 }
 
-/**
- * Builders for every appearance, so callers never assemble the union by hand:
- * `Leds.spin('#00bcd4')` is a loading spinner, `Leds.direction(base, accent)`
- * follows the voice, `Leds.colors(rainbowColors())` paints a static rainbow.
- */
 export const Leds = {
     off(): LedAppearance {
         return {kind: 'off'}

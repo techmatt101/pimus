@@ -1,13 +1,3 @@
-// A countdown driven by a Home Assistant `timer` entity, so the same timer is
-// visible on the deck, in the app, and to anything else in the house — unlike
-// the Assist timers LVA rings, which live only inside the voice pipeline.
-//
-// Home Assistant does not tick: a running timer reports `finishes_at` once and
-// then says nothing until it is paused, cancelled, or fires. The countdown here
-// is therefore derived from `finishes_at` against the injected `clock` (real
-// wall-clock time, not the draw's deltaTime), with the tile running its own
-// one-second repaint while the timer is active.
-
 import {requireEntity} from '../../actions/catalog.mjs'
 import {durationSeconds, formatDuration, timerRemainingSeconds} from '../../home-assistant/entity.mjs'
 import {type Binding, haBinding} from '../bindings.mjs'
@@ -15,21 +5,24 @@ import {type Surface, drawText} from '../surface.mjs'
 import {drawBackground, drawCaption, drawValue, FACE_CENTER, type Tile, type TileHost} from '../tile.mjs'
 import type {Action, HomeAssistantService} from '../../types.mjs'
 
-/** How often a running countdown repaints. */
 const TICK_MILLISECONDS = 500
 
-/** The ring's radius, which is what leaves the reading room inside it. */
 const RING_RADIUS = 40
 const RING_WIDTH = 5
 
 export interface TimerTileConfig {
-    /** The `timer.` entity this key starts, cancels, and counts down. */
     entity: string
     label?: string
     /** How long a press starts the timer for, as `HH:MM:SS`. */
     duration?: string
 }
 
+/**
+ * A countdown driven by a Home Assistant `timer` entity. Home Assistant does
+ * not tick — a running timer reports `finishes_at` once — so the countdown is
+ * derived from that against the injected clock, with the tile running its own
+ * repaint interval while active.
+ */
 export class TimerTile implements Tile {
     readonly #ha: HomeAssistantService
     readonly #clock: () => number
@@ -72,7 +65,6 @@ export class TimerTile implements Tile {
         this.#host = null
     }
 
-    /** Tick only while the timer is running; a paused one holds its reading. */
     #followTimer(): void {
         if (this.#ha.entity(this.#entity)?.state === 'active') this.#startTick()
         else this.#stopTick()
@@ -81,7 +73,6 @@ export class TimerTile implements Tile {
     #startTick(): void {
         if (this.#tick) return
         this.#tick = setInterval(() => this.#host?.invalidate(), TICK_MILLISECONDS)
-        // A countdown must not keep the daemon alive on shutdown.
         this.#tick.unref()
     }
 
@@ -107,8 +98,6 @@ export class TimerTile implements Tile {
         const remaining = timerRemainingSeconds(timer, now)
         drawBackground(surface, active ? '#3e2000' : paused ? '#2a2410' : '#1c1c1c')
 
-        // The ring empties as the countdown runs, so the key is readable at a
-        // glance without reading the digits.
         drawRing(surface, x, 1, '#4e342e')
         if (active || paused) {
             const total = durationSeconds(timer.attributes.duration)

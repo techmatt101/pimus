@@ -1,16 +1,4 @@
-// The remote-tile socket: a WebSocket server another computer on the LAN
-// connects to, pushing key faces onto the deck's REMOTE page and receiving
-// presses back. This is how a machine that is not the Pi — a Mac watching
-// Slack, say — gets a live key on the deck without owning any hardware; the
-// controller stays the single owner of the Stream Deck and this server is just
-// another feed into it, the way Home Assistant is.
-//
-// It is also the controller's one inbound listener, which the rest of the
-// design deliberately avoids, so it is off unless both `remote.enabled` and a
-// shared token are configured, and every connection must present that token
-// before anything else is read from it.
-//
-// The protocol is a handful of JSON messages:
+// Protocol (see apps/remote-demo for a runnable client):
 //
 //   client -> {"type": "hello", "token": "..."}          must come first
 //   client -> {"type": "tile", "slot": 0, "label": "SLACK",
@@ -23,8 +11,7 @@
 //   server -> {"type": "error", "message": "..."}        the message was ignored
 //
 // A slot's face lives exactly as long as its connection: a client that dies
-// takes its keys with it, so a crashed app can never leave stale tiles on the
-// deck. See apps/remote-demo for a runnable client.
+// takes its keys with it, so a crashed app can never leave stale tiles.
 
 import {loadImage} from '@napi-rs/canvas'
 import {createHash, timingSafeEqual} from 'node:crypto'
@@ -32,12 +19,9 @@ import {type RawData, type WebSocket, WebSocketServer} from 'ws'
 
 import type {RemoteTileFace, RemoteTileFeed} from '../types.mjs'
 
-/** The REMOTE page's capacity: the six key slots it fills on a PageGrid. */
 export const REMOTE_SLOT_COUNT = 6
 
-/** A frame ceiling generous enough for a 120x120 PNG, far under a real photo. */
 const MAX_PAYLOAD = 512 * 1024
-/** A connection that has not said hello by then is not a client. */
 const HELLO_TIMEOUT_MS = 5000
 const MAX_LABEL = 16
 const DEFAULT_COLOR = '#263238'
@@ -47,9 +31,7 @@ export interface RemoteTileServerOptions {
     token: string
     /** Bind address; the default reaches the LAN, tests bind the loopback. */
     host?: string
-    /** Called whenever a face changes, so the deck repaints without waiting. */
     onChange?: () => void
-    /** Forwards a `notify` message to the strip's notification queue. */
     postNotification?: (data: Record<string, unknown>) => void
     logger?: Pick<Console, 'log'>
 }
@@ -68,7 +50,6 @@ export class RemoteTileServer implements RemoteTileFeed {
         this.#logger = options.logger ?? console
     }
 
-    /** Begin listening. Safe to call once; index.mts does it at startup. */
     start(): void {
         if (this.#server) return
         this.#server = new WebSocketServer({
@@ -77,8 +58,6 @@ export class RemoteTileServer implements RemoteTileFeed {
             maxPayload: MAX_PAYLOAD,
         })
         this.#server.on('connection', (socket) => this.#accept(socket))
-        // A port collision or bind failure must not take the daemon down with it;
-        // the deck simply runs without remote tiles until a restart.
         this.#server.on('error', (error) => this.#logger.log(`remote-tile server error: ${String(error)}`))
     }
 
@@ -104,7 +83,6 @@ export class RemoteTileServer implements RemoteTileFeed {
         if (owner && owner.readyState === owner.OPEN) owner.send(JSON.stringify({type: 'press', slot}))
     }
 
-    /** Gate a new connection behind the hello handshake before reading anything else. */
     #accept(socket: WebSocket): void {
         let welcomed = false
         const deadline = setTimeout(() => {
@@ -138,7 +116,6 @@ export class RemoteTileServer implements RemoteTileFeed {
             this.#logger.log('remote-tile client disconnected')
             this.#dropOwnedBy(socket)
         })
-        // Treat a broken client as a disconnect, never as a reason to crash.
         socket.on('error', () => {
         })
     }
@@ -158,18 +135,15 @@ export class RemoteTileServer implements RemoteTileFeed {
                     : DEFAULT_COLOR,
             }
             if (typeof message.image === 'string' && message.image.length > 0) {
-                // Decoded here, once, so a repaint only ever draws a ready image.
                 try {
                     face.image = await loadImage(Buffer.from(message.image, 'base64'))
                 } catch {
                     return complain(`tile ${slot} image is not a decodable PNG`)
                 }
             }
-            // The decode yielded, and a face may not outlive its connection: a client
-            // that disconnected while its PNG was decoding gets nothing on the deck.
+            // The decode yielded: a client that disconnected while its PNG was
+            // decoding gets nothing on the deck.
             if (socket.readyState !== socket.OPEN) return
-            // Last write wins, including across clients; the face's lifetime follows
-            // whichever connection wrote it.
             this.#tiles.set(slot, {face, owner: socket})
             this.#onChange()
             return
@@ -183,7 +157,6 @@ export class RemoteTileServer implements RemoteTileFeed {
         }
 
         if (message.type === 'notify') {
-            // The queue applies its own limits and defaults; this only forwards.
             this.#options.postNotification?.(message)
             return
         }
@@ -221,7 +194,7 @@ function slotOf(message: Record<string, unknown>): number | undefined {
         : undefined
 }
 
-/** Compare in constant time, so the token cannot be guessed letter by letter. */
+/** Constant-time compare, so the token cannot be guessed letter by letter. */
 function tokenMatches(presented: unknown, expected: string): boolean {
     if (typeof presented !== 'string') return false
     const digest = (value: string): Buffer => createHash('sha256').update(value).digest()

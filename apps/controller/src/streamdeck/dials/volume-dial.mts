@@ -1,11 +1,3 @@
-// Master output volume, the one dial that never changes hands. It reads the
-// controller's own state rather than Home Assistant: the volume it moves is the
-// amplifier's, applied by the audio manager, so it is right even with nothing
-// else on the network reachable.
-//
-// Muted is its own reading, not a volume of zero — the level you will come back
-// to when you unmute is still the level the deck remembers.
-
 import {type Binding, volumeBinding} from '../bindings.mjs'
 import {type Dial, percent} from '../dial.mjs'
 import type {ControlModel} from '../../state.mjs'

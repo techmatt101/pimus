@@ -1,9 +1,3 @@
-// One key for both directions of a voice interaction: press it to start Assist,
-// press it again to cancel the pipeline that is running. The face says which of
-// those the next press will do, and while a pipeline is live the microphone
-// sits inside expanding rings so you can see the deck is listening from across
-// the room.
-
 import {isAssistRunning} from '../../actions/catalog.mjs'
 import {type Binding, voiceBinding} from '../bindings.mjs'
 import {drawIcon, type Surface, withAlpha} from '../surface.mjs'
@@ -11,11 +5,8 @@ import {drawBackground, drawCaption, FACE_CENTER, type Tile, type TileHost} from
 import type {ControlModel, Unsubscribe} from '../../state.mjs'
 import type {Action, LvaSender} from '../../types.mjs'
 
-/** How often the listening face is repainted while a pipeline is running. */
 const FRAME_MILLISECONDS = 120
-/** One full outward sweep of the rings. */
 const RIPPLE_PERIOD_MILLISECONDS = 1600
-/** How far a ring travels before it has faded out. */
 const RIPPLE_RADIUS = 52
 
 export class VoiceTile implements Tile {
@@ -24,9 +15,6 @@ export class VoiceTile implements Tile {
     #host: TileHost | null = null
     #unsubscribe: Unsubscribe | null = null
     #ripple: NodeJS.Timeout | null = null
-    // The ripple's phase, accumulated from the deltaTime each draw is handed
-    // rather than read from a wall clock, so the sweep advances by real elapsed
-    // time however often the tile happens to repaint.
     #phase = 0
 
     constructor(model: ControlModel, lva: LvaSender) {
@@ -55,7 +43,6 @@ export class VoiceTile implements Tile {
         this.#host = null
     }
 
-    /** Run the ripple exactly while a pipeline is live, however it was started. */
     #followAssist(): void {
         if (isAssistRunning(this.#model.state)) this.#startRipple()
         else this.#stopRipple()
@@ -63,11 +50,8 @@ export class VoiceTile implements Tile {
 
     #startRipple(): void {
         if (this.#ripple) return
-        // Start each listening session from a still ring rather than wherever the
-        // last one left the phase.
         this.#phase = 0
         this.#ripple = setInterval(() => this.#host?.invalidate(), FRAME_MILLISECONDS)
-        // An animation must not keep the daemon alive on shutdown.
         this.#ripple.unref()
     }
 
@@ -82,8 +66,8 @@ export class VoiceTile implements Tile {
         const x = surface.width / 2
 
         if (running) {
-            // Two rings a half-cycle apart, each fading as it grows, so the sweep
-            // reads as continuous rather than restarting.
+            // Two rings a half-cycle apart, each fading as it grows, so the
+            // sweep reads as continuous rather than restarting.
             const {ctx} = surface
             this.#phase += deltaTime
             const phase = (this.#phase % RIPPLE_PERIOD_MILLISECONDS) / RIPPLE_PERIOD_MILLISECONDS

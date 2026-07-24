@@ -1,8 +1,3 @@
-// Maps voice state to a ReSpeaker LED appearance. The vendor protocol and USB
-// transport live in xvf3800-device.mts and the frame streaming in
-// led-renderer.mts; this module only decides which appearance the current
-// state should show.
-
 import type {LedAppearance} from './led-appearance.mjs'
 import {Leds} from './led-appearance.mjs'
 import {LedRenderer} from './led-renderer.mjs'
@@ -41,15 +36,15 @@ export class ReSpeakerController {
                 productId: Number(config.product_id),
             }),
             brightness: config.brightness ?? 64,
-            // The firmware speed for breath and rainbow; a state that needs its own
-            // pace sets it on the appearance in led-states.mts instead.
+            // Firmware speed for breath and rainbow; a state needing its own
+            // pace sets it on the appearance in led-states.mts.
             speed: 2,
             now,
             warningIntervalMilliseconds,
             logger,
         })
-        // An LED-only installation has no LVA socket to transition away from the
-        // disconnected state, so begin at the normal idle appearance instead.
+        // An LED-only installation has no LVA socket to ever leave the
+        // disconnected state, so begin at idle.
         if (!voiceEnabled) this.#assistState = 'idle'
     }
 

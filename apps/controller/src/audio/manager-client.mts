@@ -2,7 +2,6 @@ import net from 'node:net'
 
 import type {AudioState} from '../types.mjs'
 
-/** One newline-delimited JSON message from the audio manager's socket. */
 interface ManagerEvent {
     event?: string
     error?: string
@@ -63,23 +62,19 @@ export class AudioManagerClient {
         socket.on('connect', () => {
             this.connected = true
             this.#lastErrorMessage = null
-            // A manager restart resets its in-memory routes to configured defaults;
-            // re-assert our cache so user toggles survive within a boot. With no
-            // cache yet, adopt whatever the manager has.
+            // A manager restart resets its routes to configured defaults, so
+            // re-assert the cache; with no cache yet, adopt what the manager has.
             this.#write(this.#synced
                 ? {command: 'set-sources', sources: this.state.sources}
                 : {command: 'get-state'})
-            // The manager ties a duck request to the connection that made it, so a
-            // reconnect during a conversation has to ask again or background audio
-            // would stay at full volume while the assistant speaks.
+            // The manager ties a duck request to the connection that made it, so
+            // a reconnect during a conversation has to ask again.
             if (this.#duckActive) this.#write({command: 'set-duck', active: true})
             this.#onStateChange()
         })
         socket.on('data', (chunk) => this.#receive(String(chunk)))
-        // Disconnects are normal and the close handler owns reconnection, but a
-        // once-per-second retry loop repeating the same refusal would flood the
-        // journal: log only when the failure changes, so a wrong socket path or
-        // permission problem stays diagnosable.
+        // The once-per-second retry loop would flood the journal with the same
+        // refusal: log only when the failure changes.
         socket.on('error', (error: Error) => {
             if (error.message !== this.#lastErrorMessage) {
                 this.#lastErrorMessage = error.message
@@ -101,11 +96,10 @@ export class AudioManagerClient {
     }
 
     /**
-     * Applies an on/off/toggle command to the local cache and forwards the
-     * resolved absolute state, so a lost or replayed message can never invert a
-     * toggle. Before the first authoritative state arrives the cache cannot
-     * resolve a toggle, so the raw command is forwarded for the manager to
-     * resolve against its own live state instead.
+     * Applies on/off/toggle to the local cache and forwards the resolved
+     * absolute state, so a lost or replayed message can never invert a toggle.
+     * Before the first authoritative state arrives the raw command is forwarded
+     * for the manager to resolve against its own live state.
      */
     setSource(name: string, command: string): void {
         if (!this.#synced) {
@@ -121,9 +115,8 @@ export class AudioManagerClient {
     }
 
     /**
-     * Requests or releases ducking of the background bus. The manager releases
-     * the request by itself if this socket closes, so a crash cannot leave
-     * Sendspin and USB audio stuck at the duck level.
+     * The manager releases a duck request by itself if this socket closes, so a
+     * crash cannot leave the background bus stuck at the duck level.
      */
     setDuck(active: boolean): void {
         if (this.#duckActive === active) return

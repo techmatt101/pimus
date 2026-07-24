@@ -90,6 +90,17 @@ runtime validation, and relevant documentation together.
 
 ### Node controller
 
+- Controller code is essentially comment-free: a comment is treated as a sign
+  the code should be refactored to read on its own. The only comments that stay
+  are short notes on genuine quirks — hardware behaviour (the strip only
+  reports a tap on finger-lift, the deck retains its last image), external
+  systems (Home Assistant and Music Assistant reporting habits, LVA and XMOS
+  firmware protocol details), and non-obvious correctness constraints
+  (`snapshot()` must copy, effect written last). Do not add narration, module
+  header essays, or JSDoc that restates a name or type; when tempted to
+  explain code with a comment, rename or extract instead. The Python audio
+  manager and Ansible keep their explanatory comments — that side is
+  magic-heavy and harder to make self-describing.
 - Write ESM `.mts` modules compiled to `.mjs` output that runs on Node
   `>=18.18`. Do not use language or library features newer than the `ES2022`
   target; the Pi runs the Debian `nodejs` package.

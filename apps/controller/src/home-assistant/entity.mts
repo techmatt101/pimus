@@ -1,20 +1,12 @@
-// Reading meaning out of a Home Assistant entity. Home Assistant reports state
-// as strings and attributes as loose JSON, so the interpretation every tile
-// needs — is this on, what does this sensor read, how long is left on this
-// timer — lives here rather than being re-derived on each key face.
-
 import type {HomeAssistantEntity} from '../types.mjs'
 
-/** States that mean "on" across the domains the control surface drives. */
 const ON_STATES = new Set(['on', 'open', 'opening', 'playing', 'active', 'home', 'heat', 'cool'])
 const OFF_STATES = new Set(['off', 'closed', 'closing', 'idle', 'paused', 'standby', 'not_home'])
 
 /**
- * Whether an entity reads as on, or undefined when it is unknown — either
- * because Home Assistant is unreachable, the entity does not exist, or it
- * genuinely reports `unknown`/`unavailable`. Tiles draw that third case rather
- * than guessing "off", so a broken connection never looks like a fan that is
- * simply switched off.
+ * Whether an entity reads as on, or undefined when it is unknown. Tiles draw
+ * that third case rather than guessing "off", so a broken connection never
+ * looks like a fan that is simply switched off.
  */
 export function isEntityOn(entity: HomeAssistantEntity | undefined): boolean | undefined {
     if (!entity) return undefined
@@ -23,14 +15,12 @@ export function isEntityOn(entity: HomeAssistantEntity | undefined): boolean | u
     return undefined
 }
 
-/** A sensor's numeric reading, or undefined when it is not a number. */
 export function numericState(entity: HomeAssistantEntity | undefined): number | undefined {
     if (!entity) return undefined
     const value = Number(entity.state)
     return Number.isFinite(value) ? value : undefined
 }
 
-/** A numeric attribute, for things like `temperature` on a weather entity. */
 export function numericAttribute(
     entity: HomeAssistantEntity | undefined,
     name: string,
@@ -39,10 +29,7 @@ export function numericAttribute(
     return Number.isFinite(value) ? value : undefined
 }
 
-/**
- * Seconds in a Home Assistant duration. Timers report `H:MM:SS` strings, and
- * some integrations report plain seconds, so accept both.
- */
+// Timers report `H:MM:SS` strings, and some integrations report plain seconds.
 export function durationSeconds(value: unknown): number | undefined {
     if (typeof value === 'number') return Number.isFinite(value) ? value : undefined
     if (typeof value !== 'string') return undefined
@@ -53,13 +40,9 @@ export function durationSeconds(value: unknown): number | undefined {
     return parts.reduce((total, part) => total * 60 + part, 0)
 }
 
-/**
- * Seconds left on a `timer` entity at instant `now`.
- *
- * A running timer only re-reports `remaining` when it is paused or reset, so a
- * countdown has to come from `finishes_at`; falling back to `remaining` is what
- * makes a paused timer hold its reading instead of counting to zero.
- */
+// A running timer only re-reports `remaining` when paused or reset, so the
+// countdown comes from `finishes_at`; the `remaining` fallback is what makes a
+// paused timer hold its reading.
 export function timerRemainingSeconds(
     entity: HomeAssistantEntity | undefined,
     now: number,
@@ -75,13 +58,8 @@ export function timerRemainingSeconds(
     return durationSeconds(entity.attributes.remaining) ?? durationSeconds(entity.attributes.duration)
 }
 
-/**
- * Seconds into the current track at `now`, or undefined when the player does
- * not report a position. A media player reports `media_position` once, with the
- * instant it was measured, so a progress bar that moves has to be derived the
- * same way a running timer's countdown is. A player that is not playing holds
- * the position it reported.
- */
+// A media player reports `media_position` once, with the instant it was
+// measured, so a moving progress bar is derived from that against `now`.
 export function mediaElapsedSeconds(
     entity: HomeAssistantEntity | undefined,
     now: number,
@@ -94,7 +72,7 @@ export function mediaElapsedSeconds(
     return position + Math.max(0, (now - measured) / 1000)
 }
 
-/** A countdown as `M:SS`, or `H:MM` once an hour or more is left. */
+/** `M:SS`, or `H:MM` once an hour or more is left. */
 export function formatDuration(seconds: number): string {
     const whole = Math.max(0, Math.ceil(seconds))
     const hours = Math.floor(whole / 3600)

@@ -1,7 +1,3 @@
-// A read-only key: whatever a Home Assistant temperature sensor currently says.
-// Pressing it does nothing on purpose — a key that both displays and acts is
-// one you cannot glance at without worrying you have nudged something.
-
 import {requireEntity} from '../../actions/catalog.mjs'
 import {numericState} from '../../home-assistant/entity.mjs'
 import {drawBar, fittingSize, drawIcon, type Surface, drawText} from '../surface.mjs'
@@ -10,14 +6,10 @@ import type {HomeAssistantService} from '../../types.mjs'
 
 export interface TemperatureTileConfig {
     label: string
-    /** The sensor entity, e.g. `sensor.office_temperature`. */
     entity: string
 }
 
-/**
- * Background bands in degrees Celsius, coldest first. Colour carries the
- * reading at a glance; the digits are for when you want the exact figure.
- */
+/** Background bands in degrees Celsius, coldest first. */
 const BANDS: ReadonlyArray<readonly [max: number, background: string, accent: string]> = [
     [16, '#0d2137', '#40c4ff'],
     [19, '#0d2b2e', '#26c6da'],
@@ -31,10 +23,10 @@ const scaleOf = (celsius: number): number => (celsius - 5) / 30
 
 const ICON_X = 30
 const ICON_SIZE = 46
-/** The reading sits to the right of the thermometer, in the space that leaves. */
 const VALUE_X = 78
 const VALUE_WIDTH = 74
 
+/** A read-only key: pressing it does nothing on purpose. */
 export class TemperatureTile implements Tile {
     readonly #ha: HomeAssistantService
     readonly #config: TemperatureTileConfig
@@ -74,9 +66,6 @@ export class TemperatureTile implements Tile {
         drawBackground(surface, band?.[1] ?? '#1a1a1a')
         const accent = band?.[2] ?? '#ffffff'
 
-        // The glyph is drawn in the band's accent so the key carries the reading in
-        // colour as well as digits, and a level bar under it says where in the
-        // 5..35°C range that sits.
         drawIcon(surface, 'thermometer', {x: ICON_X, y: FACE_CENTER - 4, size: ICON_SIZE, color: accent})
         drawBar(surface, scaleOf(reading), {
             x: ICON_X - 18,
@@ -88,8 +77,6 @@ export class TemperatureTile implements Tile {
             rounded: true,
         })
 
-        // One decimal place is what a room sensor is worth; anything longer stops
-        // fitting beside the thermometer.
         const digits = `${Math.abs(reading) < 100 ? reading.toFixed(1) : Math.round(reading)}°`
         drawText(surface, digits, {
             x: VALUE_X,

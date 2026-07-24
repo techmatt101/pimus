@@ -1,9 +1,3 @@
-// A key on the REMOTE page, drawn from whatever face a client last pushed over
-// the remote-tile socket (remote/server.mts). The tile itself holds nothing:
-// the server owns the faces and notifies the model when one changes, so a
-// repaint reads the current face the same way every other tile reads live
-// state. Pressing the key reports straight back to the client that owns it.
-
 import {type Surface, withAlpha} from '../surface.mjs'
 import {drawBackground, drawCaption, type Tile} from '../tile.mjs'
 import type {RemoteTileFeed} from '../../types.mjs'
@@ -13,6 +7,11 @@ export interface RemoteTileConfig {
     slot: number
 }
 
+/**
+ * A key drawn from whatever face a client last pushed over the remote-tile
+ * socket. The tile holds nothing: the server owns the faces, and pressing
+ * reports straight back to the client that owns the slot.
+ */
 export class RemoteTile implements Tile {
     readonly #remote: RemoteTileFeed
     readonly #slot: number
@@ -29,8 +28,6 @@ export class RemoteTile implements Tile {
     draw(surface: Surface): void {
         const face = this.#remote.tile(this.#slot)
         if (!face) {
-            // An empty socket: dark, with a faint marker so the page reads as six
-            // places a client can fill rather than as a dead key.
             drawBackground(surface, '#0a0d10')
             surface.ctx.fillStyle = withAlpha('#607d8b', 0.35)
             surface.ctx.beginPath()
@@ -39,8 +36,6 @@ export class RemoteTile implements Tile {
             return
         }
         drawBackground(surface, face.color)
-        // The image fills the key; the caption bar sits over its foot, exactly as
-        // it does on every other face, so a pushed key still looks like this deck.
         if (face.image) surface.ctx.drawImage(face.image, 0, 0, surface.width, surface.height)
         if (face.label) drawCaption(surface, face.label)
     }

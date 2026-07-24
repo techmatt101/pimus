@@ -1,7 +1,3 @@
-// The XVF3800 vendor-control protocol and its USB transport. Keeping this
-// separate from respeaker.mts and led-renderer.mts draws the line between how
-// LED commands reach the hardware and which appearance should be showing.
-//
 // The protocol constants and the 2886:001a device match are dictated by the
 // XMOS firmware; preserve them when changing LED behaviour.
 
@@ -27,7 +23,6 @@ export const COMMANDS: Readonly<Record<CommandName, readonly [number, number, Da
         LED_RING_COLOR: [20, 19, 'uint32'],
     } as const)
 
-/** Clamps a value into the single byte the vendor protocol accepts. */
 export const clampByte = (value: number): number =>
     Math.max(0, Math.min(255, Math.round(Number(value))))
 
@@ -60,8 +55,6 @@ export class Xvf3800Device implements LedDevice {
     async connect(): Promise<UsbControlDevice> {
         if (!this.#findDevice) {
             // Loaded lazily so tests and LED-free deployments never open libusb.
-            // findByIds returns the full usb.Device; narrow it to the vendor-control
-            // surface this class actually uses.
             const {findByIds} = await import('usb')
             this.#findDevice = findByIds as unknown as UsbDeviceFinder
         }

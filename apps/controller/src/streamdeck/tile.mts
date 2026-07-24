@@ -1,93 +1,46 @@
-// The Tile contract: one key on the Stream Deck grid. A tile owns what
-// pressing it does and how it paints its own 120x120 face, and may opt into a
-// lifecycle for richer behaviour. Each tile class lives in its own file in
-// this folder; tiles are created by the layout factory (streamdeck/layout.mts)
-// with the controller's services injected, so a tile carries its behaviour
-// with it instead of handing a description to a central dispatcher.
-//
-// A tile paints onto a Surface (streamdeck/surface.mts) the renderer owns and
-// reuses, rather than returning an image of its own. The shared faces below —
-// a labelled key, a readout key, the caption bar — are what keep eight
-// independently written keys looking like one control surface.
-
 import {fittingSize, lighten, type Surface, drawText, verticalGradient, withAlpha} from './surface.mjs'
 import type {Action} from '../types.mjs'
 
-/** The pixel size of one key face. */
 export const KEY_SIZE = 120
 
-/** The caption bar at the foot of every key, and where its text sits. */
 export const CAPTION_TOP = 92
 export const CAPTION_HEIGHT = KEY_SIZE - CAPTION_TOP
 const CAPTION_CENTER = CAPTION_TOP + CAPTION_HEIGHT / 2
 const CAPTION_SIZE = 19
-/** Captions are condensed to fit rather than overrunning the key. */
 const CAPTION_WIDTH = KEY_SIZE - 8
 
 /** The centre of the area above the caption, where a tile's subject goes. */
 export const FACE_CENTER = 44
 
-/** What a mounted tile may ask of the renderer. */
 export interface TileHost {
     /** Repaint just this tile's key face, outside the shared render schedule. */
     invalidate(): void
 
-    /**
-     * Move by whole pages, the same as the bottom-corner navigation keys. A tile
-     * only ever has a host while it is the visible page, so this is safe to call
-     * from a press.
-     */
     changePage(delta: number): void
 
     /** The name of the page `delta` steps away, for a navigation key's face. */
     pageName(delta: number): string
 }
 
-/**
- * A key on the grid: what pressing it does, and how it draws itself.
- *
- * `mount` is called when the tile becomes visible on an attached deck, and
- * `unmount` when its page navigates away or the deck disconnects. A tile that
- * keeps its own state may subscribe to the ControlModel in `mount` to react to
- * changes, and drive its own animation by running a timer that calls
- * `host.invalidate()` — it must drop both in `unmount`.
- */
 export interface Tile {
     /** Performs the key's behaviour. Runs through the deck's dispatch queue. */
     press(): void
 
     /**
-     * Paint the key face. The surface arrives cleared, so a tile draws everything
-     * it wants to show; the renderer reuses it for the next key, so nothing may be
-     * held on to after this returns.
-     *
-     * A tile reads the live state it draws from directly — the services it was
-     * injected (its Home Assistant reads) or the ControlModel it holds — rather
-     * than being handed it, so nothing but the surface and the clock crosses this
-     * boundary. `deltaTime` is the milliseconds since this face last drew, which
-     * an animated tile accumulates into its own phase; a static tile ignores it.
+     * Paint the key face. The surface arrives cleared and is reused for the next
+     * key, so nothing may be held on to after this returns. `deltaTime` is the
+     * milliseconds since this face last drew.
      */
     draw(surface: Surface, deltaTime: number): void
 
-    /**
-     * The declarative action this tile stands for, if any; layout.test.mts
-     * validates it against the catalog. A tile whose behaviour the catalog
-     * cannot express omits this or returns undefined.
-     */
+    /** The declarative action this tile stands for, for catalog validation. */
     action?(): Action | undefined
 
-    /** Called when this tile becomes visible on an attached deck. */
     mount?(host: TileHost): void
 
-    /** Called when the page changes away or the deck disconnects. */
     unmount?(): void
 }
 
-/**
- * Wash the key in its background colour. Every face starts here: the wash runs
- * from a lightened shade at the top down to the colour itself, so a lit key
- * reads as lit from across the room rather than as a flat block.
- */
 export function drawBackground(surface: Surface, background: string): void {
     surface.fill(verticalGradient(surface, lighten(background, 0.16), background))
 }
@@ -105,17 +58,12 @@ export function drawCaption(surface: Surface, label: string, color = '#ffffff'):
     })
 }
 
-/** The standard key face: a background with a caption along the foot. */
 export function drawLabelFace(surface: Surface, background: string, label: string): void {
     drawBackground(surface, background)
     drawCaption(surface, label)
 }
 
-/**
- * A dot per choice with the current one filled, for a key that cycles through a
- * short list — the scenes, the audio inputs. It says how many presses it takes
- * to get back around without having to cycle through and find out.
- */
+/** A dot per choice with the current one filled, for a key that cycles a short list. */
 export function drawDots(
     surface: Surface,
     count: number,
@@ -147,15 +95,9 @@ export function drawValue(surface: Surface, value: string, x: number, y: number,
     drawText(surface, value, {x, y, size: fittingSize(value, [46, 38, 30, 24], available)})
 }
 
-/** The colour a key glows in while it holds the shared dial. */
 const ACTIVE_GLOW = '#26c6da'
 
-/**
- * A bright, softly-blurred border marking the key that currently holds the
- * shared dial: while it glows, turning the dynamic dial and pressing to confirm
- * act on this key. Drawn last, over the finished face, so any tile that claims
- * the dial for a pick-then-confirm can call it to say "I am the one listening".
- */
+/** A glowing border marking the key that currently holds the shared dial. */
 export function drawActiveGlow(surface: Surface, color = ACTIVE_GLOW): void {
     const {ctx} = surface
     ctx.save()
@@ -163,8 +105,7 @@ export function drawActiveGlow(surface: Surface, color = ACTIVE_GLOW): void {
     ctx.lineWidth = 4
     ctx.shadowColor = color
     ctx.shadowBlur = 12
-    // Inset by half the stroke so the whole 4px line lands on the face rather
-    // than half of it falling off the edge.
+    // Inset by half the stroke so the whole 4px line lands on the face.
     ctx.strokeRect(2, 2, surface.width - 4, surface.height - 4)
     ctx.restore()
 }

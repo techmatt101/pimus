@@ -1,79 +1,45 @@
-// The Screen contract: one full-width face for the Stream Deck+ touch strip,
-// the dial equivalent of a Tile. A screen owns how it paints the whole 800x100
-// strip and may run the same mount/unmount lifecycle a tile does; which screen
-// is showing at any moment is decided by the TouchStrip (streamdeck/strip.mts).
-//
-// The strip is one display, not four dial labels: what is playing belongs
-// across the whole width, and a dial being turned or a notification arriving
-// takes the width over for as long as it is relevant.
-
 import {drawBar, BOLD, drawClipped, measureText, type Surface, drawText} from '../surface.mjs'
 
-/** The touch strip's pixel size, shared by every screen that draws on it. */
 export const STRIP_WIDTH = 800
 export const STRIP_HEIGHT = 100
-/** Left and right breathing room, so nothing sits against the bezel. */
 export const STRIP_MARGIN = 24
 
-/** How fast an overlong line slides across the strip. */
 const SCROLL_PIXELS_PER_SECOND = 55
-/** The clear space between the end of a scrolling line and its repeat. */
 const SCROLL_GAP = 80
-/** Repaint interval while something on the strip is scrolling. */
 export const SCROLL_FRAME_MILLISECONDS = 80
 
-/** What a mounted screen may ask of the strip. */
 export interface ScreenHost {
     /** Repaint the strip, outside the shared render schedule. */
     invalidate(): void
 }
 
 export interface Screen {
-    /**
-     * Paint the 800x100 strip face. A screen reads whatever it draws from
-     * directly — the injected Home Assistant, its clock, or a subject the strip
-     * set on it (which dial is being turned, which notification is up) — rather
-     * than being handed a context. `deltaTime` is the milliseconds since the strip
-     * last drew, there for parity with a tile; a screen whose motion is a scroll
-     * or a draining timer reads its clock instead.
-     */
     draw(surface: Surface, deltaTime: number): void
 
-    /**
-     * How often to repaint while this screen is the visible one, or undefined
-     * when its face is static. Scrolling text is the usual reason; deriving the
-     * offset from the injected clock keeps drawing a pure function of the clock.
-     */
+    /** How often to repaint while visible, or undefined when the face is static. */
     animationMilliseconds?(): number | undefined
 
-    /** Called when the strip is showing on an attached deck. */
     mount?(host: ScreenHost): void
 
-    /** Called when the deck disconnects. */
     unmount?(): void
 
     /**
-     * A tap at strip x-coordinate `x` while this screen is the one showing.
-     * Returns a thunk to run — a control on the face the tap landed on, such as
-     * the now-playing play/pause and shuffle buttons — or undefined to let the
-     * strip fall back to the dial in that zone. Returning a thunk rather than
-     * acting keeps presses in physical order through the deck's dispatch queue.
+     * A tap at strip x-coordinate `x` while this screen is showing. Returns a
+     * thunk to run, or undefined to let the strip fall back to the dial in that
+     * zone. A thunk rather than acting keeps presses in physical order through
+     * the deck's dispatch queue.
      */
     pressAt?(x: number): (() => unknown) | undefined
 
     /**
      * For a resting candidate: whether it should be the resting face right now.
-     * The strip shows the first of its resting screens whose `applies()` returns
-     * true — the now-playing face while a track is playing or paused, the idle
-     * clock otherwise. A screen without this method always applies, so the last
-     * candidate can be a catch-all. Ignored for the dial and notification faces,
-     * which the strip selects itself.
+     * A screen without this method always applies, so the last candidate can be
+     * a catch-all.
      */
     applies?(): boolean
 }
 
 export interface StripLineOptions {
-    /** The vertical centre of the line. */
     centerY: number
     size: number
     color?: string
@@ -82,29 +48,21 @@ export interface StripLineOptions {
     margin?: number
     /** Left-align rather than centre, for a line that shares a row with something else. */
     left?: number
-    /**
-     * The width the line has before it scrolls; a line narrower than this sits
-     * still, a wider one slides and is clipped to this region. Defaults to the
-     * strip between its margins, so a line sharing its row with something on the
-     * right (the now-playing buttons) passes the width it may actually use.
-     */
+    /** The width the line has before it scrolls; defaults to the strip between its margins. */
     width?: number
     opacity?: number
     weight?: number
 }
 
 /**
- * One line of text across the strip: centred while it fits, and sliding
- * leftwards when it does not, so a long song title is read in full rather than
- * truncated. Returns whether it is scrolling, which is how a screen decides to
- * ask for animation frames.
+ * One line of text across the strip: centred while it fits, sliding leftwards
+ * when it does not. Returns whether it is scrolling, which is how a screen
+ * decides to ask for animation frames.
  */
 export function drawStripLine(surface: Surface, value: string, options: StripLineOptions): boolean {
     const {centerY, size, color = '#ffffff', now = 0, margin = STRIP_MARGIN, left, width, opacity, weight = BOLD} = options
     const start = left ?? margin
     const available = width ?? surface.width - margin - start
-    // Measured at the weight it will be drawn in, or a lighter line would be
-    // judged to overflow — and scroll — at a width it actually fits.
     const measured = measureText(value, size, weight)
     const line = {y: centerY, size, color, opacity, weight, align: 'left' as const}
 
@@ -114,9 +72,8 @@ export function drawStripLine(surface: Surface, value: string, options: StripLin
         return false
     }
 
-    // The line and one repeat of it slide together, so the text runs continuously
-    // instead of restarting from an empty region every cycle. Clipped to its own
-    // region so a scrolling title never runs under whatever shares its row.
+    // The line and one repeat slide together so the text runs continuously,
+    // clipped to its own region so it never runs under whatever shares its row.
     const cycle = measured + SCROLL_GAP
     const offset = ((now / 1000) * SCROLL_PIXELS_PER_SECOND) % cycle
     const origin = start - offset
@@ -127,39 +84,28 @@ export function drawStripLine(surface: Surface, value: string, options: StripLin
     return true
 }
 
-/**
- * Whether `value` is too wide for `available` and would therefore scroll. A
- * screen asks this to decide whether it needs animation frames, without having
- * to paint a face to find out.
- */
+/** Whether `value` is too wide for `available` and would therefore scroll. */
 export function overflows(value: string, size: number, available = STRIP_WIDTH - STRIP_MARGIN * 2): boolean {
     return measureText(value, size) > available
 }
 
-/** Wall-clock milliseconds in a minute; the coarsest thing a strip clock shows. */
 const MINUTE = 60_000
 
 /**
- * Milliseconds until the next minute boundary. A screen carrying a clock asks
- * for this as its frame interval, so the strip repaints exactly when the digits
- * change rather than ticking every second or drifting a fixed minute off the
- * boundary — re-computing it each paint re-arms the strip's timer on the minute.
+ * Milliseconds until the next minute boundary. Re-computing it each paint
+ * re-arms the strip's frame timer on the minute rather than drifting a fixed
+ * minute off it.
  */
 export function minuteTick(now: number): number {
     return MINUTE - (now % MINUTE)
 }
 
-/** The 24-hour wall time as `HH:MM`, in the machine's local timezone. */
 export function clockTime(now: number): string {
     const at = new Date(now)
     return `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
 }
 
-/**
- * A progress bar along the bottom edge: playback position, a dial's level, or a
- * notification's remaining time. `fraction` is clamped, so an out-of-range
- * reading draws a full or empty bar rather than running off the strip.
- */
+/** A progress bar along the bottom edge. `fraction` is clamped. */
 export function drawStripBar(
     surface: Surface,
     fraction: number,

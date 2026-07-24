@@ -1,9 +1,3 @@
-// The controller's view of Home Assistant entity state: a cache of the entities
-// something on the control surface is watching, plus the change notification
-// tiles subscribe to. Keeping this separate from the socket (client.mts) means
-// the caching and notification rules are testable without a WebSocket, and the
-// client stays about the protocol.
-
 import type {HomeAssistantEntity} from '../types.mjs'
 
 interface Watcher {
@@ -24,11 +18,8 @@ export class EntityStore {
         return this.#entities.get(entityId)
     }
 
-    /**
-     * Every entity id currently watched. The client subscribes to all state
-     * changes but only needs to *keep* these, so a busy Home Assistant does not
-     * grow an unbounded cache in a daemon that draws eight keys.
-     */
+    // Only watched entities are kept, so a busy Home Assistant does not grow an
+    // unbounded cache in a daemon that draws eight keys.
     watched(): ReadonlySet<string> {
         const ids = new Set<string>()
         for (const watcher of this.#watchers) for (const id of watcher.ids) ids.add(id)
@@ -43,12 +34,9 @@ export class EntityStore {
         }
     }
 
-    /**
-     * Store one entity, reporting to the watchers that care. An event carrying
-     * the state a tile already drew is dropped rather than repainted: Home
-     * Assistant re-reports attributes freely, and an entity such as a running
-     * timer would otherwise repaint the deck on every unrelated update.
-     */
+    // An event carrying the state a tile already drew is dropped: Home Assistant
+    // re-reports attributes freely, and a running timer would otherwise repaint
+    // the deck on every unrelated update.
     set(entity: HomeAssistantEntity): void {
         const previous = this.#entities.get(entity.entity_id)
         if (previous && sameEntity(previous, entity)) return
@@ -56,7 +44,6 @@ export class EntityStore {
         this.#notify(entity.entity_id)
     }
 
-    /** Replace the cache from a full snapshot, keeping only watched entities. */
     replace(entities: readonly HomeAssistantEntity[]): void {
         this.#entities.clear()
         const watched = this.watched()
@@ -66,10 +53,6 @@ export class EntityStore {
         this.#notifyAll()
     }
 
-    /**
-     * Forget everything, on losing the connection. Tiles then draw unknown state
-     * rather than a stale reading that looks live.
-     */
     clear(): void {
         if (this.#entities.size === 0) return
         this.#entities.clear()

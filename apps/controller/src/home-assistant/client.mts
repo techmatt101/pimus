@@ -1,23 +1,8 @@
-// The Home Assistant WebSocket API client. It authenticates with a long-lived
-// access token, keeps the entities the control surface watches in an
-// EntityStore, and calls services on the same socket.
-//
-// Tiles need to *read* state — a fan key that cannot show whether the fan is
-// on is a light switch with no indicator — so this connection is what makes
-// the Home Assistant tiles in streamdeck/tiles/ possible. A deployment with
-// no Home Assistant configured
-// injects `createOfflineHomeAssistant()` instead, and those tiles draw unknown
-// state without any special-casing.
-//
-// Disconnects are normal: the socket reconnects on the same schedule as the LVA
-// client, and the cache is cleared on the way down so nothing stale looks live.
-
 import WebSocket, {type RawData} from 'ws'
 
 import {EntityStore} from './store.mjs'
 import type {HomeAssistantEntity, HomeAssistantService} from '../types.mjs'
 
-/** Messages the client understands; anything else is ignored. */
 interface HomeAssistantMessage {
     id?: number
     type?: string
@@ -39,11 +24,6 @@ export interface HomeAssistantClientOptions {
     logger?: Pick<Console, 'log' | 'error'>
 }
 
-/**
- * Turns the configured base URL into the WebSocket API endpoint. Accepting the
- * plain `http://host:8123` an operator already knows keeps the inventory
- * setting the same one they paste into a browser.
- */
 export function websocketUrl(url: string): string {
     const base = url.replace(/\/+$/, '').replace(/\/api\/websocket$/, '')
     return `${base.replace(/^http/i, 'ws')}/api/websocket`
@@ -60,13 +40,11 @@ export class HomeAssistantClient implements HomeAssistantService {
     #socket: WebSocket | null = null
     #reconnectTimer: NodeJS.Timeout | null = null
     #authenticated = false
-    // Event types something on the control surface is listening for, beyond the
-    // `state_changed` stream the entity cache is built from. Kept across
-    // reconnects: the subscriptions belong to the socket, the listeners do not.
+    // Kept across reconnects: the subscriptions belong to the socket, the
+    // listeners do not.
     readonly #eventListeners = new Map<string, Set<(data: Record<string, unknown>) => void>>()
     // Home Assistant requires strictly increasing ids on an authenticated socket.
     #nextId = 1
-    // Which reply carries the entity snapshot; other results are acknowledgements.
     #statesRequestId = 0
     #statesQueued = false
 
@@ -98,18 +76,14 @@ export class HomeAssistantClient implements HomeAssistantService {
     watch(entityIds: readonly string[], listener: () => void): () => void {
         const unwatch = this.#store.watch(entityIds, listener)
         // A tile mounted after the snapshot arrived would otherwise draw unknown
-        // state until its entity next changed, which for a temperature sensor can
-        // be minutes and for a scene is never.
+        // state until its entity next changed — minutes for a temperature
+        // sensor, never for a scene.
         if (entityIds.some((id) => !this.#store.get(id))) this.#queueStates()
         return unwatch
     }
 
-    /**
-     * Listen for one Home Assistant event type. The subscription is made once per
-     * type and re-made after every reconnect, so an automation firing while the
-     * socket is down is simply missed rather than arriving late — which is the
-     * right behaviour for a doorbell.
-     */
+    // Subscribed once per type and re-made after every reconnect; an event fired
+    // while the socket is down is missed rather than arriving late.
     listen(eventType: string, listener: (data: Record<string, unknown>) => void): () => void {
         const listeners = this.#eventListeners.get(eventType)
         if (listeners) {
@@ -141,13 +115,12 @@ export class HomeAssistantClient implements HomeAssistantService {
             if (this.#socket !== socket) return
             this.#socket = null
             this.#authenticated = false
-            // Drop the cache so a fan key stops claiming to know the fan is on.
             this.#store.clear()
             this.#onStateChange()
             this.scheduleReconnect()
         })
-        // A refused connection arrives as an error then a close; the close handler
-        // owns the retry, so this only stops an unhandled 'error' from throwing.
+        // A refused connection arrives as an error then a close; the close
+        // handler owns the retry, so this only stops 'error' from throwing.
         socket.on('error', () => {
         })
     }
@@ -194,7 +167,7 @@ export class HomeAssistantClient implements HomeAssistantService {
             const eventType = message.event?.event_type
             if (eventType === 'state_changed') {
                 const updated = message.event?.data?.new_state
-                // A removed entity reports a null new_state; nothing to cache for it.
+                // A removed entity reports a null new_state.
                 if (!updated?.entity_id) return
                 if (!this.#store.watched().has(updated.entity_id)) return
                 this.#store.set(updated)
@@ -216,7 +189,6 @@ export class HomeAssistantClient implements HomeAssistantService {
         }, this.#reconnectMilliseconds)
     }
 
-    /** Send a command on the authenticated socket, dropping it if there is none. */
     #send(payload: Record<string, unknown>): number {
         const socket = this.#socket
         if (!this.#authenticated || socket?.readyState !== this.#WebSocketImpl.OPEN) return 0
@@ -226,7 +198,6 @@ export class HomeAssistantClient implements HomeAssistantService {
         return id
     }
 
-    /** Ask for one event type, if there is an authenticated socket to ask on. */
     #subscribeEvent(eventType: string): void {
         this.#send({type: 'subscribe_events', event_type: eventType})
     }
@@ -237,10 +208,8 @@ export class HomeAssistantClient implements HomeAssistantService {
         if (id) this.#statesRequestId = id
     }
 
-    /**
-     * Coalesce the snapshot requests a page change produces: mounting six tiles
-     * that each watch an unknown entity should ask Home Assistant once.
-     */
+    // Coalesces the snapshot requests a page change produces: mounting six
+    // tiles that each watch an unknown entity should ask Home Assistant once.
     #queueStates(): void {
         if (this.#statesQueued || !this.#authenticated) return
         this.#statesQueued = true
@@ -248,12 +217,6 @@ export class HomeAssistantClient implements HomeAssistantService {
     }
 }
 
-/**
- * The stand-in used when no Home Assistant is configured. Every entity reads as
- * unknown and every service call is logged and dropped, so Home Assistant tiles
- * stay on the deck and simply draw an unknown state instead of the layout
- * needing to know whether the integration is enabled.
- */
 export function createOfflineHomeAssistant(
     logger: Pick<Console, 'log'> = console,
 ): HomeAssistantService {
@@ -265,8 +228,6 @@ export function createOfflineHomeAssistant(
         },
         watch: () => () => {
         },
-        // Nothing can push a notification without a connection, so the strip simply
-        // never has one to show.
         listen: () => () => {
         },
     }

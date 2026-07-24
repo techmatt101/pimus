@@ -1,9 +1,3 @@
-// Streams LED frames to a device. Static appearances are written once and
-// re-verified on a slow watchdog tick so an unplugged ReSpeaker recovers;
-// animated appearances (spin, blink) tick at their own rate with the phase
-// derived from the clock. Which appearance the voice state should show stays
-// in respeaker.mts; the USB protocol stays in xvf3800-device.mts.
-
 import type {LedAppearance} from './led-appearance.mjs'
 import {framePeriodMs, Leds, resolveFrame} from './led-appearance.mjs'
 import type {LedDevice} from '../types.mjs'
@@ -20,6 +14,12 @@ export interface LedRendererOptions {
 /** How often a static appearance is re-checked so USB failures retry. */
 const RETRY_MILLISECONDS = 500
 
+/**
+ * Streams LED frames to a device. Static appearances are written once and
+ * re-verified on a slow watchdog tick so an unplugged ReSpeaker recovers;
+ * animated appearances tick at their own rate with the phase derived from
+ * the clock.
+ */
 export class LedRenderer {
     readonly device: LedDevice
     readonly #defaults: { brightness: number; speed: number }
@@ -49,7 +49,6 @@ export class LedRenderer {
         this.#logger = logger
     }
 
-    /** Switches to an appearance and writes its first frame immediately. */
     show(appearance: LedAppearance): Promise<void> {
         this.#appearance = appearance
         this.#schedule()
@@ -79,9 +78,8 @@ export class LedRenderer {
                 this.#lastWarningSignature = ''
                 this.#lastWarningAt = Number.NEGATIVE_INFINITY
             } catch (error) {
-                // USB devices can be unplugged or re-enumerated; the next tick retries
-                // and Xvf3800Device opens a fresh handle. Repeat failures are logged
-                // once per interval rather than per tick.
+                // The next tick retries with a fresh device handle; repeat
+                // failures are logged once per interval rather than per tick.
                 this.#lastSignature = ''
                 const warningSignature = String(error)
                 const now = this.#now()

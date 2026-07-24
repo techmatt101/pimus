@@ -23,8 +23,8 @@ export function createDispatcher(logger: Pick<Console, 'error'> = console): Disp
     let queue: Promise<unknown> = Promise.resolve()
     return (run) => {
         if (!run) return queue
-        // Encoder rotation can produce many events in one tick. Chain every press
-        // so route toggles and volume steps preserve their physical order.
+        // Encoder rotation can produce many events in one tick; chaining keeps
+        // route toggles and volume steps in their physical order.
         queue = queue
             .then(() => run())
             .catch((error: unknown) => logger.error('action failed', error))
@@ -36,9 +36,9 @@ export interface DeckLoopOptions {
     layout: StreamDeckLayout
     renderer: DeckRenderer
     /**
-     * Report a key press, dial turn, or strip tap before it is acted on, so a
-     * sleeping panel can wake (streamdeck/sleep.mts). Returning true means the
-     * input was spent waking the deck and must not also run what it landed on.
+     * Report input before it is acted on, so a sleeping panel can wake.
+     * Returning true means the input was spent waking the deck and must not
+     * also run what it landed on.
      */
     onActivity?: () => boolean
     listDevices?: () => Promise<StreamDeckDeviceInfo[]>
@@ -62,7 +62,6 @@ export async function runDeckLoop({
     const pressBinding = (binding: Binding | undefined): void => {
         if (binding) void dispatch(() => binding.run())
     }
-    /** True when this input only woke the panel, so nothing else should run. */
     const consumedByWake = (): boolean => onActivity?.() === true
 
     while (true) {
@@ -76,27 +75,19 @@ export async function runDeckLoop({
 
             deck = await openDevice(device.path)
             logger.log(`opened ${deck.PRODUCT_NAME}`)
-            // The renderer owns everything written to the panel, brightness included:
-            // a deck that reconnects while the room is empty comes back up dark.
             await renderer.setDeck(deck)
 
             // A USB unplug can emit several errors; without a listener still
-            // attached after the first one, EventEmitter would throw and kill the
-            // daemon instead of letting the loop reconnect.
+            // attached after the first one, EventEmitter would throw and kill
+            // the daemon instead of letting the loop reconnect.
             deck.on('error', () => {
             })
             const disconnected = new Promise<void>((resolve) => deck?.once('error', () => resolve()))
             deck.on('down', (controlDefinition) => {
-                // The first press on a dark panel is you asking to see it, so it wakes
-                // the deck and stops there rather than toggling something unreadable.
                 if (consumedByWake()) return
                 if (controlDefinition.type === 'button') {
-                    // Every key presses its current page's tile; paging moved to the
-                    // page-switcher dial (streamdeck/dials/page-dial.mts).
                     void dispatch(renderer.pressAt(controlDefinition.index))
                 } else if (controlDefinition.type === 'encoder') {
-                    // Touching a dial also puts it on the strip, so the value being
-                    // changed is visible while the hand is still on the knob.
                     renderer.showDial(controlDefinition.index)
                     pressBinding(layout.dials[controlDefinition.index]?.press)
                 }
@@ -110,8 +101,6 @@ export async function runDeckLoop({
             })
             deck.on('lcdShortPress', (_controlDefinition, position) => {
                 if (consumedByWake()) return
-                // The strip decides what a tap means: acknowledging a notification if
-                // one is showing, otherwise pressing the dial in that zone.
                 void dispatch(renderer.stripPressAt(position.x))
             })
             await disconnected

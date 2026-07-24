@@ -1,14 +1,3 @@
-// The strip's resting face when nothing is playing: a clock. The strip shows
-// this instead of the now-playing face whenever the player is stopped — not
-// merely paused, which keeps its track and stays on NowPlayingScreen — so a
-// quiet room reads as a clock rather than a "nothing playing" placeholder.
-//
-// The time sits centred, with the current outdoor conditions beside it. The
-// clock needs nothing but its own wall clock, so this face still works with no
-// Home Assistant configured; the weather is an adornment that simply stays away
-// when no `weather.` entity is given or it has no reading. The screen watches
-// that entity while mounted, exactly as a tile does.
-
 import {requireEntity} from '../../actions/catalog.mjs'
 import {numericAttribute} from '../../home-assistant/entity.mjs'
 import {conditionIcon} from '../icons.mjs'
@@ -16,20 +5,18 @@ import {drawIcon, drawText, measureText, type Surface, verticalGradient} from '.
 import {clockTime, minuteTick, type Screen, type ScreenHost, STRIP_WIDTH} from './screen.mjs'
 import type {HomeAssistantService} from '../../types.mjs'
 
-/** The clock face is washed rather than flat, like the now-playing face. */
 const BACKDROP = ['#16222b', '#0b1116'] as const
 const TIME_COLOR = '#eceff1'
 const TEMPERATURE_COLOR = '#80deea'
 const TIME_SIZE = 64
-/** The gap between the centred time and the weather hung off its right edge. */
 const WEATHER_GAP = 28
 
 export interface IdleScreenOptions {
-    /** The `weather.` entity shown beside the clock; omitting it leaves the clock
-     * standing alone. */
+    /** The `weather.` entity shown beside the clock; omitting it leaves the clock alone. */
     weatherEntityId?: string
 }
 
+/** The strip's resting face when nothing is playing: a clock, with the weather beside it. */
 export class IdleScreen implements Screen {
     readonly #ha: HomeAssistantService
     readonly #clock: () => number
@@ -53,7 +40,6 @@ export class IdleScreen implements Screen {
         this.#unwatch = null
     }
 
-    /** Repaint on the minute boundary, so the digits change on time. */
     animationMilliseconds(): number {
         return minuteTick(this.#clock())
     }
@@ -61,13 +47,10 @@ export class IdleScreen implements Screen {
     draw(surface: Surface): void {
         surface.fill(verticalGradient(surface, BACKDROP[0], BACKDROP[1]))
         const time = clockTime(this.#clock())
-        // The time is what is centred; the weather is an adornment hung off its
-        // right edge, so the clock stays put whether or not the weather is there.
         drawText(surface, time, {x: STRIP_WIDTH / 2, y: 50, size: TIME_SIZE, color: TIME_COLOR})
         this.#drawWeather(surface, STRIP_WIDTH / 2 + measureText(time, TIME_SIZE) / 2 + WEATHER_GAP)
     }
 
-    /** A condition glyph and temperature laid out rightward from `left`. */
     #drawWeather(surface: Surface, left: number): void {
         const weather = this.#weather ? this.#ha.entity(this.#weather) : undefined
         if (!weather || weather.state === 'unknown' || weather.state === 'unavailable') return

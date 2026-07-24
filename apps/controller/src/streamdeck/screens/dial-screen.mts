@@ -1,29 +1,13 @@
-// What the strip shows while a dial is being turned or pressed: that one dial,
-// across the full width, instead of four columns of labels nobody reads while
-// their hand is on a knob. The strip goes back to what is playing a couple of
-// seconds after the last movement (streamdeck/strip.mts).
-//
-// The four dials share this one face, so a knob's name, reading, and bar all
-// come from the dial itself (streamdeck/dials/) rather than being worked out
-// here from whatever it happens to be bound to. This screen decides only how
-// big each of those is drawn.
-
 import {fittingSize, type Surface, verticalGradient} from '../surface.mjs'
 import {drawStripBar, drawStripLine, type Screen, STRIP_MARGIN, STRIP_WIDTH,} from './screen.mjs'
 import type {Dial} from '../dial.mjs'
 
-/** Readout sizes tried in turn, so `67%` is drawn far larger than `NOT IN USE`. */
 const VALUE_SIZES = [76, 60, 48, 36]
 const LABEL_SIZE = 24
 const LABEL_COLOR = '#80deea'
-/** The dial face is washed the same way a key is, so the strip matches the grid. */
 const BACKDROP = ['#1d2d38', '#101a21'] as const
 
-/**
- * The one dial the strip is showing. Which dial that is comes from the strip,
- * which calls `show` before drawing; the clock is what scrolls an overlong
- * readout.
- */
+/** The one face all four dials share; the strip calls `show` before drawing. */
 export class DialScreen implements Screen {
     #dial: Dial | undefined
     readonly #clock: () => number
@@ -32,7 +16,6 @@ export class DialScreen implements Screen {
         this.#clock = clock
     }
 
-    /** The strip hands over the dial being turned before it draws. */
     show(dial: Dial): void {
         this.#dial = dial
     }

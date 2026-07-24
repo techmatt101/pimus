@@ -14,7 +14,7 @@ const CONFIG: ReSpeakerConfig = {
 }
 
 // The appearances asserted here come from the compiled state map in
-// voice/led-states.mts, the same way layout.test.mts reads the compiled deck.
+// voice/led-states.mts.
 test('ReSpeaker LEDs follow voice, media, and mute state', async () => {
     const rendered: LedFrame[] = []
     const controller = new ReSpeakerController({
