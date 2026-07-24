@@ -31,23 +31,23 @@ export class ActionDial implements Dial {
     readonly left: Binding | undefined
     readonly right: Binding | undefined
     readonly press: Binding | undefined
-    private readonly readout: string | (() => string)
-    private readonly reading: ActionDialConfig['level']
+    readonly #readout: string | (() => string)
+    readonly #reading: ActionDialConfig['level']
 
     constructor(config: ActionDialConfig) {
         this.label = config.label
         this.left = config.left
         this.right = config.right
         this.press = config.press
-        this.readout = config.readout
-        this.reading = config.level
+        this.#readout = config.readout
+        this.#reading = config.level
     }
 
     detail(): string {
-        return typeof this.readout === 'function' ? this.readout() : this.readout
+        return typeof this.#readout === 'function' ? this.#readout() : this.#readout
     }
 
     level(): number | undefined {
-        return this.reading?.()
+        return this.#reading?.()
     }
 }

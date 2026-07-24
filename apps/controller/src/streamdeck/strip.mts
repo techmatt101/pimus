@@ -44,21 +44,21 @@ export interface TouchStripOptions {
 }
 
 export class TouchStrip {
-    private readonly resting: Screen
-    private readonly dials: readonly Dial[]
-    private readonly notifications: NotificationFeed | undefined
-    private readonly dialHoldMilliseconds: number
-    private readonly clock: () => number
-    private readonly dialScreen: DialScreen
-    private readonly notificationScreen: NotificationScreen
-    private host: ScreenHost | null = null
+    readonly #resting: Screen
+    readonly #dials: readonly Dial[]
+    readonly #notifications: NotificationFeed | undefined
+    readonly #dialHoldMilliseconds: number
+    readonly #clock: () => number
+    readonly #dialScreen: DialScreen
+    readonly #notificationScreen: NotificationScreen
+    #host: ScreenHost | null = null
     // Which dial is being shown, and until when. Held as an instant rather than a
     // countdown so what is showing stays a pure function of the clock.
-    private dialIndex = -1
-    private dialUntil = 0
-    private frames: NodeJS.Timeout | null = null
-    private frameRate = 0
-    private wake: NodeJS.Timeout | null = null
+    #dialIndex = -1
+    #dialUntil = 0
+    #frames: NodeJS.Timeout | null = null
+    #frameRate = 0
+    #wake: NodeJS.Timeout | null = null
 
     constructor({
                     resting,
@@ -67,34 +67,34 @@ export class TouchStrip {
                     dialHoldMilliseconds = DIAL_HOLD_MILLISECONDS,
                     clock = Date.now,
                 }: TouchStripOptions) {
-        this.resting = resting
-        this.dials = dials
-        this.notifications = notifications
-        this.dialHoldMilliseconds = dialHoldMilliseconds
-        this.clock = clock
-        this.dialScreen = new DialScreen(clock)
-        this.notificationScreen = new NotificationScreen(clock)
+        this.#resting = resting
+        this.#dials = dials
+        this.#notifications = notifications
+        this.#dialHoldMilliseconds = dialHoldMilliseconds
+        this.#clock = clock
+        this.#dialScreen = new DialScreen(clock)
+        this.#notificationScreen = new NotificationScreen(clock)
     }
 
     /** Every screen the strip can show, in no particular order. */
-    private get screens(): Screen[] {
-        return [this.resting, this.dialScreen, this.notificationScreen]
+    get #screens(): Screen[] {
+        return [this.#resting, this.#dialScreen, this.#notificationScreen]
     }
 
     /** Called when the strip is live on an attached deck. */
     mount(host: ScreenHost): void {
         // Only tear down a strip that is actually up: a first mount must not send
         // `unmount` to screens that were never mounted.
-        if (this.host) this.unmount()
-        this.host = host
-        for (const screen of this.screens) screen.mount?.({invalidate: () => host.invalidate()})
+        if (this.#host) this.unmount()
+        this.#host = host
+        for (const screen of this.#screens) screen.mount?.({invalidate: () => host.invalidate()})
     }
 
     unmount(): void {
-        for (const screen of this.screens) screen.unmount?.()
-        this.stopFrames()
-        this.stopWake()
-        this.host = null
+        for (const screen of this.#screens) screen.unmount?.()
+        this.#stopFrames()
+        this.#stopWake()
+        this.#host = null
     }
 
     /**
@@ -102,11 +102,11 @@ export class TouchStrip {
      * readout. Called for every rotation step; extending the hold from the last
      * one is what keeps the readout up while a knob is still moving.
      */
-    showDial(index: number, now = this.clock()): void {
-        if (index < 0 || index >= this.dials.length) return
-        this.dialIndex = index
-        this.dialUntil = now + this.dialHoldMilliseconds
-        this.host?.invalidate()
+    showDial(index: number, now = this.#clock()): void {
+        if (index < 0 || index >= this.#dials.length) return
+        this.#dialIndex = index
+        this.#dialUntil = now + this.#dialHoldMilliseconds
+        this.#host?.invalidate()
     }
 
     /**
@@ -118,66 +118,66 @@ export class TouchStrip {
      * Returns a thunk rather than acting, so the deck's dispatch queue keeps
      * presses in physical order.
      */
-    pressAt(x: number, now = this.clock()): (() => unknown) | undefined {
-        if (this.showingNotification(now)) {
-            this.notifications?.dismiss()
-            this.host?.invalidate()
+    pressAt(x: number, now = this.#clock()): (() => unknown) | undefined {
+        if (this.#showingNotification(now)) {
+            this.#notifications?.dismiss()
+            this.#host?.invalidate()
             return undefined
         }
-        const index = Math.max(0, Math.min(this.dials.length - 1, Math.floor(x / ZONE_WIDTH)))
+        const index = Math.max(0, Math.min(this.#dials.length - 1, Math.floor(x / ZONE_WIDTH)))
         this.showDial(index, now)
-        const press = this.dials[index]?.press
+        const press = this.#dials[index]?.press
         return press ? () => press.run() : undefined
     }
 
     /** Paint the face for the current state, and arm the timers that go with it. */
     draw(surface: Surface, deltaTime: number): void {
-        const now = this.clock()
+        const now = this.#clock()
         // A dial that pins itself (a mid-pick claim) holds the strip until it
         // releases, so the choice stays up for the whole claim; otherwise the strip
         // shows the dial being turned for its short after-turn hold.
-        const pinned = this.pinnedDial()
-        const held = now < this.dialUntil ? this.dials[this.dialIndex] : undefined
+        const pinned = this.#pinnedDial()
+        const held = now < this.#dialUntil ? this.#dials[this.#dialIndex] : undefined
         const dial = pinned ?? held
         // Nothing is asked of the queue while a dial is showing: a message's time
         // starts when it reaches the strip, so one that arrives mid-turn waits its
         // full length rather than expiring behind the readout.
-        const notification = dial ? undefined : this.notifications?.current(now)
-        const screen = this.select(dial, notification)
+        const notification = dial ? undefined : this.#notifications?.current(now)
+        const screen = this.#select(dial, notification)
         screen.draw(surface, deltaTime)
         // Only the short hold needs a wake-up to fall back on expiry; a pinned dial
         // repaints when its claim releases (the model notifies), so arming a wake at
         // its already-passed hold would spin the strip at 16ms.
-        if (this.host) this.arm(screen, pinned ? undefined : held)
+        if (this.#host) this.#arm(screen, pinned ? undefined : held)
     }
 
     /** The dial currently pinning the strip to its readout, if any. */
-    private pinnedDial(): Dial | undefined {
-        const index = this.dials.findIndex((dial) => dial.pinned?.())
-        return index >= 0 ? this.dials[index] : undefined
+    #pinnedDial(): Dial | undefined {
+        const index = this.#dials.findIndex((dial) => dial.pinned?.())
+        return index >= 0 ? this.#dials[index] : undefined
     }
 
     /**
      * Pick the screen for the current subject and hand it that subject, so a
      * screen draws what the strip selected it for without reading a context.
      */
-    private select(dial: Dial | undefined, notification: Notification | undefined): Screen {
+    #select(dial: Dial | undefined, notification: Notification | undefined): Screen {
         if (dial) {
-            this.dialScreen.show(dial)
-            return this.dialScreen
+            this.#dialScreen.show(dial)
+            return this.#dialScreen
         }
         if (notification) {
-            this.notificationScreen.show(notification)
-            return this.notificationScreen
+            this.#notificationScreen.show(notification)
+            return this.#notificationScreen
         }
-        return this.resting
+        return this.#resting
     }
 
-    private showingNotification(now: number): boolean {
+    #showingNotification(now: number): boolean {
         // A pinned dial is over the strip, so a tap belongs to it, not to a
         // notification waiting behind it.
-        if (this.pinnedDial()) return false
-        return now >= this.dialUntil && this.notifications?.current(now) !== undefined
+        if (this.#pinnedDial()) return false
+        return now >= this.#dialUntil && this.#notifications?.current(now) !== undefined
     }
 
     /**
@@ -185,33 +185,33 @@ export class TouchStrip {
      * moment the dial readout stops being current — without it the strip would
      * keep the readout up until something else happened to repaint it.
      */
-    private arm(screen: Screen, dial: Dial | undefined): void {
+    #arm(screen: Screen, dial: Dial | undefined): void {
         const rate = screen.animationMilliseconds?.()
-        if (rate !== this.frameRate) {
-            this.stopFrames()
-            this.frameRate = rate ?? 0
+        if (rate !== this.#frameRate) {
+            this.#stopFrames()
+            this.#frameRate = rate ?? 0
             if (rate) {
-                this.frames = setInterval(() => this.host?.invalidate(), rate)
+                this.#frames = setInterval(() => this.#host?.invalidate(), rate)
                 // Strip repaints must not keep the daemon alive on shutdown.
-                this.frames.unref()
+                this.#frames.unref()
             }
         }
 
-        this.stopWake()
+        this.#stopWake()
         if (dial) {
-            this.wake = setTimeout(() => this.host?.invalidate(), Math.max(16, this.dialUntil - this.clock()))
-            this.wake.unref()
+            this.#wake = setTimeout(() => this.#host?.invalidate(), Math.max(16, this.#dialUntil - this.#clock()))
+            this.#wake.unref()
         }
     }
 
-    private stopFrames(): void {
-        if (this.frames) clearInterval(this.frames)
-        this.frames = null
-        this.frameRate = 0
+    #stopFrames(): void {
+        if (this.#frames) clearInterval(this.#frames)
+        this.#frames = null
+        this.#frameRate = 0
     }
 
-    private stopWake(): void {
-        if (this.wake) clearTimeout(this.wake)
-        this.wake = null
+    #stopWake(): void {
+        if (this.#wake) clearTimeout(this.#wake)
+        this.#wake = null
     }
 }

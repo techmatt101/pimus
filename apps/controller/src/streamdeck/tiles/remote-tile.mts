@@ -14,20 +14,20 @@ export interface RemoteTileConfig {
 }
 
 export class RemoteTile implements Tile {
-    private readonly services: TileServices
-    private readonly slot: number
+    readonly #services: TileServices
+    readonly #slot: number
 
     constructor(services: TileServices, {slot}: RemoteTileConfig) {
-        this.services = services
-        this.slot = slot
+        this.#services = services
+        this.#slot = slot
     }
 
     press(): void {
-        this.services.remote?.press(this.slot)
+        this.#services.remote?.press(this.#slot)
     }
 
     draw(surface: Surface): void {
-        const face = this.services.remote?.tile(this.slot)
+        const face = this.#services.remote?.tile(this.#slot)
         if (!face) {
             // An empty socket: dark, with a faint marker so the page reads as six
             // places a client can fill rather than as a dead key.

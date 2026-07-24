@@ -50,65 +50,67 @@ export interface PlaylistTileConfig {
 const DOTS_Y = 80
 
 export class PlaylistTile implements Tile {
-    private readonly config: PlaylistTileConfig
-    private readonly player: string
-    private readonly dial: DynamicDial
-    private readonly selection: SelectionDial<PlaylistChoice>
-    private host: TileHost | null = null
-    private unwatch: (() => void) | null = null
+    readonly #ha: HomeAssistantService
+    readonly #config: PlaylistTileConfig
+    readonly #player: string
+    readonly #dial: DynamicDial
+    readonly #selection: SelectionDial<PlaylistChoice>
+    #host: TileHost | null = null
+    #unwatch: (() => void) | null = null
 
-    constructor(private readonly ha: HomeAssistantService, config: PlaylistTileConfig) {
-        this.config = config
-        this.player = requireEntity(config.player, `${config.label} playlist tile`)
-        this.dial = config.dial
-        this.selection = new SelectionDial(config.label, config.playlists, {
-            onConfirm: () => this.confirm(),
+    constructor(ha: HomeAssistantService, config: PlaylistTileConfig) {
+        this.#ha = ha
+        this.#config = config
+        this.#player = requireEntity(config.player, `${config.label} playlist tile`)
+        this.#dial = config.dial
+        this.#selection = new SelectionDial(config.label, config.playlists, {
+            onConfirm: () => this.#confirm(),
             // A turn moves the pick with no device call, so only this key's own face
             // (its caption and dot) is stale; the strip repaints on the turn itself.
-            onChange: () => this.host?.invalidate(),
+            onChange: () => this.#host?.invalidate(),
         })
     }
 
     press(): void {
         // Already listening: this press is the confirm. Otherwise it arms the dial
         // and lights the key, and it is the next press that plays.
-        if (this.dial.holds(this.selection)) return this.confirm()
+        if (this.#dial.holds(this.#selection)) return this.#confirm()
         // A transient claim: it glows, times out after 15s, and lets go the moment
         // another dial is turned — a "pick one now", not the sticky hold a light gets.
-        this.dial.claim(this.selection, true)
+        this.#dial.claim(this.#selection, true)
     }
 
     /** Play the choice now showing and hand the dial back. */
-    private confirm(): void {
-        const choice = this.selection.selected
-        this.dial.release()
+    #confirm(): void {
+        const choice = this.#selection.selected
+        this.#dial.release()
         if (!choice) return undefined
-        haBinding(this.ha, 'play_media', this.player, {...choice.media}).run()
+        haBinding(this.#ha, 'play_media', this.#player, {...choice.media}).run()
     }
 
     mount(host: TileHost): void {
-        this.host = host
-        this.unwatch = this.ha.watch([this.player], () => host.invalidate())
+        this.#host = host
+        this.#unwatch = this.#ha.watch([this.#player], () => host.invalidate())
     }
 
     unmount(): void {
-        this.unwatch?.()
-        this.unwatch = null
-        this.host = null
+        this.#unwatch?.()
+        this.#unwatch = null
+        this.#host = null
         // Paging away hides the key, so it must not leave the shared dial pointed
         // at a playlist picker the user can no longer see.
-        if (this.dial.holds(this.selection)) this.dial.release()
+        if (this.#dial.holds(this.#selection)) this.#dial.release()
     }
 
     draw(surface: Surface): void {
-        const active = this.dial.holds(this.selection)
-        const playing = this.playingIndex()
+        const active = this.#dial.holds(this.#selection)
+        const playing = this.#playingIndex()
         const lit = active || playing >= 0
-        const color = this.config.color ?? '#00695c'
+        const color = this.#config.color ?? '#00695c'
         // The face points at the pick while choosing, otherwise at the playlist that
         // is playing, and rests on its own name when neither applies.
-        const shown = active ? this.selection.index : playing
-        const label = active ? this.selection.detail() : this.config.playlists[shown]?.label ?? this.config.label
+        const shown = active ? this.#selection.index : playing
+        const label = active ? this.#selection.detail() : this.#config.playlists[shown]?.label ?? this.#config.label
 
         drawLabelFace(surface, lit ? color : '#0d2622', label)
         icon(surface, 'note', {
@@ -120,8 +122,8 @@ export class PlaylistTile implements Tile {
 
         // A dot per playlist with the shown one filled, so a glance says how many
         // there are and where you are in them — pointless for a list of one.
-        if (this.config.playlists.length > 1) {
-            drawDots(surface, this.config.playlists.length, Math.max(0, shown), DOTS_Y, lit ? '#ffffff' : '#4db6ac')
+        if (this.#config.playlists.length > 1) {
+            drawDots(surface, this.#config.playlists.length, Math.max(0, shown), DOTS_Y, lit ? '#ffffff' : '#4db6ac')
         }
 
         if (active) drawActiveGlow(surface)
@@ -133,11 +135,11 @@ export class PlaylistTile implements Tile {
      * this key sends, so it only lights up when the integration reports the source
      * back.
      */
-    private playingIndex(): number {
-        const player: HomeAssistantEntity | undefined = this.ha.entity(this.player)
+    #playingIndex(): number {
+        const player: HomeAssistantEntity | undefined = this.#ha.entity(this.#player)
         if (player?.state !== 'playing') return -1
         const current = player.attributes['media_content_id']
         if (typeof current !== 'string') return -1
-        return this.config.playlists.findIndex((choice) => choice.media.media_content_id === current)
+        return this.#config.playlists.findIndex((choice) => choice.media.media_content_id === current)
     }
 }

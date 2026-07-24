@@ -28,25 +28,31 @@ export interface SelectionHandlers<T extends SelectionOption> {
 }
 
 export class SelectionDial<T extends SelectionOption> implements Dial {
+    readonly label: string
     readonly left: Binding
     readonly right: Binding
     readonly press: Binding
+    readonly #options: readonly T[]
+    readonly #handlers: SelectionHandlers<T>
     /** Which choice is showing, so the owning key can draw a dot per option. */
     index = 0
 
     constructor(
-        readonly label: string,
-        private readonly options: readonly T[],
-        private readonly handlers: SelectionHandlers<T>,
+        label: string,
+        options: readonly T[],
+        handlers: SelectionHandlers<T>,
     ) {
-        this.left = {action: {type: 'noop'}, run: () => this.step(-1)}
-        this.right = {action: {type: 'noop'}, run: () => this.step(1)}
-        this.press = {action: {type: 'noop'}, run: () => this.confirm()}
+        this.label = label
+        this.#options = options
+        this.#handlers = handlers
+        this.left = {action: {type: 'noop'}, run: () => this.#step(-1)}
+        this.right = {action: {type: 'noop'}, run: () => this.#step(1)}
+        this.press = {action: {type: 'noop'}, run: () => this.#confirm()}
     }
 
     /** The option now showing, or undefined when the list is empty. */
     get selected(): T | undefined {
-        return this.options[this.index]
+        return this.#options[this.index]
     }
 
     detail(): string {
@@ -54,15 +60,15 @@ export class SelectionDial<T extends SelectionOption> implements Dial {
     }
 
     /** Move the pick by one, wrapping around, and ask for a repaint. */
-    private step(delta: number): void {
-        const count = this.options.length
+    #step(delta: number): void {
+        const count = this.#options.length
         if (count === 0) return
         this.index = ((this.index + delta) % count + count) % count
-        this.handlers.onChange()
+        this.#handlers.onChange()
     }
 
-    private confirm(): void {
+    #confirm(): void {
         const option = this.selected
-        if (option) this.handlers.onConfirm(option)
+        if (option) this.#handlers.onConfirm(option)
     }
 }

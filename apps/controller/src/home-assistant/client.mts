@@ -51,24 +51,24 @@ export function websocketUrl(url: string): string {
 
 export class HomeAssistantClient implements HomeAssistantService {
     readonly url: string
-    private readonly token: string
-    private readonly store = new EntityStore()
-    private readonly onStateChange: () => void
-    private readonly reconnectMilliseconds: number
-    private readonly WebSocketImpl: typeof WebSocket
-    private readonly logger: Pick<Console, 'log' | 'error'>
-    private socket: WebSocket | null = null
-    private reconnectTimer: NodeJS.Timeout | null = null
-    private authenticated = false
+    readonly #token: string
+    readonly #store = new EntityStore()
+    readonly #onStateChange: () => void
+    readonly #reconnectMilliseconds: number
+    readonly #WebSocketImpl: typeof WebSocket
+    readonly #logger: Pick<Console, 'log' | 'error'>
+    #socket: WebSocket | null = null
+    #reconnectTimer: NodeJS.Timeout | null = null
+    #authenticated = false
     // Event types something on the control surface is listening for, beyond the
     // `state_changed` stream the entity cache is built from. Kept across
     // reconnects: the subscriptions belong to the socket, the listeners do not.
-    private readonly eventListeners = new Map<string, Set<(data: Record<string, unknown>) => void>>()
+    readonly #eventListeners = new Map<string, Set<(data: Record<string, unknown>) => void>>()
     // Home Assistant requires strictly increasing ids on an authenticated socket.
-    private nextId = 1
+    #nextId = 1
     // Which reply carries the entity snapshot; other results are acknowledgements.
-    private statesRequestId = 0
-    private statesQueued = false
+    #statesRequestId = 0
+    #statesQueued = false
 
     constructor({
                     url,
@@ -80,27 +80,27 @@ export class HomeAssistantClient implements HomeAssistantService {
                     logger = console,
                 }: HomeAssistantClientOptions) {
         this.url = websocketUrl(url)
-        this.token = token
-        this.onStateChange = onStateChange
-        this.reconnectMilliseconds = reconnectMilliseconds
-        this.WebSocketImpl = WebSocketImpl
-        this.logger = logger
+        this.#token = token
+        this.#onStateChange = onStateChange
+        this.#reconnectMilliseconds = reconnectMilliseconds
+        this.#WebSocketImpl = WebSocketImpl
+        this.#logger = logger
     }
 
     get connected(): boolean {
-        return this.authenticated
+        return this.#authenticated
     }
 
     entity(entityId: string): HomeAssistantEntity | undefined {
-        return this.store.get(entityId)
+        return this.#store.get(entityId)
     }
 
     watch(entityIds: readonly string[], listener: () => void): () => void {
-        const unwatch = this.store.watch(entityIds, listener)
+        const unwatch = this.#store.watch(entityIds, listener)
         // A tile mounted after the snapshot arrived would otherwise draw unknown
         // state until its entity next changed, which for a temperature sensor can
         // be minutes and for a scene is never.
-        if (entityIds.some((id) => !this.store.get(id))) this.queueStates()
+        if (entityIds.some((id) => !this.#store.get(id))) this.#queueStates()
         return unwatch
     }
 
@@ -111,20 +111,20 @@ export class HomeAssistantClient implements HomeAssistantService {
      * right behaviour for a doorbell.
      */
     listen(eventType: string, listener: (data: Record<string, unknown>) => void): () => void {
-        const listeners = this.eventListeners.get(eventType)
+        const listeners = this.#eventListeners.get(eventType)
         if (listeners) {
             listeners.add(listener)
         } else {
-            this.eventListeners.set(eventType, new Set([listener]))
-            this.subscribeEvent(eventType)
+            this.#eventListeners.set(eventType, new Set([listener]))
+            this.#subscribeEvent(eventType)
         }
         return () => {
-            this.eventListeners.get(eventType)?.delete(listener)
+            this.#eventListeners.get(eventType)?.delete(listener)
         }
     }
 
     call(domain: string, service: string, entityId: string, data?: Record<string, unknown>): void {
-        this.send({
+        this.#send({
             type: 'call_service',
             domain,
             service,
@@ -134,16 +134,16 @@ export class HomeAssistantClient implements HomeAssistantService {
     }
 
     connect(): void {
-        const socket = new this.WebSocketImpl(this.url)
-        this.socket = socket
+        const socket = new this.#WebSocketImpl(this.url)
+        this.#socket = socket
         socket.on('message', (raw: RawData) => this.receive(raw))
         socket.on('close', () => {
-            if (this.socket !== socket) return
-            this.socket = null
-            this.authenticated = false
+            if (this.#socket !== socket) return
+            this.#socket = null
+            this.#authenticated = false
             // Drop the cache so a fan key stops claiming to know the fan is on.
-            this.store.clear()
-            this.onStateChange()
+            this.#store.clear()
+            this.#onStateChange()
             this.scheduleReconnect()
         })
         // A refused connection arrives as an error then a close; the close handler
@@ -157,36 +157,36 @@ export class HomeAssistantClient implements HomeAssistantService {
         try {
             message = JSON.parse(raw.toString()) as HomeAssistantMessage
         } catch (error) {
-            this.logger.error('invalid Home Assistant message', error)
+            this.#logger.error('invalid Home Assistant message', error)
             return
         }
 
         if (message.type === 'auth_required') {
             // The auth handshake is the one exchange that carries no id.
-            this.socket?.send(JSON.stringify({type: 'auth', access_token: this.token}))
+            this.#socket?.send(JSON.stringify({type: 'auth', access_token: this.#token}))
             return
         }
         if (message.type === 'auth_invalid') {
-            this.logger.error('Home Assistant rejected the access token; check home_assistant_token')
+            this.#logger.error('Home Assistant rejected the access token; check home_assistant_token')
             return
         }
         if (message.type === 'auth_ok') {
-            this.authenticated = true
-            this.logger.log('connected to Home Assistant')
-            this.send({type: 'subscribe_events', event_type: 'state_changed'})
-            for (const eventType of this.eventListeners.keys()) this.subscribeEvent(eventType)
-            this.requestStates()
-            this.onStateChange()
+            this.#authenticated = true
+            this.#logger.log('connected to Home Assistant')
+            this.#send({type: 'subscribe_events', event_type: 'state_changed'})
+            for (const eventType of this.#eventListeners.keys()) this.#subscribeEvent(eventType)
+            this.#requestStates()
+            this.#onStateChange()
             return
         }
 
-        if (message.type === 'result' && message.id === this.statesRequestId) {
-            if (Array.isArray(message.result)) this.store.replace(message.result as HomeAssistantEntity[])
-            this.onStateChange()
+        if (message.type === 'result' && message.id === this.#statesRequestId) {
+            if (Array.isArray(message.result)) this.#store.replace(message.result as HomeAssistantEntity[])
+            this.#onStateChange()
             return
         }
         if (message.type === 'result' && message.success === false) {
-            this.logger.error('Home Assistant rejected a request', message.result)
+            this.#logger.error('Home Assistant rejected a request', message.result)
             return
         }
 
@@ -196,12 +196,12 @@ export class HomeAssistantClient implements HomeAssistantService {
                 const updated = message.event?.data?.new_state
                 // A removed entity reports a null new_state; nothing to cache for it.
                 if (!updated?.entity_id) return
-                if (!this.store.watched().has(updated.entity_id)) return
-                this.store.set(updated)
-                this.onStateChange()
+                if (!this.#store.watched().has(updated.entity_id)) return
+                this.#store.set(updated)
+                this.#onStateChange()
                 return
             }
-            const listeners = eventType ? this.eventListeners.get(eventType) : undefined
+            const listeners = eventType ? this.#eventListeners.get(eventType) : undefined
             if (!listeners) return
             // Copy first so a listener that unsubscribes mid-notification is safe.
             for (const listener of [...listeners]) listener(message.event?.data ?? {})
@@ -209,42 +209,42 @@ export class HomeAssistantClient implements HomeAssistantService {
     }
 
     scheduleReconnect(): void {
-        if (this.reconnectTimer) return
-        this.reconnectTimer = setTimeout(() => {
-            this.reconnectTimer = null
+        if (this.#reconnectTimer) return
+        this.#reconnectTimer = setTimeout(() => {
+            this.#reconnectTimer = null
             this.connect()
-        }, this.reconnectMilliseconds)
+        }, this.#reconnectMilliseconds)
     }
 
     /** Send a command on the authenticated socket, dropping it if there is none. */
-    private send(payload: Record<string, unknown>): number {
-        const socket = this.socket
-        if (!this.authenticated || socket?.readyState !== this.WebSocketImpl.OPEN) return 0
-        const id = this.nextId
-        this.nextId += 1
+    #send(payload: Record<string, unknown>): number {
+        const socket = this.#socket
+        if (!this.#authenticated || socket?.readyState !== this.#WebSocketImpl.OPEN) return 0
+        const id = this.#nextId
+        this.#nextId += 1
         socket.send(JSON.stringify({id, ...payload}))
         return id
     }
 
     /** Ask for one event type, if there is an authenticated socket to ask on. */
-    private subscribeEvent(eventType: string): void {
-        this.send({type: 'subscribe_events', event_type: eventType})
+    #subscribeEvent(eventType: string): void {
+        this.#send({type: 'subscribe_events', event_type: eventType})
     }
 
-    private requestStates(): void {
-        this.statesQueued = false
-        const id = this.send({type: 'get_states'})
-        if (id) this.statesRequestId = id
+    #requestStates(): void {
+        this.#statesQueued = false
+        const id = this.#send({type: 'get_states'})
+        if (id) this.#statesRequestId = id
     }
 
     /**
      * Coalesce the snapshot requests a page change produces: mounting six tiles
      * that each watch an unknown entity should ask Home Assistant once.
      */
-    private queueStates(): void {
-        if (this.statesQueued || !this.authenticated) return
-        this.statesQueued = true
-        setTimeout(() => this.requestStates(), 0).unref()
+    #queueStates(): void {
+        if (this.#statesQueued || !this.#authenticated) return
+        this.#statesQueued = true
+        setTimeout(() => this.#requestStates(), 0).unref()
     }
 }
 

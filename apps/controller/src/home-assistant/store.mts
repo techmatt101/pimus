@@ -17,11 +17,11 @@ interface Watcher {
  * `state_changed` event afterwards.
  */
 export class EntityStore {
-    private readonly entities = new Map<string, HomeAssistantEntity>()
-    private readonly watchers = new Set<Watcher>()
+    readonly #entities = new Map<string, HomeAssistantEntity>()
+    readonly #watchers = new Set<Watcher>()
 
     get(entityId: string): HomeAssistantEntity | undefined {
-        return this.entities.get(entityId)
+        return this.#entities.get(entityId)
     }
 
     /**
@@ -31,15 +31,15 @@ export class EntityStore {
      */
     watched(): ReadonlySet<string> {
         const ids = new Set<string>()
-        for (const watcher of this.watchers) for (const id of watcher.ids) ids.add(id)
+        for (const watcher of this.#watchers) for (const id of watcher.ids) ids.add(id)
         return ids
     }
 
     watch(entityIds: readonly string[], listener: () => void): () => void {
         const watcher: Watcher = {ids: new Set(entityIds), listener}
-        this.watchers.add(watcher)
+        this.#watchers.add(watcher)
         return () => {
-            this.watchers.delete(watcher)
+            this.#watchers.delete(watcher)
         }
     }
 
@@ -50,20 +50,20 @@ export class EntityStore {
      * timer would otherwise repaint the deck on every unrelated update.
      */
     set(entity: HomeAssistantEntity): void {
-        const previous = this.entities.get(entity.entity_id)
+        const previous = this.#entities.get(entity.entity_id)
         if (previous && sameEntity(previous, entity)) return
-        this.entities.set(entity.entity_id, entity)
-        this.notify(entity.entity_id)
+        this.#entities.set(entity.entity_id, entity)
+        this.#notify(entity.entity_id)
     }
 
     /** Replace the cache from a full snapshot, keeping only watched entities. */
     replace(entities: readonly HomeAssistantEntity[]): void {
-        this.entities.clear()
+        this.#entities.clear()
         const watched = this.watched()
         for (const entity of entities) {
-            if (watched.has(entity.entity_id)) this.entities.set(entity.entity_id, entity)
+            if (watched.has(entity.entity_id)) this.#entities.set(entity.entity_id, entity)
         }
-        this.notifyAll()
+        this.#notifyAll()
     }
 
     /**
@@ -71,18 +71,18 @@ export class EntityStore {
      * rather than a stale reading that looks live.
      */
     clear(): void {
-        if (this.entities.size === 0) return
-        this.entities.clear()
-        this.notifyAll()
+        if (this.#entities.size === 0) return
+        this.#entities.clear()
+        this.#notifyAll()
     }
 
-    private notify(entityId: string): void {
+    #notify(entityId: string): void {
         // Copy first so a listener that unsubscribes mid-notification is safe.
-        for (const watcher of [...this.watchers]) if (watcher.ids.has(entityId)) watcher.listener()
+        for (const watcher of [...this.#watchers]) if (watcher.ids.has(entityId)) watcher.listener()
     }
 
-    private notifyAll(): void {
-        for (const watcher of [...this.watchers]) watcher.listener()
+    #notifyAll(): void {
+        for (const watcher of [...this.#watchers]) watcher.listener()
     }
 }
 

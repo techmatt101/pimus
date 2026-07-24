@@ -147,10 +147,14 @@ export interface BarOptions {
 }
 
 export class Surface {
+    readonly width: number
+    readonly height: number
     readonly canvas: Canvas
     readonly ctx: SKRSContext2D
 
-    constructor(readonly width: number, readonly height: number) {
+    constructor(width: number, height: number) {
+        this.width = width
+        this.height = height
         this.canvas = createCanvas(width, height)
         this.ctx = this.canvas.getContext('2d')
     }

@@ -27,22 +27,22 @@ export class PageDial implements Dial {
     readonly label = 'PAGE'
     readonly left: Binding
     readonly right: Binding
-    private nav: PageNavigator | null = null
+    #nav: PageNavigator | null = null
 
     constructor() {
         // A noop action: paging navigates the surface rather than running a
         // catalogued command, exactly as the old nav corners did. The behaviour is
         // the run(), which reaches the renderer once one is connected.
-        this.left = {action: {type: 'noop'}, run: () => this.nav?.changePage(-1)}
-        this.right = {action: {type: 'noop'}, run: () => this.nav?.changePage(1)}
+        this.left = {action: {type: 'noop'}, run: () => this.#nav?.changePage(-1)}
+        this.right = {action: {type: 'noop'}, run: () => this.#nav?.changePage(1)}
     }
 
     /** Hand the dial the renderer's paging. Wired once the renderer exists. */
     connect(nav: PageNavigator): void {
-        this.nav = nav
+        this.#nav = nav
     }
 
     detail(): string {
-        return this.nav?.currentName() || IDLE_DETAIL
+        return this.#nav?.currentName() || IDLE_DETAIL
     }
 }

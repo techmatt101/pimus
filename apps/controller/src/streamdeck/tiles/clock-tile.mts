@@ -28,43 +28,43 @@ export function clockFace(now: number, hours24: boolean): { time: string; date: 
 }
 
 export class ClockTile implements Tile {
-    private readonly hours24: boolean
-    private readonly color: string
-    private host: TileHost | null = null
-    private tick: NodeJS.Timeout | null = null
+    readonly #hours24: boolean
+    readonly #color: string
+    #host: TileHost | null = null
+    #tick: NodeJS.Timeout | null = null
 
     constructor({hours24 = true, color = '#101820'}: ClockTileConfig = {}) {
-        this.hours24 = hours24
-        this.color = color
+        this.#hours24 = hours24
+        this.#color = color
     }
 
     press(): void {
     }
 
     mount(host: TileHost): void {
-        this.host = host
-        this.scheduleTick()
+        this.#host = host
+        this.#scheduleTick()
     }
 
     unmount(): void {
-        if (this.tick) clearTimeout(this.tick)
-        this.tick = null
-        this.host = null
+        if (this.#tick) clearTimeout(this.#tick)
+        this.#tick = null
+        this.#host = null
     }
 
     /** Repaint on the next minute boundary, then keep re-arming from there. */
-    private scheduleTick(): void {
-        this.tick = setTimeout(() => {
-            this.host?.invalidate()
-            this.scheduleTick()
+    #scheduleTick(): void {
+        this.#tick = setTimeout(() => {
+            this.#host?.invalidate()
+            this.#scheduleTick()
         }, MINUTE - (Date.now() % MINUTE))
         // A clock must not keep the daemon alive on shutdown.
-        this.tick.unref()
+        this.#tick.unref()
     }
 
     draw(surface: Surface): void {
-        const {time, date} = clockFace(Date.now(), this.hours24)
-        drawBackground(surface, this.color)
+        const {time, date} = clockFace(Date.now(), this.#hours24)
+        drawBackground(surface, this.#color)
         text(surface, time, {x: surface.width / 2, y: FACE_CENTER, size: fittingSize(time, [56, 46], 104)})
         drawCaption(surface, date)
     }

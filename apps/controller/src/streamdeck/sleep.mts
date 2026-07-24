@@ -39,26 +39,26 @@ export interface SleepControllerOptions {
 }
 
 export class SleepController {
-    private readonly model: ControlModel
-    private readonly ha: HomeAssistantService
-    private readonly presenceEntity: string
-    private readonly graceMilliseconds: number
+    readonly #model: ControlModel
+    readonly #ha: HomeAssistantService
+    readonly #presenceEntity: string
+    readonly #graceMilliseconds: number
     // The grace period, held as the instant it ends rather than as a countdown,
     // the same shape the touch strip holds a dial readout with. Only meaningful
     // while nothing is holding the panel awake.
-    private awakeUntil = 0
+    #awakeUntil = 0
     // Whether something was holding the panel awake at the last evaluation. The
     // countdown is started by this going false, so a room occupied all afternoon
     // still gets its full grace period when you finally leave it.
-    private keeping = true
-    private timer: NodeJS.Timeout | null = null
-    private readonly subscriptions: Unsubscribe[] = []
+    #keeping = true
+    #timer: NodeJS.Timeout | null = null
+    readonly #subscriptions: Unsubscribe[] = []
 
     constructor({model, ha, presenceEntity, graceMilliseconds = DEFAULT_GRACE_MILLISECONDS}: SleepControllerOptions) {
-        this.model = model
-        this.ha = ha
-        this.presenceEntity = presenceEntity
-        this.graceMilliseconds = graceMilliseconds
+        this.#model = model
+        this.#ha = ha
+        this.#presenceEntity = presenceEntity
+        this.#graceMilliseconds = graceMilliseconds
     }
 
     /**
@@ -67,18 +67,18 @@ export class SleepController {
      * and a controller with no Home Assistant get.
      */
     start(): void {
-        if (!this.presenceEntity) return
-        this.subscriptions.push(this.ha.watch([this.presenceEntity], () => this.evaluate()))
+        if (!this.#presenceEntity) return
+        this.#subscriptions.push(this.#ha.watch([this.#presenceEntity], () => this.#evaluate()))
         // The model tells us about the voice pipeline. Writing `awake` back into it
         // re-enters here, which terminates because `evaluate` only notifies when the
         // value actually changed.
-        this.subscriptions.push(this.model.subscribe(() => this.evaluate()))
-        this.evaluate()
+        this.#subscriptions.push(this.#model.subscribe(() => this.#evaluate()))
+        this.#evaluate()
     }
 
     stop(): void {
-        for (const unsubscribe of this.subscriptions.splice(0)) unsubscribe()
-        this.clearTimer()
+        for (const unsubscribe of this.#subscriptions.splice(0)) unsubscribe()
+        this.#clearTimer()
     }
 
     /**
@@ -88,32 +88,32 @@ export class SleepController {
      * it, not asking to toggle a light you cannot currently read.
      */
     touch(now = Date.now()): boolean {
-        const woke = !this.model.state.awake
-        this.awakeUntil = Math.max(this.awakeUntil, now + this.graceMilliseconds)
-        this.evaluate(now)
+        const woke = !this.#model.state.awake
+        this.#awakeUntil = Math.max(this.#awakeUntil, now + this.#graceMilliseconds)
+        this.#evaluate(now)
         return woke
     }
 
     /** Recompute whether the panel should be lit, and publish any change. */
-    private evaluate(now = Date.now()): void {
-        const keep = this.keepAwake()
-        if (this.keeping && !keep) this.awakeUntil = now + this.graceMilliseconds
-        this.keeping = keep
-        const awake = keep || now < this.awakeUntil
-        this.arm(keep ? 0 : this.awakeUntil - now)
-        if (awake === this.model.state.awake) return
-        this.model.state.awake = awake
-        this.model.notify()
+    #evaluate(now = Date.now()): void {
+        const keep = this.#keepAwake()
+        if (this.#keeping && !keep) this.#awakeUntil = now + this.#graceMilliseconds
+        this.#keeping = keep
+        const awake = keep || now < this.#awakeUntil
+        this.#arm(keep ? 0 : this.#awakeUntil - now)
+        if (awake === this.#model.state.awake) return
+        this.#model.state.awake = awake
+        this.#model.notify()
     }
 
     /** Whether something right now demands a lit panel. */
-    private keepAwake(): boolean {
+    #keepAwake(): boolean {
         // Fail open: no connection means no opinion, and no opinion means lit.
-        if (!this.ha.connected) return true
-        const presence = this.ha.entity(this.presenceEntity)?.state
+        if (!this.#ha.connected) return true
+        const presence = this.#ha.entity(this.#presenceEntity)?.state
         if (presence === undefined || presence === 'unknown' || presence === 'unavailable') return true
         if (presence === 'on') return true
-        return LIVE_ASSIST_STATES.has(this.model.state.assist)
+        return LIVE_ASSIST_STATES.has(this.#model.state.assist)
     }
 
     /**
@@ -121,19 +121,19 @@ export class SleepController {
      * a reason to be lit holds. Nothing polls: every other transition arrives as
      * a watcher callback.
      */
-    private arm(remaining: number): void {
-        this.clearTimer()
+    #arm(remaining: number): void {
+        this.#clearTimer()
         if (remaining <= 0) return
-        this.timer = setTimeout(() => {
-            this.timer = null
-            this.evaluate()
+        this.#timer = setTimeout(() => {
+            this.#timer = null
+            this.#evaluate()
         }, remaining)
-        this.timer.unref()
+        this.#timer.unref()
     }
 
-    private clearTimer(): void {
-        if (!this.timer) return
-        clearTimeout(this.timer)
-        this.timer = null
+    #clearTimer(): void {
+        if (!this.#timer) return
+        clearTimeout(this.#timer)
+        this.#timer = null
     }
 }

@@ -47,39 +47,39 @@ export interface Xvf3800Options {
 export class Xvf3800Device implements LedDevice {
     readonly vendorId: number
     readonly productId: number
-    private findDevice: UsbDeviceFinder | null
-    private device: UsbControlDevice | null = null
-    private written = new Map<CommandName, string>()
+    #findDevice: UsbDeviceFinder | null
+    #device: UsbControlDevice | null = null
+    #written = new Map<CommandName, string>()
 
     constructor({vendorId, productId, findDevice = null}: Xvf3800Options) {
         this.vendorId = vendorId
         this.productId = productId
-        this.findDevice = findDevice
+        this.#findDevice = findDevice
     }
 
     async connect(): Promise<UsbControlDevice> {
-        if (!this.findDevice) {
+        if (!this.#findDevice) {
             // Loaded lazily so tests and LED-free deployments never open libusb.
             // findByIds returns the full usb.Device; narrow it to the vendor-control
             // surface this class actually uses.
             const {findByIds} = await import('usb')
-            this.findDevice = findByIds as unknown as UsbDeviceFinder
+            this.#findDevice = findByIds as unknown as UsbDeviceFinder
         }
-        const device = this.findDevice(this.vendorId, this.productId)
+        const device = this.#findDevice(this.vendorId, this.productId)
         if (!device) {
             throw new Error(`ReSpeaker ${this.vendorId.toString(16).padStart(4, '0')}:${this.productId.toString(16).padStart(4, '0')} not found`)
         }
         device.open()
         device.timeout = 8000
-        this.device = device
+        this.#device = device
         // A fresh handle may be a re-enumerated device in an unknown state, so
         // nothing it was previously sent can be assumed to still be set.
-        this.written.clear()
+        this.#written.clear()
         return device
     }
 
     async write(name: CommandName, values: readonly number[]): Promise<void> {
-        const device = this.device ?? await this.connect()
+        const device = this.#device ?? await this.connect()
         const [resourceId, command, dataType] = COMMANDS[name]
         const payload = encodePayload(dataType, values)
         try {
@@ -91,33 +91,33 @@ export class Xvf3800Device implements LedDevice {
             })
         } catch (error) {
             try {
-                this.device?.close()
+                this.#device?.close()
             } catch {
             }
-            this.device = null
-            this.written.clear()
+            this.#device = null
+            this.#written.clear()
             throw error
         }
     }
 
     /** Writes a command only when its values differ from the last delivery. */
-    private async writeChanged(name: CommandName, values: readonly number[]): Promise<void> {
+    async #writeChanged(name: CommandName, values: readonly number[]): Promise<void> {
         const signature = values.join(',')
-        if (this.written.get(name) === signature) return
+        if (this.#written.get(name) === signature) return
         await this.write(name, values)
-        this.written.set(name, signature)
+        this.#written.set(name, signature)
     }
 
     async apply(frame: LedFrame): Promise<void> {
-        await this.writeChanged('LED_BRIGHTNESS', [clampByte(frame.brightness)])
-        await this.writeChanged('LED_SPEED', [clampByte(frame.speed)])
-        await this.writeChanged('LED_COLOR', [frame.color])
+        await this.#writeChanged('LED_BRIGHTNESS', [clampByte(frame.brightness)])
+        await this.#writeChanged('LED_SPEED', [clampByte(frame.speed)])
+        await this.#writeChanged('LED_COLOR', [frame.color])
         if (frame.direction) {
-            await this.writeChanged('LED_DOA_COLOR', [frame.direction.base, frame.direction.highlight])
+            await this.#writeChanged('LED_DOA_COLOR', [frame.direction.base, frame.direction.highlight])
         }
-        if (frame.ring) await this.writeChanged('LED_RING_COLOR', frame.ring)
+        if (frame.ring) await this.#writeChanged('LED_RING_COLOR', frame.ring)
         // The effect goes last so the firmware never briefly runs a new effect
         // with the previous frame's colours.
-        await this.writeChanged('LED_EFFECT', [frame.effect])
+        await this.#writeChanged('LED_EFFECT', [frame.effect])
     }
 }

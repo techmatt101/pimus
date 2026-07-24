@@ -21,15 +21,15 @@ export interface BrightnessTileConfig {
 const DEFAULT_LEVELS = [20, 40, 70, 100] as const
 
 export class BrightnessTile implements Tile {
-    private readonly model: ControlModel
-    private readonly levels: readonly number[]
-    private readonly label: string
+    readonly #model: ControlModel
+    readonly #levels: readonly number[]
+    readonly #label: string
 
     constructor(services: TileServices, {levels = DEFAULT_LEVELS, label = 'BRIGHT'}: BrightnessTileConfig = {}) {
         if (levels.length === 0) throw new Error('a brightness tile needs at least one level')
-        this.model = services.model
-        this.levels = levels
-        this.label = label
+        this.#model = services.model
+        this.#levels = levels
+        this.#label = label
     }
 
     /**
@@ -37,26 +37,26 @@ export class BrightnessTile implements Tile {
      * brightness even after the sleep controller or a restart set it from
      * elsewhere, and a press steps on from where the panel actually is.
      */
-    private currentIndex(brightness: number): number {
+    #currentIndex(brightness: number): number {
         let nearest = 0
-        for (let index = 1; index < this.levels.length; index += 1) {
-            const here = this.levels[index] ?? 0
-            const best = this.levels[nearest] ?? 0
+        for (let index = 1; index < this.#levels.length; index += 1) {
+            const here = this.#levels[index] ?? 0
+            const best = this.#levels[nearest] ?? 0
             if (Math.abs(here - brightness) < Math.abs(best - brightness)) nearest = index
         }
         return nearest
     }
 
     press(): void {
-        const state = this.model.state
-        const next = (this.currentIndex(state.brightness) + 1) % this.levels.length
-        state.brightness = this.levels[next] ?? state.brightness
-        this.model.notify()
+        const state = this.#model.state
+        const next = (this.#currentIndex(state.brightness) + 1) % this.#levels.length
+        state.brightness = this.#levels[next] ?? state.brightness
+        this.#model.notify()
     }
 
     draw(surface: Surface): void {
-        const {brightness} = this.model.state
-        const index = this.currentIndex(brightness)
+        const {brightness} = this.#model.state
+        const index = this.#currentIndex(brightness)
         const x = surface.width / 2
         drawBackground(surface, '#37474f')
         icon(surface, 'sun', {x, y: 28, size: 34, color: '#ffffff'})
@@ -64,7 +64,7 @@ export class BrightnessTile implements Tile {
         text(surface, value, {x, y: FACE_CENTER + 18, size: fittingSize(value, [28, 24, 20], 112)})
         // A dot per level, the current one filled, exactly as the scene and input
         // cycles read, so you can see how many presses bring it back around.
-        drawDots(surface, this.levels.length, index, 78, '#ffffff')
-        drawCaption(surface, this.label)
+        drawDots(surface, this.#levels.length, index, 78, '#ffffff')
+        drawCaption(surface, this.#label)
     }
 }

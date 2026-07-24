@@ -24,28 +24,30 @@ const DRAIN_FRAME_MILLISECONDS = 250
  * scrolls an overlong message.
  */
 export class NotificationScreen implements Screen {
-    private notification: Notification | undefined
+    #notification: Notification | undefined
+    readonly #clock: () => number
 
-    constructor(private readonly clock: () => number) {
+    constructor(clock: () => number) {
+        this.#clock = clock
     }
 
     /** The strip hands over the live message before it draws, or clears it. */
     show(notification: Notification | undefined): void {
-        this.notification = notification
+        this.#notification = notification
     }
 
     animationMilliseconds(): number | undefined {
-        return this.notification ? DRAIN_FRAME_MILLISECONDS : undefined
+        return this.#notification ? DRAIN_FRAME_MILLISECONDS : undefined
     }
 
     draw(surface: Surface): void {
-        const notification = this.notification
+        const notification = this.#notification
         if (!notification) {
             surface.fill('#101820')
             return
         }
 
-        const now = this.clock()
+        const now = this.#clock()
         const {title, message, color} = notification
         // Lit from the top like a key face, so a banner arriving reads as the strip
         // lighting up rather than as a flat colour swap.

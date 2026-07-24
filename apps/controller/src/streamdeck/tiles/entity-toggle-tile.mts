@@ -72,90 +72,90 @@ const LEVEL_WIDTH = 64
 const LEVEL_HEIGHT = 5
 
 export class EntityToggleTile implements Tile {
-    private readonly ha: HomeAssistantService
-    private readonly config: EntityToggleTileConfig
-    private readonly entity: string
-    private readonly toggle: Binding
-    private readonly dial: DynamicDial | undefined
-    private readonly control: Dial | undefined
-    private host: TileHost | null = null
-    private unwatch: (() => void) | null = null
-    private animation: NodeJS.Timeout | null = null
+    readonly #ha: HomeAssistantService
+    readonly #config: EntityToggleTileConfig
+    readonly #entity: string
+    readonly #toggle: Binding
+    readonly #dial: DynamicDial | undefined
+    readonly #control: Dial | undefined
+    #host: TileHost | null = null
+    #unwatch: (() => void) | null = null
+    #animation: NodeJS.Timeout | null = null
     // The spin's phase in milliseconds, accumulated from each draw's deltaTime so
     // the icon turns by real elapsed time rather than being read off a clock.
-    private phase = 0
+    #phase = 0
 
     constructor(services: TileServices, config: EntityToggleTileConfig) {
-        this.ha = services.ha
-        this.config = config
-        this.entity = requireEntity(config.entity, `${config.label} tile`)
-        this.toggle = createBindings(services).ha('toggle', this.entity)
-        this.dial = config.dial
-        this.control = config.dial ? EntityDial.for(services, config.label, this.entity) : undefined
+        this.#ha = services.ha
+        this.#config = config
+        this.#entity = requireEntity(config.entity, `${config.label} tile`)
+        this.#toggle = createBindings(services).ha('toggle', this.#entity)
+        this.#dial = config.dial
+        this.#control = config.dial ? EntityDial.for(services, config.label, this.#entity) : undefined
     }
 
     action(): Action {
-        return this.toggle.action
+        return this.#toggle.action
     }
 
     press(): void {
         // Claim first: the strip then shows what this key controls as it flips,
         // rather than a beat later.
-        if (this.control) this.dial?.claim(this.control)
-        this.toggle.run()
+        if (this.#control) this.#dial?.claim(this.#control)
+        this.#toggle.run()
     }
 
     mount(host: TileHost): void {
-        this.host = host
-        this.unwatch = this.ha.watch([this.entity], () => {
-            this.followState()
+        this.#host = host
+        this.#unwatch = this.#ha.watch([this.#entity], () => {
+            this.#followState()
             host.invalidate()
         })
-        this.followState()
+        this.#followState()
     }
 
     unmount(): void {
-        this.unwatch?.()
-        this.unwatch = null
-        this.stopAnimation()
-        this.host = null
+        this.#unwatch?.()
+        this.#unwatch = null
+        this.#stopAnimation()
+        this.#host = null
     }
 
     /** Animate only while the entity is on: a stopped fan has nothing to turn. */
-    private followState(): void {
-        if (this.config.animationMilliseconds && isEntityOn(this.ha.entity(this.entity))) {
-            this.startAnimation(this.config.animationMilliseconds)
+    #followState(): void {
+        if (this.#config.animationMilliseconds && isEntityOn(this.#ha.entity(this.#entity))) {
+            this.#startAnimation(this.#config.animationMilliseconds)
         } else {
-            this.stopAnimation()
+            this.#stopAnimation()
         }
     }
 
-    private startAnimation(interval: number): void {
-        if (this.animation) return
+    #startAnimation(interval: number): void {
+        if (this.#animation) return
         // Start turning from upright rather than wherever the last run left off.
-        this.phase = 0
-        this.animation = setInterval(() => this.host?.invalidate(), interval)
+        this.#phase = 0
+        this.#animation = setInterval(() => this.#host?.invalidate(), interval)
         // An animation must not keep the daemon alive on shutdown.
-        this.animation.unref()
+        this.#animation.unref()
     }
 
-    private stopAnimation(): void {
-        if (this.animation) clearInterval(this.animation)
-        this.animation = null
+    #stopAnimation(): void {
+        if (this.#animation) clearInterval(this.#animation)
+        this.#animation = null
     }
 
     draw(surface: Surface, deltaTime: number): void {
-        const {label, icon: iconName, onColor = '#1b5e20', offColor = '#12281a'} = this.config
-        const entity = this.ha.entity(this.entity)
+        const {label, icon: iconName, onColor = '#1b5e20', offColor = '#12281a'} = this.#config
+        const entity = this.#ha.entity(this.#entity)
         const on = isEntityOn(entity)
-        this.phase += deltaTime
-        const spin = this.config.spin?.(entity, this.phase) ?? 0
+        this.#phase += deltaTime
+        const spin = this.#config.spin?.(entity, this.#phase) ?? 0
         const x = surface.width / 2
 
         if (on === undefined) {
             drawLabelFace(surface, UNKNOWN_COLOR, `${label} ?`)
             icon(surface, iconName, {x, y: FACE_CENTER, size: ICON_SIZE, color: UNKNOWN_ICON, rotate: spin})
-            this.drawHolding(surface)
+            this.#drawHolding(surface)
             return
         }
 
@@ -175,7 +175,7 @@ export class EntityToggleTile implements Tile {
             rotate: spin,
         })
 
-        const level = this.config.level?.(entity)
+        const level = this.#config.level?.(entity)
         if (level !== undefined) {
             bar(surface, level, {
                 x: x - LEVEL_WIDTH / 2,
@@ -189,7 +189,7 @@ export class EntityToggleTile implements Tile {
         }
 
         drawCaption(surface, `${label} ${on ? 'ON' : 'OFF'}`)
-        this.drawHolding(surface)
+        this.#drawHolding(surface)
     }
 
     /**
@@ -197,8 +197,8 @@ export class EntityToggleTile implements Tile {
      * dial's own bar is drawn in, so you can see which of three keys the knob is
      * about to move without turning it to find out.
      */
-    private drawHolding(surface: Surface): void {
-        if (!this.control || !this.dial?.holds(this.control)) return
+    #drawHolding(surface: Surface): void {
+        if (!this.#control || !this.#dial?.holds(this.#control)) return
         surface.ctx.fillStyle = HOLDING_COLOR
         surface.ctx.fillRect(0, 0, surface.width, HOLDING_HEIGHT)
     }

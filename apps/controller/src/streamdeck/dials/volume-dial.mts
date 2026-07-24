@@ -15,11 +15,11 @@ export class VolumeDial implements Dial {
     readonly left: Binding
     readonly right: Binding
     readonly press: Binding
-    private readonly model: ControlModel
+    readonly #model: ControlModel
 
     constructor(services: TileServices, label = 'VOLUME') {
         const {volume} = createBindings(services)
-        this.model = services.model
+        this.#model = services.model
         this.label = label
         this.left = volume('down')
         this.right = volume('up')
@@ -27,13 +27,13 @@ export class VolumeDial implements Dial {
     }
 
     detail(): string {
-        const {state} = this.model
+        const {state} = this.#model
         return state.outputMuted ? 'MUTED' : percent(state.volume)
     }
 
     /** A muted bar reads as empty, which is what muted sounds like. */
     level(): number {
-        const {state} = this.model
+        const {state} = this.#model
         return state.outputMuted ? 0 : state.volume
     }
 }

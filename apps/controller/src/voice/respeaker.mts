@@ -21,10 +21,10 @@ export interface ReSpeakerControllerOptions {
 
 export class ReSpeakerController {
     readonly config: ReSpeakerConfig
-    private readonly states: ReadonlyMap<string, LedAppearance> = VOICE_LED_STATES
-    private readonly renderer: LedRenderer
-    private assistState = 'disconnected'
-    private muted = false
+    readonly #states: ReadonlyMap<string, LedAppearance> = VOICE_LED_STATES
+    readonly #renderer: LedRenderer
+    #assistState = 'disconnected'
+    #muted = false
 
     constructor({
                     config,
@@ -35,7 +35,7 @@ export class ReSpeakerController {
                     logger,
                 }: ReSpeakerControllerOptions) {
         this.config = config
-        this.renderer = new LedRenderer({
+        this.#renderer = new LedRenderer({
             device: device ?? new Xvf3800Device({
                 vendorId: Number(config.vendor_id),
                 productId: Number(config.product_id),
@@ -50,29 +50,29 @@ export class ReSpeakerController {
         })
         // An LED-only installation has no LVA socket to transition away from the
         // disconnected state, so begin at the normal idle appearance instead.
-        if (!voiceEnabled) this.assistState = 'idle'
+        if (!voiceEnabled) this.#assistState = 'idle'
     }
 
     desired(): LedAppearance {
-        const current = this.muted ? 'muted' : this.assistState
-        return this.states.get(current) ?? this.states.get('idle') ?? Leds.off()
+        const current = this.#muted ? 'muted' : this.#assistState
+        return this.#states.get(current) ?? this.#states.get('idle') ?? Leds.off()
     }
 
     render(): Promise<void> {
-        return this.renderer.show(this.desired())
+        return this.#renderer.show(this.desired())
     }
 
     start(): void {
-        this.renderer.start()
+        this.#renderer.start()
         void this.render()
     }
 
     stop(): void {
-        this.renderer.stop()
+        this.#renderer.stop()
     }
 
     setDisconnected(): Promise<void> {
-        this.assistState = 'disconnected'
+        this.#assistState = 'disconnected'
         return this.render()
     }
 
@@ -80,22 +80,22 @@ export class ReSpeakerController {
         const event = message?.event
         const data = message?.data || {}
         if (event === 'snapshot') {
-            this.muted = Boolean(data.muted)
-            this.assistState = data.ha_connected ? 'idle' : 'disconnected'
+            this.#muted = Boolean(data.muted)
+            this.#assistState = data.ha_connected ? 'idle' : 'disconnected'
         } else if (event === 'muted') {
-            this.muted = Boolean(data.muted)
-            if (!this.muted) this.assistState = 'idle'
+            this.#muted = Boolean(data.muted)
+            if (!this.#muted) this.#assistState = 'idle'
         } else if (event === 'zeroconf' && data.status === 'connected') {
-            this.assistState = 'idle'
-        } else if (event && this.states.has(event)) {
-            this.assistState = String(event)
+            this.#assistState = 'idle'
+        } else if (event && this.#states.has(event)) {
+            this.#assistState = String(event)
         } else if ((event === 'media_player_paused' || event === 'media_player_idle')
-            && this.assistState === 'media_player_playing') {
-            this.assistState = 'idle'
+            && this.#assistState === 'media_player_playing') {
+            this.#assistState = 'idle'
         } else if (event === 'tts_finished' || event === 'idle') {
-            this.assistState = 'idle'
+            this.#assistState = 'idle'
         } else if (event === 'timer_updated') {
-            this.assistState = 'timer_ticking'
+            this.#assistState = 'timer_ticking'
         }
         await this.render()
     }

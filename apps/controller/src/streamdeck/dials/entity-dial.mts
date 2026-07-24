@@ -59,23 +59,25 @@ const DIAL_DOMAINS: Record<string, DialDomain> = {
 }
 
 export class EntityDial implements Dial {
+    readonly label: string
     readonly left: Binding
     readonly right: Binding
     readonly press: Binding
-    private readonly ha: HomeAssistantService
-    private readonly entity: string
-    private readonly domain: DialDomain
+    readonly #ha: HomeAssistantService
+    readonly #entity: string
+    readonly #domain: DialDomain
 
     private constructor(
         services: TileServices,
-        readonly label: string,
+        label: string,
         entity: string,
         domain: DialDomain,
     ) {
+        this.label = label
         const {ha} = createBindings(services)
-        this.ha = services.ha
-        this.entity = entity
-        this.domain = domain
+        this.#ha = services.ha
+        this.#entity = entity
+        this.#domain = domain
         this.left = ha(domain.down, entity)
         this.right = ha(domain.up, entity)
         this.press = ha('toggle', entity)
@@ -92,21 +94,21 @@ export class EntityDial implements Dial {
     }
 
     detail(): string {
-        const current = this.read()
+        const current = this.#read()
         const on = isEntityOn(current)
         // An unreachable Home Assistant must not read as a light turned down to
         // nothing, the same rule the Home Assistant keys follow.
         if (on === undefined) return '--'
-        const level = this.domain.level(current)
-        if (level === undefined) return on ? this.domain.on : this.domain.off
+        const level = this.#domain.level(current)
+        if (level === undefined) return on ? this.#domain.on : this.#domain.off
         return percent(level)
     }
 
     level(): number | undefined {
-        return this.domain.level(this.read())
+        return this.#domain.level(this.#read())
     }
 
-    private read(): HomeAssistantEntity | undefined {
-        return this.ha.entity(this.entity)
+    #read(): HomeAssistantEntity | undefined {
+        return this.#ha.entity(this.#entity)
     }
 }

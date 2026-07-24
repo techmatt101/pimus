@@ -36,16 +36,16 @@ export interface VoiceDuckerOptions {
  */
 export class VoiceDucker {
     active = false
-    private readonly setDuck: (active: boolean) => void
+    readonly #setDuck: (active: boolean) => void
 
     constructor({setDuck}: VoiceDuckerOptions) {
-        this.setDuck = setDuck
+        this.#setDuck = setDuck
     }
 
     setActive(active: boolean): void {
         if (this.active === active) return
         this.active = active
-        this.setDuck(active)
+        this.#setDuck(active)
     }
 
     handleEvent(message: LvaMessage | undefined): void {

@@ -31,74 +31,74 @@ export interface TimerTileConfig {
 }
 
 export class TimerTile implements Tile {
-    private readonly ha: HomeAssistantService
-    private readonly clock: () => number
-    private readonly entity: string
-    private readonly label: string
-    private readonly toggle: Binding
-    private host: TileHost | null = null
-    private unwatch: (() => void) | null = null
-    private tick: NodeJS.Timeout | null = null
+    readonly #ha: HomeAssistantService
+    readonly #clock: () => number
+    readonly #entity: string
+    readonly #label: string
+    readonly #toggle: Binding
+    #host: TileHost | null = null
+    #unwatch: (() => void) | null = null
+    #tick: NodeJS.Timeout | null = null
 
     constructor(services: TileServices, {entity, label = 'TIMER', duration = '00:05:00'}: TimerTileConfig) {
-        this.ha = services.ha
-        this.clock = services.clock
-        this.entity = requireEntity(entity, 'timer tile')
-        this.label = label
-        this.toggle = createBindings(services).ha('timer_toggle', this.entity, {duration})
+        this.#ha = services.ha
+        this.#clock = services.clock
+        this.#entity = requireEntity(entity, 'timer tile')
+        this.#label = label
+        this.#toggle = createBindings(services).ha('timer_toggle', this.#entity, {duration})
     }
 
     action(): Action {
-        return this.toggle.action
+        return this.#toggle.action
     }
 
     press(): void {
-        this.toggle.run()
+        this.#toggle.run()
     }
 
     mount(host: TileHost): void {
-        this.host = host
-        this.unwatch = this.ha.watch([this.entity], () => {
-            this.followTimer()
+        this.#host = host
+        this.#unwatch = this.#ha.watch([this.#entity], () => {
+            this.#followTimer()
             host.invalidate()
         })
-        this.followTimer()
+        this.#followTimer()
     }
 
     unmount(): void {
-        this.unwatch?.()
-        this.unwatch = null
-        this.stopTick()
-        this.host = null
+        this.#unwatch?.()
+        this.#unwatch = null
+        this.#stopTick()
+        this.#host = null
     }
 
     /** Tick only while the timer is running; a paused one holds its reading. */
-    private followTimer(): void {
-        if (this.ha.entity(this.entity)?.state === 'active') this.startTick()
-        else this.stopTick()
+    #followTimer(): void {
+        if (this.#ha.entity(this.#entity)?.state === 'active') this.#startTick()
+        else this.#stopTick()
     }
 
-    private startTick(): void {
-        if (this.tick) return
-        this.tick = setInterval(() => this.host?.invalidate(), TICK_MILLISECONDS)
+    #startTick(): void {
+        if (this.#tick) return
+        this.#tick = setInterval(() => this.#host?.invalidate(), TICK_MILLISECONDS)
         // A countdown must not keep the daemon alive on shutdown.
-        this.tick.unref()
+        this.#tick.unref()
     }
 
-    private stopTick(): void {
-        if (this.tick) clearInterval(this.tick)
-        this.tick = null
+    #stopTick(): void {
+        if (this.#tick) clearInterval(this.#tick)
+        this.#tick = null
     }
 
     draw(surface: Surface): void {
-        const now = this.clock()
+        const now = this.#clock()
         const x = surface.width / 2
-        const timer = this.ha.entity(this.entity)
+        const timer = this.#ha.entity(this.#entity)
         if (!timer) {
             drawBackground(surface, '#1a1a1a')
             drawRing(surface, x, 1, '#424242')
             text(surface, '--', {x, y: FACE_CENTER, size: 34, color: '#616161'})
-            drawCaption(surface, this.label)
+            drawCaption(surface, this.#label)
             return
         }
 
@@ -118,7 +118,7 @@ export class TimerTile implements Tile {
 
         const reading = active || paused ? formatDuration(remaining ?? 0) : 'SET'
         drawValue(surface, reading, x, FACE_CENTER, RING_RADIUS * 2 - 12)
-        drawCaption(surface, paused ? `${this.label} HELD` : this.label)
+        drawCaption(surface, paused ? `${this.#label} HELD` : this.#label)
     }
 }
 

@@ -37,43 +37,45 @@ export const CLAIM_TIMEOUT_MILLISECONDS = 15_000
  * the fixed three.
  */
 export class DynamicDial implements Dial {
-    private held: Dial | null = null
-    private reveal: (() => void) | null = null
+    readonly #model: ControlModel
+    #held: Dial | null = null
+    #reveal: (() => void) | null = null
     // Whether the current claim is the transient, self-expiring kind. A sticky
     // claim (a room key) has no timer and ignores another dial being touched.
-    private transient = false
+    #transient = false
     // Runs down while a transient claim sits idle; every turn or press restarts
     // it, and it releases the claim when it fires. Null whenever nothing is
     // claimed or the claim is sticky.
-    private idle: NodeJS.Timeout | null = null
+    #idle: NodeJS.Timeout | null = null
 
-    constructor(private readonly model: ControlModel) {
+    constructor(model: ControlModel) {
+        this.#model = model
     }
 
     get label(): string {
-        return this.held?.label ?? IDLE_LABEL
+        return this.#held?.label ?? IDLE_LABEL
     }
 
     // Turning or pressing counts as activity, so each delegated binding restarts
     // the idle timer before it runs the held dial's own behaviour.
     get left(): Binding | undefined {
-        return this.active(this.held?.left)
+        return this.#active(this.#held?.left)
     }
 
     get right(): Binding | undefined {
-        return this.active(this.held?.right)
+        return this.#active(this.#held?.right)
     }
 
     get press(): Binding | undefined {
-        return this.active(this.held?.press)
+        return this.#active(this.#held?.press)
     }
 
     detail(): string {
-        return this.held?.detail() ?? IDLE_DETAIL
+        return this.#held?.detail() ?? IDLE_DETAIL
     }
 
     level(): number | undefined {
-        return this.held?.level?.()
+        return this.#held?.level?.()
     }
 
     /**
@@ -84,7 +86,7 @@ export class DynamicDial implements Dial {
      * playing once your hand leaves the knob.
      */
     pinned(): boolean {
-        return this.transient && this.held !== null
+        return this.#transient && this.#held !== null
     }
 
     /**
@@ -92,7 +94,7 @@ export class DynamicDial implements Dial {
      * layout once the strip exists, since the dial is built before it.
      */
     revealOn(reveal: () => void): void {
-        this.reveal = reveal
+        this.#reveal = reveal
     }
 
     /**
@@ -101,16 +103,16 @@ export class DynamicDial implements Dial {
      * touched; the default sticky claim (a room key) stays until replaced.
      */
     claim(dial: Dial, transient = false): void {
-        const changed = this.held !== dial
-        this.held = dial
-        this.transient = transient
-        if (transient) this.rearm()
-        else this.stopIdle()
+        const changed = this.#held !== dial
+        this.#held = dial
+        this.#transient = transient
+        if (transient) this.#rearm()
+        else this.#stopIdle()
         // Show the readout even on a re-press: the point of pressing BLINDS twice
         // is usually to look at where they are before turning them.
-        this.reveal?.()
+        this.#reveal?.()
         // Keys draw whether they hold the dial, so the whole panel is stale now.
-        if (changed) this.model.notify()
+        if (changed) this.#model.notify()
     }
 
     /**
@@ -120,11 +122,11 @@ export class DynamicDial implements Dial {
      * held.
      */
     release(): void {
-        this.stopIdle()
-        this.transient = false
-        if (!this.held) return
-        this.held = null
-        this.model.notify()
+        this.#stopIdle()
+        this.#transient = false
+        if (!this.#held) return
+        this.#held = null
+        this.#model.notify()
     }
 
     /**
@@ -133,12 +135,12 @@ export class DynamicDial implements Dial {
      * left alone: paging past a light you are still adjusting must not drop it.
      */
     autoRelease(): void {
-        if (this.transient) this.release()
+        if (this.#transient) this.release()
     }
 
     /** Whether `dial` is the one holding it, for a key's own face. */
     holds(dial: Dial): boolean {
-        return this.held === dial
+        return this.#held === dial
     }
 
     /**
@@ -147,26 +149,26 @@ export class DynamicDial implements Dial {
      * abandoned, so its claim should not expire out from under the hand on it. A
      * sticky claim has no timer to restart.
      */
-    private active(binding: Binding | undefined): Binding | undefined {
+    #active(binding: Binding | undefined): Binding | undefined {
         if (!binding) return undefined
         return {
             action: binding.action,
             run: () => {
-                if (this.transient) this.rearm()
+                if (this.#transient) this.#rearm()
                 return binding.run()
             },
         }
     }
 
-    private rearm(): void {
-        this.stopIdle()
-        this.idle = setTimeout(() => this.release(), CLAIM_TIMEOUT_MILLISECONDS)
+    #rearm(): void {
+        this.#stopIdle()
+        this.#idle = setTimeout(() => this.release(), CLAIM_TIMEOUT_MILLISECONDS)
         // A pending release must not keep the daemon alive on shutdown.
-        this.idle.unref()
+        this.#idle.unref()
     }
 
-    private stopIdle(): void {
-        if (this.idle) clearTimeout(this.idle)
-        this.idle = null
+    #stopIdle(): void {
+        if (this.#idle) clearTimeout(this.#idle)
+        this.#idle = null
     }
 }

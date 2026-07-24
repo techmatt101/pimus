@@ -49,24 +49,24 @@ export function actionAppearance(
  * injected model at draw time rather than being handed it.
  */
 export class ActionTile implements Tile {
-    private readonly model: ControlModel
-    private readonly config: ActionTileConfig
+    readonly #model: ControlModel
+    readonly #config: ActionTileConfig
 
     constructor(services: TileServices, config: ActionTileConfig) {
-        this.model = services.model
-        this.config = config
+        this.#model = services.model
+        this.#config = config
     }
 
     action(): Action | undefined {
-        return this.config.binding?.action
+        return this.#config.binding?.action
     }
 
     press(): void {
-        this.config.binding?.run()
+        this.#config.binding?.run()
     }
 
     draw(surface: Surface): void {
-        const {label, background} = actionAppearance(this.config, this.model.state, this.model.audio)
+        const {label, background} = actionAppearance(this.#config, this.#model.state, this.#model.audio)
         drawLabelFace(surface, background, label)
     }
 }

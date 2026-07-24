@@ -50,28 +50,32 @@ export type Unsubscribe = () => void
  * say — rather than only being repainted.
  */
 export class ControlModel {
-    private readonly listeners = new Set<() => void>()
+    readonly #listeners = new Set<() => void>()
+    readonly state: ControlState
+    readonly #readAudio: () => AudioState
 
     constructor(
-        readonly state: ControlState,
-        private readonly readAudio: () => AudioState = () => ({sources: {}}),
+        state: ControlState,
+        readAudio: () => AudioState = () => ({sources: {}}),
     ) {
+        this.state = state
+        this.#readAudio = readAudio
     }
 
     get audio(): AudioState {
-        return this.readAudio()
+        return this.#readAudio()
     }
 
     subscribe(listener: () => void): Unsubscribe {
-        this.listeners.add(listener)
+        this.#listeners.add(listener)
         return () => {
-            this.listeners.delete(listener)
+            this.#listeners.delete(listener)
         }
     }
 
     notify(): void {
         // Copy first so a listener that unsubscribes mid-notification is safe.
-        for (const listener of [...this.listeners]) listener()
+        for (const listener of [...this.#listeners]) listener()
     }
 }
 

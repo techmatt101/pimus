@@ -57,13 +57,13 @@ export interface NotificationCenterOptions {
  * streamdeck/screens/notification-screen.mts.
  */
 export class NotificationCenter implements NotificationFeed {
-    private readonly ha: HomeAssistantService
-    private readonly eventType: string
-    private readonly onChange: () => void
-    private readonly logger: Pick<Console, 'log'>
-    private readonly pending: PendingNotification[] = []
-    private showing: Notification | null = null
-    private unlisten: (() => void) | null = null
+    readonly #ha: HomeAssistantService
+    readonly #eventType: string
+    readonly #onChange: () => void
+    readonly #logger: Pick<Console, 'log'>
+    readonly #pending: PendingNotification[] = []
+    #showing: Notification | null = null
+    #unlisten: (() => void) | null = null
 
     constructor({
                     ha,
@@ -72,21 +72,21 @@ export class NotificationCenter implements NotificationFeed {
                     },
                     logger = console,
                 }: NotificationCenterOptions) {
-        this.ha = ha
-        this.eventType = eventType
-        this.onChange = onChange
-        this.logger = logger
+        this.#ha = ha
+        this.#eventType = eventType
+        this.#onChange = onChange
+        this.#logger = logger
     }
 
     /** Begin listening. Safe to call once; index.mts does it at startup. */
     start(): void {
-        if (this.unlisten) return
-        this.unlisten = this.ha.listen(this.eventType, (data) => this.post(data))
+        if (this.#unlisten) return
+        this.#unlisten = this.#ha.listen(this.#eventType, (data) => this.post(data))
     }
 
     stop(): void {
-        this.unlisten?.()
-        this.unlisten = null
+        this.#unlisten?.()
+        this.#unlisten = null
     }
 
     /**
@@ -97,15 +97,15 @@ export class NotificationCenter implements NotificationFeed {
     post(data: Record<string, unknown>): void {
         const message = text(data.message) || text(data.title)
         if (!message) {
-            this.logger.log(`${this.eventType} carried no message; ignored`)
+            this.#logger.log(`${this.#eventType} carried no message; ignored`)
             return
         }
-        if (this.pending.length >= MAX_QUEUED) {
-            this.logger.log(`${this.eventType} queue is full; dropped "${message}"`)
+        if (this.#pending.length >= MAX_QUEUED) {
+            this.#logger.log(`${this.#eventType} queue is full; dropped "${message}"`)
             return
         }
         const seconds = Number(data.seconds)
-        this.pending.push({
+        this.#pending.push({
             // With only one of the two given, that text is the message and the banner
             // simply has no heading.
             title: text(data.message) ? text(data.title) : '',
@@ -113,7 +113,7 @@ export class NotificationCenter implements NotificationFeed {
             color: text(data.color) || DEFAULT_COLOR,
             milliseconds: (Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds, MAX_SECONDS) : DEFAULT_SECONDS) * 1000,
         })
-        this.onChange()
+        this.#onChange()
     }
 
     /**
@@ -123,11 +123,11 @@ export class NotificationCenter implements NotificationFeed {
      * one that cannot expire while something else is being read.
      */
     current(now: number): Notification | undefined {
-        if (this.showing && now >= this.showing.expiresAt) this.showing = null
-        if (!this.showing) {
-            const next = this.pending.shift()
+        if (this.#showing && now >= this.#showing.expiresAt) this.#showing = null
+        if (!this.#showing) {
+            const next = this.#pending.shift()
             if (next) {
-                this.showing = {
+                this.#showing = {
                     title: next.title,
                     message: next.message,
                     color: next.color,
@@ -136,14 +136,14 @@ export class NotificationCenter implements NotificationFeed {
                 }
             }
         }
-        return this.showing ?? undefined
+        return this.#showing ?? undefined
     }
 
     /** Acknowledge the showing banner. Anything queued behind it still gets its turn. */
     dismiss(): void {
-        if (!this.showing) return
-        this.showing = null
-        this.onChange()
+        if (!this.#showing) return
+        this.#showing = null
+        this.#onChange()
     }
 }
 

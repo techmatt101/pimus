@@ -37,37 +37,37 @@ const VALUE_X = 78
 const VALUE_WIDTH = 74
 
 export class TemperatureTile implements Tile {
-    private readonly ha: HomeAssistantService
-    private readonly config: TemperatureTileConfig
-    private readonly entity: string
-    private unwatch: (() => void) | null = null
+    readonly #ha: HomeAssistantService
+    readonly #config: TemperatureTileConfig
+    readonly #entity: string
+    #unwatch: (() => void) | null = null
 
     constructor(services: TileServices, config: TemperatureTileConfig) {
-        this.ha = services.ha
-        this.config = config
-        this.entity = requireEntity(config.entity, `${config.label} temperature tile`)
+        this.#ha = services.ha
+        this.#config = config
+        this.#entity = requireEntity(config.entity, `${config.label} temperature tile`)
     }
 
     press(): void {
     }
 
     mount(host: TileHost): void {
-        this.unwatch = this.ha.watch([this.entity], () => host.invalidate())
+        this.#unwatch = this.#ha.watch([this.#entity], () => host.invalidate())
     }
 
     unmount(): void {
-        this.unwatch?.()
-        this.unwatch = null
+        this.#unwatch?.()
+        this.#unwatch = null
     }
 
     draw(surface: Surface): void {
-        const sensor = this.ha.entity(this.entity)
+        const sensor = this.#ha.entity(this.#entity)
         const reading = numericState(sensor)
         if (reading === undefined) {
             drawBackground(surface, '#1a1a1a')
             icon(surface, 'thermometer', {x: ICON_X, y: FACE_CENTER, size: ICON_SIZE, color: '#424242'})
             text(surface, '--', {x: VALUE_X, y: FACE_CENTER, size: 34, color: '#616161'})
-            drawCaption(surface, this.config.label)
+            drawCaption(surface, this.#config.label)
             return
         }
 
@@ -97,6 +97,6 @@ export class TemperatureTile implements Tile {
             y: FACE_CENTER,
             size: fittingSize(digits, [40, 34, 28], VALUE_WIDTH),
         })
-        drawCaption(surface, this.config.label)
+        drawCaption(surface, this.#config.label)
     }
 }

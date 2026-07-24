@@ -75,24 +75,24 @@ export function nowPlayingLines(
 }
 
 export class NowPlayingScreen implements Screen {
-    private readonly ha: HomeAssistantService
-    private readonly clock: () => number
-    private readonly player: string
-    private unwatch: (() => void) | null = null
+    readonly #ha: HomeAssistantService
+    readonly #clock: () => number
+    readonly #player: string
+    #unwatch: (() => void) | null = null
 
     constructor(services: TileServices, {player}: NowPlayingOptions) {
-        this.ha = services.ha
-        this.clock = services.clock
-        this.player = requireEntity(player, 'now playing screen')
+        this.#ha = services.ha
+        this.#clock = services.clock
+        this.#player = requireEntity(player, 'now playing screen')
     }
 
     mount(host: ScreenHost): void {
-        this.unwatch = this.ha.watch([this.player], () => host.invalidate())
+        this.#unwatch = this.#ha.watch([this.#player], () => host.invalidate())
     }
 
     unmount(): void {
-        this.unwatch?.()
-        this.unwatch = null
+        this.#unwatch?.()
+        this.#unwatch = null
     }
 
     /**
@@ -102,8 +102,8 @@ export class NowPlayingScreen implements Screen {
      * move when something unrelated repainted the deck.
      */
     animationMilliseconds(): number | undefined {
-        const player = this.ha.entity(this.player)
-        const {title, idle} = nowPlayingLines(player, this.ha.connected)
+        const player = this.#ha.entity(this.#player)
+        const {title, idle} = nowPlayingLines(player, this.#ha.connected)
         if (idle) return undefined
         if (overflows(title, fittingSize(title, TITLE_SIZES, TITLE_AVAILABLE))) return SCROLL_FRAME_MILLISECONDS
         const playing = player?.state === 'playing'
@@ -111,9 +111,9 @@ export class NowPlayingScreen implements Screen {
     }
 
     draw(surface: Surface): void {
-        const now = this.clock()
-        const player = this.ha.entity(this.player)
-        const {title, secondary, idle} = nowPlayingLines(player, this.ha.connected)
+        const now = this.#clock()
+        const player = this.#ha.entity(this.#player)
+        const {title, secondary, idle} = nowPlayingLines(player, this.#ha.connected)
         surface.fill(verticalGradient(surface, BACKDROP[0], BACKDROP[1]))
 
         if (idle) {

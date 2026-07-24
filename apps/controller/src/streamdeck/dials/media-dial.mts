@@ -21,11 +21,11 @@ export class MediaDial implements Dial {
     readonly left: Binding
     readonly right: Binding
     readonly press: Binding
-    private readonly model: ControlModel
+    readonly #model: ControlModel
 
     constructor(services: TileServices, {player, label = 'MEDIA'}: MediaDialConfig) {
         const {ha, voice} = createBindings(services)
-        this.model = services.model
+        this.#model = services.model
         this.label = label
         this.left = ha('media_previous', player)
         this.right = ha('media_next', player)
@@ -33,6 +33,6 @@ export class MediaDial implements Dial {
     }
 
     detail(): string {
-        return this.model.state.media ? 'PLAYING' : 'PAUSED'
+        return this.#model.state.media ? 'PLAYING' : 'PAUSED'
     }
 }

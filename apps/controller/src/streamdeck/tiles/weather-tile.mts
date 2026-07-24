@@ -45,36 +45,36 @@ export function conditionName(condition: string): string {
 }
 
 export class WeatherTile implements Tile {
-    private readonly ha: HomeAssistantService
-    private readonly entity: string
-    private readonly label: string
-    private unwatch: (() => void) | null = null
+    readonly #ha: HomeAssistantService
+    readonly #entity: string
+    readonly #label: string
+    #unwatch: (() => void) | null = null
 
     constructor(services: TileServices, {entity, label = 'WEATHER'}: WeatherTileConfig) {
-        this.ha = services.ha
-        this.entity = requireEntity(entity, 'weather tile')
-        this.label = label
+        this.#ha = services.ha
+        this.#entity = requireEntity(entity, 'weather tile')
+        this.#label = label
     }
 
     press(): void {
     }
 
     mount(host: TileHost): void {
-        this.unwatch = this.ha.watch([this.entity], () => host.invalidate())
+        this.#unwatch = this.#ha.watch([this.#entity], () => host.invalidate())
     }
 
     unmount(): void {
-        this.unwatch?.()
-        this.unwatch = null
+        this.#unwatch?.()
+        this.#unwatch = null
     }
 
     draw(surface: Surface): void {
         const x = surface.width / 2
-        const weather = this.ha.entity(this.entity)
+        const weather = this.#ha.entity(this.#entity)
         if (!weather || weather.state === 'unknown' || weather.state === 'unavailable') {
             drawBackground(surface, '#1a1a1a')
             icon(surface, 'cloud', {x, y: 44, size: 54, color: '#424242'})
-            drawCaption(surface, this.label)
+            drawCaption(surface, this.#label)
             return
         }
 
@@ -86,6 +86,6 @@ export class WeatherTile implements Tile {
         text(surface, name, {x, y: 76, size: fittingSize(name, [24, 20, 17], 112), color: '#b0bec5'})
 
         const temperature = numericAttribute(weather, 'temperature')
-        drawCaption(surface, temperature === undefined ? this.label : `${Math.round(temperature)}°`)
+        drawCaption(surface, temperature === undefined ? this.#label : `${Math.round(temperature)}°`)
     }
 }

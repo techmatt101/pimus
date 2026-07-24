@@ -55,57 +55,57 @@ export interface RemoteTileServerOptions {
 }
 
 export class RemoteTileServer implements RemoteTileFeed {
-    private readonly options: RemoteTileServerOptions
-    private readonly onChange: () => void
-    private readonly logger: Pick<Console, 'log'>
-    private readonly tiles = new Map<number, { face: RemoteTileFace; owner: WebSocket }>()
-    private server: WebSocketServer | null = null
+    readonly #options: RemoteTileServerOptions
+    readonly #onChange: () => void
+    readonly #logger: Pick<Console, 'log'>
+    readonly #tiles = new Map<number, { face: RemoteTileFace; owner: WebSocket }>()
+    #server: WebSocketServer | null = null
 
     constructor(options: RemoteTileServerOptions) {
-        this.options = options
-        this.onChange = options.onChange ?? (() => {
+        this.#options = options
+        this.#onChange = options.onChange ?? (() => {
         })
-        this.logger = options.logger ?? console
+        this.#logger = options.logger ?? console
     }
 
     /** Begin listening. Safe to call once; index.mts does it at startup. */
     start(): void {
-        if (this.server) return
-        this.server = new WebSocketServer({
-            port: this.options.port,
-            host: this.options.host ?? '0.0.0.0',
+        if (this.#server) return
+        this.#server = new WebSocketServer({
+            port: this.#options.port,
+            host: this.#options.host ?? '0.0.0.0',
             maxPayload: MAX_PAYLOAD,
         })
-        this.server.on('connection', (socket) => this.accept(socket))
+        this.#server.on('connection', (socket) => this.#accept(socket))
         // A port collision or bind failure must not take the daemon down with it;
         // the deck simply runs without remote tiles until a restart.
-        this.server.on('error', (error) => this.logger.log(`remote-tile server error: ${String(error)}`))
+        this.#server.on('error', (error) => this.#logger.log(`remote-tile server error: ${String(error)}`))
     }
 
     /** The bound port, for a test listening on an ephemeral one. */
     get port(): number {
-        const address = this.server?.address()
-        return typeof address === 'object' && address ? address.port : this.options.port
+        const address = this.#server?.address()
+        return typeof address === 'object' && address ? address.port : this.#options.port
     }
 
     stop(): void {
-        for (const client of this.server?.clients ?? []) client.terminate()
-        this.server?.close()
-        this.server = null
-        this.tiles.clear()
+        for (const client of this.#server?.clients ?? []) client.terminate()
+        this.#server?.close()
+        this.#server = null
+        this.#tiles.clear()
     }
 
     tile(slot: number): RemoteTileFace | undefined {
-        return this.tiles.get(slot)?.face
+        return this.#tiles.get(slot)?.face
     }
 
     press(slot: number): void {
-        const owner = this.tiles.get(slot)?.owner
+        const owner = this.#tiles.get(slot)?.owner
         if (owner && owner.readyState === owner.OPEN) owner.send(JSON.stringify({type: 'press', slot}))
     }
 
     /** Gate a new connection behind the hello handshake before reading anything else. */
-    private accept(socket: WebSocket): void {
+    #accept(socket: WebSocket): void {
         let welcomed = false
         const deadline = setTimeout(() => {
             if (!welcomed) socket.close(4001, 'hello timeout')
@@ -119,31 +119,31 @@ export class RemoteTileServer implements RemoteTileFeed {
                 return
             }
             if (!welcomed) {
-                if (message.type !== 'hello' || !tokenMatches(message.token, this.options.token)) {
+                if (message.type !== 'hello' || !tokenMatches(message.token, this.#options.token)) {
                     socket.close(4003, 'bad hello')
                     return
                 }
                 welcomed = true
                 clearTimeout(deadline)
-                this.logger.log('remote-tile client connected')
+                this.#logger.log('remote-tile client connected')
                 socket.send(JSON.stringify({type: 'welcome', slots: REMOTE_SLOT_COUNT}))
                 return
             }
-            void this.handle(socket, message)
+            void this.#handle(socket, message)
         })
 
         socket.on('close', () => {
             clearTimeout(deadline)
             if (!welcomed) return
-            this.logger.log('remote-tile client disconnected')
-            this.dropOwnedBy(socket)
+            this.#logger.log('remote-tile client disconnected')
+            this.#dropOwnedBy(socket)
         })
         // Treat a broken client as a disconnect, never as a reason to crash.
         socket.on('error', () => {
         })
     }
 
-    private async handle(socket: WebSocket, message: Record<string, unknown>): Promise<void> {
+    async #handle(socket: WebSocket, message: Record<string, unknown>): Promise<void> {
         const complain = (text: string): void => {
             socket.send(JSON.stringify({type: 'error', message: text}))
         }
@@ -170,36 +170,36 @@ export class RemoteTileServer implements RemoteTileFeed {
             if (socket.readyState !== socket.OPEN) return
             // Last write wins, including across clients; the face's lifetime follows
             // whichever connection wrote it.
-            this.tiles.set(slot, {face, owner: socket})
-            this.onChange()
+            this.#tiles.set(slot, {face, owner: socket})
+            this.#onChange()
             return
         }
 
         if (message.type === 'clear') {
             const slot = slotOf(message)
             if (slot === undefined) return complain(`clear needs a slot from 0 to ${REMOTE_SLOT_COUNT - 1}`)
-            if (this.tiles.delete(slot)) this.onChange()
+            if (this.#tiles.delete(slot)) this.#onChange()
             return
         }
 
         if (message.type === 'notify') {
             // The queue applies its own limits and defaults; this only forwards.
-            this.options.postNotification?.(message)
+            this.#options.postNotification?.(message)
             return
         }
 
         complain(`unknown message type ${JSON.stringify(message.type ?? null)}`)
     }
 
-    private dropOwnedBy(socket: WebSocket): void {
+    #dropOwnedBy(socket: WebSocket): void {
         let dropped = false
-        for (const [slot, entry] of this.tiles) {
+        for (const [slot, entry] of this.#tiles) {
             if (entry.owner === socket) {
-                this.tiles.delete(slot)
+                this.#tiles.delete(slot)
                 dropped = true
             }
         }
-        if (dropped) this.onChange()
+        if (dropped) this.#onChange()
     }
 }
 

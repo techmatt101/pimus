@@ -25,22 +25,24 @@ const BACKDROP = ['#1d2d38', '#101a21'] as const
  * readout.
  */
 export class DialScreen implements Screen {
-    private dial: Dial | undefined
+    #dial: Dial | undefined
+    readonly #clock: () => number
 
-    constructor(private readonly clock: () => number) {
+    constructor(clock: () => number) {
+        this.#clock = clock
     }
 
     /** The strip hands over the dial being turned before it draws. */
     show(dial: Dial): void {
-        this.dial = dial
+        this.#dial = dial
     }
 
     draw(surface: Surface): void {
         surface.fill(verticalGradient(surface, BACKDROP[0], BACKDROP[1]))
-        const dial = this.dial
+        const dial = this.#dial
         if (!dial) return
 
-        const now = this.clock()
+        const now = this.#clock()
         const value = dial.detail()
         drawStripLine(surface, dial.label, {
             centerY: 22,

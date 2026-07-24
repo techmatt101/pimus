@@ -19,65 +19,65 @@ const RIPPLE_PERIOD_MILLISECONDS = 1600
 const RIPPLE_RADIUS = 52
 
 export class VoiceTile implements Tile {
-    private readonly model: ControlModel
-    private readonly toggle: Binding
-    private host: TileHost | null = null
-    private unsubscribe: Unsubscribe | null = null
-    private ripple: NodeJS.Timeout | null = null
+    readonly #model: ControlModel
+    readonly #toggle: Binding
+    #host: TileHost | null = null
+    #unsubscribe: Unsubscribe | null = null
+    #ripple: NodeJS.Timeout | null = null
     // The ripple's phase, accumulated from the deltaTime each draw is handed
     // rather than read from a wall clock, so the sweep advances by real elapsed
     // time however often the tile happens to repaint.
-    private phase = 0
+    #phase = 0
 
     constructor(services: TileServices) {
-        this.model = services.model
-        this.toggle = createBindings(services).voice('listen_toggle')
+        this.#model = services.model
+        this.#toggle = createBindings(services).voice('listen_toggle')
     }
 
     action(): Action {
-        return this.toggle.action
+        return this.#toggle.action
     }
 
     press(): void {
-        this.toggle.run()
+        this.#toggle.run()
     }
 
     mount(host: TileHost): void {
-        this.host = host
-        this.unsubscribe = this.model.subscribe(() => this.followAssist())
-        this.followAssist()
+        this.#host = host
+        this.#unsubscribe = this.#model.subscribe(() => this.#followAssist())
+        this.#followAssist()
     }
 
     unmount(): void {
-        this.unsubscribe?.()
-        this.unsubscribe = null
-        this.stopRipple()
-        this.host = null
+        this.#unsubscribe?.()
+        this.#unsubscribe = null
+        this.#stopRipple()
+        this.#host = null
     }
 
     /** Run the ripple exactly while a pipeline is live, however it was started. */
-    private followAssist(): void {
-        if (isAssistRunning(this.model.state)) this.startRipple()
-        else this.stopRipple()
+    #followAssist(): void {
+        if (isAssistRunning(this.#model.state)) this.#startRipple()
+        else this.#stopRipple()
     }
 
-    private startRipple(): void {
-        if (this.ripple) return
+    #startRipple(): void {
+        if (this.#ripple) return
         // Start each listening session from a still ring rather than wherever the
         // last one left the phase.
-        this.phase = 0
-        this.ripple = setInterval(() => this.host?.invalidate(), FRAME_MILLISECONDS)
+        this.#phase = 0
+        this.#ripple = setInterval(() => this.#host?.invalidate(), FRAME_MILLISECONDS)
         // An animation must not keep the daemon alive on shutdown.
-        this.ripple.unref()
+        this.#ripple.unref()
     }
 
-    private stopRipple(): void {
-        if (this.ripple) clearInterval(this.ripple)
-        this.ripple = null
+    #stopRipple(): void {
+        if (this.#ripple) clearInterval(this.#ripple)
+        this.#ripple = null
     }
 
     draw(surface: Surface, deltaTime: number): void {
-        const running = isAssistRunning(this.model.state)
+        const running = isAssistRunning(this.#model.state)
         drawBackground(surface, running ? '#006064' : '#00272b')
         const x = surface.width / 2
 
@@ -85,8 +85,8 @@ export class VoiceTile implements Tile {
             // Two rings a half-cycle apart, each fading as it grows, so the sweep
             // reads as continuous rather than restarting.
             const {ctx} = surface
-            this.phase += deltaTime
-            const phase = (this.phase % RIPPLE_PERIOD_MILLISECONDS) / RIPPLE_PERIOD_MILLISECONDS
+            this.#phase += deltaTime
+            const phase = (this.#phase % RIPPLE_PERIOD_MILLISECONDS) / RIPPLE_PERIOD_MILLISECONDS
             ctx.save()
             ctx.lineWidth = 3
             for (const offset of [0, 0.5]) {

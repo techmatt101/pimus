@@ -27,34 +27,34 @@ export interface SceneTileConfig {
 const RESTING_COLOR = '#1c1a10'
 
 export class SceneTile implements Tile {
-    private readonly bindings: readonly Binding[]
-    private readonly scenes: readonly SceneChoice[]
-    private readonly label: string
+    readonly #bindings: readonly Binding[]
+    readonly #scenes: readonly SceneChoice[]
+    readonly #label: string
     // -1 means "nothing applied from this key yet".
-    private applied = -1
+    #applied = -1
 
     constructor(services: TileServices, {scenes, label = 'SCENE'}: SceneTileConfig) {
         if (scenes.length === 0) throw new Error('a scene tile needs at least one scene')
         const {ha} = createBindings(services)
-        this.scenes = scenes
-        this.label = label
+        this.#scenes = scenes
+        this.#label = label
         // Building every binding up front checks every entity id while the layout
         // is built, not only the one that happens to be selected.
-        this.bindings = scenes.map((scene) => ha('activate', requireEntity(scene.entity, `${scene.label} scene`)))
+        this.#bindings = scenes.map((scene) => ha('activate', requireEntity(scene.entity, `${scene.label} scene`)))
     }
 
     press(): void {
-        this.applied = (this.applied + 1) % this.scenes.length
-        this.bindings[this.applied]?.run()
+        this.#applied = (this.#applied + 1) % this.#scenes.length
+        this.#bindings[this.#applied]?.run()
     }
 
     draw(surface: Surface): void {
         // Before the first press the first scene is previewed, so the key names
         // what pressing it will do rather than sitting blank.
-        const showing = this.applied < 0 ? 0 : this.applied
-        const scene = this.scenes[showing]
+        const showing = this.#applied < 0 ? 0 : this.#applied
+        const scene = this.#scenes[showing]
         const name = scene?.label ?? '?'
-        const active = this.applied >= 0
+        const active = this.#applied >= 0
         const x = surface.width / 2
         drawBackground(surface, active ? scene?.color ?? '#5d4037' : RESTING_COLOR)
 
@@ -63,7 +63,7 @@ export class SceneTile implements Tile {
         icon(surface, 'bulb', {x, y: 24, size: 34, color: active ? '#ffe082' : '#6d5a34'})
         text(surface, name, {x, y: 58, size: fittingSize(name, [30, 26, 22], 112)})
 
-        drawDots(surface, this.scenes.length, showing, 82, active ? '#ffffff' : '#6d6d6d')
-        drawCaption(surface, this.label)
+        drawDots(surface, this.#scenes.length, showing, 82, active ? '#ffffff' : '#6d6d6d')
+        drawCaption(surface, this.#label)
     }
 }
