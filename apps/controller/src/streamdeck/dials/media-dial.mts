@@ -8,7 +8,7 @@
 
 import { createBindings, type Binding, type TileServices } from '../bindings.mjs'
 import type { Dial } from './dial.mjs'
-import type { TileContext } from '../tiles/tile.mjs'
+import type { ControlModel } from '../../state.mjs'
 
 export interface MediaDialConfig {
   /** The `media_player.` entity the skips are sent to. */
@@ -21,16 +21,18 @@ export class MediaDial implements Dial {
   readonly left: Binding
   readonly right: Binding
   readonly press: Binding
+  private readonly model: ControlModel
 
   constructor(services: TileServices, { player, label = 'MEDIA' }: MediaDialConfig) {
     const { ha, voice } = createBindings(services)
+    this.model = services.model
     this.label = label
     this.left = ha('media_previous', player)
     this.right = ha('media_next', player)
     this.press = voice('media_toggle')
   }
 
-  detail({ state }: TileContext): string {
-    return state.media ? 'PLAYING' : 'PAUSED'
+  detail(): string {
+    return this.model.state.media ? 'PLAYING' : 'PAUSED'
   }
 }

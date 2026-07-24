@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import { DynamicDial } from '../../../src/streamdeck/dials/dynamic-dial.mjs'
 import { EntityToggleTile } from '../../../src/streamdeck/tiles/entity-toggle-tile.mjs'
-import { eventually, testContext, testHost, testServices, tileFace } from '../../support/fixtures.mjs'
+import { eventually, testHost, testServices, tileFace } from '../../support/fixtures.mjs'
 
 test('an entity toggle key calls the service for its own domain', () => {
   const services = testServices()
@@ -46,11 +46,11 @@ test('the key holding the dial is marked on its own face', () => {
   services.ha.put('fan.office_ceiling', 'off')
   const fan = new EntityToggleTile(services, { label: 'FAN', entity: 'fan.office_ceiling', icon: 'fan', dial })
 
-  const idle = tileFace(fan, testContext())
+  const idle = tileFace(fan)
   fan.press()
   // Nothing about the fan changed — the fake records the call without applying
   // it — so any difference here is the key reporting that it has the dial.
-  assert.notDeepEqual(tileFace(fan, testContext()), idle, 'the key shows it holds the dial')
+  assert.notDeepEqual(tileFace(fan), idle, 'the key shows it holds the dial')
 })
 
 test('a malformed entity id fails as the tile is built, not when it is pressed', () => {
@@ -64,11 +64,11 @@ test('the face distinguishes on, off, and not knowing', () => {
   const services = testServices()
   const tile = new EntityToggleTile(services, { label: 'PC', entity: 'switch.office_pc', icon: 'computer' })
 
-  const unknown = tileFace(tile, testContext())
+  const unknown = tileFace(tile)
   services.ha.put('switch.office_pc', 'off')
-  const off = tileFace(tile, testContext())
+  const off = tileFace(tile)
   services.ha.put('switch.office_pc', 'on')
-  const on = tileFace(tile, testContext())
+  const on = tileFace(tile)
 
   assert.notDeepEqual(on, off, 'on and off differ')
   // Unreachable Home Assistant must not draw as a switch that is simply off.
@@ -117,19 +117,17 @@ test('an animated icon varies with time while a still one does not', () => {
   })
   services.ha.put('fan.office_ceiling', 'on')
 
-  // Not a third of a cycle apart: three blades 120 degrees apart map exactly
-  // onto themselves there, and the face would legitimately be identical.
-  assert.notDeepEqual(
-    tileFace(tile, testContext(undefined, { now: 0 })),
-    tileFace(tile, testContext(undefined, { now: 200 })),
-    'the blades turn',
-  )
+  // The tile accumulates the deltaTime each draw is handed into its own phase,
+  // so two draws a step apart turn the blades. Not a third of a cycle: three
+  // blades 120 degrees apart map onto themselves there, drawing identically.
+  const first = tileFace(tile, 0)
+  assert.notDeepEqual(first, tileFace(tile, 200), 'the blades turn')
 
   const still = new EntityToggleTile(services, { label: 'PC', entity: 'switch.office_pc', icon: 'computer' })
   services.ha.put('switch.office_pc', 'on')
   assert.deepEqual(
-    tileFace(still, testContext(undefined, { now: 0 })),
-    tileFace(still, testContext(undefined, { now: 400 })),
+    tileFace(still, 0),
+    tileFace(still, 400),
     'a key with no phase is steady',
   )
 })

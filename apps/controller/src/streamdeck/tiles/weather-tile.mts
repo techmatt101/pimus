@@ -5,7 +5,7 @@
 import { requireEntity } from '../../actions/catalog.mjs'
 import { numericAttribute } from '../../home-assistant/entity.mjs'
 import { conditionIcon } from '../icons.mjs'
-import { fittingSize, type Surface } from '../surface.mjs'
+import { fittingSize, icon, text, type Surface } from '../surface.mjs'
 import { drawBackground, drawCaption, type Tile, type TileHost } from './tile.mjs'
 import type { TileServices } from '../bindings.mjs'
 import type { HomeAssistantService } from '../../types.mjs'
@@ -72,17 +72,17 @@ export class WeatherTile implements Tile {
     const weather = this.ha.entity(this.entity)
     if (!weather || weather.state === 'unknown' || weather.state === 'unavailable') {
       drawBackground(surface, '#1a1a1a')
-      surface.icon('cloud', { x, y: 44, size: 54, color: '#424242' })
+      icon(surface, 'cloud', { x, y: 44, size: 54, color: '#424242' })
       drawCaption(surface, this.label)
       return
     }
 
     drawBackground(surface, '#0e1b26')
-    const { icon, color } = conditionIcon(weather.state)
-    surface.icon(icon, { x, y: 36, size: 52, color })
+    const { icon: conditionGlyph, color } = conditionIcon(weather.state)
+    icon(surface, conditionGlyph, { x, y: 36, size: 52, color })
 
     const name = conditionName(weather.state)
-    surface.text(name, { x, y: 76, size: fittingSize(name, [24, 20, 17], 112), color: '#b0bec5' })
+    text(surface, name, { x, y: 76, size: fittingSize(name, [24, 20, 17], 112), color: '#b0bec5' })
 
     const temperature = numericAttribute(weather, 'temperature')
     drawCaption(surface, temperature === undefined ? this.label : `${Math.round(temperature)}°`)

@@ -5,7 +5,7 @@
 // exactly when navigating away is meaningful.
 
 import { drawBackground, drawCaption, FACE_CENTER, type Tile, type TileHost } from './tile.mjs'
-import type { Surface } from '../surface.mjs'
+import { icon, type Surface } from '../surface.mjs'
 
 export interface PageTileConfig {
   /** How many pages to move; negative goes back. */
@@ -42,7 +42,7 @@ export class PageTile implements Tile {
   draw(surface: Surface): void {
     const forward = this.delta >= 0
     drawBackground(surface, this.color)
-    surface.icon(forward ? 'next' : 'previous', {
+    icon(surface, forward ? 'next' : 'previous', {
       x: surface.width / 2,
       y: FACE_CENTER,
       size: 52,

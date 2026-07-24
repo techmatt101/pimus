@@ -7,10 +7,7 @@
 // across the whole width, and a dial being turned or a notification arriving
 // takes the width over for as long as it is relevant.
 
-import { BOLD, measureText, type Surface } from '../surface.mjs'
-import type { TileContext } from '../tiles/tile.mjs'
-import type { Dial } from '../dials/dial.mjs'
-import type { Notification } from '../../types.mjs'
+import { bar, BOLD, measureText, text, type Surface } from '../surface.mjs'
 
 /** The touch strip's pixel size, shared by every screen that draws on it. */
 export const STRIP_WIDTH = 800
@@ -25,17 +22,6 @@ const SCROLL_GAP = 80
 /** Repaint interval while something on the strip is scrolling. */
 export const SCROLL_FRAME_MILLISECONDS = 80
 
-/**
- * What a screen consults to paint itself: the same live state a tile gets, plus
- * whichever subject the strip selected it for. `dial` is set only while the
- * dial readout is showing and `notification` only while a banner is, so a
- * screen never has to ask the strip what it is being drawn for.
- */
-export interface ScreenContext extends TileContext {
-  dial?: Dial | undefined
-  notification?: Notification | undefined
-}
-
 /** What a mounted screen may ask of the strip. */
 export interface ScreenHost {
   /** Repaint the strip, outside the shared render schedule. */
@@ -43,15 +29,21 @@ export interface ScreenHost {
 }
 
 export interface Screen {
-  /** Paint the 800x100 strip face for the current state. */
-  draw(surface: Surface, context: ScreenContext): void
+  /**
+   * Paint the 800x100 strip face. A screen reads whatever it draws from
+   * directly — the injected Home Assistant, its clock, or a subject the strip
+   * set on it (which dial is being turned, which notification is up) — rather
+   * than being handed a context. `deltaTime` is the milliseconds since the strip
+   * last drew, there for parity with a tile; a screen whose motion is a scroll
+   * or a draining timer reads its clock instead.
+   */
+  draw(surface: Surface, deltaTime: number): void
   /**
    * How often to repaint while this screen is the visible one, or undefined
    * when its face is static. Scrolling text is the usual reason; deriving the
-   * offset from `context.now` keeps drawing a pure function, exactly as an
-   * animated tile does.
+   * offset from the injected clock keeps drawing a pure function of the clock.
    */
-  animationMilliseconds?(context: ScreenContext): number | undefined
+  animationMilliseconds?(): number | undefined
   /** Called when the strip is showing on an attached deck. */
   mount?(host: ScreenHost): void
   /** Called when the deck disconnects. */
@@ -88,7 +80,7 @@ export function drawStripLine(surface: Surface, value: string, options: StripLin
 
   if (width <= available) {
     const x = left ?? Math.round((surface.width - width) / 2)
-    surface.text(value, { ...line, x })
+    text(surface, value, { ...line, x })
     return false
   }
 
@@ -98,8 +90,8 @@ export function drawStripLine(surface: Surface, value: string, options: StripLin
   const cycle = width + SCROLL_GAP
   const offset = ((now / 1000) * SCROLL_PIXELS_PER_SECOND) % cycle
   const start = (left ?? margin) - offset
-  surface.text(value, { ...line, x: start })
-  surface.text(value, { ...line, x: start + cycle })
+  text(surface, value, { ...line, x: start })
+  text(surface, value, { ...line, x: start + cycle })
   return true
 }
 
@@ -122,7 +114,7 @@ export function drawStripBar(
   fraction: number,
   { color = '#26c6da', track = '#1c2b33', height = 6 }: { color?: string; track?: string; height?: number } = {},
 ): void {
-  surface.bar(fraction, {
+  bar(surface, fraction, {
     x: 0,
     y: surface.height - height,
     width: surface.width,

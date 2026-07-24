@@ -50,7 +50,6 @@ import { ActionTile } from './tiles/action-tile.mjs'
 import { BrightnessTile } from './tiles/brightness-tile.mjs'
 import { ClockTile } from './tiles/clock-tile.mjs'
 import { EntityToggleTile } from './tiles/entity-toggle-tile.mjs'
-import { MediaTile } from './tiles/media-tile.mjs'
 import { PlaylistTile } from './tiles/playlist-tile.mjs'
 import { RemoteTile } from './tiles/remote-tile.mjs'
 import { SceneTile } from './tiles/scene-tile.mjs'
@@ -127,7 +126,7 @@ export function createLayout(services: TileServices): StreamDeckLayout {
   // AUX and USB key, each toggling its own route independently.
   const { voice, route } = createBindings(services)
   const key = (label: string, color: string, binding: Binding): Tile =>
-    new ActionTile({ label, color, binding })
+    new ActionTile(services, { label, color, binding })
 
   // The one dial with no fixed job. The lights, fan, and blinds keys below hand
   // it their entity as they are pressed, so a single knob dims, changes speed,
@@ -145,15 +144,29 @@ export function createLayout(services: TileServices): StreamDeckLayout {
       // the house.
       name: 'MAIN',
       grid: {
-        topLeft: new VoiceTile(services),
-        topMidLeft: key('MIC', '#7f0000', voice('mute_toggle')),
-        topMidRight: new MediaTile(services),
-        topRight: new ShuffleTile(services, HA.player),
-        // One dedicated key per audio route, each toggling its own route on or
-        // off; both routes off is the network player through its own sink. Each
-        // key lights green while its route is on (the catalog route indicator).
-        bottomMidLeft: key('AUX', '#4a148c', route('aux', 'toggle')),
-        bottomMidRight: key('USB', '#0d47a1', route('usb', 'toggle')),
+        topLeft: new ClockTile(services),
+        topMidLeft: new WeatherTile(services, { entity: HA.weather }),
+        topMidRight: new EntityToggleTile(services, {
+          label: 'PC',
+          entity: HA.pc,
+          icon: 'computer',
+          onColor: '#283593',
+          offColor: '#151a30',
+        }),
+        topRight: new TimerTile(services, { entity: HA.timer, duration: TIMER_DURATION }),
+
+        bottomLeft: new VoiceTile(services),
+        bottomMidLeft: new ShuffleTile(services, HA.player),
+        bottomMidRight: new PlaylistTile(services, {
+          label: 'MELLOW',
+          player: HA.player,
+          media: HA.playlist,
+        }),
+        bottomRight: new PlaylistTile(services, {
+          label: 'ROCK',
+          player: HA.player,
+          media: HA.playlist,
+        })
       },
     },
     {
@@ -170,9 +183,10 @@ export function createLayout(services: TileServices): StreamDeckLayout {
           icon: 'fan',
           onColor: '#00695c',
           offColor: '#0d2320',
-          // A turning fan needs a moving angle; deriving it from the repaint
-          // instant keeps drawing pure while the tile drives the repaints.
-          spin: (_entity, now) => (now % 1200) / 1200,
+          // A turning fan needs a moving angle; the tile accumulates the elapsed
+          // time it has been running and hands it here as `phase`, so one full
+          // turn is 1200ms of real time however often the key repaints.
+          spin: (_entity, phase) => (phase % 1200) / 1200,
           animationMilliseconds: 100,
           dial: dynamic,
         }),
@@ -188,14 +202,6 @@ export function createLayout(services: TileServices): StreamDeckLayout {
           level: (entity) => 1 - (numericAttribute(entity, 'current_position') ?? (isEntityOn(entity) ? 80 : 0)) / 100,
           dial: dynamic,
         }),
-        topRight: new EntityToggleTile(services, {
-          label: 'PC',
-          entity: HA.pc,
-          icon: 'computer',
-          onColor: '#283593',
-          offColor: '#151a30',
-        }),
-        bottomMidLeft: new TimerTile(services, { entity: HA.timer, duration: TIMER_DURATION }),
         bottomMidRight: new EntityToggleTile(services, {
           label: 'LIGHTS',
           entity: HA.lights,
@@ -210,20 +216,18 @@ export function createLayout(services: TileServices): StreamDeckLayout {
       // A glanceable page: the top row changes nothing when pressed.
       name: 'INFO',
       grid: {
-        topLeft: new ClockTile(),
         topMidLeft: new TemperatureTile(services, { label: 'OFFICE', entity: HA.temperature }),
-        topMidRight: new WeatherTile(services, { entity: HA.weather }),
         // Panel brightness sits on the quiet page: a setting you go looking for
         // rather than reach for, like the stop key below it.
         topRight: new BrightnessTile(services),
-        bottomMidLeft: key('STOP', '#b71c1c', voice('stop')),
+        bottomLeft: key('STOP', '#b71c1c', voice('stop')),
+        topLeft: key('MIC', '#7f0000', voice('mute_toggle')),
+
         // The playlist shortcut lives here rather than on MAIN so the two audio
         // route keys can share the bottom row there.
-        bottomMidRight: new PlaylistTile(services, {
-          label: 'FOCUS',
-          player: HA.player,
-          media: HA.playlist,
-        }),
+
+        bottomMidLeft: key('AUX', '#4a148c', route('aux', 'toggle')),
+        bottomMidRight: key('USB', '#0d47a1', route('usb', 'toggle')),
       },
     },
     // Six sockets for another computer to fill over the remote-tile server
@@ -267,6 +271,7 @@ export function createLayout(services: TileServices): StreamDeckLayout {
   const strip = new TouchStrip({
     resting: new NowPlayingScreen(services, { player: HA.player }),
     dials,
+    clock: services.clock,
     ...(services.notifications ? { notifications: services.notifications } : {}),
   })
 

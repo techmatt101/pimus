@@ -10,8 +10,8 @@
 // a labelled key, a readout key, the caption bar — are what keep eight
 // independently written keys looking like one control surface.
 
-import { lighten, withAlpha, type Surface } from '../surface.mjs'
-import type { Action, AudioState, ControlState } from '../../types.mjs'
+import { fittingSize, lighten, text, verticalGradient, withAlpha, type Surface } from '../surface.mjs'
+import type { Action } from '../../types.mjs'
 
 /** The pixel size of one key face. */
 export const KEY_SIZE = 120
@@ -26,18 +26,6 @@ const CAPTION_WIDTH = KEY_SIZE - 8
 
 /** The centre of the area above the caption, where a tile's subject goes. */
 export const FACE_CENTER = 44
-
-/** The live state a tile consults to decide its face and behaviour. */
-export interface TileContext {
-  state: ControlState
-  audio: AudioState
-  /**
-   * The wall-clock instant of this repaint, for animated faces. Deriving an
-   * animation phase from `now` keeps drawing a pure function of its context —
-   * a tile only needs its own timer to *request* repaints (see TileHost).
-   */
-  now: number
-}
 
 /** What a mounted tile may ask of the renderer. */
 export interface TileHost {
@@ -64,13 +52,19 @@ export interface TileHost {
  */
 export interface Tile {
   /** Performs the key's behaviour. Runs through the deck's dispatch queue. */
-  press(context: TileContext): unknown
+  press(): unknown
   /**
-   * Paint the key face for the current state. The surface arrives cleared, so
-   * a tile draws everything it wants to show; the renderer reuses it for the
-   * next key, so nothing may be held on to after this returns.
+   * Paint the key face. The surface arrives cleared, so a tile draws everything
+   * it wants to show; the renderer reuses it for the next key, so nothing may be
+   * held on to after this returns.
+   *
+   * A tile reads the live state it draws from directly — the services it was
+   * injected (its Home Assistant reads) or the ControlModel it holds — rather
+   * than being handed it, so nothing but the surface and the clock crosses this
+   * boundary. `deltaTime` is the milliseconds since this face last drew, which
+   * an animated tile accumulates into its own phase; a static tile ignores it.
    */
-  draw(surface: Surface, context: TileContext): void
+  draw(surface: Surface, deltaTime: number): void
   /**
    * The declarative action this tile stands for, if any; layout.test.mts
    * validates it against the catalog. A tile whose behaviour the catalog
@@ -89,14 +83,14 @@ export interface Tile {
  * reads as lit from across the room rather than as a flat block.
  */
 export function drawBackground(surface: Surface, background: string): void {
-  surface.fill(surface.verticalGradient(lighten(background, 0.16), background))
+  surface.fill(verticalGradient(surface, lighten(background, 0.16), background))
 }
 
 /** The black caption bar every key face shares, so labels line up across the grid. */
 export function drawCaption(surface: Surface, label: string, color = '#ffffff'): void {
   surface.ctx.fillStyle = 'rgba(0,0,0,0.72)'
   surface.ctx.fillRect(0, CAPTION_TOP, surface.width, CAPTION_HEIGHT)
-  surface.text(label, {
+  text(surface, label, {
     x: surface.width / 2,
     y: CAPTION_CENTER,
     size: CAPTION_SIZE,
@@ -144,5 +138,5 @@ export function drawDots(
 
 /** One large reading, shrunk only as far as the value needs. */
 export function drawValue(surface: Surface, value: string, x: number, y: number, available = KEY_SIZE - 12): void {
-  surface.text(value, { x, y, size: surface.fittingSize(value, [46, 38, 30, 24], available) })
+  text(surface, value, { x, y, size: fittingSize(value, [46, 38, 30, 24], available) })
 }

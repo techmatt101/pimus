@@ -8,7 +8,10 @@ import { DeckRenderer } from '../../src/streamdeck/renderer.mjs'
 import { ActionTile } from '../../src/streamdeck/tiles/action-tile.mjs'
 import type { Tile, TileHost } from '../../src/streamdeck/tiles/tile.mjs'
 import type { Surface } from '../../src/streamdeck/surface.mjs'
-import { testStrip } from '../support/fixtures.mjs'
+import { testServices, testStrip } from '../support/fixtures.mjs'
+
+/** Injected services for the action tiles below; only their model is read. */
+const services = testServices()
 
 /** A layout of keys alone; what the strip shows has its own test file. */
 const rendererFor = (
@@ -25,7 +28,7 @@ const settle = (): Promise<void> => new Promise((resolve) => { setImmediate(reso
 
 /** A tile that records its label when pressed, to see which slot dispatched. */
 const recorder = (label: string, presses: string[]): ActionTile =>
-  new ActionTile({ label, color: '#000000', binding: { action: { type: 'noop' }, run: () => presses.push(label) } })
+  new ActionTile(services, { label, color: '#000000', binding: { action: { type: 'noop' }, run: () => presses.push(label) } })
 
 test('the grid fills all eight slots and pages with changePage', () => {
   const presses: string[] = []

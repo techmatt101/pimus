@@ -154,6 +154,7 @@ const remote = config.remote?.enabled
 
 const layout = createLayout({
   model,
+  clock: Date.now,
   lva,
   notifications,
   ...(remote ? { remote } : {}),

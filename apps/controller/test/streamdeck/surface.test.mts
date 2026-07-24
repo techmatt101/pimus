@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import { ICON_MARKUP } from '../../src/streamdeck/icon-set.mjs'
 import { conditionIcon } from '../../src/streamdeck/icons.mjs'
-import { fittingSize, lighten, measureText, Surface, withAlpha } from '../../src/streamdeck/surface.mjs'
+import { fittingSize, icon, lighten, measureText, Surface, text, withAlpha } from '../../src/streamdeck/surface.mjs'
 
 /** The four channels of one pixel of a face. */
 const pixelAt = (surface: Surface, x: number, y: number): number[] => {
@@ -39,7 +39,7 @@ test('the bundled font is registered, so text actually draws', () => {
   // label would silently draw as nothing while the layout still looked right.
   const surface = new Surface(120, 120)
   surface.reset('#000000')
-  surface.text('WW', { x: 60, y: 60, size: 40 })
+  text(surface, 'WW', { x: 60, y: 60, size: 40 })
 
   const lit = surface.snapshot().filter((channel, index) => index % 4 !== 3 && channel > 0)
   assert.ok(lit.length > 0, 'the glyphs put ink on the face')
@@ -56,23 +56,23 @@ test('a value is drawn at the largest size that fits the space it has', () => {
 test('icons rasterize at the size and tint they are asked for', () => {
   const surface = new Surface(120, 120)
   surface.reset('#000000')
-  surface.icon('mic', { x: 60, y: 60, size: 60, color: '#ff0000' })
+  icon(surface, 'mic', { x: 60, y: 60, size: 60, color: '#ff0000' })
   const red = surface.snapshot()
 
   surface.reset('#000000')
-  surface.icon('mic', { x: 60, y: 60, size: 60, color: '#00ff00' })
+  icon(surface, 'mic', { x: 60, y: 60, size: 60, color: '#00ff00' })
   assert.notDeepEqual(surface.snapshot(), red, 'the tint reaches the artwork')
 
   surface.reset('#000000')
-  surface.icon('mic', { x: 60, y: 60, size: 30, color: '#ff0000' })
+  icon(surface, 'mic', { x: 60, y: 60, size: 30, color: '#ff0000' })
   assert.notDeepEqual(surface.snapshot(), red, 'the icon is drawn at the size asked for')
 
   // Rotation is what turns the fan blades, so it has to change the face.
   surface.reset('#000000')
-  surface.icon('fan', { x: 60, y: 60, size: 60, color: '#ffffff' })
+  icon(surface, 'fan', { x: 60, y: 60, size: 60, color: '#ffffff' })
   const upright = surface.snapshot()
   surface.reset('#000000')
-  surface.icon('fan', { x: 60, y: 60, size: 60, color: '#ffffff', rotate: 0.2 })
+  icon(surface, 'fan', { x: 60, y: 60, size: 60, color: '#ffffff', rotate: 0.2 })
   assert.notDeepEqual(surface.snapshot(), upright)
 })
 

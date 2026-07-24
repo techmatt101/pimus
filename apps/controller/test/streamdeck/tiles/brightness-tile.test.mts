@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import { createState } from '../../../src/state.mjs'
 import { BrightnessTile } from '../../../src/streamdeck/tiles/brightness-tile.mjs'
-import { testContext, testServices, tileFace } from '../../support/fixtures.mjs'
+import { testServices, tileFace } from '../../support/fixtures.mjs'
 
 test('a press steps to the next level and notifies, cycling round from the top', () => {
   const state = createState() // starts at the default 40
@@ -35,10 +35,13 @@ test('a press steps on from the level nearest the current brightness', () => {
 })
 
 test('the face reads the current level and a tile needs at least one', () => {
-  const tile = new BrightnessTile(testServices(), { levels: [20, 40, 70, 100] })
+  const services = testServices()
+  const tile = new BrightnessTile(services, { levels: [20, 40, 70, 100] })
 
-  const low = tileFace(tile, testContext(createState({ brightness: 20 })))
-  const high = tileFace(tile, testContext(createState({ brightness: 100 })))
+  services.model.state.brightness = 20
+  const low = tileFace(tile)
+  services.model.state.brightness = 100
+  const high = tileFace(tile)
   assert.notDeepEqual(low.buffer, high.buffer, 'a different level draws a different face')
 
   assert.throws(() => new BrightnessTile(testServices(), { levels: [] }), /at least one level/)

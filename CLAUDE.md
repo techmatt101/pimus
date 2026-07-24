@@ -142,8 +142,12 @@ runtime validation, and relevant documentation together.
   when it becomes visible on an attached deck, `unmount()` when hidden. While
   mounted it may hold state, subscribe to the `ControlModel` (`state.mts`), and
   repaint just its key via `host.invalidate()` — e.g. a timer for animation,
-  with the phase derived from `context.now` so render stays pure. Drop every
-  timer and subscription in `unmount`.
+  accumulating the `deltaTime` its `draw(surface, deltaTime)` is handed into its
+  own phase. `draw` takes only the surface and that delta: a tile reads the live
+  state it paints from directly (its injected services, or the `ControlModel` it
+  holds), never a passed-in context. A tile that needs true wall-clock time (the
+  time of day, a countdown to an instant) reads the injected `clock` service so a
+  test can pin it. Drop every timer and subscription in `unmount`.
 - Each dial is a `Dial` — an interface in `streamdeck/dials/dial.mts`, with one
   implementing class per file in `streamdeck/dials/`, exactly as tiles are
   arranged. A dial owns what turning and pressing it does and what it reads out;
@@ -176,11 +180,15 @@ runtime validation, and relevant documentation together.
   `streamdeck_enabled` deployment flag lives in Ansible; `layout.test.mts` and
   `actions/catalog.test.mts` validate the compiled layout and tiles against the
   catalog.
-- Tiles and screens paint onto a `Surface` (`streamdeck/surface.mts`), a Skia
-  canvas (`@napi-rs/canvas`) with helpers for the things every face repeats.
-  `surface.ctx` is the real 2D context: reach for it directly rather than adding
-  a wrapper for a one-off path, gradient, or clip. A face is RGBA and
-  `snapshot()` must copy, because the canvas is reused for the next key.
+- Tiles and screens paint onto a `Surface` (`streamdeck/surface.mts`), a
+  lightweight holder for a Skia canvas (`@napi-rs/canvas`) and its 2D context.
+  The helpers for the things every face repeats — `text`, `icon`, `bar`,
+  `verticalGradient`, `clipped` — are free functions in that module taking the
+  surface first (`text(surface, …)`), so the class stays minimal; only `reset`,
+  `fill`, and `snapshot` live on it. `surface.ctx` is the real 2D context: reach
+  for it directly rather than adding a helper for a one-off path, gradient, or
+  clip. A face is RGBA and `snapshot()` must copy, because the canvas is reused
+  for the next key.
 - Icons are Hugeicons SVGs generated into `streamdeck/icon-set.mts` by
   `make icons` and committed. The artwork comes from `@hugeicons/core-free-icons`,
   a devDependency of the workspace root only: never add an icon package as a

@@ -8,28 +8,32 @@
 
 import { createBindings, type Binding, type TileServices } from '../bindings.mjs'
 import { percent, type Dial } from './dial.mjs'
-import type { TileContext } from '../tiles/tile.mjs'
+import type { ControlModel } from '../../state.mjs'
 
 export class VolumeDial implements Dial {
   readonly label: string
   readonly left: Binding
   readonly right: Binding
   readonly press: Binding
+  private readonly model: ControlModel
 
   constructor(services: TileServices, label = 'VOLUME') {
     const { volume } = createBindings(services)
+    this.model = services.model
     this.label = label
     this.left = volume('down')
     this.right = volume('up')
     this.press = volume('mute')
   }
 
-  detail({ state }: TileContext): string {
+  detail(): string {
+    const { state } = this.model
     return state.outputMuted ? 'MUTED' : percent(state.volume)
   }
 
   /** A muted bar reads as empty, which is what muted sounds like. */
-  level({ state }: TileContext): number {
+  level(): number {
+    const { state } = this.model
     return state.outputMuted ? 0 : state.volume
   }
 }

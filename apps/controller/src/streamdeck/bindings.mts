@@ -22,6 +22,13 @@ import type { Action, HomeAssistantService, LvaSender, NotificationFeed, RemoteT
 export interface TileServices {
   /** The observable control-surface model; mutate its state, then notify. */
   model: ControlModel
+  /**
+   * Wall-clock milliseconds, injected so a tile that shows the time of day or
+   * counts down to an instant (the clock, the timer) can be pinned in a test.
+   * A tile's decorative animation uses the `deltaTime` its `draw` is handed
+   * instead; this is only for reading true elapsed wall-clock time.
+   */
+  clock: () => number
   lva: LvaSender
   /** Applies on/off/toggle to a named audio route via the audio manager socket. */
   setSource(name: string, command: string): unknown

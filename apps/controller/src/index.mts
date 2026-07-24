@@ -85,6 +85,7 @@ const lva = new LvaClient({
 // and dial binding carries its behaviour with it (see streamdeck/tiles/).
 const layout = createLayout({
   model,
+  clock: Date.now,
   lva,
   setSource: (name, command) => {
     audio.setSource(name, command)

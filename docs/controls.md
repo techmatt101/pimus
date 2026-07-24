@@ -123,9 +123,11 @@ disconnects. While mounted a tile may keep its own state, subscribe to the
 changes, call `host.invalidate()` to repaint just its own key, and
 `host.changePage(delta)` to navigate. Ordinary repaints are event-driven — any model
 change schedules a full redraw, debounced at 50 ms — so an **animated** tile
-runs its own timer between state changes: `MediaTile` subscribes to the model,
-starts a 150 ms pulse timer while the player is playing, and derives the
-animation phase from `context.now` so its render stays a pure function. Every
+runs its own timer between state changes: `VoiceTile` subscribes to the model,
+starts a ripple timer while a voice pipeline is live, and accumulates the
+`deltaTime` its `draw(surface, deltaTime)` is handed into its animation phase.
+`draw` takes only the surface and that delta — a tile reads the live state it
+paints from directly (the services it holds), never a passed-in context. Every
 timer and subscription must be dropped in `unmount`.
 
 ## Voice actions — `type: lva`

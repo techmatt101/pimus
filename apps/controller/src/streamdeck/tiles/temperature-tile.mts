@@ -4,7 +4,7 @@
 
 import { requireEntity } from '../../actions/catalog.mjs'
 import { numericState } from '../../home-assistant/entity.mjs'
-import { fittingSize, type Surface } from '../surface.mjs'
+import { bar, fittingSize, icon, text, type Surface } from '../surface.mjs'
 import { drawBackground, drawCaption, FACE_CENTER, type Tile, type TileHost } from './tile.mjs'
 import type { TileServices } from '../bindings.mjs'
 import type { HomeAssistantService } from '../../types.mjs'
@@ -64,8 +64,8 @@ export class TemperatureTile implements Tile {
     const reading = numericState(sensor)
     if (reading === undefined) {
       drawBackground(surface, '#1a1a1a')
-      surface.icon('thermometer', { x: ICON_X, y: FACE_CENTER, size: ICON_SIZE, color: '#424242' })
-      surface.text('--', { x: VALUE_X, y: FACE_CENTER, size: 34, color: '#616161' })
+      icon(surface, 'thermometer', { x: ICON_X, y: FACE_CENTER, size: ICON_SIZE, color: '#424242' })
+      text(surface, '--', { x: VALUE_X, y: FACE_CENTER, size: 34, color: '#616161' })
       drawCaption(surface, this.config.label)
       return
     }
@@ -77,8 +77,8 @@ export class TemperatureTile implements Tile {
     // The glyph is drawn in the band's accent so the key carries the reading in
     // colour as well as digits, and a level bar under it says where in the
     // 5..35°C range that sits.
-    surface.icon('thermometer', { x: ICON_X, y: FACE_CENTER - 4, size: ICON_SIZE, color: accent })
-    surface.bar(scaleOf(reading), {
+    icon(surface, 'thermometer', { x: ICON_X, y: FACE_CENTER - 4, size: ICON_SIZE, color: accent })
+    bar(surface, scaleOf(reading), {
       x: ICON_X - 18,
       y: 76,
       width: 36,
@@ -91,7 +91,7 @@ export class TemperatureTile implements Tile {
     // One decimal place is what a room sensor is worth; anything longer stops
     // fitting beside the thermometer.
     const digits = `${Math.abs(reading) < 100 ? reading.toFixed(1) : Math.round(reading)}°`
-    surface.text(digits, {
+    text(surface, digits, {
       x: VALUE_X,
       y: FACE_CENTER,
       size: fittingSize(digits, [40, 34, 28], VALUE_WIDTH),

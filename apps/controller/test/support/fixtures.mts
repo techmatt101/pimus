@@ -14,13 +14,12 @@ import {
   STRIP_HEIGHT,
   STRIP_WIDTH,
   type Screen,
-  type ScreenContext,
   type ScreenHost,
 } from '../../src/streamdeck/screens/screen.mjs'
 import { TouchStrip } from '../../src/streamdeck/strip.mjs'
 import { Surface } from '../../src/streamdeck/surface.mjs'
 import type { Dial } from '../../src/streamdeck/dials/dial.mjs'
-import { KEY_SIZE, type Tile, type TileContext, type TileHost } from '../../src/streamdeck/tiles/tile.mjs'
+import { KEY_SIZE, type Tile, type TileHost } from '../../src/streamdeck/tiles/tile.mjs'
 import type {
   AudioState,
   ControlState,
@@ -99,6 +98,8 @@ export interface TestServices extends TileServices {
   notifications: NotificationCenter
   /** Every call made through the injected services, in order. */
   calls: string[]
+  /** Pin the wall clock the tiles read, so a face draws as at this instant. */
+  setNow(now: number): void
 }
 
 /**
@@ -115,9 +116,14 @@ export function testServices(
   const ha = new FakeHomeAssistant(entities)
   const notifications = new NotificationCenter({ ha, logger: { log: () => {} } })
   notifications.start()
+  // A pinnable clock, since a tile now reads the time it draws at from here
+  // rather than being handed it. Starts at 0; a test that cares sets it.
+  let now = 0
   return {
     calls,
     model: new ControlModel(state, audio),
+    clock: () => now,
+    setNow: (value) => { now = value },
     ha,
     notifications,
     lva: { send: (command) => { calls.push(`lva:${command}`) } },
@@ -141,22 +147,23 @@ export interface Face {
 }
 
 /**
- * The face a tile paints for a context. Faces are compared whole rather than
- * inspected: a test asserts that two states look different, or that one is
- * stable, without depending on where anything within the key is drawn.
+ * The face a tile paints. Faces are compared whole rather than inspected: a test
+ * asserts that two states look different, or that one is stable, without
+ * depending on where anything within the key is drawn. A tile reads its state
+ * and clock from its injected services; `deltaTime` is only the animation step.
  */
-export function tileFace(tile: Tile, context: TileContext = testContext()): Face {
-  return paint(new Surface(KEY_SIZE, KEY_SIZE), (surface) => tile.draw(surface, context))
+export function tileFace(tile: Tile, deltaTime = 0): Face {
+  return paint(new Surface(KEY_SIZE, KEY_SIZE), (surface) => tile.draw(surface, deltaTime))
 }
 
 /** The face a screen paints, the strip's equivalent of tileFace(). */
-export function screenFace(screen: Screen, context: ScreenContext): Face {
-  return paint(new Surface(STRIP_WIDTH, STRIP_HEIGHT), (surface) => screen.draw(surface, context))
+export function screenFace(screen: Screen, deltaTime = 0): Face {
+  return paint(new Surface(STRIP_WIDTH, STRIP_HEIGHT), (surface) => screen.draw(surface, deltaTime))
 }
 
 /** The face the strip paints, which is whichever screen it selected. */
-export function stripFace(strip: TouchStrip, context: TileContext): Face {
-  return paint(new Surface(STRIP_WIDTH, STRIP_HEIGHT), (surface) => strip.draw(surface, context))
+export function stripFace(strip: TouchStrip, deltaTime = 0): Face {
+  return paint(new Surface(STRIP_WIDTH, STRIP_HEIGHT), (surface) => strip.draw(surface, deltaTime))
 }
 
 function paint(surface: Surface, draw: (surface: Surface) => void): Face {
@@ -194,11 +201,6 @@ export function testHost(): TileHost & { repaints: number; moves: number[]; name
   }
   return host
 }
-
-export const testContext = (
-  state: ControlState = createState(),
-  { sources = {}, now = 0 }: { sources?: Record<string, boolean>; now?: number } = {},
-): TileContext => ({ state, audio: { sources }, now })
 
 /** Resolves once `predicate` holds; the enclosing test times out on failure. */
 export const eventually = async (predicate: () => boolean): Promise<void> => {

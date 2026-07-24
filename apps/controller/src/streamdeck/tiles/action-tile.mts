@@ -3,10 +3,11 @@
 // indicator cannot express — then write a new Tile class in this folder.
 
 import { indicatorFor } from '../../actions/catalog.mjs'
-import type { Binding } from '../bindings.mjs'
-import { drawLabelFace, type Tile, type TileContext } from './tile.mjs'
+import type { Binding, TileServices } from '../bindings.mjs'
+import { drawLabelFace, type Tile } from './tile.mjs'
 import type { Surface } from '../surface.mjs'
-import type { Action } from '../../types.mjs'
+import type { ControlModel } from '../../state.mjs'
+import type { Action, AudioState, ControlState } from '../../types.mjs'
 
 /** The computed face of a labelled key: its caption and background colour. */
 export interface KeyAppearance {
@@ -22,15 +23,20 @@ export interface ActionTileConfig {
 
 /**
  * The appearance of a labelled key, derived entirely from its bound action's
- * catalog indicator. An action with no indicator keeps its configured label and
- * colour; the mute, media, listen, and route indicators drive their own.
+ * catalog indicator against the live control state. An action with no indicator
+ * keeps its configured label and colour; the mute, media, listen, and route
+ * indicators drive their own.
  */
-export function actionAppearance(config: ActionTileConfig, context: TileContext): KeyAppearance {
+export function actionAppearance(
+  config: ActionTileConfig,
+  state: ControlState,
+  audio: AudioState,
+): KeyAppearance {
   const action = config.binding?.action
   const indicator = indicatorFor(action)
   if (!indicator) return { label: config.label, background: config.color }
 
-  const active = indicator.isActive({ state: context.state, audio: context.audio, source: action?.source })
+  const active = indicator.isActive({ state, audio, source: action?.source })
   return {
     label: indicator.label ? indicator.label(config.label, active) : config.label,
     background: active ? indicator.activeColor : config.color,
@@ -39,10 +45,17 @@ export function actionAppearance(config: ActionTileConfig, context: TileContext)
 
 /**
  * A fixed labelled key that runs one binding, with any active-state feedback
- * coming from the bound action's catalog indicator.
+ * coming from the bound action's catalog indicator. It reads that state from the
+ * injected model at draw time rather than being handed it.
  */
 export class ActionTile implements Tile {
-  constructor(private readonly config: ActionTileConfig) {}
+  private readonly model: ControlModel
+  private readonly config: ActionTileConfig
+
+  constructor(services: TileServices, config: ActionTileConfig) {
+    this.model = services.model
+    this.config = config
+  }
 
   action(): Action | undefined {
     return this.config.binding?.action
@@ -52,8 +65,8 @@ export class ActionTile implements Tile {
     return this.config.binding?.run()
   }
 
-  draw(surface: Surface, context: TileContext): void {
-    const { label, background } = actionAppearance(this.config, context)
+  draw(surface: Surface): void {
+    const { label, background } = actionAppearance(this.config, this.model.state, this.model.audio)
     drawLabelFace(surface, background, label)
   }
 }

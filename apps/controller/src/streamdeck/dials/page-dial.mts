@@ -10,7 +10,6 @@
 
 import type { Binding } from '../bindings.mjs'
 import type { Dial } from './dial.mjs'
-import type { TileContext } from '../tiles/tile.mjs'
 
 /** How the page dial reaches paging, once the renderer that owns it exists. */
 export interface PageNavigator {
@@ -42,7 +41,7 @@ export class PageDial implements Dial {
     this.nav = nav
   }
 
-  detail(_context: TileContext): string {
+  detail(): string {
     return this.nav?.currentName() || IDLE_DETAIL
   }
 }

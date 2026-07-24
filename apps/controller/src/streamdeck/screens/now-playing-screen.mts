@@ -12,7 +12,7 @@
 import { requireEntity } from '../../actions/catalog.mjs'
 import { mediaElapsedSeconds, numericAttribute } from '../../home-assistant/entity.mjs'
 import type { TileServices } from '../bindings.mjs'
-import { fittingSize, REGULAR, type Surface } from '../surface.mjs'
+import { fittingSize, REGULAR, verticalGradient, type Surface } from '../surface.mjs'
 import {
   drawStripBar,
   drawStripLine,
@@ -21,7 +21,6 @@ import {
   STRIP_MARGIN,
   STRIP_WIDTH,
   type Screen,
-  type ScreenContext,
   type ScreenHost,
 } from './screen.mjs'
 import type { HomeAssistantEntity, HomeAssistantService } from '../../types.mjs'
@@ -77,11 +76,13 @@ export function nowPlayingLines(
 
 export class NowPlayingScreen implements Screen {
   private readonly ha: HomeAssistantService
+  private readonly clock: () => number
   private readonly player: string
   private unwatch: (() => void) | null = null
 
   constructor(services: TileServices, { player }: NowPlayingOptions) {
     this.ha = services.ha
+    this.clock = services.clock
     this.player = requireEntity(player, 'now playing screen')
   }
 
@@ -109,10 +110,11 @@ export class NowPlayingScreen implements Screen {
     return playing && hasPosition(player) ? POSITION_FRAME_MILLISECONDS : undefined
   }
 
-  draw(surface: Surface, { now }: ScreenContext): void {
+  draw(surface: Surface): void {
+    const now = this.clock()
     const player = this.ha.entity(this.player)
     const { title, secondary, idle } = nowPlayingLines(player, this.ha.connected)
-    surface.fill(surface.verticalGradient(BACKDROP[0], BACKDROP[1]))
+    surface.fill(verticalGradient(surface, BACKDROP[0], BACKDROP[1]))
 
     if (idle) {
       drawStripLine(surface, title, { centerY: 50, size: 34, color: IDLE, now })

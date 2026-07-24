@@ -5,7 +5,7 @@ import { createState } from '../../../src/state.mjs'
 import { ActionDial } from '../../../src/streamdeck/dials/action-dial.mjs'
 import { MediaDial } from '../../../src/streamdeck/dials/media-dial.mjs'
 import { VolumeDial } from '../../../src/streamdeck/dials/volume-dial.mjs'
-import { testContext, testServices } from '../../support/fixtures.mjs'
+import { testServices } from '../../support/fixtures.mjs'
 
 const PLAYER = 'media_player.office'
 
@@ -18,14 +18,17 @@ test('the volume dial turns the output and reads it back', () => {
   dial.press.run()
   assert.deepEqual(services.calls, ['volume:down', 'volume:up', 'volume:mute'])
 
-  assert.equal(dial.detail(testContext(createState({ volume: 0.67 }))), '67%')
-  assert.equal(dial.level(testContext(createState({ volume: 0.4 }))), 0.4)
+  // The dial reads the volume off the model it was injected.
+  services.model.state.volume = 0.67
+  assert.equal(dial.detail(), '67%')
+  services.model.state.volume = 0.4
+  assert.equal(dial.level(), 0.4)
 
   // Muted is its own reading, and an empty bar: the level to come back to is
   // still the level the deck remembers.
-  const muted = testContext(createState({ volume: 0.4, outputMuted: true }))
-  assert.equal(dial.detail(muted), 'MUTED')
-  assert.equal(dial.level(muted), 0)
+  services.model.state.outputMuted = true
+  assert.equal(dial.detail(), 'MUTED')
+  assert.equal(dial.level(), 0)
 })
 
 test('the media dial skips through the player and plays through the voice assistant', () => {
@@ -43,10 +46,11 @@ test('the media dial skips through the player and plays through the voice assist
   // the catalog picks the direction from the state the controller holds.
   assert.deepEqual(services.calls, ['lva:resume_media_player'])
 
-  const state = createState()
-  assert.equal(dial.detail(testContext(state)), 'PAUSED')
-  state.media = true
-  assert.equal(dial.detail(testContext(state)), 'PLAYING')
+  // The readout follows the controller's own playback flag on the model.
+  services.model.state.media = false
+  assert.equal(dial.detail(), 'PAUSED')
+  services.model.state.media = true
+  assert.equal(dial.detail(), 'PLAYING')
   // Nothing to plot: a transport position is not a level the knob sets.
   assert.equal('level' in dial, false)
 })
@@ -54,20 +58,23 @@ test('the media dial skips through the player and plays through the voice assist
 test('a dial bound to nothing says so rather than reading as broken', () => {
   const spare = new ActionDial({ label: 'SPARE', readout: 'NOT IN USE' })
 
-  assert.equal(spare.detail(testContext()), 'NOT IN USE')
-  assert.equal(spare.level(testContext()), undefined)
+  assert.equal(spare.detail(), 'NOT IN USE')
+  assert.equal(spare.level(), undefined)
   assert.equal(spare.left, undefined)
   assert.equal(spare.right, undefined)
   assert.equal(spare.press, undefined)
 })
 
 test('an action dial can derive its readout and its bar from live state', () => {
+  // A dynamic readout closes over the state it reports on rather than being
+  // handed a context.
+  const state = createState({ volume: 0.25 })
   const dial = new ActionDial({
     label: 'VOLUME',
-    readout: ({ state }) => `${Math.round(state.volume * 100)}%`,
-    level: ({ state }) => state.volume,
+    readout: () => `${Math.round(state.volume * 100)}%`,
+    level: () => state.volume,
   })
 
-  assert.equal(dial.detail(testContext(createState({ volume: 0.25 }))), '25%')
-  assert.equal(dial.level(testContext(createState({ volume: 0.25 }))), 0.25)
+  assert.equal(dial.detail(), '25%')
+  assert.equal(dial.level(), 0.25)
 })

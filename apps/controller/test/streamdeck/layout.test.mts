@@ -5,9 +5,7 @@ import { describeActionProblem } from '../../src/actions/catalog.mjs'
 import { createState } from '../../src/state.mjs'
 import { createLayout } from '../../src/streamdeck/layout.mjs'
 import { SceneTile } from '../../src/streamdeck/tiles/scene-tile.mjs'
-import { testContext, testServices } from '../support/fixtures.mjs'
-
-const CONTEXT = testContext()
+import { testServices } from '../support/fixtures.mjs'
 
 test('the compiled layout fits the Stream Deck+ hardware', () => {
   const layout = createLayout(testServices())
@@ -62,10 +60,10 @@ test('layout tiles and dials drive the injected services when pressed', () => {
   const main = layout.pages[0]
   assert.ok(main, 'the layout has a first page')
 
-  main.grid.topLeft?.press(CONTEXT)
+  main.grid.topLeft?.press()
   // Each audio route has its own key now, toggling just that route on or off.
-  main.grid.bottomMidLeft?.press(CONTEXT)
-  main.grid.bottomMidRight?.press(CONTEXT)
+  main.grid.bottomMidLeft?.press()
+  main.grid.bottomMidRight?.press()
   layout.dials[0]?.right?.run()
 
   assert.deepEqual(services.calls, [
@@ -87,14 +85,14 @@ test('the dynamic dial follows the last room key pressed', () => {
 
   // Before anything is pressed the dial says what it is for rather than
   // pretending to control something.
-  assert.equal(dial.detail(CONTEXT), 'PICK A KEY')
+  assert.equal(dial.detail(), 'PICK A KEY')
 
-  room.grid.bottomMidRight?.press(CONTEXT)
+  room.grid.bottomMidRight?.press()
   assert.equal(dial.label, 'LIGHTS')
-  assert.equal(dial.detail(CONTEXT), '50%')
+  assert.equal(dial.detail(), '50%')
   dial.right?.run()
 
-  room.grid.topMidLeft?.press(CONTEXT)
+  room.grid.topMidLeft?.press()
   assert.equal(dial.label, 'FAN')
   dial.right?.run()
 
@@ -112,7 +110,7 @@ test('every dial readout is a short string, whatever the deck knows', () => {
   // Nothing is connected in this fixture, which is the worst case for a
   // readout: it must still render rather than throw or print "undefined".
   for (const dial of layout.dials) {
-    const detail = dial.detail(CONTEXT)
+    const detail = dial.detail()
     assert.equal(typeof detail, 'string')
     assert.ok(detail.length > 0 && detail.length <= 12, `${dial.label} readout "${detail}" fits the strip`)
   }

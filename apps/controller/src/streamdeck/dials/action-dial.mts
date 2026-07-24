@@ -9,17 +9,20 @@
 
 import type { Binding } from '../bindings.mjs'
 import type { Dial } from './dial.mjs'
-import type { TileContext } from '../tiles/tile.mjs'
 
 export interface ActionDialConfig {
   label: string
   left?: Binding
   right?: Binding
   press?: Binding
-  /** The value line: a fixed string, or one derived from the live state. */
-  readout: string | ((context: TileContext) => string)
+  /**
+   * The value line: a fixed string, or one worked out at read time. A dynamic
+   * readout closes over whatever live state it reports on rather than being
+   * handed a context.
+   */
+  readout: string | (() => string)
   /** The reading as a 0-1 fraction, for a value that is a level. */
-  level?(context: TileContext): number | undefined
+  level?(): number | undefined
 }
 
 export class ActionDial implements Dial {
@@ -27,7 +30,7 @@ export class ActionDial implements Dial {
   readonly left: Binding | undefined
   readonly right: Binding | undefined
   readonly press: Binding | undefined
-  private readonly readout: string | ((context: TileContext) => string)
+  private readonly readout: string | (() => string)
   private readonly reading: ActionDialConfig['level']
 
   constructor(config: ActionDialConfig) {
@@ -39,11 +42,11 @@ export class ActionDial implements Dial {
     this.reading = config.level
   }
 
-  detail(context: TileContext): string {
-    return typeof this.readout === 'function' ? this.readout(context) : this.readout
+  detail(): string {
+    return typeof this.readout === 'function' ? this.readout() : this.readout
   }
 
-  level(context: TileContext): number | undefined {
-    return this.reading?.(context)
+  level(): number | undefined {
+    return this.reading?.()
   }
 }

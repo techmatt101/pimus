@@ -12,7 +12,6 @@
 // dial that cannot say what it reads has nothing to show mid-turn.
 
 import type { Binding } from '../bindings.mjs'
-import type { TileContext } from '../tiles/tile.mjs'
 
 export interface Dial {
   /** The name shown above the reading while this dial is being turned. */
@@ -27,16 +26,17 @@ export interface Dial {
    * The value line under the label. Required, and must return something short
    * and true even when nothing is connected: the strip shows this the instant a
    * hand touches the knob, so "unknown" has to read as unknown rather than as a
-   * confident zero.
+   * confident zero. A dial reads the live state it reports from directly — its
+   * injected model or Home Assistant — rather than being handed it.
    */
-  detail(context: TileContext): string
+  detail(): string
   /**
    * The reading as a 0-1 fraction, drawn as a bar under it. Only for a dial
    * whose value really is a level — volume, brightness, how far open — since a
    * bar is what makes a value readable while the knob is still moving. A dial
    * with nothing to plot omits this.
    */
-  level?(context: TileContext): number | undefined
+  level?(): number | undefined
 }
 
 /** A reported value as a fraction of its full scale, or undefined. */

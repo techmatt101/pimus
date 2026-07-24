@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { NowPlayingScreen, nowPlayingLines } from '../../../src/streamdeck/screens/now-playing-screen.mjs'
-import { screenFace, testContext, testScreenHost, testServices } from '../../support/fixtures.mjs'
+import { screenFace, testScreenHost, testServices } from '../../support/fixtures.mjs'
 
 const PLAYER = 'media_player.office_amp'
 
@@ -47,20 +47,21 @@ test('the face follows the player and fills the strip', () => {
   const services = testServices()
   const screen = new NowPlayingScreen(services, { player: PLAYER })
 
-  const nothing = screenFace(screen, testContext())
+  const nothing = screenFace(screen)
   assert.deepEqual([nothing.width, nothing.height], [800, 100])
 
   services.ha.put(PLAYER, playing.state, playing.attributes)
-  const track = screenFace(screen, testContext())
+  const track = screenFace(screen)
   assert.notDeepEqual(track.buffer, nothing.buffer)
 
   // The position bar moves with the clock while the player is playing, so the
   // face is not static even when nothing about the entity changed.
-  const later = screenFace(screen, testContext(undefined, { now: 60_000 }))
+  services.setNow(60_000)
+  const later = screenFace(screen)
   assert.notDeepEqual(track.buffer, later.buffer)
 
   services.ha.put(PLAYER, 'paused', playing.attributes)
-  assert.notDeepEqual(screenFace(screen, testContext()), track.buffer, 'paused reads differently')
+  assert.notDeepEqual(screenFace(screen), track.buffer, 'paused reads differently')
 })
 
 test('a title too wide for the strip scrolls, and a short one sits still', () => {
@@ -69,21 +70,20 @@ test('a title too wide for the strip scrolls, and a short one sits still', () =>
 
   services.ha.put(PLAYER, 'playing', { media_title: 'Teardrop', media_artist: 'Massive Attack' })
   assert.equal(screen.animationMilliseconds(), undefined, 'a short title needs no frames')
-  assert.deepEqual(
-    screenFace(screen, testContext(undefined, { now: 0 })),
-    screenFace(screen, testContext(undefined, { now: 400 })),
-  )
+  services.setNow(0)
+  const stillA = screenFace(screen)
+  services.setNow(400)
+  assert.deepEqual(stillA, screenFace(screen))
 
   services.ha.put(PLAYER, 'playing', {
     media_title: 'Everything In Its Right Place (Remastered Extended Album Version)',
     media_artist: 'Radiohead',
   })
   assert.ok((screen.animationMilliseconds() ?? 0) > 0, 'a long title asks for frames')
-  assert.notDeepEqual(
-    screenFace(screen, testContext(undefined, { now: 0 })),
-    screenFace(screen, testContext(undefined, { now: 400 })),
-    'the title slides across the strip',
-  )
+  services.setNow(0)
+  const slideA = screenFace(screen)
+  services.setNow(400)
+  assert.notDeepEqual(slideA, screenFace(screen), 'the title slides across the strip')
 })
 
 test('a playing track ticks so its position bar creeps forward', () => {

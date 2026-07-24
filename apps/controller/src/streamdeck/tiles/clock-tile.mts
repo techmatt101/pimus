@@ -6,8 +6,9 @@
 // one-second interval, so the bar steps in time with the wall clock instead of
 // drifting a little further from it every minute the deck stays on one page.
 
-import { fittingSize, type Surface } from '../surface.mjs'
-import { drawBackground, drawCaption, type Tile, type TileContext, type TileHost } from './tile.mjs'
+import { bar, fittingSize, text, type Surface } from '../surface.mjs'
+import type { TileServices } from '../bindings.mjs'
+import { drawBackground, drawCaption, type Tile, type TileHost } from './tile.mjs'
 
 export interface ClockTileConfig {
   /** Show a 24-hour clock; the caption carries the date either way. */
@@ -26,12 +27,14 @@ export function clockFace(now: number, hours24: boolean): { time: string; date: 
 }
 
 export class ClockTile implements Tile {
+  private readonly clock: () => number
   private readonly hours24: boolean
   private readonly color: string
   private host: TileHost | null = null
   private tick: NodeJS.Timeout | null = null
 
-  constructor({ hours24 = true, color = '#101820' }: ClockTileConfig = {}) {
+  constructor(services: TileServices, { hours24 = true, color = '#101820' }: ClockTileConfig = {}) {
+    this.clock = services.clock
     this.hours24 = hours24
     this.color = color
   }
@@ -54,20 +57,21 @@ export class ClockTile implements Tile {
     this.tick = setTimeout(() => {
       this.host?.invalidate()
       this.scheduleTick()
-    }, 1000 - (Date.now() % 1000))
+    }, 1000 - (this.clock() % 1000))
     // A clock must not keep the daemon alive on shutdown.
     this.tick.unref()
   }
 
-  draw(surface: Surface, { now }: TileContext): void {
+  draw(surface: Surface): void {
+    const now = this.clock()
     const { time, date } = clockFace(now, this.hours24)
     drawBackground(surface, this.color)
-    surface.text(time, { x: surface.width / 2, y: 40, size: fittingSize(time, [56, 46], 104) })
+    text(surface, time, { x: surface.width / 2, y: 40, size: fittingSize(time, [56, 46], 104) })
 
     // A bar rather than a ring: a five-character time fills the key too widely
     // to sit inside one without the digits crossing it.
     const seconds = new Date(now).getSeconds()
-    surface.bar((seconds + 1) / 60, {
+    bar(surface, (seconds + 1) / 60, {
       x: 18,
       y: 68,
       width: 84,

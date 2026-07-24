@@ -6,8 +6,8 @@
 
 import { isAssistRunning } from '../../actions/catalog.mjs'
 import { createBindings, type Binding, type TileServices } from '../bindings.mjs'
-import { withAlpha, type Surface } from '../surface.mjs'
-import { drawBackground, drawCaption, FACE_CENTER, type Tile, type TileContext, type TileHost } from './tile.mjs'
+import { icon, withAlpha, type Surface } from '../surface.mjs'
+import { drawBackground, drawCaption, FACE_CENTER, type Tile, type TileHost } from './tile.mjs'
 import type { ControlModel, Unsubscribe } from '../../state.mjs'
 import type { Action } from '../../types.mjs'
 
@@ -24,6 +24,10 @@ export class VoiceTile implements Tile {
   private host: TileHost | null = null
   private unsubscribe: Unsubscribe | null = null
   private ripple: NodeJS.Timeout | null = null
+  // The ripple's phase, accumulated from the deltaTime each draw is handed
+  // rather than read from a wall clock, so the sweep advances by real elapsed
+  // time however often the tile happens to repaint.
+  private phase = 0
 
   constructor(services: TileServices) {
     this.model = services.model
@@ -59,6 +63,9 @@ export class VoiceTile implements Tile {
 
   private startRipple(): void {
     if (this.ripple) return
+    // Start each listening session from a still ring rather than wherever the
+    // last one left the phase.
+    this.phase = 0
     this.ripple = setInterval(() => this.host?.invalidate(), FRAME_MILLISECONDS)
     // An animation must not keep the daemon alive on shutdown.
     this.ripple.unref()
@@ -69,8 +76,8 @@ export class VoiceTile implements Tile {
     this.ripple = null
   }
 
-  draw(surface: Surface, { state, now }: TileContext): void {
-    const running = isAssistRunning(state)
+  draw(surface: Surface, deltaTime: number): void {
+    const running = isAssistRunning(this.model.state)
     drawBackground(surface, running ? '#006064' : '#00272b')
     const x = surface.width / 2
 
@@ -78,7 +85,8 @@ export class VoiceTile implements Tile {
       // Two rings a half-cycle apart, each fading as it grows, so the sweep
       // reads as continuous rather than restarting.
       const { ctx } = surface
-      const phase = (now % RIPPLE_PERIOD_MILLISECONDS) / RIPPLE_PERIOD_MILLISECONDS
+      this.phase += deltaTime
+      const phase = (this.phase % RIPPLE_PERIOD_MILLISECONDS) / RIPPLE_PERIOD_MILLISECONDS
       ctx.save()
       ctx.lineWidth = 3
       for (const offset of [0, 0.5]) {
@@ -91,7 +99,7 @@ export class VoiceTile implements Tile {
       ctx.restore()
     }
 
-    surface.icon('mic', {
+    icon(surface, 'mic', {
       x,
       y: FACE_CENTER,
       size: 52,

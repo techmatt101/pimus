@@ -13,14 +13,17 @@
 // frame timer while the visible screen asks for one, and a single wake-up when
 // the dial readout is due to expire. Both are dropped on unmount, so a
 // disconnected deck leaves no timers behind.
+//
+// A screen no longer reads which dial or notification it is being drawn for
+// from a context: the strip works that out from its own clock and hands it to
+// the chosen screen (`show`) before drawing it.
 
 import { DialScreen } from './screens/dial-screen.mjs'
 import { NotificationScreen } from './screens/notification-screen.mjs'
-import type { Screen, ScreenContext, ScreenHost } from './screens/screen.mjs'
+import type { Screen, ScreenHost } from './screens/screen.mjs'
 import type { Surface } from './surface.mjs'
 import type { Dial } from './dials/dial.mjs'
-import type { TileContext } from './tiles/tile.mjs'
-import type { NotificationFeed } from '../types.mjs'
+import type { Notification, NotificationFeed } from '../types.mjs'
 
 /** How long the strip keeps showing a dial after it was last moved. */
 export const DIAL_HOLD_MILLISECONDS = 2500
@@ -36,6 +39,8 @@ export interface TouchStripOptions {
   /** Messages pushed from Home Assistant; omitted when nothing can push any. */
   notifications?: NotificationFeed
   dialHoldMilliseconds?: number
+  /** Wall-clock milliseconds, injected so a test can pin the dial hold and drain. */
+  clock?: () => number
 }
 
 export class TouchStrip {
@@ -43,22 +48,32 @@ export class TouchStrip {
   private readonly dials: readonly Dial[]
   private readonly notifications: NotificationFeed | undefined
   private readonly dialHoldMilliseconds: number
-  private readonly dialScreen = new DialScreen()
-  private readonly notificationScreen = new NotificationScreen()
+  private readonly clock: () => number
+  private readonly dialScreen: DialScreen
+  private readonly notificationScreen: NotificationScreen
   private host: ScreenHost | null = null
   // Which dial is being shown, and until when. Held as an instant rather than a
-  // countdown so render stays a pure function of `context.now`.
+  // countdown so what is showing stays a pure function of the clock.
   private dialIndex = -1
   private dialUntil = 0
   private frames: NodeJS.Timeout | null = null
   private frameRate = 0
   private wake: NodeJS.Timeout | null = null
 
-  constructor({ resting, dials, notifications, dialHoldMilliseconds = DIAL_HOLD_MILLISECONDS }: TouchStripOptions) {
+  constructor({
+    resting,
+    dials,
+    notifications,
+    dialHoldMilliseconds = DIAL_HOLD_MILLISECONDS,
+    clock = Date.now,
+  }: TouchStripOptions) {
     this.resting = resting
     this.dials = dials
     this.notifications = notifications
     this.dialHoldMilliseconds = dialHoldMilliseconds
+    this.clock = clock
+    this.dialScreen = new DialScreen(clock)
+    this.notificationScreen = new NotificationScreen(clock)
   }
 
   /** Every screen the strip can show, in no particular order. */
@@ -87,7 +102,7 @@ export class TouchStrip {
    * readout. Called for every rotation step; extending the hold from the last
    * one is what keeps the readout up while a knob is still moving.
    */
-  showDial(index: number, now = Date.now()): void {
+  showDial(index: number, now = this.clock()): void {
     if (index < 0 || index >= this.dials.length) return
     this.dialIndex = index
     this.dialUntil = now + this.dialHoldMilliseconds
@@ -103,7 +118,7 @@ export class TouchStrip {
    * Returns a thunk rather than acting, so the deck's dispatch queue keeps
    * presses in physical order.
    */
-  pressAt(x: number, now = Date.now()): (() => unknown) | undefined {
+  pressAt(x: number, now = this.clock()): (() => unknown) | undefined {
     if (this.showingNotification(now)) {
       this.notifications?.dismiss()
       this.host?.invalidate()
@@ -116,25 +131,31 @@ export class TouchStrip {
   }
 
   /** Paint the face for the current state, and arm the timers that go with it. */
-  draw(surface: Surface, context: TileContext): void {
-    const screenContext = this.contextFor(context)
-    const screen = this.screenFor(screenContext)
-    screen.draw(surface, screenContext)
-    if (this.host) this.arm(screen, screenContext)
-  }
-
-  /** Whichever subject the visible screen is being drawn for, if any. */
-  private contextFor(context: TileContext): ScreenContext {
-    const dial = context.now < this.dialUntil ? this.dials[this.dialIndex] : undefined
+  draw(surface: Surface, deltaTime: number): void {
+    const now = this.clock()
+    const dial = now < this.dialUntil ? this.dials[this.dialIndex] : undefined
     // Nothing is asked of the queue while a dial is showing: a message's time
     // starts when it reaches the strip, so one that arrives mid-turn waits its
     // full length rather than expiring behind the readout.
-    return { ...context, dial, notification: dial ? undefined : this.notifications?.current(context.now) }
+    const notification = dial ? undefined : this.notifications?.current(now)
+    const screen = this.select(dial, notification)
+    screen.draw(surface, deltaTime)
+    if (this.host) this.arm(screen, dial)
   }
 
-  private screenFor(context: ScreenContext): Screen {
-    if (context.dial) return this.dialScreen
-    if (context.notification) return this.notificationScreen
+  /**
+   * Pick the screen for the current subject and hand it that subject, so a
+   * screen draws what the strip selected it for without reading a context.
+   */
+  private select(dial: Dial | undefined, notification: Notification | undefined): Screen {
+    if (dial) {
+      this.dialScreen.show(dial)
+      return this.dialScreen
+    }
+    if (notification) {
+      this.notificationScreen.show(notification)
+      return this.notificationScreen
+    }
     return this.resting
   }
 
@@ -147,8 +168,8 @@ export class TouchStrip {
    * moment the dial readout stops being current — without it the strip would
    * keep the readout up until something else happened to repaint it.
    */
-  private arm(screen: Screen, context: ScreenContext): void {
-    const rate = screen.animationMilliseconds?.(context)
+  private arm(screen: Screen, dial: Dial | undefined): void {
+    const rate = screen.animationMilliseconds?.()
     if (rate !== this.frameRate) {
       this.stopFrames()
       this.frameRate = rate ?? 0
@@ -160,8 +181,8 @@ export class TouchStrip {
     }
 
     this.stopWake()
-    if (context.dial) {
-      this.wake = setTimeout(() => this.host?.invalidate(), Math.max(16, this.dialUntil - context.now))
+    if (dial) {
+      this.wake = setTimeout(() => this.host?.invalidate(), Math.max(16, this.dialUntil - this.clock()))
       this.wake.unref()
     }
   }

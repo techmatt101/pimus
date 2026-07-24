@@ -1,12 +1,17 @@
-// The drawing surface every tile and screen paints on: a Skia canvas
-// (@napi-rs/canvas) wrapped in the few operations this control surface actually
-// repeats — a background wash, a line of text, an icon, a level bar.
+// The drawing surface every tile and screen paints on: a thin holder for a Skia
+// canvas (@napi-rs/canvas) and its 2D context, plus the two operations that are
+// really about the canvas itself — clearing it (`reset`) and copying the
+// finished pixels out (`snapshot`).
 //
-// `ctx` is the real 2D context and tiles are meant to use it directly for
-// anything beyond those: paths, clipping, transforms, shadows, and compositing
-// are all available and need no wrapper. The helpers here exist so that the
-// things every key does — centring a caption, tinting an icon, fitting a
-// readout — are done the same way on all of them.
+// The drawing helpers a face repeats — a background wash, a line of text, an
+// icon, a level bar — are free functions further down that take the surface as
+// their first argument (`text(surface, …)`, `icon(surface, …)`), rather than
+// methods, so the class stays lightweight and carries the least drawing logic.
+// They exist so that the things every key does — centring a caption, tinting an
+// icon, fitting a readout — are done the same way on all of them. `ctx` is the
+// real 2D context and a face is meant to use it directly for anything beyond
+// those: paths, clipping, transforms, shadows, and compositing are all
+// available and need no wrapper.
 //
 // A surface is reused rather than allocated per frame: the renderer keeps one
 // key-sized and one strip-sized surface and calls `reset()` before each face.
@@ -174,100 +179,6 @@ export class Surface {
   }
 
   /**
-   * A top-to-bottom gradient across the whole surface. Key faces use one rather
-   * than a flat colour: a lit key reads as lit from across the room, and the
-   * caption bar at the foot sits against the darker end.
-   */
-  verticalGradient(from: string, to: string): Gradient {
-    const gradient = this.ctx.createLinearGradient(0, 0, 0, this.height)
-    gradient.addColorStop(0, from)
-    gradient.addColorStop(1, to)
-    return gradient
-  }
-
-  /** A soft radial glow behind an icon, for a key that is on. */
-  radialGradient(x: number, y: number, radius: number, from: string, to: string): Gradient {
-    const gradient = this.ctx.createRadialGradient(x, y, 0, x, y, radius)
-    gradient.addColorStop(0, from)
-    gradient.addColorStop(1, to)
-    return gradient
-  }
-
-  /** How wide a line draws, so a caller can centre, fit, or scroll it. */
-  measure(value: string, size: number, weight = BOLD): number {
-    return measureText(value, size, weight)
-  }
-
-  /** The largest of `sizes` at which `value` fits `available`. */
-  fittingSize(value: string, sizes: readonly number[], available: number, weight = BOLD): number {
-    return fittingSize(value, sizes, available, weight)
-  }
-
-  /** One line of text, centred on `y` rather than sitting on a baseline. */
-  text(value: string, options: TextOptions): void {
-    const { ctx } = this
-    const { x, y, size, color = '#ffffff', weight = BOLD, align = 'center', maxWidth, opacity } = options
-    ctx.save()
-    if (opacity !== undefined) ctx.globalAlpha = opacity
-    ctx.font = `${weight} ${size}px ${FONT}`
-    ctx.textAlign = align
-    ctx.textBaseline = 'middle'
-    ctx.fillStyle = color
-    // maxWidth condenses rather than clips, which keeps a slightly overlong
-    // caption readable instead of cutting a word in half.
-    if (maxWidth === undefined) ctx.fillText(value, x, y)
-    else ctx.fillText(value, x, y, maxWidth)
-    ctx.restore()
-  }
-
-  /**
-   * An icon from the generated Hugeicons set, centred on (x, y) and tinted.
-   * Rasterizing is cached per size and colour (streamdeck/icons.mts), so an
-   * animated key redraws its icon without re-parsing any SVG.
-   */
-  icon(name: IconName, options: IconOptions): void {
-    const { ctx } = this
-    const { x, y, size, color, rotate, opacity } = options
-    const image = iconImage(name, size, color)
-    ctx.save()
-    if (opacity !== undefined) ctx.globalAlpha = opacity
-    ctx.translate(x, y)
-    if (rotate) ctx.rotate(rotate * 2 * Math.PI)
-    ctx.drawImage(image, -size / 2, -size / 2, size, size)
-    ctx.restore()
-  }
-
-  /** A level bar: a track with the filled part of it drawn over the top. */
-  bar(fraction: number, options: BarOptions): void {
-    const { ctx } = this
-    const { x, y, width, height, color = '#26c6da', track = '#1c2b33', rounded = false } = options
-    const filled = Math.max(0, Math.min(1, fraction)) * width
-    const radius = rounded ? height / 2 : 0
-    ctx.fillStyle = track
-    ctx.beginPath()
-    ctx.roundRect(x, y, width, height, radius)
-    ctx.fill()
-    if (filled <= 0) return
-    ctx.fillStyle = color
-    ctx.beginPath()
-    // A rounded bar's fill must stay at least as wide as its own cap, or the
-    // rounding draws a lens narrower than the value it stands for.
-    ctx.roundRect(x, y, Math.max(filled, rounded ? height : 0), height, radius)
-    ctx.fill()
-  }
-
-  /** Draw `paint` clipped to a rectangle, for revealing part of a face. */
-  clipped(x: number, y: number, width: number, height: number, paint: () => void): void {
-    const { ctx } = this
-    ctx.save()
-    ctx.beginPath()
-    ctx.rect(x, y, width, height)
-    ctx.clip()
-    paint()
-    ctx.restore()
-  }
-
-  /**
    * The finished face as an RGBA buffer, which is what both the Stream Deck
    * and the playground take.
    *
@@ -279,4 +190,107 @@ export class Surface {
   snapshot(): Buffer {
     return Buffer.from(this.canvas.data())
   }
+}
+
+// --- drawing helpers ---------------------------------------------------------
+// The operations a face repeats, as free functions taking the surface first, so
+// the class above stays a lightweight canvas holder. A face reaches for
+// `surface.ctx` directly for anything these do not cover.
+
+/**
+ * A top-to-bottom gradient across the whole surface. Key faces use one rather
+ * than a flat colour: a lit key reads as lit from across the room, and the
+ * caption bar at the foot sits against the darker end.
+ */
+export function verticalGradient(surface: Surface, from: string, to: string): Gradient {
+  const gradient = surface.ctx.createLinearGradient(0, 0, 0, surface.height)
+  gradient.addColorStop(0, from)
+  gradient.addColorStop(1, to)
+  return gradient
+}
+
+/** A soft radial glow behind an icon, for a key that is on. */
+export function radialGradient(
+  surface: Surface,
+  x: number,
+  y: number,
+  radius: number,
+  from: string,
+  to: string,
+): Gradient {
+  const gradient = surface.ctx.createRadialGradient(x, y, 0, x, y, radius)
+  gradient.addColorStop(0, from)
+  gradient.addColorStop(1, to)
+  return gradient
+}
+
+/** One line of text, centred on `y` rather than sitting on a baseline. */
+export function text(surface: Surface, value: string, options: TextOptions): void {
+  const { ctx } = surface
+  const { x, y, size, color = '#ffffff', weight = BOLD, align = 'center', maxWidth, opacity } = options
+  ctx.save()
+  if (opacity !== undefined) ctx.globalAlpha = opacity
+  ctx.font = `${weight} ${size}px ${FONT}`
+  ctx.textAlign = align
+  ctx.textBaseline = 'middle'
+  ctx.fillStyle = color
+  // maxWidth condenses rather than clips, which keeps a slightly overlong
+  // caption readable instead of cutting a word in half.
+  if (maxWidth === undefined) ctx.fillText(value, x, y)
+  else ctx.fillText(value, x, y, maxWidth)
+  ctx.restore()
+}
+
+/**
+ * An icon from the generated Hugeicons set, centred on (x, y) and tinted.
+ * Rasterizing is cached per size and colour (streamdeck/icons.mts), so an
+ * animated key redraws its icon without re-parsing any SVG.
+ */
+export function icon(surface: Surface, name: IconName, options: IconOptions): void {
+  const { ctx } = surface
+  const { x, y, size, color, rotate, opacity } = options
+  const image = iconImage(name, size, color)
+  ctx.save()
+  if (opacity !== undefined) ctx.globalAlpha = opacity
+  ctx.translate(x, y)
+  if (rotate) ctx.rotate(rotate * 2 * Math.PI)
+  ctx.drawImage(image, -size / 2, -size / 2, size, size)
+  ctx.restore()
+}
+
+/** A level bar: a track with the filled part of it drawn over the top. */
+export function bar(surface: Surface, fraction: number, options: BarOptions): void {
+  const { ctx } = surface
+  const { x, y, width, height, color = '#26c6da', track = '#1c2b33', rounded = false } = options
+  const filled = Math.max(0, Math.min(1, fraction)) * width
+  const radius = rounded ? height / 2 : 0
+  ctx.fillStyle = track
+  ctx.beginPath()
+  ctx.roundRect(x, y, width, height, radius)
+  ctx.fill()
+  if (filled <= 0) return
+  ctx.fillStyle = color
+  ctx.beginPath()
+  // A rounded bar's fill must stay at least as wide as its own cap, or the
+  // rounding draws a lens narrower than the value it stands for.
+  ctx.roundRect(x, y, Math.max(filled, rounded ? height : 0), height, radius)
+  ctx.fill()
+}
+
+/** Draw `paint` clipped to a rectangle, for revealing part of a face. */
+export function clipped(
+  surface: Surface,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  paint: () => void,
+): void {
+  const { ctx } = surface
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(x, y, width, height)
+  ctx.clip()
+  paint()
+  ctx.restore()
 }

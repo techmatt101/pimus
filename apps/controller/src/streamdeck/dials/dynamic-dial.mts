@@ -12,7 +12,6 @@
 
 import type { Binding } from '../bindings.mjs'
 import type { Dial } from './dial.mjs'
-import type { TileContext } from '../tiles/tile.mjs'
 import type { ControlModel } from '../../state.mjs'
 
 /** Shown before any key has claimed the dial, so it explains itself. */
@@ -47,12 +46,12 @@ export class DynamicDial implements Dial {
     return this.held?.press
   }
 
-  detail(context: TileContext): string {
-    return this.held?.detail(context) ?? IDLE_DETAIL
+  detail(): string {
+    return this.held?.detail() ?? IDLE_DETAIL
   }
 
-  level(context: TileContext): number | undefined {
-    return this.held?.level?.(context)
+  level(): number | undefined {
+    return this.held?.level?.()
   }
 
   /**

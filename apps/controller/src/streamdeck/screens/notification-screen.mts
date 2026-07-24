@@ -7,15 +7,15 @@
 // laundry, and drains a bar as its time runs out so it is obvious the strip is
 // about to go back to what is playing rather than having got stuck.
 
-import { fittingSize, lighten, type Surface } from '../surface.mjs'
+import { fittingSize, lighten, verticalGradient, type Surface } from '../surface.mjs'
 import {
   drawStripBar,
   drawStripLine,
   STRIP_MARGIN,
   STRIP_WIDTH,
   type Screen,
-  type ScreenContext,
 } from './screen.mjs'
+import type { Notification } from '../../types.mjs'
 
 /** Message sizes tried in turn; a long message scrolls at the smallest. */
 const MESSAGE_SIZES = [56, 46, 36]
@@ -24,21 +24,37 @@ const TITLE_COLOR = '#eceff1'
 /** Repaint rate while a banner is up, which is what drains its time bar. */
 const DRAIN_FRAME_MILLISECONDS = 250
 
+/**
+ * The banner the strip is showing. Which message that is comes from the strip,
+ * which calls `show` before drawing; the clock is what drains the time bar and
+ * scrolls an overlong message.
+ */
 export class NotificationScreen implements Screen {
-  animationMilliseconds({ notification }: ScreenContext): number | undefined {
-    return notification ? DRAIN_FRAME_MILLISECONDS : undefined
+  private notification: Notification | undefined
+
+  constructor(private readonly clock: () => number) {}
+
+  /** The strip hands over the live message before it draws, or clears it. */
+  show(notification: Notification | undefined): void {
+    this.notification = notification
   }
 
-  draw(surface: Surface, { notification, now }: ScreenContext): void {
+  animationMilliseconds(): number | undefined {
+    return this.notification ? DRAIN_FRAME_MILLISECONDS : undefined
+  }
+
+  draw(surface: Surface): void {
+    const notification = this.notification
     if (!notification) {
       surface.fill('#101820')
       return
     }
 
+    const now = this.clock()
     const { title, message, color } = notification
     // Lit from the top like a key face, so a banner arriving reads as the strip
     // lighting up rather than as a flat colour swap.
-    surface.fill(surface.verticalGradient(lighten(color, 0.22), color))
+    surface.fill(verticalGradient(surface, lighten(color, 0.22), color))
 
     if (title) {
       drawStripLine(surface, title, { centerY: 24, size: TITLE_SIZE, color: TITLE_COLOR, now })

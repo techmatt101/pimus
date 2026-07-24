@@ -9,7 +9,7 @@ import { PlaylistTile } from '../../../src/streamdeck/tiles/playlist-tile.mjs'
 import { SceneTile } from '../../../src/streamdeck/tiles/scene-tile.mjs'
 import { ShuffleTile } from '../../../src/streamdeck/tiles/shuffle-tile.mjs'
 import { VoiceTile } from '../../../src/streamdeck/tiles/voice-tile.mjs'
-import { eventually, testContext, testHost, testServices, tileFace } from '../../support/fixtures.mjs'
+import { eventually, testHost, testServices, tileFace } from '../../support/fixtures.mjs'
 
 const PLAYER = 'media_player.office_amp'
 
@@ -122,15 +122,13 @@ test('the voice key ripples while a pipeline runs and stops when it ends', async
   const services = testServices(state)
   const tile = new VoiceTile(services)
 
-  const idle = tileFace(tile, testContext(state, { now: 0 }))
+  const idle = tileFace(tile)
   state.assist = 'LISTENING'
-  const listening = tileFace(tile, testContext(state, { now: 0 }))
+  // The ripple accumulates the deltaTime each draw is handed, so two draws a
+  // step apart sweep the rings outwards.
+  const listening = tileFace(tile, 0)
   assert.notDeepEqual(idle, listening)
-  assert.notDeepEqual(
-    listening,
-    tileFace(tile, testContext(state, { now: 400 })),
-    'the rings sweep outwards',
-  )
+  assert.notDeepEqual(listening, tileFace(tile, 400), 'the rings sweep outwards')
 
   state.assist = 'IDLE'
   const host = testHost()

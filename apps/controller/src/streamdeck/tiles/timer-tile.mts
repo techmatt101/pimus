@@ -4,14 +4,15 @@
 //
 // Home Assistant does not tick: a running timer reports `finishes_at` once and
 // then says nothing until it is paused, cancelled, or fires. The countdown here
-// is therefore derived from `finishes_at` against `context.now`, with the tile
-// running its own one-second repaint while the timer is active.
+// is therefore derived from `finishes_at` against the injected `clock` (real
+// wall-clock time, not the draw's deltaTime), with the tile running its own
+// one-second repaint while the timer is active.
 
 import { requireEntity } from '../../actions/catalog.mjs'
 import { durationSeconds, formatDuration, timerRemainingSeconds } from '../../home-assistant/entity.mjs'
 import { createBindings, type Binding, type TileServices } from '../bindings.mjs'
-import type { Surface } from '../surface.mjs'
-import { drawBackground, drawCaption, drawValue, FACE_CENTER, type Tile, type TileContext, type TileHost } from './tile.mjs'
+import { text, type Surface } from '../surface.mjs'
+import { drawBackground, drawCaption, drawValue, FACE_CENTER, type Tile, type TileHost } from './tile.mjs'
 import type { Action, HomeAssistantService } from '../../types.mjs'
 
 /** How often a running countdown repaints. */
@@ -31,6 +32,7 @@ export interface TimerTileConfig {
 
 export class TimerTile implements Tile {
   private readonly ha: HomeAssistantService
+  private readonly clock: () => number
   private readonly entity: string
   private readonly label: string
   private readonly toggle: Binding
@@ -40,6 +42,7 @@ export class TimerTile implements Tile {
 
   constructor(services: TileServices, { entity, label = 'TIMER', duration = '00:05:00' }: TimerTileConfig) {
     this.ha = services.ha
+    this.clock = services.clock
     this.entity = requireEntity(entity, 'timer tile')
     this.label = label
     this.toggle = createBindings(services).ha('timer_toggle', this.entity, { duration })
@@ -87,13 +90,14 @@ export class TimerTile implements Tile {
     this.tick = null
   }
 
-  draw(surface: Surface, { now }: TileContext): void {
+  draw(surface: Surface): void {
+    const now = this.clock()
     const x = surface.width / 2
     const timer = this.ha.entity(this.entity)
     if (!timer) {
       drawBackground(surface, '#1a1a1a')
       drawRing(surface, x, 1, '#424242')
-      surface.text('--', { x, y: FACE_CENTER, size: 34, color: '#616161' })
+      text(surface, '--', { x, y: FACE_CENTER, size: 34, color: '#616161' })
       drawCaption(surface, this.label)
       return
     }

@@ -8,15 +8,15 @@
 // here from whatever it happens to be bound to. This screen decides only how
 // big each of those is drawn.
 
-import { fittingSize, type Surface } from '../surface.mjs'
+import { fittingSize, verticalGradient, type Surface } from '../surface.mjs'
 import {
   drawStripBar,
   drawStripLine,
   STRIP_MARGIN,
   STRIP_WIDTH,
   type Screen,
-  type ScreenContext,
 } from './screen.mjs'
+import type { Dial } from '../dials/dial.mjs'
 
 /** Readout sizes tried in turn, so `67%` is drawn far larger than `NOT IN USE`. */
 const VALUE_SIZES = [76, 60, 48, 36]
@@ -25,27 +25,41 @@ const LABEL_COLOR = '#80deea'
 /** The dial face is washed the same way a key is, so the strip matches the grid. */
 const BACKDROP = ['#1d2d38', '#101a21'] as const
 
-/** The one dial the strip is showing. Which dial that is comes from the context. */
+/**
+ * The one dial the strip is showing. Which dial that is comes from the strip,
+ * which calls `show` before drawing; the clock is what scrolls an overlong
+ * readout.
+ */
 export class DialScreen implements Screen {
-  draw(surface: Surface, context: ScreenContext): void {
-    surface.fill(surface.verticalGradient(BACKDROP[0], BACKDROP[1]))
-    const dial = context.dial
+  private dial: Dial | undefined
+
+  constructor(private readonly clock: () => number) {}
+
+  /** The strip hands over the dial being turned before it draws. */
+  show(dial: Dial): void {
+    this.dial = dial
+  }
+
+  draw(surface: Surface): void {
+    surface.fill(verticalGradient(surface, BACKDROP[0], BACKDROP[1]))
+    const dial = this.dial
     if (!dial) return
 
-    const value = dial.detail(context)
+    const now = this.clock()
+    const value = dial.detail()
     drawStripLine(surface, dial.label, {
       centerY: 22,
       size: LABEL_SIZE,
       color: LABEL_COLOR,
-      now: context.now,
+      now,
     })
     drawStripLine(surface, value, {
       centerY: 58,
       size: fittingSize(value, VALUE_SIZES, STRIP_WIDTH - STRIP_MARGIN * 2),
-      now: context.now,
+      now,
     })
 
-    const level = dial.level?.(context)
+    const level = dial.level?.()
     if (level !== undefined) drawStripBar(surface, level, { color: '#26c6da', track: '#22333d' })
   }
 }

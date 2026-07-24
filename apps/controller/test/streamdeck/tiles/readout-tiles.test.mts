@@ -9,7 +9,7 @@ import { ClockTile, clockFace } from '../../../src/streamdeck/tiles/clock-tile.m
 import { PageTile } from '../../../src/streamdeck/tiles/page-tile.mjs'
 import { TemperatureTile } from '../../../src/streamdeck/tiles/temperature-tile.mjs'
 import { WeatherTile, conditionName } from '../../../src/streamdeck/tiles/weather-tile.mjs'
-import { eventually, testContext, testHost, testServices, tileFace } from '../../support/fixtures.mjs'
+import { eventually, testHost, testServices, tileFace } from '../../support/fixtures.mjs'
 
 /** A local-time instant, so the clock assertions do not depend on the timezone. */
 const at = (hours: number, minutes: number, seconds = 0): number =>
@@ -21,16 +21,19 @@ test('the clock reads local time and its face moves every second', () => {
   assert.deepEqual(clockFace(at(21, 5), false).time, '9:05')
   assert.deepEqual(clockFace(at(0, 30), false).time, '12:30', 'midnight is 12, not 0')
 
-  const tile = new ClockTile()
-  assert.notDeepEqual(
-    tileFace(tile, testContext(undefined, { now: at(9, 5, 10) })),
-    tileFace(tile, testContext(undefined, { now: at(9, 5, 40) })),
-    'the seconds ring sweeps within the same minute',
-  )
+  const services = testServices()
+  const tile = new ClockTile(services)
+  services.setNow(at(9, 5, 10))
+  const early = tileFace(tile)
+  services.setNow(at(9, 5, 40))
+  assert.notDeepEqual(early, tileFace(tile), 'the seconds ring sweeps within the same minute')
 })
 
 test('a mounted clock repaints itself and stops when it is hidden', async () => {
-  const tile = new ClockTile()
+  const services = testServices()
+  // Just before a second boundary, so the tile's next-second tick fires soon.
+  services.setNow(999)
+  const tile = new ClockTile(services)
   const host = testHost()
   tile.mount(host)
   await eventually(() => host.repaints >= 1)

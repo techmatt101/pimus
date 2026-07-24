@@ -99,8 +99,12 @@
   .cell .v { font-size: 15px; margin-top: 2px; }
   .cell .v.on { color: var(--ok); }
   .cell .v.off { color: var(--dim); }
-  .ring { display: flex; align-items: center; gap: 10px; }
-  .ring .halo { width: 30px; height: 30px; border-radius: 50%; border: 4px solid #222; }
+  .ring { display: flex; align-items: center; gap: 14px; }
+  /* The ReSpeaker's twelve-LED ring, one dot per physical LED laid out around a
+     circle, so the fake shows the same light pattern the device would. */
+  .ledring { position: relative; width: 72px; height: 72px; flex: none; }
+  .led { position: absolute; width: 9px; height: 9px; border-radius: 50%; transform: translate(-50%, -50%); background: #161d26; }
+  .led.on { box-shadow: 0 0 6px currentColor; }
 
   /* --- log --- */
   .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
@@ -178,6 +182,32 @@
 <script>
 const KEY_SIZE = 120
 const LCD = { w: 800, h: 100 }
+// Mirrors LED_COUNT in the controller's types.mts: the ReSpeaker ring has
+// exactly twelve LEDs.
+const LED_COUNT = 12
+
+/**
+ * The respeaker ring as twelve dots around a circle. The Ring effect carries a
+ * colour per LED; every other effect resolves on the device to a single colour
+ * the firmware paints across the whole ring, so each LED shows that. A
+ * direction readout lights its front (top) LED in the highlight colour.
+ */
+function ledRingHtml(led) {
+  const colors = led.colors && led.colors.length ? led.colors : null
+  const dots = Array.from({ length: LED_COUNT }, (_, i) => {
+    const angle = (i / LED_COUNT) * 2 * Math.PI - Math.PI / 2
+    const left = 50 + 44 * Math.cos(angle)
+    const top = 50 + 44 * Math.sin(angle)
+    const color = colors ? (colors[i] || '#000000')
+      : !led.effect || led.effect === 'off' ? '#000000'
+      : (i === 0 && led.accent ? led.accent : (led.color || '#000000'))
+    const lit = color !== '#000000'
+    const paint = lit ? `color:${color};background:${color};` : ''
+    return `<span class="led${lit ? ' on' : ''}" style="left:${left}%;top:${top}%;${paint}"></span>`
+  }).join('')
+  const dim = Math.max(0.4, (led.brightness ?? 255) / 255)
+  return `<span class="ledring" style="opacity:${dim.toFixed(2)}">${dots}</span>`
+}
 
 const post = (body) => fetch('/input', { method: 'POST', body: JSON.stringify(body) })
 
@@ -414,9 +444,7 @@ function renderState(state) {
     <div class="cell" style="grid-column: span 2">
       <div class="k">respeaker ring</div>
       <div class="ring">
-        <span class="halo" style="${led.colors
-          ? `border-color:transparent;background:conic-gradient(${led.colors.join(',')})`
-          : `border-color:${led.color || '#222'};background:${led.accent || 'transparent'}`}"></span>
+        ${ledRingHtml(led)}
         <span class="v">${led.effect || 'off'}<br><span style="font-size:11px;color:var(--dim)">${led.color || ''}</span></span>
       </div>
     </div>`

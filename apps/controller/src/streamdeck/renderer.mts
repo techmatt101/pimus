@@ -11,7 +11,6 @@ import { Surface } from './surface.mjs'
 import {
   KEY_SIZE,
   type Tile,
-  type TileContext,
   type TileHost,
 } from './tiles/tile.mjs'
 import type { ControlModel } from '../state.mjs'
@@ -51,6 +50,14 @@ export class DeckRenderer implements PageNavigator {
   // carries a Skia context that is not worth rebuilding sixty times a second.
   private readonly keySurface = new Surface(KEY_SIZE, KEY_SIZE)
   private readonly stripSurface = new Surface(STRIP_WIDTH, STRIP_HEIGHT)
+  // The clock each paint is stamped with, so a face is handed the milliseconds
+  // since it last drew — its deltaTime — for whatever it animates.
+  private readonly now: () => number = Date.now
+  // When each key and the strip last drew, to derive that delta. A key absent
+  // from the map is drawing for the first time since it was mounted, so its
+  // delta is zero rather than the whole span the deck spent on another page.
+  private readonly lastKeyDrawAt = new Map<number, number>()
+  private lastStripDrawAt = 0
 
   constructor({ layout, model, logger = console }: DeckRendererOptions) {
     this.layout = layout
@@ -171,9 +178,18 @@ export class DeckRenderer implements PageNavigator {
     return this.pageNameAt(0)
   }
 
-  /** Live state passed to each tile so it can pick its face and behaviour. */
-  private context(): TileContext {
-    return { state: this.model.state, audio: this.model.audio, now: Date.now() }
+  /** The milliseconds since a key last drew, stamping it as having drawn at `at`. */
+  private keyDelta(index: number, at: number): number {
+    const last = this.lastKeyDrawAt.get(index)
+    this.lastKeyDrawAt.set(index, at)
+    return last === undefined ? 0 : at - last
+  }
+
+  /** The milliseconds since the strip last drew, stamping it as having drawn at `at`. */
+  private stripDelta(at: number): number {
+    const last = this.lastStripDrawAt
+    this.lastStripDrawAt = at
+    return last === 0 ? 0 : at - last
   }
 
   /**
@@ -185,7 +201,7 @@ export class DeckRenderer implements PageNavigator {
     const page = this.currentPage()
     const tile = page ? tileAt(page.grid, index) : undefined
     if (!tile) return undefined
-    return () => tile.press(this.context())
+    return () => tile.press()
   }
 
   /** Move by whole pages, wrapping around at either end, then repaint. */
@@ -230,6 +246,9 @@ export class DeckRenderer implements PageNavigator {
   private unmountPage(): void {
     for (const tile of this.mounted.values()) tile.unmount?.()
     this.mounted.clear()
+    // The next page's keys draw fresh, so an animated one starts from a zero
+    // delta rather than the whole time this page was up.
+    this.lastKeyDrawAt.clear()
   }
 
   /**
@@ -241,7 +260,7 @@ export class DeckRenderer implements PageNavigator {
     const tile = this.mounted.get(index)
     if (!deck || !tile || this.asleep) return
     try {
-      await deck.fillKeyBuffer(index, this.paintTile(tile, this.context()), FORMAT)
+      await deck.fillKeyBuffer(index, this.paintTile(tile, this.keyDelta(index, this.now())), FORMAT)
     } catch (error) {
       this.logger.error('render failed', error)
     }
@@ -256,7 +275,7 @@ export class DeckRenderer implements PageNavigator {
     const deck = this.deck
     if (!deck || this.asleep) return
     try {
-      await deck.fillLcd(0, this.paintStrip(this.context()), FORMAT)
+      await deck.fillLcd(0, this.paintStrip(this.stripDelta(this.now())), FORMAT)
     } catch (error) {
       this.logger.error('render failed', error)
     }
@@ -273,16 +292,16 @@ export class DeckRenderer implements PageNavigator {
     const deck = this.deck
     if (!deck || this.asleep) return
     try {
-      const context = this.context()
+      const at = this.now()
       const page = this.currentPage()
       // Draw all eight keys: the deck retains its last image, so a blank slot or
       // a tile each has to be painted every time.
       for (let index = 0; index < 8; index += 1) {
         const tile = page ? tileAt(page.grid, index) : undefined
-        await deck.fillKeyBuffer(index, this.paintTile(tile, context), FORMAT)
+        await deck.fillKeyBuffer(index, this.paintTile(tile, this.keyDelta(index, at)), FORMAT)
       }
 
-      await deck.fillLcd(0, this.paintStrip(context), FORMAT)
+      await deck.fillLcd(0, this.paintStrip(this.stripDelta(at)), FORMAT)
     } catch (error) {
       this.logger.error('render failed', error)
     }
@@ -294,15 +313,15 @@ export class DeckRenderer implements PageNavigator {
    * cleared surface — the deck retains its last image, so every key has to be
    * written on every full render.
    */
-  private paintTile(tile: Tile | undefined, context: TileContext): Buffer {
+  private paintTile(tile: Tile | undefined, deltaTime: number): Buffer {
     this.keySurface.reset()
-    tile?.draw(this.keySurface, context)
+    tile?.draw(this.keySurface, deltaTime)
     return this.keySurface.snapshot()
   }
 
-  private paintStrip(context: TileContext): Buffer {
+  private paintStrip(deltaTime: number): Buffer {
     this.stripSurface.reset()
-    this.layout.strip.draw(this.stripSurface, context)
+    this.layout.strip.draw(this.stripSurface, deltaTime)
     return this.stripSurface.snapshot()
   }
 }

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { TimerTile } from '../../../src/streamdeck/tiles/timer-tile.mjs'
-import { eventually, testContext, testHost, testServices, tileFace } from '../../support/fixtures.mjs'
+import { eventually, testHost, testServices, tileFace } from '../../support/fixtures.mjs'
 
 const NOW = Date.parse('2026-07-21T10:00:00Z')
 const RUNNING = {
@@ -38,26 +38,29 @@ test('the countdown is derived from the finish time, not from Home Assistant tic
   services.ha.put('timer.office', RUNNING.state, RUNNING.attributes)
 
   // Home Assistant reports a running timer once and then says nothing, so the
-  // face has to change with `now` alone.
-  const start = tileFace(tile, testContext(undefined, { now: NOW }))
-  const later = tileFace(tile, testContext(undefined, { now: NOW + 60_000 }))
+  // face has to change with the clock alone.
+  services.setNow(NOW)
+  const start = tileFace(tile)
+  services.setNow(NOW + 60_000)
+  const later = tileFace(tile)
   assert.notDeepEqual(start, later, 'the countdown moves between reports')
 
   // A paused timer holds its reading instead of counting down to zero.
   services.ha.put('timer.office', 'paused', { duration: '0:05:00', remaining: '0:03:20' })
-  assert.deepEqual(
-    tileFace(tile, testContext(undefined, { now: NOW })),
-    tileFace(tile, testContext(undefined, { now: NOW + 60_000 })),
-  )
+  services.setNow(NOW)
+  const paused = tileFace(tile)
+  services.setNow(NOW + 60_000)
+  assert.deepEqual(paused, tileFace(tile))
 })
 
 test('an unknown timer draws its own face rather than a zeroed countdown', () => {
   const services = testServices()
   const tile = new TimerTile(services, { entity: 'timer.office' })
 
-  const unknown = tileFace(tile, testContext(undefined, { now: NOW }))
+  services.setNow(NOW)
+  const unknown = tileFace(tile)
   services.ha.put('timer.office', 'idle', { duration: '0:05:00' })
-  const idle = tileFace(tile, testContext(undefined, { now: NOW }))
+  const idle = tileFace(tile)
   assert.notDeepEqual(unknown, idle)
 })
 

@@ -10,7 +10,7 @@
 import { requireEntity } from '../../actions/catalog.mjs'
 import { createBindings, type Binding, type TileServices } from '../bindings.mjs'
 import { drawLabelFace, FACE_CENTER, type Tile, type TileHost } from './tile.mjs'
-import type { Surface } from '../surface.mjs'
+import { icon, type Surface } from '../surface.mjs'
 import type { Action, HomeAssistantService } from '../../types.mjs'
 
 export interface PlaylistTileConfig {
@@ -60,7 +60,7 @@ export class PlaylistTile implements Tile {
   draw(surface: Surface): void {
     const playing = this.ha.entity(this.player)?.state === 'playing'
     drawLabelFace(surface, playing ? this.config.color ?? '#00695c' : '#0d2622', this.config.label)
-    surface.icon('note', {
+    icon(surface, 'note', {
       x: surface.width / 2,
       y: FACE_CENTER,
       size: 54,

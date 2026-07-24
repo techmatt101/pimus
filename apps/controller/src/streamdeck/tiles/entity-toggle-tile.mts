@@ -18,14 +18,13 @@ import { createBindings, type Binding, type TileServices } from '../bindings.mjs
 import type { Dial } from '../dials/dial.mjs'
 import { DynamicDial } from '../dials/dynamic-dial.mjs'
 import { EntityDial } from '../dials/entity-dial.mjs'
-import { withAlpha, type Surface } from '../surface.mjs'
+import { bar, icon, radialGradient, withAlpha, type Surface } from '../surface.mjs'
 import {
   drawBackground,
   drawCaption,
   drawLabelFace,
   FACE_CENTER,
   type Tile,
-  type TileContext,
   type TileHost,
 } from './tile.mjs'
 import type { IconName } from '../icon-set.mjs'
@@ -41,10 +40,11 @@ export interface EntityToggleTileConfig {
   offColor?: string
   /**
    * Turns clockwise to draw the icon at, for a device whose icon should be
-   * moving while it runs — the ceiling fan. Derive it from `now` and give an
-   * `animationMilliseconds` to keep it turning.
+   * moving while it runs — the ceiling fan. Derive it from `phase`, the
+   * milliseconds the animation has been running (accumulated from each draw's
+   * deltaTime), and give an `animationMilliseconds` to keep it turning.
    */
-  spin?(entity: HomeAssistantEntity | undefined, now: number): number
+  spin?(entity: HomeAssistantEntity | undefined, phase: number): number
   /**
    * A 0..1 reading to show as a bar under the icon, for a device that is not
    * merely on or off: how far the blinds are down, how bright the lights are.
@@ -85,6 +85,9 @@ export class EntityToggleTile implements Tile {
   private host: TileHost | null = null
   private unwatch: (() => void) | null = null
   private animation: NodeJS.Timeout | null = null
+  // The spin's phase in milliseconds, accumulated from each draw's deltaTime so
+  // the icon turns by real elapsed time rather than being read off a clock.
+  private phase = 0
 
   constructor(services: TileServices, config: EntityToggleTileConfig) {
     this.ha = services.ha
@@ -133,6 +136,8 @@ export class EntityToggleTile implements Tile {
 
   private startAnimation(interval: number): void {
     if (this.animation) return
+    // Start turning from upright rather than wherever the last run left off.
+    this.phase = 0
     this.animation = setInterval(() => this.host?.invalidate(), interval)
     // An animation must not keep the daemon alive on shutdown.
     this.animation.unref()
@@ -143,16 +148,17 @@ export class EntityToggleTile implements Tile {
     this.animation = null
   }
 
-  draw(surface: Surface, { now }: TileContext): void {
-    const { label, icon, onColor = '#1b5e20', offColor = '#12281a' } = this.config
+  draw(surface: Surface, deltaTime: number): void {
+    const { label, icon: iconName, onColor = '#1b5e20', offColor = '#12281a' } = this.config
     const entity = this.ha.entity(this.entity)
     const on = isEntityOn(entity)
-    const spin = this.config.spin?.(entity, now) ?? 0
+    this.phase += deltaTime
+    const spin = this.config.spin?.(entity, this.phase) ?? 0
     const x = surface.width / 2
 
     if (on === undefined) {
       drawLabelFace(surface, UNKNOWN_COLOR, `${label} ?`)
-      surface.icon(icon, { x, y: FACE_CENTER, size: ICON_SIZE, color: UNKNOWN_ICON, rotate: spin })
+      icon(surface, iconName, { x, y: FACE_CENTER, size: ICON_SIZE, color: UNKNOWN_ICON, rotate: spin })
       this.drawHolding(surface)
       return
     }
@@ -163,9 +169,9 @@ export class EntityToggleTile implements Tile {
     // A lit key gets a glow behind its icon, so on and off differ by more than
     // a shade of the same background when glanced at from across the room.
     if (on) {
-      surface.fill(surface.radialGradient(x, FACE_CENTER, 58, withAlpha('#ffffff', 0.16), withAlpha('#ffffff', 0)))
+      surface.fill(radialGradient(surface, x, FACE_CENTER, 58, withAlpha('#ffffff', 0.16), withAlpha('#ffffff', 0)))
     }
-    surface.icon(icon, {
+    icon(surface, iconName, {
       x,
       y: FACE_CENTER,
       size: ICON_SIZE,
@@ -175,7 +181,7 @@ export class EntityToggleTile implements Tile {
 
     const level = this.config.level?.(entity)
     if (level !== undefined) {
-      surface.bar(level, {
+      bar(surface, level, {
         x: x - LEVEL_WIDTH / 2,
         y: LEVEL_Y,
         width: LEVEL_WIDTH,
