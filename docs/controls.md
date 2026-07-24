@@ -382,6 +382,12 @@ Music Assistant player); a tap that misses them falls through to the dial in tha
 zone, exactly as before. There is nothing to act on while the strip is idle, so
 the buttons are hidden and those taps fall through too.
 
+A tapped button flashes — it lights and fades over about a fifth of a second —
+so a press is acknowledged rather than only its result. This is as close to a
+held "pressing" state as the strip allows: its LCD reports a tap only once the
+finger lifts (there is no finger-down event for it), so the flash begins on
+release rather than on touch.
+
 What is playing comes from the Music Assistant player entity — Home Assistant is
 the only thing that knows a title — so a deployment with no token shows
 `NO MEDIA INFO` rather than pretending the room is quiet.

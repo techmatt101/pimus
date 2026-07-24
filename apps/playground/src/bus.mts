@@ -42,9 +42,8 @@ export interface PlaygroundSnapshot {
     sources: Record<string, boolean | undefined>
     ducked: boolean
     led: { effect?: string; color?: string; accent?: string; colors?: string[]; brightness?: number } | null
+    /** Whether the real Home Assistant WebSocket is connected and authenticated. */
     homeAssistant: boolean
-    /** The entities the Home Assistant tiles read, for the browser panel. */
-    entities: Record<string, { state: string; attributes: Record<string, unknown> }>
 }
 
 export type Message =

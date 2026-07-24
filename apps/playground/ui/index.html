@@ -503,13 +503,11 @@
                 <button data-fault="plug">plug deck back in</button>
                 <button data-fault="drop-lva" class="danger">drop voice socket</button>
                 <button data-fault="drop-audio" class="danger">drop audio socket</button>
-                <button data-fault="drop-ha" class="danger">toggle Home Assistant</button>
                 <label class="check"><input type="checkbox" id="simulate" checked> simulate pipeline</label>
             </div>
 
-            <h2 style="margin-top:14px">Home Assistant</h2>
-            <div class="row" id="house"></div>
-            <div class="state" id="entities" style="margin-top:10px"></div>
+            <h2 style="margin-top:14px">Notifications</h2>
+            <div class="row" id="notify"></div>
         </section>
 
         <section>
@@ -669,7 +667,6 @@
             const fault = button.dataset.fault
             if (fault === 'unplug') post({kind: 'deck', plugged: false})
             else if (fault === 'plug') post({kind: 'deck', plugged: true})
-            else if (fault === 'drop-ha') post({kind: 'drop-ha'})
             else post({kind: 'drop', target: fault === 'drop-lva' ? 'lva' : 'audio'})
         })
     })
@@ -677,42 +674,13 @@
         post({kind: 'simulate', enabled: event.target.checked})
     })
 
-    // --- the house ---------------------------------------------------------------
-    // These change entities from "somewhere else", the way the Home Assistant app
-    // or an automation would, so the keys can be seen following state they did not
-    // set themselves.
-
-    const houseEl = document.getElementById('house')
-    const HOUSE = [
-        ['fan on', {entity: 'fan.office_ceiling', state: 'on'}],
-        ['fan off', {entity: 'fan.office_ceiling', state: 'off'}],
-        ['blinds open', {entity: 'cover.office_blinds', state: 'open'}],
-        ['blinds shut', {entity: 'cover.office_blinds', state: 'closed'}],
-        ['pc on', {entity: 'switch.office_pc', state: 'on'}],
-        ['pc off', {entity: 'switch.office_pc', state: 'off'}],
-        ['playing', {entity: 'media_player.office_amp', state: 'playing'}],
-        ['paused', {entity: 'media_player.office_amp', state: 'paused'}],
-        ['warmer', {entity: 'sensor.office_temperature', state: '26.8'}],
-        ['colder', {entity: 'sensor.office_temperature', state: '14.2'}],
-        // The panel sleeps a few seconds after the room empties, and lights the
-        // moment somebody is back — or when a key is pressed in the dark.
-        ['leave room', {entity: 'binary_sensor.office_presence', state: 'off'}],
-        ['enter room', {entity: 'binary_sensor.office_presence', state: 'on'}],
-    ]
-    for (const [label, payload] of HOUSE) {
-        const button = document.createElement('button')
-        button.textContent = label
-        button.addEventListener('click', () => post({kind: 'entity', ...payload}))
-        houseEl.append(button)
-    }
-    const weather = document.createElement('button')
-    weather.textContent = 'next weather'
-    weather.addEventListener('click', () => post({kind: 'weather'}))
-    houseEl.append(weather)
-
-    // Notifications an automation pushes to the strip. Each fires the same
-    // `smartamp_notify` event a real automation would; tap the strip to acknowledge
-    // one, or watch its time bar drain.
+    // --- notifications -----------------------------------------------------------
+    // The strip's notification path, driven from the browser. Each button stands
+    // in for an automation firing `smartamp_notify`: the payload reaches the same
+    // queue the real event listener feeds. Tap the strip to acknowledge one, or
+    // watch its time bar drain. Everything else on the deck follows the real Home
+    // Assistant the credentials point at.
+    const notifyEl = document.getElementById('notify')
     const NOTIFY = [
         ['someone at the door', {
             title: 'front door',
@@ -727,44 +695,7 @@
         const button = document.createElement('button')
         button.textContent = label
         button.addEventListener('click', () => post({kind: 'notify', data}))
-        houseEl.append(button)
-    }
-
-    // A different track, so the strip is seen changing what it rests on.
-    const track = document.createElement('button')
-    track.textContent = 'next track'
-    const TRACKS = [
-        {media_title: 'Teardrop', media_artist: 'Massive Attack', media_duration: 330},
-        {media_title: 'Everything In Its Right Place', media_artist: 'Radiohead', media_duration: 251},
-        {media_title: 'Windowlicker (Original Extended Mix)', media_artist: 'Aphex Twin', media_duration: 366},
-    ]
-    let trackIndex = 0
-    track.addEventListener('click', () => {
-        trackIndex = (trackIndex + 1) % TRACKS.length
-        post({
-            kind: 'entity',
-            entity: 'media_player.office_amp',
-            state: 'playing',
-            attributes: {...TRACKS[trackIndex], media_position: 0, media_position_updated_at: new Date().toISOString()},
-        })
-    })
-    houseEl.append(track)
-
-    const entitiesEl = document.getElementById('entities')
-
-    function renderEntities(entities) {
-        const rows = Object.entries(entities || {})
-        if (!rows.length) {
-            entitiesEl.innerHTML = '<div class="cell" style="grid-column: span 2"><div class="k">entities</div>'
-                + '<div class="v off">Home Assistant unreachable</div></div>'
-            return
-        }
-        entitiesEl.innerHTML = rows
-            // Scenes carry no readable state; the light they set is the visible part.
-            .filter(([id]) => !id.startsWith('scene.'))
-            .map(([id, entity]) => `<div class="cell"><div class="k">${id.split('.')[1]}</div>`
-                + `<div class="v">${entity.state}</div></div>`)
-            .join('')
+        notifyEl.append(button)
     }
 
     // --- state panel -------------------------------------------------------------
@@ -784,7 +715,6 @@
         for (const [id, live] of [['deck', state.deckAttached], ['lva', state.lvaConnected], ['audio', state.audioConnected]]) {
             document.getElementById(`pill-${id}`).classList.toggle('on', Boolean(live))
         }
-        renderEntities(state.entities)
         const led = state.led || {}
         const sources = Object.entries(state.sources || {})
             .map(([name, on]) => `<div class="cell"><div class="k">route ${name}</div>${flag(on)}</div>`).join('')

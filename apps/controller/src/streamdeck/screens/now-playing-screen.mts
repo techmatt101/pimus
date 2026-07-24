@@ -31,6 +31,7 @@ import {
     STRIP_MARGIN,
     STRIP_WIDTH,
 } from './screen.mjs'
+import type {IconName} from '../icon-set.mjs'
 import type {HomeAssistantEntity, HomeAssistantService} from '../../types.mjs'
 
 /** Title sizes tried in turn, so a short title is drawn large. */
@@ -50,6 +51,18 @@ const PLAY_CENTER = (PLAY_ZONE_LEFT + STRIP_WIDTH) / 2
 const SHUFFLE_CENTER = (SHUFFLE_ZONE_LEFT + PLAY_ZONE_LEFT) / 2
 /** Text stops short of the buttons, with a little breathing room before them. */
 const TEXT_AVAILABLE = SHUFFLE_ZONE_LEFT - 16 - STRIP_MARGIN
+
+// The strip's LCD only reports a tap once the finger lifts (there is no
+// finger-down event for it), so a held "pressing" state is not something the
+// hardware can tell us. This is the next best thing: the button that was tapped
+// glows for a moment and fades, so a press is acknowledged rather than only its
+// result. The flash is derived from the clock so drawing stays a pure function
+// of it, exactly as the scroll and position bar are.
+const FLASH_MILLISECONDS = 200
+const FLASH_FRAME_MILLISECONDS = 30
+const FLASH_PEAK = 0.24
+const PRESSED_ICON = '#ffffff'
+type Button = 'play' | 'shuffle'
 
 /** The resting strip is washed rather than flat, like the key faces. */
 const BACKDROP = ['#16222b', '#0b1116'] as const
@@ -100,7 +113,13 @@ export class NowPlayingScreen implements Screen {
     readonly #player: string
     readonly #playPause: Binding
     readonly #shuffle: Binding
+    #host: ScreenHost | null = null
     #unwatch: (() => void) | null = null
+    // Which button was last tapped and when, so its press flash can be drawn and
+    // faded from the clock. Held as an instant, not a countdown, for the same
+    // reason the dial hold and scroll offset are.
+    #pressed: Button | null = null
+    #pressedAt = 0
 
     constructor(services: TileServices, {player}: NowPlayingOptions) {
         this.#ha = services.ha
@@ -115,12 +134,14 @@ export class NowPlayingScreen implements Screen {
     }
 
     mount(host: ScreenHost): void {
+        this.#host = host
         this.#unwatch = this.#ha.watch([this.#player], () => host.invalidate())
     }
 
     unmount(): void {
         this.#unwatch?.()
         this.#unwatch = null
+        this.#host = null
     }
 
     /**
@@ -130,6 +151,9 @@ export class NowPlayingScreen implements Screen {
      * move when something unrelated repainted the deck.
      */
     animationMilliseconds(): number | undefined {
+        // A fading press flash wins: it is the fastest thing on the face and only
+        // runs for its brief window.
+        if (this.#flashing()) return FLASH_FRAME_MILLISECONDS
         const player = this.#ha.entity(this.#player)
         const {title, idle} = nowPlayingLines(player, this.#ha.connected)
         if (idle) return undefined
@@ -143,14 +167,35 @@ export class NowPlayingScreen implements Screen {
     /**
      * The right edge carries the two buttons; a tap over one runs it, and a tap
      * anywhere else is left for the dial beneath. There is nothing to run while
-     * the strip is idle, so those taps fall through too.
+     * the strip is idle, so those taps fall through too. A hit also lights the
+     * button's press flash, which is the closest the LCD lets us get to showing a
+     * finger on it — the hardware only reports the tap once the finger lifts.
      */
     pressAt(x: number): (() => unknown) | undefined {
         const {idle} = nowPlayingLines(this.#ha.entity(this.#player), this.#ha.connected)
         if (idle) return undefined
-        if (x >= PLAY_ZONE_LEFT) return () => this.#playPause.run()
-        if (x >= SHUFFLE_ZONE_LEFT) return () => this.#shuffle.run()
+        if (x >= PLAY_ZONE_LEFT) return this.#press('play', this.#playPause)
+        if (x >= SHUFFLE_ZONE_LEFT) return this.#press('shuffle', this.#shuffle)
         return undefined
+    }
+
+    /** Light the button's flash now, and hand back the thunk that runs it. */
+    #press(button: Button, binding: Binding): () => unknown {
+        this.#pressed = button
+        this.#pressedAt = this.#clock()
+        this.#host?.invalidate()
+        return () => binding.run()
+    }
+
+    /** How lit the press flash is (1..0), or 0 once it has faded. */
+    #flash(): number {
+        const elapsed = this.#clock() - this.#pressedAt
+        if (this.#pressed === null || elapsed >= FLASH_MILLISECONDS) return 0
+        return 1 - elapsed / FLASH_MILLISECONDS
+    }
+
+    #flashing(): boolean {
+        return this.#flash() > 0
     }
 
     draw(surface: Surface): void {
@@ -203,18 +248,29 @@ export class NowPlayingScreen implements Screen {
 
     /** The play/pause and shuffle glyphs at the right edge, each lit by its state. */
     #drawButtons(surface: Surface, playing: boolean, shuffled: boolean): void {
-        drawIcon(surface, playing ? 'pause' : 'play', {
-            x: PLAY_CENTER,
-            y: BUTTON_Y,
-            size: BUTTON_ICON,
-            color: playing ? PLAY_ON : PLAY_OFF,
-        })
-        drawIcon(surface, 'shuffle', {
-            x: SHUFFLE_CENTER,
-            y: BUTTON_Y,
-            size: BUTTON_ICON,
-            color: shuffled ? SHUFFLE_ON : SHUFFLE_OFF,
-        })
+        const flash = this.#flash()
+        const play = {icon: (playing ? 'pause' : 'play') as IconName, color: playing ? PLAY_ON : PLAY_OFF}
+        this.#drawButton(surface, PLAY_ZONE_LEFT, PLAY_CENTER, play.icon, play.color, this.#pressed === 'play' ? flash : 0)
+        this.#drawButton(surface, SHUFFLE_ZONE_LEFT, SHUFFLE_CENTER, 'shuffle', shuffled ? SHUFFLE_ON : SHUFFLE_OFF, this.#pressed === 'shuffle' ? flash : 0)
+    }
+
+    /**
+     * One transport glyph, over a rounded highlight while its press flash is
+     * fading. The glyph goes full white at the peak of the flash, so a tap reads
+     * even where the button's resting colour is already bright.
+     */
+    #drawButton(surface: Surface, zoneLeft: number, center: number, icon: IconName, color: string, flash: number): void {
+        if (flash > 0) {
+            const {ctx} = surface
+            ctx.save()
+            ctx.globalAlpha = flash * FLASH_PEAK
+            ctx.fillStyle = '#ffffff'
+            ctx.beginPath()
+            ctx.roundRect(zoneLeft + 10, BUTTON_Y - 34, PLAY_ZONE_LEFT - SHUFFLE_ZONE_LEFT - 20, 68, 14)
+            ctx.fill()
+            ctx.restore()
+        }
+        drawIcon(surface, icon, {x: center, y: BUTTON_Y, size: BUTTON_ICON, color: flash > 0 ? PRESSED_ICON : color})
     }
 }
 

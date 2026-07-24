@@ -33,10 +33,7 @@ export type PlaygroundInput =
     | { kind: 'event'; event: string; data?: Record<string, unknown> }
     | { kind: 'deck'; plugged: boolean }
     | { kind: 'drop'; target: 'lva' | 'audio' }
-    | { kind: 'entity'; entity: string; state: string; attributes?: Record<string, unknown> }
-    | { kind: 'weather' }
     | { kind: 'notify'; data?: Record<string, unknown> }
-    | { kind: 'drop-ha' }
     | { kind: 'simulate'; enabled: boolean }
 
 export interface PlaygroundServerOptions {

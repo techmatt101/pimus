@@ -24,6 +24,11 @@ import {drawActiveGlow, drawDots, drawLabelFace, FACE_CENTER, type Tile, type Ti
 import {drawIcon, type Surface} from '../surface.mjs'
 import type {HomeAssistantEntity, HomeAssistantService} from '../../types.mjs'
 
+export interface PlaylistTileConfig {
+    player: string,
+    playlists: readonly PlaylistChoice[],
+}
+
 /** One entry in the key's list: a label to show and what to play. */
 export interface PlaylistChoice extends SelectionOption {
     /** Service data for `media_player.play_media`. */
@@ -53,14 +58,13 @@ export class PlaylistTile implements Tile {
     constructor(
         ha: HomeAssistantService,
         dial: DynamicDial,
-        player: string,
-        playlists: readonly PlaylistChoice[],
+        config: PlaylistTileConfig,
     ) {
         this.#ha = ha
         this.#dial = dial
-        this.#player = requireEntity(player, `${TITLE} playlist tile`)
-        this.#playlists = playlists
-        this.#selection = new SelectionDial(TITLE, playlists, {
+        this.#player = requireEntity(config.player, `${TITLE} playlist tile`)
+        this.#playlists = config.playlists
+        this.#selection = new SelectionDial(TITLE, config.playlists, {
             onConfirm: () => this.#confirm(),
             // A turn moves the pick with no device call, so only this key's own face
             // (its caption and dot) is stale; the strip repaints on the turn itself.
