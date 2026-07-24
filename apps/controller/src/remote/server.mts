@@ -32,7 +32,7 @@ import {type RawData, type WebSocket, WebSocketServer} from 'ws'
 
 import type {RemoteTileFace, RemoteTileFeed} from '../types.mjs'
 
-/** The REMOTE page's capacity: the six named slots of a PageGrid. */
+/** The REMOTE page's capacity: the six key slots it fills on a PageGrid. */
 export const REMOTE_SLOT_COUNT = 6
 
 /** A frame ceiling generous enough for a 120x120 PNG, far under a real photo. */

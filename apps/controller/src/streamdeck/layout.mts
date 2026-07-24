@@ -44,7 +44,7 @@ import {DynamicDial} from './dials/dynamic-dial.mjs'
 import {MediaDial} from './dials/media-dial.mjs'
 import {PageDial} from './dials/page-dial.mjs'
 import {VolumeDial} from './dials/volume-dial.mjs'
-import type {StreamDeckLayout, StreamDeckPage} from './grid.mjs'
+import type {PageGrid, StreamDeckLayout, StreamDeckPage} from './grid.mjs'
 import {IdleScreen} from './screens/idle-screen.mjs'
 import {NowPlayingScreen} from './screens/now-playing-screen.mjs'
 import {TouchStrip} from './strip.mjs'
@@ -181,115 +181,116 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
     // and opens without the deck needing a dial for each.
     const dynamic = new DynamicDial(model)
 
-    // Each page is a fixed grid of eight named slots; an omitted slot renders
-    // blank. Every tile keeps its grid position across pages, so adding a page
-    // never reshuffles the keys already placed. A slot can hold any Tile: a plain
-    // `key(...)` or a dynamic one that draws its own face from live state, such as
-    // MediaTile, TimerTile, or WeatherTile. The third dial pages between them.
+    // Each page is a 2x4 grid laid out like the panel: the top row of four keys,
+    // then the bottom, with `null` for a blank slot. Every tile keeps its grid
+    // position across pages, so adding a page never reshuffles the keys already
+    // placed. A cell holds any Tile: a plain `key(...)` or a dynamic one that draws
+    // its own face from live state, such as TimerTile. The third dial pages between
+    // them.
+
+    // Everything you reach for while music is playing or you are talking to the
+    // house. Play/pause and shuffle are not keys: they live on the now-playing
+    // strip beside the track they act on (streamdeck/screens/now-playing-screen.mts).
+    const mainGrid: PageGrid = [
+        [
+            new VoiceTile(model, lva),
+            // One key for several playlists: press to arm, turn the dynamic dial to
+            // pick, press again to play. It claims the shared dial exactly as the
+            // room keys do, so the same knob that dims the lights picks a playlist.
+            new PlaylistTile(ha, dynamic, {player: HA.player, playlists: HA.playlists}),
+            new EntityToggleTile(ha, {
+                label: 'PC',
+                entity: HA.pc,
+                icon: 'computer',
+                onColor: '#283593',
+                offColor: '#151a30',
+            }),
+            new TimerTile(ha, clock, {entity: HA.timer, duration: TIMER_DURATION}),
+        ],
+        [
+            new SceneTile(ha, {scenes: HA.scenes}),
+            new EntityToggleTile(ha, {
+                label: 'FAN',
+                entity: HA.fan,
+                icon: 'fan',
+                onColor: '#00695c',
+                offColor: '#0d2320',
+                // A turning fan needs a moving angle; the tile accumulates the elapsed
+                // time it has been running and hands it here as `phase`, so one full
+                // turn is 1200ms of real time however often the key repaints.
+                spin: (_entity, phase) => (phase % 1200) / 1200,
+                animationMilliseconds: 100,
+                dial: dynamic,
+            }),
+            new EntityToggleTile(ha, {
+                label: 'BLINDS',
+                entity: HA.blinds,
+                icon: 'blinds',
+                onColor: '#455a64',
+                offColor: '#1c2429',
+                // A bar under the glyph carries how far the blind is still shut, so
+                // the key tracks the dial rather than only reading open or closed. A
+                // cover reporting no position falls back to fully raised or down.
+                level: (entity) => 1 - (numericAttribute(entity, 'current_position') ?? (isEntityOn(entity) ? 80 : 0)) / 100,
+                dial: dynamic,
+            }),
+            new EntityToggleTile(ha, {
+                label: 'LIGHTS',
+                entity: HA.lights,
+                icon: 'bulb',
+                onColor: '#6b5200',
+                offColor: '#1e1a0c',
+                dial: dynamic,
+            }),
+        ],
+    ]
+
+
+    // A glanceable page: the top row changes nothing when pressed. The two audio
+    // route keys share the bottom row.
+    const infoGrid: PageGrid = [
+        [
+            key('MIC', '#7f0000', voice('mute_toggle')),
+            new TemperatureTile(ha, {label: 'OFFICE', entity: HA.temperature}),
+            null,
+            // Panel brightness sits on the quiet page: a setting you go looking for
+            // rather than reach for, like the stop key below it.
+            new BrightnessTile(model),
+        ],
+        [
+            key('STOP', '#b71c1c', voice('stop')),
+            key('AUX', '#4a148c', route('aux', 'toggle')),
+            key('USB', '#0d47a1', route('usb', 'toggle')),
+            null,
+        ],
+    ]
+
+    // Six sockets for another computer to fill over the remote-tile server
+    // (remote/server.mts): a client pushes a face onto a slot and gets the presses
+    // back. The page exists only when the feature is configured — unlike the Home
+    // Assistant keys there is no unknown state to show, just slots nothing could
+    // ever fill.
+    const remoteGrid: PageGrid | null = remote
+        ? [
+            [
+                new RemoteTile(remote, {slot: 0}),
+                new RemoteTile(remote, {slot: 1}),
+                new RemoteTile(remote, {slot: 2}),
+                new RemoteTile(remote, {slot: 3}),
+            ],
+            [
+                null,
+                new RemoteTile(remote, {slot: 4}),
+                new RemoteTile(remote, {slot: 5}),
+                null,
+            ],
+        ]
+        : null
+
     const pages: StreamDeckPage[] = [
-        {
-            // Everything you reach for while music is playing or you are talking to
-            // the house.
-            name: 'MAIN',
-            grid: {
-                topMidRight: new EntityToggleTile(ha, {
-                    label: 'PC',
-                    entity: HA.pc,
-                    icon: 'computer',
-                    onColor: '#283593',
-                    offColor: '#151a30',
-                }),
-                topRight: new TimerTile(ha, clock, {entity: HA.timer, duration: TIMER_DURATION}),
-
-                topLeft: new VoiceTile(model, lva),
-                // Play/pause and shuffle are not keys: they live on the now-playing
-                // strip beside the track they act on (streamdeck/screens/now-playing-screen.mts).
-                // One key for several playlists: press to arm, turn the dynamic dial
-                // to pick, press again to play. It claims the shared dial exactly as
-                // the room keys do, so the same knob that dims the lights picks a
-                // playlist while this key glows.
-                topMidLeft: new PlaylistTile(ha, dynamic, { player: HA.player, playlists: HA.playlists }),
-            },
-        },
-        {
-            // The room itself: lights, the things that move, and the desk PC.
-            name: 'ROOM',
-            grid: {
-                topLeft: new SceneTile(ha, {scenes: HA.scenes}),
-                // The three keys that also drive the dynamic dial: pressing one flips
-                // it and hands the dial its entity, so the knob is always pointed at
-                // whatever you last touched.
-                topMidLeft: new EntityToggleTile(ha, {
-                    label: 'FAN',
-                    entity: HA.fan,
-                    icon: 'fan',
-                    onColor: '#00695c',
-                    offColor: '#0d2320',
-                    // A turning fan needs a moving angle; the tile accumulates the elapsed
-                    // time it has been running and hands it here as `phase`, so one full
-                    // turn is 1200ms of real time however often the key repaints.
-                    spin: (_entity, phase) => (phase % 1200) / 1200,
-                    animationMilliseconds: 100,
-                    dial: dynamic,
-                }),
-                topMidRight: new EntityToggleTile(ha, {
-                    label: 'BLINDS',
-                    entity: HA.blinds,
-                    icon: 'blinds',
-                    onColor: '#455a64',
-                    offColor: '#1c2429',
-                    // A bar under the glyph carries how far the blind is still shut, so
-                    // the key tracks the dial rather than only reading open or closed. A
-                    // cover reporting no position falls back to fully raised or down.
-                    level: (entity) => 1 - (numericAttribute(entity, 'current_position') ?? (isEntityOn(entity) ? 80 : 0)) / 100,
-                    dial: dynamic,
-                }),
-                bottomMidRight: new EntityToggleTile(ha, {
-                    label: 'LIGHTS',
-                    entity: HA.lights,
-                    icon: 'bulb',
-                    onColor: '#6b5200',
-                    offColor: '#1e1a0c',
-                    dial: dynamic,
-                }),
-            },
-        },
-        {
-            // A glanceable page: the top row changes nothing when pressed.
-            name: 'INFO',
-            grid: {
-                topMidLeft: new TemperatureTile(ha, {label: 'OFFICE', entity: HA.temperature}),
-                // Panel brightness sits on the quiet page: a setting you go looking for
-                // rather than reach for, like the stop key below it.
-                topRight: new BrightnessTile(model),
-                bottomLeft: key('STOP', '#b71c1c', voice('stop')),
-                topLeft: key('MIC', '#7f0000', voice('mute_toggle')),
-
-                // The playlist shortcut lives here rather than on MAIN so the two audio
-                // route keys can share the bottom row there.
-
-                bottomMidLeft: key('AUX', '#4a148c', route('aux', 'toggle')),
-                bottomMidRight: key('USB', '#0d47a1', route('usb', 'toggle')),
-            },
-        },
-        // Six sockets for another computer to fill over the remote-tile server
-        // (remote/server.mts): a client pushes a face onto a slot and gets the
-        // presses back. The page exists only when the feature is configured —
-        // unlike the Home Assistant keys there is no unknown state to show, just
-        // slots nothing could ever fill.
-        ...(remote
-            ? [{
-                name: 'REMOTE',
-                grid: {
-                    topLeft: new RemoteTile(remote, {slot: 0}),
-                    topMidLeft: new RemoteTile(remote, {slot: 1}),
-                    topMidRight: new RemoteTile(remote, {slot: 2}),
-                    topRight: new RemoteTile(remote, {slot: 3}),
-                    bottomMidLeft: new RemoteTile(remote, {slot: 4}),
-                    bottomMidRight: new RemoteTile(remote, {slot: 5}),
-                },
-            }]
-            : []),
+        {name: 'MAIN', grid: mainGrid},
+        {name: 'INFO', grid: infoGrid},
+        ...(remoteGrid ? [{name: 'REMOTE', grid: remoteGrid}] : []),
     ]
 
     // Four dials, left to right. Volume and media are fixed, because a knob you

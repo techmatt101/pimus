@@ -38,18 +38,18 @@ it to move between pages — so every one of the eight keys is free to carry a
 page's tiles:
 
 ```text
-[ topLeft    ][ topMidLeft    ][ topMidRight    ][ topRight    ]
-[ bottomLeft ][ bottomMidLeft ][ bottomMidRight ][ bottomRight ]
+[ 0 ][ 1 ][ 2 ][ 3 ]
+[ 4 ][ 5 ][ 6 ][ 7 ]
 ```
 
-A page is a fixed grid of named slots, not a list — you read where each tile
-sits directly. The page dial reads out the name of the page you land on, and
-paging wraps around at either end. Because the dials keep their bindings on
-every page, volume and transport are always one turn away whichever page is
-showing — including the dial claimed on the ROOM page, which stays claimed while
-you look at something else. Tiles keep the same grid positions across pages —
-adding a page never reshuffles the keys already placed. Any slot may be left
-out; it renders blank.
+A page is a 2×4 array laid out like the panel — the top row of four keys, then
+the bottom — so you read where each tile sits directly. The page dial reads out
+the name of the page you land on, and paging wraps around at either end. Because
+the dials keep their bindings on every page, volume and transport are always one
+turn away whichever page is showing — including the dial claimed on the ROOM
+page, which stays claimed while you look at something else. Tiles keep the same
+grid positions across pages — adding a page never reshuffles the keys already
+placed. Any cell may be `null`; it renders blank.
 
 ## Tiles
 
@@ -533,13 +533,13 @@ clears when the key is pressed, and raises a strip banner in reply.
 
 Edit `apps/controller/src/streamdeck/layout.mts`, then `make deploy-controller`.
 The layout is built by `createLayout(services)` and its `pages` and `dials` are
-ordinary TypeScript. Place a tile in a page slot with
+ordinary TypeScript. Place a tile in a grid cell with
 `key('LABEL', '#colour', binding)`, or drop in a dynamic tile such as
-`new MediaTile(services)`. Add a page by adding another `{ name, grid }` entry
-to `pages`; each page's `grid` has the eight named slots (`topLeft`,
-`topMidLeft`, `topMidRight`, `topRight`, `bottomLeft`, `bottomMidLeft`,
-`bottomMidRight`, `bottomRight`), and its short `name` is what the page dial
-reads out.
+`new TimerTile(ha, clock, {…})` — each tile is handed only the domain services
+it uses, not a bag of all of them. Add a page by adding another `{ name, grid }`
+entry to `pages`; each page's `grid` is a 2×4 array (the top row of four keys,
+then the bottom, with `null` for a blank cell), and its short `name` is what the
+page dial reads out.
 
 ## Adding a new action
 
