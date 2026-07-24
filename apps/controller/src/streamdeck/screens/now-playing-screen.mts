@@ -8,11 +8,19 @@
 // Assistant. The screen watches that one entity while mounted, exactly as a tile
 // does, so the strip keeps working on pages where no key happens to watch the
 // player.
+//
+// The resting face is not only a readout: its right edge carries a play/pause
+// and a shuffle button, so the transport lives where the track is named rather
+// than needing its own keys. Those are the two controls that used to be a
+// dedicated key; the buttons both set and reflect their state, drawn from the
+// same player entity the rest of the face reads. Tapping the strip over one runs
+// it (streamdeck/strip.mts hands the resting screen the tap first); a tap that
+// misses them falls through to the dial in that zone.
 
 import {requireEntity} from '../../actions/catalog.mjs'
+import {type Binding, createBindings, type TileServices} from '../bindings.mjs'
 import {mediaElapsedSeconds, numericAttribute} from '../../home-assistant/entity.mjs'
-import type {TileServices} from '../bindings.mjs'
-import {fittingSize, REGULAR, type Surface, verticalGradient} from '../surface.mjs'
+import {drawIcon, fittingSize, REGULAR, type Surface, verticalGradient} from '../surface.mjs'
 import {
     drawStripBar,
     drawStripLine,
@@ -28,10 +36,20 @@ import type {HomeAssistantEntity, HomeAssistantService} from '../../types.mjs'
 /** Title sizes tried in turn, so a short title is drawn large. */
 const TITLE_SIZES = [56, 46, 36]
 const SECONDARY_SIZE = 24
-/** The width a title has to fit before it starts scrolling. */
-const TITLE_AVAILABLE = STRIP_WIDTH - STRIP_MARGIN * 2
 /** How often the position bar creeps forward while a track plays. */
 const POSITION_FRAME_MILLISECONDS = 1000
+
+// The two transport buttons occupy the right edge; each is a full-height tap
+// zone so the target is easy to hit blind. The text region is everything to
+// their left, which is the width a title has to fit before it starts scrolling.
+const BUTTON_ICON = 44
+const BUTTON_Y = 44
+const PLAY_ZONE_LEFT = STRIP_WIDTH - 96
+const SHUFFLE_ZONE_LEFT = PLAY_ZONE_LEFT - 96
+const PLAY_CENTER = (PLAY_ZONE_LEFT + STRIP_WIDTH) / 2
+const SHUFFLE_CENTER = (SHUFFLE_ZONE_LEFT + PLAY_ZONE_LEFT) / 2
+/** Text stops short of the buttons, with a little breathing room before them. */
+const TEXT_AVAILABLE = SHUFFLE_ZONE_LEFT - 16 - STRIP_MARGIN
 
 /** The resting strip is washed rather than flat, like the key faces. */
 const BACKDROP = ['#16222b', '#0b1116'] as const
@@ -40,6 +58,12 @@ const PLAYING_TITLE = '#ffffff'
 const PAUSED_TITLE = '#78909c'
 const SECONDARY = '#80deea'
 const IDLE = '#546e7a'
+/** Play/pause glyph: lit while playing, muted while paused. */
+const PLAY_ON = '#26c6da'
+const PLAY_OFF = '#78909c'
+/** Shuffle glyph: lit when shuffling, dim when the queue plays straight. */
+const SHUFFLE_ON = '#80deea'
+const SHUFFLE_OFF = '#37474f'
 
 export interface NowPlayingOptions {
     /** The `media_player.` entity whose track the strip reports. */
@@ -50,7 +74,8 @@ export interface NowPlayingOptions {
  * The two lines the strip shows for a player: what is playing, and who by.
  * Derived separately from the drawing so the wording is testable and so the
  * three cases the strip must tell apart — playing something, playing nothing,
- * and not knowing — stay explicit.
+ * and not knowing — stay explicit. `idle` is also what gates the transport
+ * buttons: there is nothing to pause or shuffle without a track.
  */
 export function nowPlayingLines(
     player: HomeAssistantEntity | undefined,
@@ -65,25 +90,28 @@ export function nowPlayingLines(
 
     const artist = text(player.attributes.media_artist) || text(player.attributes.media_album_artist)
     const album = text(player.attributes.media_album_name)
-    const by = [artist, album].filter(Boolean).join(' - ')
-    const paused = player.state !== 'playing'
-    return {
-        title,
-        secondary: paused ? ['PAUSED', by].filter(Boolean).join(' - ') : by,
-        idle: false,
-    }
+    // Paused is carried by the dimmed title and the play glyph, not by a word.
+    return {title, secondary: [artist, album].filter(Boolean).join(' - '), idle: false}
 }
 
 export class NowPlayingScreen implements Screen {
     readonly #ha: HomeAssistantService
     readonly #clock: () => number
     readonly #player: string
+    readonly #playPause: Binding
+    readonly #shuffle: Binding
     #unwatch: (() => void) | null = null
 
     constructor(services: TileServices, {player}: NowPlayingOptions) {
         this.#ha = services.ha
         this.#clock = services.clock
         this.#player = requireEntity(player, 'now playing screen')
+        const {voice, ha} = createBindings(services)
+        // Play/pause goes through LVA exactly as the media dial's press does, so the
+        // strip button and the knob toggle the same playback; shuffle lives on the
+        // Music Assistant player, which is the only place a queue exists.
+        this.#playPause = voice('media_toggle')
+        this.#shuffle = ha('media_shuffle', this.#player)
     }
 
     mount(host: ScreenHost): void {
@@ -105,9 +133,24 @@ export class NowPlayingScreen implements Screen {
         const player = this.#ha.entity(this.#player)
         const {title, idle} = nowPlayingLines(player, this.#ha.connected)
         if (idle) return undefined
-        if (overflows(title, fittingSize(title, TITLE_SIZES, TITLE_AVAILABLE))) return SCROLL_FRAME_MILLISECONDS
+        if (overflows(title, fittingSize(title, TITLE_SIZES, TEXT_AVAILABLE), TEXT_AVAILABLE)) {
+            return SCROLL_FRAME_MILLISECONDS
+        }
         const playing = player?.state === 'playing'
         return playing && hasPosition(player) ? POSITION_FRAME_MILLISECONDS : undefined
+    }
+
+    /**
+     * The right edge carries the two buttons; a tap over one runs it, and a tap
+     * anywhere else is left for the dial beneath. There is nothing to run while
+     * the strip is idle, so those taps fall through too.
+     */
+    pressAt(x: number): (() => unknown) | undefined {
+        const {idle} = nowPlayingLines(this.#ha.entity(this.#player), this.#ha.connected)
+        if (idle) return undefined
+        if (x >= PLAY_ZONE_LEFT) return () => this.#playPause.run()
+        if (x >= SHUFFLE_ZONE_LEFT) return () => this.#shuffle.run()
+        return undefined
     }
 
     draw(surface: Surface): void {
@@ -122,10 +165,15 @@ export class NowPlayingScreen implements Screen {
         }
 
         const playing = player?.state === 'playing'
+        // Title and credit both left-aligned and bounded to the text region, so
+        // they sit under a steady left edge and only ever scroll past the buttons,
+        // never over them.
         drawStripLine(surface, title, {
             centerY: secondary ? 36 : 46,
-            size: fittingSize(title, TITLE_SIZES, TITLE_AVAILABLE),
+            size: fittingSize(title, TITLE_SIZES, TEXT_AVAILABLE),
             color: playing ? PLAYING_TITLE : PAUSED_TITLE,
+            left: STRIP_MARGIN,
+            width: TEXT_AVAILABLE,
             now,
         })
         if (secondary) {
@@ -136,9 +184,13 @@ export class NowPlayingScreen implements Screen {
                 size: SECONDARY_SIZE,
                 color: SECONDARY,
                 weight: REGULAR,
+                left: STRIP_MARGIN,
+                width: TEXT_AVAILABLE,
                 now,
             })
         }
+
+        this.#drawButtons(surface, playing, Boolean(player?.attributes.shuffle))
 
         // A position bar only where the player reports one; Music Assistant does for
         // a track and does not for a live stream.
@@ -147,6 +199,22 @@ export class NowPlayingScreen implements Screen {
         if (hasPosition(player) && duration && elapsed !== undefined) {
             drawStripBar(surface, elapsed / duration, {color: playing ? '#26c6da' : '#37474f'})
         }
+    }
+
+    /** The play/pause and shuffle glyphs at the right edge, each lit by its state. */
+    #drawButtons(surface: Surface, playing: boolean, shuffled: boolean): void {
+        drawIcon(surface, playing ? 'pause' : 'play', {
+            x: PLAY_CENTER,
+            y: BUTTON_Y,
+            size: BUTTON_ICON,
+            color: playing ? PLAY_ON : PLAY_OFF,
+        })
+        drawIcon(surface, 'shuffle', {
+            x: SHUFFLE_CENTER,
+            y: BUTTON_Y,
+            size: BUTTON_ICON,
+            color: shuffled ? SHUFFLE_ON : SHUFFLE_OFF,
+        })
     }
 }
 

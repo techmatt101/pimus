@@ -76,7 +76,6 @@ central dispatcher:
 | `MediaTile`        | Play/pause. Draws the play or pause glyph from the playback state, and the glyph breathes while playing.                                                                                                                                                                                                                                                       |
 | `VoiceTile`        | Start Assist, or cancel the pipeline already running. Expanding rings while one is live.                                                                                                                                                                                                                                                                       |
 | `BrightnessTile`   | Steps the Stream Deck panel's own brightness through a few levels, showing the current percentage. Mutates display state on the model; the renderer re-lights the panel.                                                                                                                                                                                       |
-| `ShuffleTile`      | Shuffle on the media player, set from and reflecting what Home Assistant reports.                                                                                                                                                                                                                                                                              |
 | `PlaylistTile`     | Picks and plays one of a short list of playlists. Press to arm (the key glows and claims the dynamic dial), turn the dynamic dial to choose, press again — the key or the knob — to confirm. A single playlist is just press-then-confirm. The armed state releases itself after 15s, when another dial is turned, or when a different key claims the dial.        |
 | `SceneTile`        | Steps through a short list of scenes, showing the one it last applied.                                                                                                                                                                                                                                                                                         |
 | `EntityToggleTile` | The general Home Assistant on/off key — lights, fan, blinds, PC. Its service comes from the entity's own domain, and it takes an icon plus an optional `spin` (the fan turns while it runs) and `level` (how far the blinds are down), so the four are one class configured four ways. Given the dynamic dial it also hands that dial its entity when pressed. |
@@ -360,7 +359,7 @@ in this order:
 |--------------|----------------------------------------------------|---------------------------------------------------------------------|
 | Dial readout | For 2.5 s after a dial was last turned or pressed, or the whole time a key is mid-pick on the shared dial | The dial's name, its readout, and a bar for a dial with a level     |
 | Notification | While a message pushed from Home Assistant is live | Its heading and message on its own colour, with a draining time bar |
-| Now playing  | Otherwise                                          | Track title, artist and album, and a position bar                   |
+| Now playing  | Otherwise                                          | Track title and credit (left-aligned, scrolling only when too long), a play/pause and a shuffle button at the right edge, and a position bar |
 
 A hand on a knob wins over a live notification — feedback you cannot see while
 turning is no feedback — and the notification comes back when the hold expires.
@@ -369,10 +368,19 @@ Each screen is a class in `streamdeck/screens/`, the strip's equivalent of a
 tile: it paints the whole 800×100 face and may run the same `mount`/`unmount`
 lifecycle, watching an entity and asking for animation frames. `NowPlayingScreen`
 watches the media player entity itself, so the strip keeps working on pages where
-no key happens to watch it. A title too wide for the strip is drawn smaller, and
-scrolls once even the smallest size will not fit; a playing track repaints once a
-second so its position bar creeps forward, since Music Assistant reports a
-position once and then says nothing.
+no key happens to watch it. The title and credit are left-aligned; a title too
+wide for the text region is drawn smaller, and scrolls once even the smallest
+size will not fit; a playing track repaints once a second so its position bar
+creeps forward, since Music Assistant reports a position once and then says
+nothing.
+
+The right edge of the now-playing face carries two buttons — play/pause and
+shuffle — each of which both reflects and sets its state: the play glyph is lit
+while playing, the shuffle glyph while the queue is shuffled. Tapping the strip
+over a button runs it (play/pause through LVA like the media dial, shuffle on the
+Music Assistant player); a tap that misses them falls through to the dial in that
+zone, exactly as before. There is nothing to act on while the strip is idle, so
+the buttons are hidden and those taps fall through too.
 
 What is playing comes from the Music Assistant player entity — Home Assistant is
 the only thing that knows a title — so a deployment with no token shows

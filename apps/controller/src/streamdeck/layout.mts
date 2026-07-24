@@ -53,7 +53,6 @@ import {EntityToggleTile} from './tiles/entity-toggle-tile.mjs'
 import {PlaylistTile} from './tiles/playlist-tile.mjs'
 import {RemoteTile} from './tiles/remote-tile.mjs'
 import {SceneTile} from './tiles/scene-tile.mjs'
-import {ShuffleTile} from './tiles/shuffle-tile.mjs'
 import {TemperatureTile} from './tiles/temperature-tile.mjs'
 import {TimerTile} from './tiles/timer-tile.mjs'
 import {WeatherTile} from './tiles/weather-tile.mjs'
@@ -161,7 +160,8 @@ export function createLayout(services: TileServices): StreamDeckLayout {
                 topRight: new TimerTile(services, {entity: HA.timer, duration: TIMER_DURATION}),
 
                 bottomLeft: new VoiceTile(services),
-                bottomMidLeft: new ShuffleTile(services, HA.player),
+                // Play/pause and shuffle are not keys: they live on the now-playing
+                // strip beside the track they act on (streamdeck/screens/now-playing-screen.mts).
                 // One key for several playlists: press to arm, turn the dynamic dial
                 // to pick, press again to play. It claims the shared dial exactly as
                 // the room keys do, so the same knob that dims the lights picks a

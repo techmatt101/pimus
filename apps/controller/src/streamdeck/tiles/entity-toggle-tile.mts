@@ -16,7 +16,7 @@ import {requireEntity} from '../../actions/catalog.mjs'
 import {isEntityOn} from '../../home-assistant/entity.mjs'
 import {type Binding, createBindings, type TileServices} from '../bindings.mjs'
 import {DynamicDial} from '../dials/dynamic-dial.mjs'
-import {bar, icon, radialGradient, type Surface, withAlpha} from '../surface.mjs'
+import {drawBar, drawIcon, drawRadialGradient, type Surface, withAlpha} from '../surface.mjs'
 import {drawBackground, drawCaption, drawLabelFace, FACE_CENTER, type Tile, type TileHost,} from '../tile.mjs'
 import type {IconName} from '../icon-set.mjs'
 import type {Action, HomeAssistantEntity, HomeAssistantService} from '../../types.mjs'
@@ -152,7 +152,7 @@ export class EntityToggleTile implements Tile {
 
         if (on === undefined) {
             drawLabelFace(surface, UNKNOWN_COLOR, `${label} ?`)
-            icon(surface, iconName, {x, y: FACE_CENTER, size: ICON_SIZE, color: UNKNOWN_ICON, rotate: spin})
+            drawIcon(surface, iconName, {x, y: FACE_CENTER, size: ICON_SIZE, color: UNKNOWN_ICON, rotate: spin})
             this.#drawHolding(surface)
             return
         }
@@ -163,9 +163,9 @@ export class EntityToggleTile implements Tile {
         // A lit key gets a glow behind its icon, so on and off differ by more than
         // a shade of the same background when glanced at from across the room.
         if (on) {
-            surface.fill(radialGradient(surface, x, FACE_CENTER, 58, withAlpha('#ffffff', 0.16), withAlpha('#ffffff', 0)))
+            surface.fill(drawRadialGradient(surface, x, FACE_CENTER, 58, withAlpha('#ffffff', 0.16), withAlpha('#ffffff', 0)))
         }
-        icon(surface, iconName, {
+        drawIcon(surface, iconName, {
             x,
             y: FACE_CENTER,
             size: ICON_SIZE,
@@ -175,7 +175,7 @@ export class EntityToggleTile implements Tile {
 
         const level = this.#config.level?.(entity)
         if (level !== undefined) {
-            bar(surface, level, {
+            drawBar(surface, level, {
                 x: x - LEVEL_WIDTH / 2,
                 y: LEVEL_Y,
                 width: LEVEL_WIDTH,

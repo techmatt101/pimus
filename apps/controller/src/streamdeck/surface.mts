@@ -282,7 +282,7 @@ export function drawBar(surface: Surface, fraction: number, options: BarOptions)
 }
 
 /** Draw `paint` clipped to a rectangle, for revealing part of a face. */
-export function darwClipped(
+export function drawClipped(
     surface: Surface,
     x: number,
     y: number,

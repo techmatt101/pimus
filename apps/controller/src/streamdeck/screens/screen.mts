@@ -7,7 +7,7 @@
 // across the whole width, and a dial being turned or a notification arriving
 // takes the width over for as long as it is relevant.
 
-import {drawBar, BOLD, measureText, type Surface, drawText} from '../surface.mjs'
+import {drawBar, BOLD, drawClipped, measureText, type Surface, drawText} from '../surface.mjs'
 
 /** The touch strip's pixel size, shared by every screen that draws on it. */
 export const STRIP_WIDTH = 800
@@ -51,6 +51,15 @@ export interface Screen {
 
     /** Called when the deck disconnects. */
     unmount?(): void
+
+    /**
+     * A tap at strip x-coordinate `x` while this screen is the one showing.
+     * Returns a thunk to run — a control on the face the tap landed on, such as
+     * the now-playing play/pause and shuffle buttons — or undefined to let the
+     * strip fall back to the dial in that zone. Returning a thunk rather than
+     * acting keeps presses in physical order through the deck's dispatch queue.
+     */
+    pressAt?(x: number): (() => unknown) | undefined
 }
 
 export interface StripLineOptions {
@@ -63,6 +72,13 @@ export interface StripLineOptions {
     margin?: number
     /** Left-align rather than centre, for a line that shares a row with something else. */
     left?: number
+    /**
+     * The width the line has before it scrolls; a line narrower than this sits
+     * still, a wider one slides and is clipped to this region. Defaults to the
+     * strip between its margins, so a line sharing its row with something on the
+     * right (the now-playing buttons) passes the width it may actually use.
+     */
+    width?: number
     opacity?: number
     weight?: number
 }
@@ -74,37 +90,40 @@ export interface StripLineOptions {
  * ask for animation frames.
  */
 export function drawStripLine(surface: Surface, value: string, options: StripLineOptions): boolean {
-    const {centerY, size, color = '#ffffff', now = 0, margin = STRIP_MARGIN, left, opacity, weight = BOLD} = options
-    const available = surface.width - margin - (left ?? margin)
+    const {centerY, size, color = '#ffffff', now = 0, margin = STRIP_MARGIN, left, width, opacity, weight = BOLD} = options
+    const start = left ?? margin
+    const available = width ?? surface.width - margin - start
     // Measured at the weight it will be drawn in, or a lighter line would be
     // judged to overflow — and scroll — at a width it actually fits.
-    const width = measureText(value, size, weight)
+    const measured = measureText(value, size, weight)
     const line = {y: centerY, size, color, opacity, weight, align: 'left' as const}
 
-    if (width <= available) {
-        const x = left ?? Math.round((surface.width - width) / 2)
+    if (measured <= available) {
+        const x = left ?? Math.round((surface.width - measured) / 2)
         drawText(surface, value, {...line, x})
         return false
     }
 
     // The line and one repeat of it slide together, so the text runs continuously
-    // instead of restarting from an empty strip every cycle. Anything outside the
-    // strip is clipped by the surface, so both copies are simply drawn.
-    const cycle = width + SCROLL_GAP
+    // instead of restarting from an empty region every cycle. Clipped to its own
+    // region so a scrolling title never runs under whatever shares its row.
+    const cycle = measured + SCROLL_GAP
     const offset = ((now / 1000) * SCROLL_PIXELS_PER_SECOND) % cycle
-    const start = (left ?? margin) - offset
-    drawText(surface, value, {...line, x: start})
-    drawText(surface, value, {...line, x: start + cycle})
+    const origin = start - offset
+    drawClipped(surface, start, centerY - size, available, size * 2, () => {
+        drawText(surface, value, {...line, x: origin})
+        drawText(surface, value, {...line, x: origin + cycle})
+    })
     return true
 }
 
 /**
- * Whether `value` is too wide for the strip and would therefore scroll. A
+ * Whether `value` is too wide for `available` and would therefore scroll. A
  * screen asks this to decide whether it needs animation frames, without having
  * to paint a face to find out.
  */
-export function overflows(value: string, size: number, margin = STRIP_MARGIN): boolean {
-    return measureText(value, size) > STRIP_WIDTH - margin * 2
+export function overflows(value: string, size: number, available = STRIP_WIDTH - STRIP_MARGIN * 2): boolean {
+    return measureText(value, size) > available
 }
 
 /**

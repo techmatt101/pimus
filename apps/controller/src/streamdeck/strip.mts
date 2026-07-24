@@ -124,6 +124,13 @@ export class TouchStrip {
             this.#host?.invalidate()
             return undefined
         }
+        // While the resting face is the one up, its own controls (the now-playing
+        // play/pause and shuffle buttons) claim the tap before the dial beneath
+        // them does; a tap that misses them falls through to the dial zone.
+        if (!this.#pinnedDial() && now >= this.#dialUntil) {
+            const hit = this.#resting.pressAt?.(x)
+            if (hit) return hit
+        }
         const index = Math.max(0, Math.min(this.#dials.length - 1, Math.floor(x / ZONE_WIDTH)))
         this.showDial(index, now)
         const press = this.#dials[index]?.press
