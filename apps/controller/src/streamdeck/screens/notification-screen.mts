@@ -7,15 +7,9 @@
 // laundry, and drains a bar as its time runs out so it is obvious the strip is
 // about to go back to what is playing rather than having got stuck.
 
-import { fittingSize, lighten, verticalGradient, type Surface } from '../surface.mjs'
-import {
-  drawStripBar,
-  drawStripLine,
-  STRIP_MARGIN,
-  STRIP_WIDTH,
-  type Screen,
-} from './screen.mjs'
-import type { Notification } from '../../types.mjs'
+import {fittingSize, lighten, type Surface, verticalGradient} from '../surface.mjs'
+import {drawStripBar, drawStripLine, type Screen, STRIP_MARGIN, STRIP_WIDTH,} from './screen.mjs'
+import type {Notification} from '../../types.mjs'
 
 /** Message sizes tried in turn; a long message scrolls at the smallest. */
 const MESSAGE_SIZES = [56, 46, 36]
@@ -30,47 +24,48 @@ const DRAIN_FRAME_MILLISECONDS = 250
  * scrolls an overlong message.
  */
 export class NotificationScreen implements Screen {
-  private notification: Notification | undefined
+    private notification: Notification | undefined
 
-  constructor(private readonly clock: () => number) {}
-
-  /** The strip hands over the live message before it draws, or clears it. */
-  show(notification: Notification | undefined): void {
-    this.notification = notification
-  }
-
-  animationMilliseconds(): number | undefined {
-    return this.notification ? DRAIN_FRAME_MILLISECONDS : undefined
-  }
-
-  draw(surface: Surface): void {
-    const notification = this.notification
-    if (!notification) {
-      surface.fill('#101820')
-      return
+    constructor(private readonly clock: () => number) {
     }
 
-    const now = this.clock()
-    const { title, message, color } = notification
-    // Lit from the top like a key face, so a banner arriving reads as the strip
-    // lighting up rather than as a flat colour swap.
-    surface.fill(verticalGradient(surface, lighten(color, 0.22), color))
-
-    if (title) {
-      drawStripLine(surface, title, { centerY: 24, size: TITLE_SIZE, color: TITLE_COLOR, now })
+    /** The strip hands over the live message before it draws, or clears it. */
+    show(notification: Notification | undefined): void {
+        this.notification = notification
     }
-    drawStripLine(surface, message, {
-      centerY: title ? 58 : 46,
-      size: fittingSize(message, MESSAGE_SIZES, STRIP_WIDTH - STRIP_MARGIN * 2),
-      now,
-    })
 
-    // Time bar: full when it arrives, empty as it hands the strip back. Its
-    // track is the banner colour, so only the time left is drawn.
-    const total = Math.max(1, notification.expiresAt - notification.shownAt)
-    drawStripBar(surface, (notification.expiresAt - now) / total, {
-      color: TITLE_COLOR,
-      track: color,
-    })
-  }
+    animationMilliseconds(): number | undefined {
+        return this.notification ? DRAIN_FRAME_MILLISECONDS : undefined
+    }
+
+    draw(surface: Surface): void {
+        const notification = this.notification
+        if (!notification) {
+            surface.fill('#101820')
+            return
+        }
+
+        const now = this.clock()
+        const {title, message, color} = notification
+        // Lit from the top like a key face, so a banner arriving reads as the strip
+        // lighting up rather than as a flat colour swap.
+        surface.fill(verticalGradient(surface, lighten(color, 0.22), color))
+
+        if (title) {
+            drawStripLine(surface, title, {centerY: 24, size: TITLE_SIZE, color: TITLE_COLOR, now})
+        }
+        drawStripLine(surface, message, {
+            centerY: title ? 58 : 46,
+            size: fittingSize(message, MESSAGE_SIZES, STRIP_WIDTH - STRIP_MARGIN * 2),
+            now,
+        })
+
+        // Time bar: full when it arrives, empty as it hands the strip back. Its
+        // track is the banner colour, so only the time left is drawn.
+        const total = Math.max(1, notification.expiresAt - notification.shownAt)
+        drawStripBar(surface, (notification.expiresAt - now) / total, {
+            color: TITLE_COLOR,
+            track: color,
+        })
+    }
 }

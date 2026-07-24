@@ -1,439 +1,794 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pimus controller playground</title>
-<style>
-  :root {
-    --bg: #0b0e14;
-    --panel: #121822;
-    --panel-2: #0e131b;
-    --line: #1f2a38;
-    --text: #c9d4e2;
-    --dim: #6b7c93;
-    --accent: #4fd1e5;
-    --ok: #34d399;
-    --bad: #f87171;
-    /* Replaced at startup with 1 / devicePixelRatio. */
-    --deck-scale: 1;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--text);
-    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  }
-  header {
-    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-    padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel-2);
-  }
-  header h1 { font-size: 14px; margin: 0; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
-  .pills { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
-  .pill {
-    display: flex; align-items: center; gap: 6px;
-    padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--dim);
-  }
-  .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--bad); }
-  .pill.on { color: var(--text); }
-  .pill.on .dot { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Pimus controller playground</title>
+    <style>
+        :root {
+            --bg: #0b0e14;
+            --panel: #121822;
+            --panel-2: #0e131b;
+            --line: #1f2a38;
+            --text: #c9d4e2;
+            --dim: #6b7c93;
+            --accent: #4fd1e5;
+            --ok: #34d399;
+            --bad: #f87171;
+            /* Replaced at startup with 1 / devicePixelRatio. */
+            --deck-scale: 1;
+        }
 
-  /* The left column is sized by the deck, which is drawn at a fixed pixel size
-     and so cannot be narrowed. */
-  main { display: grid; grid-template-columns: min-content minmax(360px, 1fr); gap: 18px; padding: 18px 20px; align-items: start; }
-  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
-  /* On a wide screen the two columns fill the window and scroll on their own,
-     so the log always ends at the bottom edge instead of running off it. */
-  @media (min-width: 1101px) {
-    main { height: calc(100vh - 58px); }
-    main > div { height: 100%; min-height: 0; }
-    main > div:first-child { overflow-y: auto; }
-    main > div:last-child { display: flex; flex-direction: column; }
-    main > div:last-child > section:last-child { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  }
+        * {
+            box-sizing: border-box;
+        }
 
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
-  section + section { margin-top: 16px; }
-  h2 { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); margin: 0 0 12px; font-weight: 600; }
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        }
 
-  /* --- deck ---
-     The canvases hold the panel's own pixels — 120x120 keys and an 800x100
-     strip — and `--deck-scale` shrinks their CSS box to 1 / devicePixelRatio, so
-     one deck pixel lands on exactly one physical pixel of this display. Nothing
-     is resampled: the frames look the size and sharpness they do on the deck.
-     `pixelated` only covers the odd display whose ratio is not a whole number. */
-  .deck { width: calc(800px * var(--deck-scale) + 28px); background: #05070a; border-radius: 12px; padding: 14px; border: 1px solid #1a222d; }
-  /* An asleep panel: the deck is still attached and still listening, its
-     display is simply switched off because the room is empty. */
-  .deck .keys, .deck .lcd { transition: opacity 200ms ease; }
-  .deck.asleep .keys, .deck.asleep .lcd { opacity: 0.04; }
-  .keys { display: grid; grid-template-columns: repeat(4, calc(120px * var(--deck-scale))); gap: calc(12px * var(--deck-scale)); justify-content: center; }
-  .key { position: relative; width: calc(120px * var(--deck-scale)); height: calc(120px * var(--deck-scale)); border: 0; padding: 0; background: #000; border-radius: 8px; overflow: hidden; cursor: pointer; outline: 1px solid #1a222d; }
-  .key canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
-  .key:active { transform: translateY(1px); }
-  .key .idx { position: absolute; top: 2px; left: 4px; font-size: 9px; color: rgba(255,255,255,.35); pointer-events: none; }
-  .lcd { width: calc(800px * var(--deck-scale)); margin: 12px auto 0; border-radius: 6px; overflow: hidden; outline: 1px solid #1a222d; cursor: pointer; }
-  .lcd canvas { width: 100%; height: calc(100px * var(--deck-scale)); display: block; image-rendering: pixelated; }
-  .dials { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 12px; }
-  .dial { display: flex; align-items: center; justify-content: center; gap: 6px; }
-  .dial button { background: #151d28; color: var(--text); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; font: inherit; padding: 4px 7px; }
-  .dial button.knob { border-radius: 50%; width: 34px; height: 34px; padding: 0; background: radial-gradient(circle at 35% 30%, #2b3646, #10161e); }
-  .dial button:hover { border-color: var(--accent); color: var(--accent); }
-  .unplugged { text-align: center; color: var(--dim); padding: 6px 0 0; font-size: 11px; }
+        header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            padding: 12px 20px;
+            border-bottom: 1px solid var(--line);
+            background: var(--panel-2);
+        }
 
-  /* --- controls --- */
-  .row { display: flex; flex-wrap: wrap; gap: 6px; }
-  .row button, .toolbar button {
-    background: #151d28; color: var(--text); border: 1px solid var(--line);
-    border-radius: 6px; padding: 4px 9px; font: inherit; cursor: pointer;
-  }
-  .row button:hover, .toolbar button:hover { border-color: var(--accent); color: var(--accent); }
-  .row button.danger:hover { border-color: var(--bad); color: var(--bad); }
-  label.check { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); cursor: pointer; }
+        header h1 {
+            font-size: 14px;
+            margin: 0;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: var(--accent);
+        }
 
-  /* --- state --- */
-  .state { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
-  .cell { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
-  .cell .k { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
-  .cell .v { font-size: 15px; margin-top: 2px; }
-  .cell .v.on { color: var(--ok); }
-  .cell .v.off { color: var(--dim); }
-  .ring { display: flex; align-items: center; gap: 14px; }
-  /* The ReSpeaker's twelve-LED ring, one dot per physical LED laid out around a
-     circle, so the fake shows the same light pattern the device would. */
-  .ledring { position: relative; width: 72px; height: 72px; flex: none; }
-  .led { position: absolute; width: 9px; height: 9px; border-radius: 50%; transform: translate(-50%, -50%); background: #161d26; }
-  .led.on { box-shadow: 0 0 6px currentColor; }
+        .pills {
+            display: flex;
+            gap: 8px;
+            margin-left: auto;
+            flex-wrap: wrap;
+        }
 
-  /* --- log --- */
-  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
-  .toolbar input { flex: 1; background: var(--panel-2); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 4px 8px; font: inherit; }
-  #log { flex: 1; min-height: 260px; overflow-y: auto; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
-  .line { display: grid; grid-template-columns: 8ch 7ch 1ch 1fr; gap: 8px; padding: 1px 0; white-space: pre-wrap; word-break: break-word; }
-  .line .t { color: #3f4d5f; white-space: nowrap; }
-  .line .c { text-transform: uppercase; font-size: 11px; }
-  .line .a { color: var(--dim); text-align: center; }
-  .line .m .detail { color: var(--dim); }
-  .c-system { color: #94a3b8; } .c-deck { color: #7dd3fc; } .c-tile { color: #a3e635; }
-  .c-lva { color: #c084fc; } .c-voice { color: #d8b4fe; } .c-audio { color: #34d399; }
-  .c-wpctl { color: #fbbf24; } .c-led { color: #f472b6; } .c-duck { color: #fb923c; }
-</style>
+        .pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 10px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            color: var(--dim);
+        }
+
+        .pill .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--bad);
+        }
+
+        .pill.on {
+            color: var(--text);
+        }
+
+        .pill.on .dot {
+            background: var(--ok);
+            box-shadow: 0 0 8px var(--ok);
+        }
+
+        /* The left column is sized by the deck, which is drawn at a fixed pixel size
+           and so cannot be narrowed. */
+        main {
+            display: grid;
+            grid-template-columns: min-content minmax(360px, 1fr);
+            gap: 18px;
+            padding: 18px 20px;
+            align-items: start;
+        }
+
+        @media (max-width: 1100px) {
+            main {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* On a wide screen the two columns fill the window and scroll on their own,
+           so the log always ends at the bottom edge instead of running off it. */
+        @media (min-width: 1101px) {
+            main {
+                height: calc(100vh - 58px);
+            }
+
+            main > div {
+                height: 100%;
+                min-height: 0;
+            }
+
+            main > div:first-child {
+                overflow-y: auto;
+            }
+
+            main > div:last-child {
+                display: flex;
+                flex-direction: column;
+            }
+
+            main > div:last-child > section:last-child {
+                flex: 1;
+                min-height: 0;
+                display: flex;
+                flex-direction: column;
+            }
+        }
+
+        section {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 14px;
+        }
+
+        section + section {
+            margin-top: 16px;
+        }
+
+        h2 {
+            font-size: 11px;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+            color: var(--dim);
+            margin: 0 0 12px;
+            font-weight: 600;
+        }
+
+        /* --- deck ---
+           The canvases hold the panel's own pixels — 120x120 keys and an 800x100
+           strip — and `--deck-scale` shrinks their CSS box to 1 / devicePixelRatio, so
+           one deck pixel lands on exactly one physical pixel of this display. Nothing
+           is resampled: the frames look the size and sharpness they do on the deck.
+           `pixelated` only covers the odd display whose ratio is not a whole number. */
+        .deck {
+            width: calc(800px * var(--deck-scale) + 28px);
+            background: #05070a;
+            border-radius: 12px;
+            padding: 14px;
+            border: 1px solid #1a222d;
+        }
+
+        /* An asleep panel: the deck is still attached and still listening, its
+           display is simply switched off because the room is empty. */
+        .deck .keys, .deck .lcd {
+            transition: opacity 200ms ease;
+        }
+
+        .deck.asleep .keys, .deck.asleep .lcd {
+            opacity: 0.04;
+        }
+
+        .keys {
+            display: grid;
+            grid-template-columns: repeat(4, calc(120px * var(--deck-scale)));
+            gap: calc(12px * var(--deck-scale));
+            justify-content: center;
+        }
+
+        .key {
+            position: relative;
+            width: calc(120px * var(--deck-scale));
+            height: calc(120px * var(--deck-scale));
+            border: 0;
+            padding: 0;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: pointer;
+            outline: 1px solid #1a222d;
+        }
+
+        .key canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            image-rendering: pixelated;
+        }
+
+        .key:active {
+            transform: translateY(1px);
+        }
+
+        .key .idx {
+            position: absolute;
+            top: 2px;
+            left: 4px;
+            font-size: 9px;
+            color: rgba(255, 255, 255, .35);
+            pointer-events: none;
+        }
+
+        .lcd {
+            width: calc(800px * var(--deck-scale));
+            margin: 12px auto 0;
+            border-radius: 6px;
+            overflow: hidden;
+            outline: 1px solid #1a222d;
+            cursor: pointer;
+        }
+
+        .lcd canvas {
+            width: 100%;
+            height: calc(100px * var(--deck-scale));
+            display: block;
+            image-rendering: pixelated;
+        }
+
+        .dials {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .dial {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .dial button {
+            background: #151d28;
+            color: var(--text);
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            cursor: pointer;
+            font: inherit;
+            padding: 4px 7px;
+        }
+
+        .dial button.knob {
+            border-radius: 50%;
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            background: radial-gradient(circle at 35% 30%, #2b3646, #10161e);
+        }
+
+        .dial button:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .unplugged {
+            text-align: center;
+            color: var(--dim);
+            padding: 6px 0 0;
+            font-size: 11px;
+        }
+
+        /* --- controls --- */
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .row button, .toolbar button {
+            background: #151d28;
+            color: var(--text);
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            padding: 4px 9px;
+            font: inherit;
+            cursor: pointer;
+        }
+
+        .row button:hover, .toolbar button:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .row button.danger:hover {
+            border-color: var(--bad);
+            color: var(--bad);
+        }
+
+        label.check {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--dim);
+            cursor: pointer;
+        }
+
+        /* --- state --- */
+        .state {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 10px;
+        }
+
+        .cell {
+            background: var(--panel-2);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 8px 10px;
+        }
+
+        .cell .k {
+            font-size: 10px;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            color: var(--dim);
+        }
+
+        .cell .v {
+            font-size: 15px;
+            margin-top: 2px;
+        }
+
+        .cell .v.on {
+            color: var(--ok);
+        }
+
+        .cell .v.off {
+            color: var(--dim);
+        }
+
+        .ring {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        /* The ReSpeaker's twelve-LED ring, one dot per physical LED laid out around a
+           circle, so the fake shows the same light pattern the device would. */
+        .ledring {
+            position: relative;
+            width: 72px;
+            height: 72px;
+            flex: none;
+        }
+
+        .led {
+            position: absolute;
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            background: #161d26;
+        }
+
+        .led.on {
+            box-shadow: 0 0 6px currentColor;
+        }
+
+        /* --- log --- */
+        .toolbar {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .toolbar input {
+            flex: 1;
+            background: var(--panel-2);
+            border: 1px solid var(--line);
+            color: var(--text);
+            border-radius: 6px;
+            padding: 4px 8px;
+            font: inherit;
+        }
+
+        #log {
+            flex: 1;
+            min-height: 260px;
+            overflow-y: auto;
+            background: var(--panel-2);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 8px;
+        }
+
+        .line {
+            display: grid;
+            grid-template-columns: 8ch 7ch 1ch 1fr;
+            gap: 8px;
+            padding: 1px 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .line .t {
+            color: #3f4d5f;
+            white-space: nowrap;
+        }
+
+        .line .c {
+            text-transform: uppercase;
+            font-size: 11px;
+        }
+
+        .line .a {
+            color: var(--dim);
+            text-align: center;
+        }
+
+        .line .m .detail {
+            color: var(--dim);
+        }
+
+        .c-system {
+            color: #94a3b8;
+        }
+
+        .c-deck {
+            color: #7dd3fc;
+        }
+
+        .c-tile {
+            color: #a3e635;
+        }
+
+        .c-lva {
+            color: #c084fc;
+        }
+
+        .c-voice {
+            color: #d8b4fe;
+        }
+
+        .c-audio {
+            color: #34d399;
+        }
+
+        .c-wpctl {
+            color: #fbbf24;
+        }
+
+        .c-led {
+            color: #f472b6;
+        }
+
+        .c-duck {
+            color: #fb923c;
+        }
+    </style>
 </head>
 <body>
 <header>
-  <h1>Pimus controller playground</h1>
-  <span style="color:var(--dim)">fake hardware &middot; real controller</span>
-  <div class="pills">
-    <span class="pill" id="pill-deck"><span class="dot"></span>deck</span>
-    <span class="pill" id="pill-lva"><span class="dot"></span>voice</span>
-    <span class="pill" id="pill-audio"><span class="dot"></span>audio</span>
-  </div>
+    <h1>Pimus controller playground</h1>
+    <span style="color:var(--dim)">fake hardware &middot; real controller</span>
+    <div class="pills">
+        <span class="pill" id="pill-deck"><span class="dot"></span>deck</span>
+        <span class="pill" id="pill-lva"><span class="dot"></span>voice</span>
+        <span class="pill" id="pill-audio"><span class="dot"></span>audio</span>
+    </div>
 </header>
 
 <main>
-  <div>
-    <section>
-      <h2>Stream Deck +</h2>
-      <div class="deck">
-        <div class="keys" id="keys"></div>
-        <div class="lcd" id="lcd"><canvas width="800" height="100"></canvas></div>
-        <div class="dials" id="dials"></div>
-        <div class="unplugged" id="hint">click a key to press it &middot; keys 1-8 on your keyboard &middot; scroll a dial to turn it</div>
-      </div>
-    </section>
+    <div>
+        <section>
+            <h2>Stream Deck +</h2>
+            <div class="deck">
+                <div class="keys" id="keys"></div>
+                <div class="lcd" id="lcd">
+                    <canvas width="800" height="100"></canvas>
+                </div>
+                <div class="dials" id="dials"></div>
+                <div class="unplugged" id="hint">click a key to press it &middot; keys 1-8 on your keyboard &middot;
+                    scroll a dial to turn it
+                </div>
+            </div>
+        </section>
 
-    <section>
-      <h2>State</h2>
-      <div class="state" id="state"></div>
-    </section>
-  </div>
+        <section>
+            <h2>State</h2>
+            <div class="state" id="state"></div>
+        </section>
+    </div>
 
-  <div>
-    <section>
-      <h2>Inject</h2>
-      <div class="row" id="inject"></div>
-      <h2 style="margin-top:14px">Fault injection</h2>
-      <div class="row">
-        <button data-fault="unplug" class="danger">unplug deck</button>
-        <button data-fault="plug">plug deck back in</button>
-        <button data-fault="drop-lva" class="danger">drop voice socket</button>
-        <button data-fault="drop-audio" class="danger">drop audio socket</button>
-        <button data-fault="drop-ha" class="danger">toggle Home Assistant</button>
-        <label class="check"><input type="checkbox" id="simulate" checked> simulate pipeline</label>
-      </div>
+    <div>
+        <section>
+            <h2>Inject</h2>
+            <div class="row" id="inject"></div>
+            <h2 style="margin-top:14px">Fault injection</h2>
+            <div class="row">
+                <button data-fault="unplug" class="danger">unplug deck</button>
+                <button data-fault="plug">plug deck back in</button>
+                <button data-fault="drop-lva" class="danger">drop voice socket</button>
+                <button data-fault="drop-audio" class="danger">drop audio socket</button>
+                <button data-fault="drop-ha" class="danger">toggle Home Assistant</button>
+                <label class="check"><input type="checkbox" id="simulate" checked> simulate pipeline</label>
+            </div>
 
-      <h2 style="margin-top:14px">Home Assistant</h2>
-      <div class="row" id="house"></div>
-      <div class="state" id="entities" style="margin-top:10px"></div>
-    </section>
+            <h2 style="margin-top:14px">Home Assistant</h2>
+            <div class="row" id="house"></div>
+            <div class="state" id="entities" style="margin-top:10px"></div>
+        </section>
 
-    <section>
-      <h2>Event log</h2>
-      <div class="toolbar">
-        <input id="filter" placeholder="filter (e.g. lva, duck, volume)">
-        <button id="clear">clear</button>
-      </div>
-      <div id="log"></div>
-    </section>
-  </div>
+        <section>
+            <h2>Event log</h2>
+            <div class="toolbar">
+                <input id="filter" placeholder="filter (e.g. lva, duck, volume)">
+                <button id="clear">clear</button>
+            </div>
+            <div id="log"></div>
+        </section>
+    </div>
 </main>
 
 <script>
-const KEY_SIZE = 120
-const LCD = { w: 800, h: 100 }
-// Mirrors LED_COUNT in the controller's types.mts: the ReSpeaker ring has
-// exactly twelve LEDs.
-const LED_COUNT = 12
+    const KEY_SIZE = 120
+    const LCD = {w: 800, h: 100}
+    // Mirrors LED_COUNT in the controller's types.mts: the ReSpeaker ring has
+    // exactly twelve LEDs.
+    const LED_COUNT = 12
 
-/**
- * The respeaker ring as twelve dots around a circle. The Ring effect carries a
- * colour per LED; every other effect resolves on the device to a single colour
- * the firmware paints across the whole ring, so each LED shows that. A
- * direction readout lights its front (top) LED in the highlight colour.
- */
-function ledRingHtml(led) {
-  const colors = led.colors && led.colors.length ? led.colors : null
-  const dots = Array.from({ length: LED_COUNT }, (_, i) => {
-    const angle = (i / LED_COUNT) * 2 * Math.PI - Math.PI / 2
-    const left = 50 + 44 * Math.cos(angle)
-    const top = 50 + 44 * Math.sin(angle)
-    const color = colors ? (colors[i] || '#000000')
-      : !led.effect || led.effect === 'off' ? '#000000'
-      : (i === 0 && led.accent ? led.accent : (led.color || '#000000'))
-    const lit = color !== '#000000'
-    const paint = lit ? `color:${color};background:${color};` : ''
-    return `<span class="led${lit ? ' on' : ''}" style="left:${left}%;top:${top}%;${paint}"></span>`
-  }).join('')
-  const dim = Math.max(0.4, (led.brightness ?? 255) / 255)
-  return `<span class="ledring" style="opacity:${dim.toFixed(2)}">${dots}</span>`
-}
-
-const post = (body) => fetch('/input', { method: 'POST', body: JSON.stringify(body) })
-
-// --- deck surface ------------------------------------------------------------
-
-const keyContexts = []
-const keysEl = document.getElementById('keys')
-for (let index = 0; index < 8; index += 1) {
-  const button = document.createElement('button')
-  button.className = 'key'
-  button.title = `key ${index}`
-  const canvas = document.createElement('canvas')
-  canvas.width = KEY_SIZE
-  canvas.height = KEY_SIZE
-  const badge = document.createElement('span')
-  badge.className = 'idx'
-  badge.textContent = index
-  button.append(canvas, badge)
-  button.addEventListener('click', () => post({ kind: 'key', index }))
-  keysEl.append(button)
-  keyContexts.push(canvas.getContext('2d'))
-}
-
-const lcdEl = document.getElementById('lcd')
-const lcdContext = lcdEl.querySelector('canvas').getContext('2d')
-lcdEl.addEventListener('click', (event) => {
-  const rect = lcdEl.getBoundingClientRect()
-  post({ kind: 'lcd', x: ((event.clientX - rect.left) / rect.width) * LCD.w })
-})
-
-const dialsEl = document.getElementById('dials')
-for (let index = 0; index < 4; index += 1) {
-  const cell = document.createElement('div')
-  cell.className = 'dial'
-  cell.innerHTML = `<button data-turn="left">&#9664;</button>`
-    + `<button class="knob" data-turn="press" title="press dial ${index}"></button>`
-    + `<button data-turn="right">&#9654;</button>`
-  cell.addEventListener('click', (event) => {
-    const direction = event.target.dataset.turn
-    if (direction) post({ kind: 'dial', index, direction })
-  })
-  cell.addEventListener('wheel', (event) => {
-    event.preventDefault()
-    post({ kind: 'dial', index, direction: event.deltaY > 0 ? 'right' : 'left' })
-  }, { passive: false })
-  dialsEl.append(cell)
-}
-
-document.addEventListener('keydown', (event) => {
-  if (event.target.tagName === 'INPUT') return
-  const index = '12345678'.indexOf(event.key)
-  if (index >= 0) post({ kind: 'key', index })
-})
-
-/** Expands the run-length encoded frame the controller painted. */
-function draw(context, base64, width, height) {
-  const binary = atob(base64)
-  const pixels = new Uint8ClampedArray(width * height * 4)
-  let offset = 0
-  for (let index = 0; index + 3 < binary.length; index += 4) {
-    let run = binary.charCodeAt(index)
-    const r = binary.charCodeAt(index + 1)
-    const g = binary.charCodeAt(index + 2)
-    const b = binary.charCodeAt(index + 3)
-    while (run-- > 0 && offset < pixels.length) {
-      pixels[offset++] = r
-      pixels[offset++] = g
-      pixels[offset++] = b
-      pixels[offset++] = 255
+    /**
+     * The respeaker ring as twelve dots around a circle. The Ring effect carries a
+     * colour per LED; every other effect resolves on the device to a single colour
+     * the firmware paints across the whole ring, so each LED shows that. A
+     * direction readout lights its front (top) LED in the highlight colour.
+     */
+    function ledRingHtml(led) {
+        const colors = led.colors && led.colors.length ? led.colors : null
+        const dots = Array.from({length: LED_COUNT}, (_, i) => {
+            const angle = (i / LED_COUNT) * 2 * Math.PI - Math.PI / 2
+            const left = 50 + 44 * Math.cos(angle)
+            const top = 50 + 44 * Math.sin(angle)
+            const color = colors ? (colors[i] || '#000000')
+                : !led.effect || led.effect === 'off' ? '#000000'
+                    : (i === 0 && led.accent ? led.accent : (led.color || '#000000'))
+            const lit = color !== '#000000'
+            const paint = lit ? `color:${color};background:${color};` : ''
+            return `<span class="led${lit ? ' on' : ''}" style="left:${left}%;top:${top}%;${paint}"></span>`
+        }).join('')
+        const dim = Math.max(0.4, (led.brightness ?? 255) / 255)
+        return `<span class="ledring" style="opacity:${dim.toFixed(2)}">${dots}</span>`
     }
-  }
-  context.putImageData(new ImageData(pixels, width, height), 0, 0)
-}
 
-function clearDeck() {
-  for (const context of keyContexts) { context.fillStyle = '#000'; context.fillRect(0, 0, KEY_SIZE, KEY_SIZE) }
-  lcdContext.fillStyle = '#000'
-  lcdContext.fillRect(0, 0, LCD.w, LCD.h)
-}
-clearDeck()
+    const post = (body) => fetch('/input', {method: 'POST', body: JSON.stringify(body)})
 
-// --- inject buttons ----------------------------------------------------------
+    // --- deck surface ------------------------------------------------------------
 
-const INJECT = [
-  ['wake word', { event: 'start_pipeline' }],
-  ['listening', { event: 'listening' }],
-  ['thinking', { event: 'thinking' }],
-  ['speaking', { event: 'tts_speaking' }],
-  ['tts finished', { event: 'tts_finished' }],
-  ['idle', { event: 'idle' }],
-  ['pipeline error', { event: 'pipeline_error' }],
-  ['timer ticking', { event: 'timer_ticking' }],
-  ['timer ringing', { event: 'timer_ringing' }],
-  ['media playing', { event: 'media_player_playing' }],
-  ['media paused', { event: 'media_player_paused' }],
-  ['mic muted', { event: 'muted', data: { muted: true } }],
-  ['mic live', { event: 'muted', data: { muted: false } }],
-  ['ha offline', { event: 'snapshot', data: { ha_connected: false, muted: false, volume: 1 } }],
-  ['ha online', { event: 'snapshot', data: { ha_connected: true, muted: false, volume: 1 } }],
-]
-const injectEl = document.getElementById('inject')
-for (const [label, payload] of INJECT) {
-  const button = document.createElement('button')
-  button.textContent = label
-  button.addEventListener('click', () => post({ kind: 'event', ...payload }))
-  injectEl.append(button)
-}
+    const keyContexts = []
+    const keysEl = document.getElementById('keys')
+    for (let index = 0; index < 8; index += 1) {
+        const button = document.createElement('button')
+        button.className = 'key'
+        button.title = `key ${index}`
+        const canvas = document.createElement('canvas')
+        canvas.width = KEY_SIZE
+        canvas.height = KEY_SIZE
+        const badge = document.createElement('span')
+        badge.className = 'idx'
+        badge.textContent = index
+        button.append(canvas, badge)
+        button.addEventListener('click', () => post({kind: 'key', index}))
+        keysEl.append(button)
+        keyContexts.push(canvas.getContext('2d'))
+    }
 
-document.querySelectorAll('[data-fault]').forEach((button) => {
-  button.addEventListener('click', () => {
-    const fault = button.dataset.fault
-    if (fault === 'unplug') post({ kind: 'deck', plugged: false })
-    else if (fault === 'plug') post({ kind: 'deck', plugged: true })
-    else if (fault === 'drop-ha') post({ kind: 'drop-ha' })
-    else post({ kind: 'drop', target: fault === 'drop-lva' ? 'lva' : 'audio' })
-  })
-})
-document.getElementById('simulate').addEventListener('change', (event) => {
-  post({ kind: 'simulate', enabled: event.target.checked })
-})
+    const lcdEl = document.getElementById('lcd')
+    const lcdContext = lcdEl.querySelector('canvas').getContext('2d')
+    lcdEl.addEventListener('click', (event) => {
+        const rect = lcdEl.getBoundingClientRect()
+        post({kind: 'lcd', x: ((event.clientX - rect.left) / rect.width) * LCD.w})
+    })
 
-// --- the house ---------------------------------------------------------------
-// These change entities from "somewhere else", the way the Home Assistant app
-// or an automation would, so the keys can be seen following state they did not
-// set themselves.
+    const dialsEl = document.getElementById('dials')
+    for (let index = 0; index < 4; index += 1) {
+        const cell = document.createElement('div')
+        cell.className = 'dial'
+        cell.innerHTML = `<button data-turn="left">&#9664;</button>`
+            + `<button class="knob" data-turn="press" title="press dial ${index}"></button>`
+            + `<button data-turn="right">&#9654;</button>`
+        cell.addEventListener('click', (event) => {
+            const direction = event.target.dataset.turn
+            if (direction) post({kind: 'dial', index, direction})
+        })
+        cell.addEventListener('wheel', (event) => {
+            event.preventDefault()
+            post({kind: 'dial', index, direction: event.deltaY > 0 ? 'right' : 'left'})
+        }, {passive: false})
+        dialsEl.append(cell)
+    }
 
-const houseEl = document.getElementById('house')
-const HOUSE = [
-  ['fan on', { entity: 'fan.office_ceiling', state: 'on' }],
-  ['fan off', { entity: 'fan.office_ceiling', state: 'off' }],
-  ['blinds open', { entity: 'cover.office_blinds', state: 'open' }],
-  ['blinds shut', { entity: 'cover.office_blinds', state: 'closed' }],
-  ['pc on', { entity: 'switch.office_pc', state: 'on' }],
-  ['pc off', { entity: 'switch.office_pc', state: 'off' }],
-  ['playing', { entity: 'media_player.office_amp', state: 'playing' }],
-  ['paused', { entity: 'media_player.office_amp', state: 'paused' }],
-  ['warmer', { entity: 'sensor.office_temperature', state: '26.8' }],
-  ['colder', { entity: 'sensor.office_temperature', state: '14.2' }],
-  // The panel sleeps a few seconds after the room empties, and lights the
-  // moment somebody is back — or when a key is pressed in the dark.
-  ['leave room', { entity: 'binary_sensor.office_presence', state: 'off' }],
-  ['enter room', { entity: 'binary_sensor.office_presence', state: 'on' }],
-]
-for (const [label, payload] of HOUSE) {
-  const button = document.createElement('button')
-  button.textContent = label
-  button.addEventListener('click', () => post({ kind: 'entity', ...payload }))
-  houseEl.append(button)
-}
-const weather = document.createElement('button')
-weather.textContent = 'next weather'
-weather.addEventListener('click', () => post({ kind: 'weather' }))
-houseEl.append(weather)
+    document.addEventListener('keydown', (event) => {
+        if (event.target.tagName === 'INPUT') return
+        const index = '12345678'.indexOf(event.key)
+        if (index >= 0) post({kind: 'key', index})
+    })
 
-// Notifications an automation pushes to the strip. Each fires the same
-// `smartamp_notify` event a real automation would; tap the strip to acknowledge
-// one, or watch its time bar drain.
-const NOTIFY = [
-  ['someone at the door', { title: 'front door', message: 'someone is at the door', color: '#b71c1c', seconds: 10 }],
-  ['washing done', { title: 'laundry', message: 'washing machine has finished', color: '#00695c', seconds: 8 }],
-  ['long message', { title: 'post', message: 'a parcel was left in the porch by the side gate', seconds: 12 }],
-]
-for (const [label, data] of NOTIFY) {
-  const button = document.createElement('button')
-  button.textContent = label
-  button.addEventListener('click', () => post({ kind: 'notify', data }))
-  houseEl.append(button)
-}
+    /** Expands the run-length encoded frame the controller painted. */
+    function draw(context, base64, width, height) {
+        const binary = atob(base64)
+        const pixels = new Uint8ClampedArray(width * height * 4)
+        let offset = 0
+        for (let index = 0; index + 3 < binary.length; index += 4) {
+            let run = binary.charCodeAt(index)
+            const r = binary.charCodeAt(index + 1)
+            const g = binary.charCodeAt(index + 2)
+            const b = binary.charCodeAt(index + 3)
+            while (run-- > 0 && offset < pixels.length) {
+                pixels[offset++] = r
+                pixels[offset++] = g
+                pixels[offset++] = b
+                pixels[offset++] = 255
+            }
+        }
+        context.putImageData(new ImageData(pixels, width, height), 0, 0)
+    }
 
-// A different track, so the strip is seen changing what it rests on.
-const track = document.createElement('button')
-track.textContent = 'next track'
-const TRACKS = [
-  { media_title: 'Teardrop', media_artist: 'Massive Attack', media_duration: 330 },
-  { media_title: 'Everything In Its Right Place', media_artist: 'Radiohead', media_duration: 251 },
-  { media_title: 'Windowlicker (Original Extended Mix)', media_artist: 'Aphex Twin', media_duration: 366 },
-]
-let trackIndex = 0
-track.addEventListener('click', () => {
-  trackIndex = (trackIndex + 1) % TRACKS.length
-  post({
-    kind: 'entity',
-    entity: 'media_player.office_amp',
-    state: 'playing',
-    attributes: { ...TRACKS[trackIndex], media_position: 0, media_position_updated_at: new Date().toISOString() },
-  })
-})
-houseEl.append(track)
+    function clearDeck() {
+        for (const context of keyContexts) {
+            context.fillStyle = '#000';
+            context.fillRect(0, 0, KEY_SIZE, KEY_SIZE)
+        }
+        lcdContext.fillStyle = '#000'
+        lcdContext.fillRect(0, 0, LCD.w, LCD.h)
+    }
 
-const entitiesEl = document.getElementById('entities')
-function renderEntities(entities) {
-  const rows = Object.entries(entities || {})
-  if (!rows.length) {
-    entitiesEl.innerHTML = '<div class="cell" style="grid-column: span 2"><div class="k">entities</div>'
-      + '<div class="v off">Home Assistant unreachable</div></div>'
-    return
-  }
-  entitiesEl.innerHTML = rows
-    // Scenes carry no readable state; the light they set is the visible part.
-    .filter(([id]) => !id.startsWith('scene.'))
-    .map(([id, entity]) => `<div class="cell"><div class="k">${id.split('.')[1]}</div>`
-      + `<div class="v">${entity.state}</div></div>`)
-    .join('')
-}
+    clearDeck()
 
-// --- state panel -------------------------------------------------------------
+    // --- inject buttons ----------------------------------------------------------
 
-const stateEl = document.getElementById('state')
-const flag = (value) => `<span class="v ${value ? 'on' : 'off'}">${value ? 'yes' : 'no'}</span>`
+    const INJECT = [
+        ['wake word', {event: 'start_pipeline'}],
+        ['listening', {event: 'listening'}],
+        ['thinking', {event: 'thinking'}],
+        ['speaking', {event: 'tts_speaking'}],
+        ['tts finished', {event: 'tts_finished'}],
+        ['idle', {event: 'idle'}],
+        ['pipeline error', {event: 'pipeline_error'}],
+        ['timer ticking', {event: 'timer_ticking'}],
+        ['timer ringing', {event: 'timer_ringing'}],
+        ['media playing', {event: 'media_player_playing'}],
+        ['media paused', {event: 'media_player_paused'}],
+        ['mic muted', {event: 'muted', data: {muted: true}}],
+        ['mic live', {event: 'muted', data: {muted: false}}],
+        ['ha offline', {event: 'snapshot', data: {ha_connected: false, muted: false, volume: 1}}],
+        ['ha online', {event: 'snapshot', data: {ha_connected: true, muted: false, volume: 1}}],
+    ]
+    const injectEl = document.getElementById('inject')
+    for (const [label, payload] of INJECT) {
+        const button = document.createElement('button')
+        button.textContent = label
+        button.addEventListener('click', () => post({kind: 'event', ...payload}))
+        injectEl.append(button)
+    }
 
-let wasAttached = false
-function renderState(state) {
-  // A detached deck keeps no image; blank the panel rather than leave the last
-  // frame looking live.
-  if (wasAttached && !state.deckAttached) clearDeck()
-  wasAttached = Boolean(state.deckAttached)
-  // Brightness 0 is a panel that has gone to sleep, not one that lost its deck.
-  document.querySelector('.deck').classList.toggle('asleep', Boolean(state.deckAttached) && state.deckBrightness === 0)
-  for (const [id, live] of [['deck', state.deckAttached], ['lva', state.lvaConnected], ['audio', state.audioConnected]]) {
-    document.getElementById(`pill-${id}`).classList.toggle('on', Boolean(live))
-  }
-  renderEntities(state.entities)
-  const led = state.led || {}
-  const sources = Object.entries(state.sources || {})
-    .map(([name, on]) => `<div class="cell"><div class="k">route ${name}</div>${flag(on)}</div>`).join('')
-  stateEl.innerHTML = `
+    document.querySelectorAll('[data-fault]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const fault = button.dataset.fault
+            if (fault === 'unplug') post({kind: 'deck', plugged: false})
+            else if (fault === 'plug') post({kind: 'deck', plugged: true})
+            else if (fault === 'drop-ha') post({kind: 'drop-ha'})
+            else post({kind: 'drop', target: fault === 'drop-lva' ? 'lva' : 'audio'})
+        })
+    })
+    document.getElementById('simulate').addEventListener('change', (event) => {
+        post({kind: 'simulate', enabled: event.target.checked})
+    })
+
+    // --- the house ---------------------------------------------------------------
+    // These change entities from "somewhere else", the way the Home Assistant app
+    // or an automation would, so the keys can be seen following state they did not
+    // set themselves.
+
+    const houseEl = document.getElementById('house')
+    const HOUSE = [
+        ['fan on', {entity: 'fan.office_ceiling', state: 'on'}],
+        ['fan off', {entity: 'fan.office_ceiling', state: 'off'}],
+        ['blinds open', {entity: 'cover.office_blinds', state: 'open'}],
+        ['blinds shut', {entity: 'cover.office_blinds', state: 'closed'}],
+        ['pc on', {entity: 'switch.office_pc', state: 'on'}],
+        ['pc off', {entity: 'switch.office_pc', state: 'off'}],
+        ['playing', {entity: 'media_player.office_amp', state: 'playing'}],
+        ['paused', {entity: 'media_player.office_amp', state: 'paused'}],
+        ['warmer', {entity: 'sensor.office_temperature', state: '26.8'}],
+        ['colder', {entity: 'sensor.office_temperature', state: '14.2'}],
+        // The panel sleeps a few seconds after the room empties, and lights the
+        // moment somebody is back — or when a key is pressed in the dark.
+        ['leave room', {entity: 'binary_sensor.office_presence', state: 'off'}],
+        ['enter room', {entity: 'binary_sensor.office_presence', state: 'on'}],
+    ]
+    for (const [label, payload] of HOUSE) {
+        const button = document.createElement('button')
+        button.textContent = label
+        button.addEventListener('click', () => post({kind: 'entity', ...payload}))
+        houseEl.append(button)
+    }
+    const weather = document.createElement('button')
+    weather.textContent = 'next weather'
+    weather.addEventListener('click', () => post({kind: 'weather'}))
+    houseEl.append(weather)
+
+    // Notifications an automation pushes to the strip. Each fires the same
+    // `smartamp_notify` event a real automation would; tap the strip to acknowledge
+    // one, or watch its time bar drain.
+    const NOTIFY = [
+        ['someone at the door', {
+            title: 'front door',
+            message: 'someone is at the door',
+            color: '#b71c1c',
+            seconds: 10
+        }],
+        ['washing done', {title: 'laundry', message: 'washing machine has finished', color: '#00695c', seconds: 8}],
+        ['long message', {title: 'post', message: 'a parcel was left in the porch by the side gate', seconds: 12}],
+    ]
+    for (const [label, data] of NOTIFY) {
+        const button = document.createElement('button')
+        button.textContent = label
+        button.addEventListener('click', () => post({kind: 'notify', data}))
+        houseEl.append(button)
+    }
+
+    // A different track, so the strip is seen changing what it rests on.
+    const track = document.createElement('button')
+    track.textContent = 'next track'
+    const TRACKS = [
+        {media_title: 'Teardrop', media_artist: 'Massive Attack', media_duration: 330},
+        {media_title: 'Everything In Its Right Place', media_artist: 'Radiohead', media_duration: 251},
+        {media_title: 'Windowlicker (Original Extended Mix)', media_artist: 'Aphex Twin', media_duration: 366},
+    ]
+    let trackIndex = 0
+    track.addEventListener('click', () => {
+        trackIndex = (trackIndex + 1) % TRACKS.length
+        post({
+            kind: 'entity',
+            entity: 'media_player.office_amp',
+            state: 'playing',
+            attributes: {...TRACKS[trackIndex], media_position: 0, media_position_updated_at: new Date().toISOString()},
+        })
+    })
+    houseEl.append(track)
+
+    const entitiesEl = document.getElementById('entities')
+
+    function renderEntities(entities) {
+        const rows = Object.entries(entities || {})
+        if (!rows.length) {
+            entitiesEl.innerHTML = '<div class="cell" style="grid-column: span 2"><div class="k">entities</div>'
+                + '<div class="v off">Home Assistant unreachable</div></div>'
+            return
+        }
+        entitiesEl.innerHTML = rows
+            // Scenes carry no readable state; the light they set is the visible part.
+            .filter(([id]) => !id.startsWith('scene.'))
+            .map(([id, entity]) => `<div class="cell"><div class="k">${id.split('.')[1]}</div>`
+                + `<div class="v">${entity.state}</div></div>`)
+            .join('')
+    }
+
+    // --- state panel -------------------------------------------------------------
+
+    const stateEl = document.getElementById('state')
+    const flag = (value) => `<span class="v ${value ? 'on' : 'off'}">${value ? 'yes' : 'no'}</span>`
+
+    let wasAttached = false
+
+    function renderState(state) {
+        // A detached deck keeps no image; blank the panel rather than leave the last
+        // frame looking live.
+        if (wasAttached && !state.deckAttached) clearDeck()
+        wasAttached = Boolean(state.deckAttached)
+        // Brightness 0 is a panel that has gone to sleep, not one that lost its deck.
+        document.querySelector('.deck').classList.toggle('asleep', Boolean(state.deckAttached) && state.deckBrightness === 0)
+        for (const [id, live] of [['deck', state.deckAttached], ['lva', state.lvaConnected], ['audio', state.audioConnected]]) {
+            document.getElementById(`pill-${id}`).classList.toggle('on', Boolean(live))
+        }
+        renderEntities(state.entities)
+        const led = state.led || {}
+        const sources = Object.entries(state.sources || {})
+            .map(([name, on]) => `<div class="cell"><div class="k">route ${name}</div>${flag(on)}</div>`).join('')
+        stateEl.innerHTML = `
     <div class="cell"><div class="k">assist</div><div class="v">${state.assist}</div></div>
     <div class="cell"><div class="k">volume</div><div class="v">${state.outputMuted ? 'muted' : Math.round(state.volume * 100) + '%'}</div></div>
     <div class="cell"><div class="k">mic muted</div>${flag(state.muted)}</div>
@@ -448,75 +803,79 @@ function renderState(state) {
         <span class="v">${led.effect || 'off'}<br><span style="font-size:11px;color:var(--dim)">${led.color || ''}</span></span>
       </div>
     </div>`
-}
-
-// --- log ---------------------------------------------------------------------
-
-const logEl = document.getElementById('log')
-const filterEl = document.getElementById('filter')
-const ARROW = { out: '→', in: '←', note: '·' }
-let entries = []
-
-function matches(entry) {
-  const needle = filterEl.value.trim().toLowerCase()
-  if (!needle) return true
-  return `${entry.category} ${entry.message} ${entry.detail || ''}`.toLowerCase().includes(needle)
-}
-
-function lineHtml(entry) {
-  const time = new Date(entry.time).toTimeString().slice(0, 8)
-  const detail = entry.detail ? ` <span class="detail">${escapeHtml(entry.detail)}</span>` : ''
-  return `<div class="line"><span class="t">${time}</span>`
-    + `<span class="c c-${entry.category}">${entry.category}</span>`
-    + `<span class="a">${ARROW[entry.direction] || ''}</span>`
-    + `<span class="m">${escapeHtml(entry.message)}${detail}</span></div>`
-}
-
-const escapeHtml = (value) => String(value).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
-
-function appendLog(entry) {
-  entries.push(entry)
-  if (entries.length > 400) entries = entries.slice(-400)
-  if (!matches(entry)) return
-  const atBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40
-  logEl.insertAdjacentHTML('beforeend', lineHtml(entry))
-  while (logEl.childElementCount > 400) logEl.firstElementChild.remove()
-  if (atBottom) logEl.scrollTop = logEl.scrollHeight
-}
-
-const rebuildLog = () => {
-  logEl.innerHTML = entries.filter(matches).map(lineHtml).join('')
-  logEl.scrollTop = logEl.scrollHeight
-}
-filterEl.addEventListener('input', rebuildLog)
-document.getElementById('clear').addEventListener('click', () => { entries = []; rebuildLog() })
-
-// --- stream ------------------------------------------------------------------
-
-// Live reload. The server sends a boot id on every connection: seeing a new one
-// means `pnpm dev` restarted the playground under us, so the page reloads to
-// pick up whatever changed. An explicit reload message covers edits to this
-// file, which the server watches but never restarts for.
-let bootId = null
-const stream = new EventSource('/events')
-stream.onmessage = (message) => {
-  const payload = JSON.parse(message.data)
-  if (payload.type === 'hello') {
-    if (bootId && bootId !== payload.bootId) location.reload()
-    bootId = payload.bootId
-  }
-  else if (payload.type === 'reload') location.reload()
-  else if (payload.type === 'log') appendLog(payload.entry)
-  else if (payload.type === 'state') renderState(payload.state)
-  else if (payload.type === 'keys') {
-    for (const [index, image] of Object.entries(payload.keys || {})) {
-      const context = keyContexts[Number(index)]
-      if (context) draw(context, image, KEY_SIZE, KEY_SIZE)
     }
-    if (payload.lcd) draw(lcdContext, payload.lcd, LCD.w, LCD.h)
-  }
-}
-stream.onerror = () => { document.getElementById('hint').textContent = 'playground disconnected — is it still running?' }
+
+    // --- log ---------------------------------------------------------------------
+
+    const logEl = document.getElementById('log')
+    const filterEl = document.getElementById('filter')
+    const ARROW = {out: '→', in: '←', note: '·'}
+    let entries = []
+
+    function matches(entry) {
+        const needle = filterEl.value.trim().toLowerCase()
+        if (!needle) return true
+        return `${entry.category} ${entry.message} ${entry.detail || ''}`.toLowerCase().includes(needle)
+    }
+
+    function lineHtml(entry) {
+        const time = new Date(entry.time).toTimeString().slice(0, 8)
+        const detail = entry.detail ? ` <span class="detail">${escapeHtml(entry.detail)}</span>` : ''
+        return `<div class="line"><span class="t">${time}</span>`
+            + `<span class="c c-${entry.category}">${entry.category}</span>`
+            + `<span class="a">${ARROW[entry.direction] || ''}</span>`
+            + `<span class="m">${escapeHtml(entry.message)}${detail}</span></div>`
+    }
+
+    const escapeHtml = (value) => String(value).replace(/[&<>]/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c]))
+
+    function appendLog(entry) {
+        entries.push(entry)
+        if (entries.length > 400) entries = entries.slice(-400)
+        if (!matches(entry)) return
+        const atBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40
+        logEl.insertAdjacentHTML('beforeend', lineHtml(entry))
+        while (logEl.childElementCount > 400) logEl.firstElementChild.remove()
+        if (atBottom) logEl.scrollTop = logEl.scrollHeight
+    }
+
+    const rebuildLog = () => {
+        logEl.innerHTML = entries.filter(matches).map(lineHtml).join('')
+        logEl.scrollTop = logEl.scrollHeight
+    }
+    filterEl.addEventListener('input', rebuildLog)
+    document.getElementById('clear').addEventListener('click', () => {
+        entries = [];
+        rebuildLog()
+    })
+
+    // --- stream ------------------------------------------------------------------
+
+    // Live reload. The server sends a boot id on every connection: seeing a new one
+    // means `pnpm dev` restarted the playground under us, so the page reloads to
+    // pick up whatever changed. An explicit reload message covers edits to this
+    // file, which the server watches but never restarts for.
+    let bootId = null
+    const stream = new EventSource('/events')
+    stream.onmessage = (message) => {
+        const payload = JSON.parse(message.data)
+        if (payload.type === 'hello') {
+            if (bootId && bootId !== payload.bootId) location.reload()
+            bootId = payload.bootId
+        } else if (payload.type === 'reload') location.reload()
+        else if (payload.type === 'log') appendLog(payload.entry)
+        else if (payload.type === 'state') renderState(payload.state)
+        else if (payload.type === 'keys') {
+            for (const [index, image] of Object.entries(payload.keys || {})) {
+                const context = keyContexts[Number(index)]
+                if (context) draw(context, image, KEY_SIZE, KEY_SIZE)
+            }
+            if (payload.lcd) draw(lcdContext, payload.lcd, LCD.w, LCD.h)
+        }
+    }
+    stream.onerror = () => {
+        document.getElementById('hint').textContent = 'playground disconnected — is it still running?'
+    }
 </script>
 </body>
 </html>

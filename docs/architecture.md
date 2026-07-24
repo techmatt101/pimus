@@ -25,28 +25,47 @@ Linux Voice Assistant TTS/media ----------------------------+
 
 ## Audio ownership
 
-PipeWire and WirePlumber run in a persistent `smartamp` system-user session. The audio manager finds devices by configurable regular expressions instead of unstable ALSA card numbers, makes HiFiBerry the default sink, publishes the XVF3800's ASR channel as the mono default voice source, and creates monitor loopbacks for enabled input routes.
+PipeWire and WirePlumber run in a persistent `smartamp` system-user session. The audio manager finds devices by
+configurable regular expressions instead of unstable ALSA card numbers, makes HiFiBerry the default sink, publishes the
+XVF3800's ASR channel as the mono default voice source, and creates monitor loopbacks for enabled input routes.
 
-The XVF3800's USB capture is not a stereo microphone: the chip beamforms its four mics internally and presents two independent DSP outputs — channel 0 is the Conference stream (post-processed for human listeners) and channel 1 is the ASR stream (tuned for wake-word and speech recognition). Recording the device in mono would downmix the two, so the audio manager loads a `module-remap-source` that lifts exactly the ASR channel (`smartamp_voice_capture_channel`, default 1) into the `smartamp_voice_capture` source and makes that the default. Linux Voice Assistant records this one channel; it must not be given a second channel, which it would forward to Home Assistant advertised as a far-end echo reference for server-side AEC — on this device that second channel is the voice itself, not a reference.
+The XVF3800's USB capture is not a stereo microphone: the chip beamforms its four mics internally and presents two
+independent DSP outputs — channel 0 is the Conference stream (post-processed for human listeners) and channel 1 is the
+ASR stream (tuned for wake-word and speech recognition). Recording the device in mono would downmix the two, so the
+audio manager loads a `module-remap-source` that lifts exactly the ASR channel (`smartamp_voice_capture_channel`,
+default 1) into the `smartamp_voice_capture` source and makes that the default. Linux Voice Assistant records this one
+channel; it must not be given a second channel, which it would forward to Home Assistant advertised as a far-end echo
+reference for server-side AEC — on this device that second channel is the voice itself, not a reference.
 
 The voice service waits for a fresh audio-manager status file containing both
 devices. It then lets the audio library resolve PipeWire's selected defaults;
 `default` is not passed as a literal hardware-device name.
 
-Sendspin and the USB computer input feed a named background sink. Its monitor is bridged to HiFiBerry through one gain-controlled loopback; Linux Voice Assistant and aux bypass it. The controller requests ducking on wake/listen/think/TTS, announcement, and timer events by sending `set-duck` over the audio manager's control socket. The manager holds the request against that connection, so background audio cannot remain quiet indefinitely: if the controller stops unexpectedly the socket closes and the duck is released at once.
+Sendspin and the USB computer input feed a named background sink. Its monitor is bridged to HiFiBerry through one
+gain-controlled loopback; Linux Voice Assistant and aux bypass it. The controller requests ducking on
+wake/listen/think/TTS, announcement, and timer events by sending `set-duck` over the audio manager's control socket. The
+manager holds the request against that connection, so background audio cannot remain quiet indefinitely: if the
+controller stops unexpectedly the socket closes and the duck is released at once.
 
-It also mirrors the HiFiBerry output monitor into the XVF3800 USB playback endpoint. Nothing is connected to the ReSpeaker speaker jack; the stream exists to give the XMOS DSP the far-end reference required for acoustic echo cancellation.
+It also mirrors the HiFiBerry output monitor into the XVF3800 USB playback endpoint. Nothing is connected to the
+ReSpeaker speaker jack; the stream exists to give the XMOS DSP the far-end reference required for acoustic echo
+cancellation.
 
-The initialisation service selects the DAC2 ADC Pro unbalanced line inputs, sets ADC gain, and limits the initial hardware output level. Both are adjustable in the Ansible variables.
+The initialisation service selects the DAC2 ADC Pro unbalanced line inputs, sets ADC gain, and limits the initial
+hardware output level. Both are adjustable in the Ansible variables.
 
 ## Service boundaries
 
 - `smartamp-hifiberry`: applies hardware mixer settings after ALSA detects the HAT.
 - `smartamp-usb-audio-gadget`: creates the stereo UAC2 peripheral on the Pi 5 USB-C controller.
-- `smartamp-audio-manager`: maintains PipeWire defaults, switchable routes, the background bus, and its ducking gain, driven by `pactl subscribe` events and a Unix control socket.
+- `smartamp-audio-manager`: maintains PipeWire defaults, switchable routes, the background bus, and its ducking gain,
+  driven by `pactl subscribe` events and a Unix control socket.
 - `smartamp-sendspin`: runs the Sendspin player that Music Assistant discovers and streams to.
 - `smartamp-voice-assistant`: pinned OHF Linux Voice Assistant checkout and Python virtual environment.
-- `smartamp-controller`: maps Assist events to background ducking and XVF3800 effects, and renders/handles Stream Deck+ controls without Elgato desktop software. When remote tiles are enabled it also listens on one authenticated WebSocket port, through which another computer on the LAN pushes key faces onto the deck's REMOTE page and receives the presses back (`apps/controller/src/remote/server.mts`); the controller remains the only owner of the deck.
+- `smartamp-controller`: maps Assist events to background ducking and XVF3800 effects, and renders/handles Stream Deck+
+  controls without Elgato desktop software. When remote tiles are enabled it also listens on one authenticated WebSocket
+  port, through which another computer on the LAN pushes key faces onto the deck's REMOTE page and receives the presses
+  back (`apps/controller/src/remote/server.mts`); the controller remains the only owner of the deck.
 
 The controller is one long-running Node process because ducking and both control
 surfaces consume the same voice, mute, media, and audio-route state.
@@ -66,11 +85,21 @@ as the liveness check. The controller re-asserts an active duck on reconnect,
 and the manager releases it the moment the connection drops, which is what
 keeps a controller crash from leaving background audio quiet.
 
-The Stream Deck driver uses `@elgato-stream-deck/node`, which supports the Plus model's eight key LCDs, four rotary encoders, and 800×100 touch strip. The ReSpeaker module uses USB vendor-control transfers for XVF3800 LED effects. Everything runs headlessly.
+The Stream Deck driver uses `@elgato-stream-deck/node`, which supports the Plus model's eight key LCDs, four rotary
+encoders, and 800×100 touch strip. The ReSpeaker module uses USB vendor-control transfers for XVF3800 LED effects.
+Everything runs headlessly.
 
-The panel switches itself off when the room is empty. `streamdeck/sleep.mts` follows a Home Assistant presence sensor over that same connection and writes one field of shared state; the renderer reacts to it exactly as it reacts to the deck being unplugged, dropping the mounted tiles so their animation timers and entity watches stop with the light. Nothing else sleeps: the wake word, the ReSpeaker ring, and background playback are untouched. It fails towards a lit panel — an unreachable Home Assistant, a sensor reporting `unavailable`, or a hand on a deck the sensor thinks nobody is near all keep it awake, and the first press on a dark panel wakes it without also running the key.
+The panel switches itself off when the room is empty. `streamdeck/sleep.mts` follows a Home Assistant presence sensor
+over that same connection and writes one field of shared state; the renderer reacts to it exactly as it reacts to the
+deck being unplugged, dropping the mounted tiles so their animation timers and entity watches stop with the light.
+Nothing else sleeps: the wake word, the ReSpeaker ring, and background playback are untouched. It fails towards a lit
+panel — an unreachable Home Assistant, a sensor reporting `unavailable`, or a hand on a deck the sensor thinks nobody is
+near all keep it awake, and the first press on a dark panel wakes it without also running the key.
 
-Each key is a tile that owns its own behaviour and face; the touch strip is one full-width display owned by `streamdeck/strip.mts`, which picks between screens — the dial being turned, a notification, or what is playing. Home Assistant automations reach that strip by firing a `smartamp_notify` event on the same WebSocket the entity cache is built from, so a doorbell or a finished washing machine needs no entity and no inbound port on the Pi.
+Each key is a tile that owns its own behaviour and face; the touch strip is one full-width display owned by
+`streamdeck/strip.mts`, which picks between screens — the dial being turned, a notification, or what is playing. Home
+Assistant automations reach that strip by firing a `smartamp_notify` event on the same WebSocket the entity cache is
+built from, so a doorbell or a finished washing machine needs no entity and no inbound port on the Pi.
 
 A small local LVA launcher adapter supplies pause, idle, and natural media
 completion events missing from the pinned upstream peripheral protocol. This
@@ -93,4 +122,6 @@ cache, and the affected keys draw an unknown state rather than a stale one that
 still looks live. With no token configured the whole thing is replaced by an
 offline stand-in and the keys behave the same way, permanently.
 
-Home Assistant and Music Assistant are not part of this image. The Pi is a client endpoint: the ESPHome protocol connects voice to the remote HA instance, the HA WebSocket API connects the control surface to it, and the Sendspin protocol connects the local player to the remote Music Assistant.
+Home Assistant and Music Assistant are not part of this image. The Pi is a client endpoint: the ESPHome protocol
+connects voice to the remote HA instance, the HA WebSocket API connects the control surface to it, and the Sendspin
+protocol connects the local player to the remote Music Assistant.

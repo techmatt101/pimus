@@ -7,46 +7,47 @@
 // saying so is honest about being unused; one left to guess would fall back to
 // some other dial's reading and look like a dial that has stopped responding.
 
-import type { Binding } from '../bindings.mjs'
-import type { Dial } from './dial.mjs'
+import type {Binding} from '../bindings.mjs'
+import type {Dial} from './dial.mjs'
 
 export interface ActionDialConfig {
-  label: string
-  left?: Binding
-  right?: Binding
-  press?: Binding
-  /**
-   * The value line: a fixed string, or one worked out at read time. A dynamic
-   * readout closes over whatever live state it reports on rather than being
-   * handed a context.
-   */
-  readout: string | (() => string)
-  /** The reading as a 0-1 fraction, for a value that is a level. */
-  level?(): number | undefined
+    label: string
+    left?: Binding
+    right?: Binding
+    press?: Binding
+    /**
+     * The value line: a fixed string, or one worked out at read time. A dynamic
+     * readout closes over whatever live state it reports on rather than being
+     * handed a context.
+     */
+    readout: string | (() => string)
+
+    /** The reading as a 0-1 fraction, for a value that is a level. */
+    level?(): number | undefined
 }
 
 export class ActionDial implements Dial {
-  readonly label: string
-  readonly left: Binding | undefined
-  readonly right: Binding | undefined
-  readonly press: Binding | undefined
-  private readonly readout: string | (() => string)
-  private readonly reading: ActionDialConfig['level']
+    readonly label: string
+    readonly left: Binding | undefined
+    readonly right: Binding | undefined
+    readonly press: Binding | undefined
+    private readonly readout: string | (() => string)
+    private readonly reading: ActionDialConfig['level']
 
-  constructor(config: ActionDialConfig) {
-    this.label = config.label
-    this.left = config.left
-    this.right = config.right
-    this.press = config.press
-    this.readout = config.readout
-    this.reading = config.level
-  }
+    constructor(config: ActionDialConfig) {
+        this.label = config.label
+        this.left = config.left
+        this.right = config.right
+        this.press = config.press
+        this.readout = config.readout
+        this.reading = config.level
+    }
 
-  detail(): string {
-    return typeof this.readout === 'function' ? this.readout() : this.readout
-  }
+    detail(): string {
+        return typeof this.readout === 'function' ? this.readout() : this.readout
+    }
 
-  level(): number | undefined {
-    return this.reading?.()
-  }
+    level(): number | undefined {
+        return this.reading?.()
+    }
 }

@@ -2,19 +2,19 @@
 // condition glyph, a short name for it, and the outside temperature. Read-only
 // like the temperature key, so glancing at it cannot change anything.
 
-import { requireEntity } from '../../actions/catalog.mjs'
-import { numericAttribute } from '../../home-assistant/entity.mjs'
-import { conditionIcon } from '../icons.mjs'
-import { fittingSize, icon, text, type Surface } from '../surface.mjs'
-import { drawBackground, drawCaption, type Tile, type TileHost } from './tile.mjs'
-import type { TileServices } from '../bindings.mjs'
-import type { HomeAssistantService } from '../../types.mjs'
+import {requireEntity} from '../../actions/catalog.mjs'
+import {numericAttribute} from '../../home-assistant/entity.mjs'
+import {conditionIcon} from '../icons.mjs'
+import {fittingSize, icon, type Surface, text} from '../surface.mjs'
+import {drawBackground, drawCaption, type Tile, type TileHost} from '../tile.mjs'
+import type {TileServices} from '../bindings.mjs'
+import type {HomeAssistantService} from '../../types.mjs'
 
 export interface WeatherTileConfig {
-  /** The `weather.` entity to read. */
-  entity: string
-  /** Caption used when the entity is unknown. */
-  label?: string
+    /** The `weather.` entity to read. */
+    entity: string
+    /** Caption used when the entity is unknown. */
+    label?: string
 }
 
 /**
@@ -23,68 +23,69 @@ export interface WeatherTileConfig {
  * adds later still labels the key rather than blanking it.
  */
 const CONDITION_NAMES: Record<string, string> = {
-  'clear-night': 'CLEAR',
-  cloudy: 'CLOUDY',
-  exceptional: 'ALERT',
-  fog: 'FOG',
-  hail: 'HAIL',
-  lightning: 'STORM',
-  'lightning-rainy': 'STORM',
-  partlycloudy: 'PART SUN',
-  pouring: 'HEAVY RAIN',
-  rainy: 'RAIN',
-  snowy: 'SNOW',
-  'snowy-rainy': 'SLEET',
-  sunny: 'SUNNY',
-  windy: 'WINDY',
-  'windy-variant': 'WINDY',
+    'clear-night': 'CLEAR',
+    cloudy: 'CLOUDY',
+    exceptional: 'ALERT',
+    fog: 'FOG',
+    hail: 'HAIL',
+    lightning: 'STORM',
+    'lightning-rainy': 'STORM',
+    partlycloudy: 'PART SUN',
+    pouring: 'HEAVY RAIN',
+    rainy: 'RAIN',
+    snowy: 'SNOW',
+    'snowy-rainy': 'SLEET',
+    sunny: 'SUNNY',
+    windy: 'WINDY',
+    'windy-variant': 'WINDY',
 }
 
 export function conditionName(condition: string): string {
-  return CONDITION_NAMES[condition] ?? condition.replace(/-/g, ' ').toUpperCase()
+    return CONDITION_NAMES[condition] ?? condition.replace(/-/g, ' ').toUpperCase()
 }
 
 export class WeatherTile implements Tile {
-  private readonly ha: HomeAssistantService
-  private readonly entity: string
-  private readonly label: string
-  private unwatch: (() => void) | null = null
+    private readonly ha: HomeAssistantService
+    private readonly entity: string
+    private readonly label: string
+    private unwatch: (() => void) | null = null
 
-  constructor(services: TileServices, { entity, label = 'WEATHER' }: WeatherTileConfig) {
-    this.ha = services.ha
-    this.entity = requireEntity(entity, 'weather tile')
-    this.label = label
-  }
-
-  press(): void {}
-
-  mount(host: TileHost): void {
-    this.unwatch = this.ha.watch([this.entity], () => host.invalidate())
-  }
-
-  unmount(): void {
-    this.unwatch?.()
-    this.unwatch = null
-  }
-
-  draw(surface: Surface): void {
-    const x = surface.width / 2
-    const weather = this.ha.entity(this.entity)
-    if (!weather || weather.state === 'unknown' || weather.state === 'unavailable') {
-      drawBackground(surface, '#1a1a1a')
-      icon(surface, 'cloud', { x, y: 44, size: 54, color: '#424242' })
-      drawCaption(surface, this.label)
-      return
+    constructor(services: TileServices, {entity, label = 'WEATHER'}: WeatherTileConfig) {
+        this.ha = services.ha
+        this.entity = requireEntity(entity, 'weather tile')
+        this.label = label
     }
 
-    drawBackground(surface, '#0e1b26')
-    const { icon: conditionGlyph, color } = conditionIcon(weather.state)
-    icon(surface, conditionGlyph, { x, y: 36, size: 52, color })
+    press(): void {
+    }
 
-    const name = conditionName(weather.state)
-    text(surface, name, { x, y: 76, size: fittingSize(name, [24, 20, 17], 112), color: '#b0bec5' })
+    mount(host: TileHost): void {
+        this.unwatch = this.ha.watch([this.entity], () => host.invalidate())
+    }
 
-    const temperature = numericAttribute(weather, 'temperature')
-    drawCaption(surface, temperature === undefined ? this.label : `${Math.round(temperature)}°`)
-  }
+    unmount(): void {
+        this.unwatch?.()
+        this.unwatch = null
+    }
+
+    draw(surface: Surface): void {
+        const x = surface.width / 2
+        const weather = this.ha.entity(this.entity)
+        if (!weather || weather.state === 'unknown' || weather.state === 'unavailable') {
+            drawBackground(surface, '#1a1a1a')
+            icon(surface, 'cloud', {x, y: 44, size: 54, color: '#424242'})
+            drawCaption(surface, this.label)
+            return
+        }
+
+        drawBackground(surface, '#0e1b26')
+        const {icon: conditionGlyph, color} = conditionIcon(weather.state)
+        icon(surface, conditionGlyph, {x, y: 36, size: 52, color})
+
+        const name = conditionName(weather.state)
+        text(surface, name, {x, y: 76, size: fittingSize(name, [24, 20, 17], 112), color: '#b0bec5'})
+
+        const temperature = numericAttribute(weather, 'temperature')
+        drawCaption(surface, temperature === undefined ? this.label : `${Math.round(temperature)}°`)
+    }
 }

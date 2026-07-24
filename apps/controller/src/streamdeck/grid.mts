@@ -10,9 +10,9 @@
 // all eight keys are free to carry a page's tiles. The slots are named so a
 // page reads as a fixed grid rather than a count-the-positions array.
 
-import type { Dial } from './dials/dial.mjs'
-import type { TouchStrip } from './strip.mjs'
-import type { Tile } from './tiles/tile.mjs'
+import type {Dial} from './dials/dial.mjs'
+import type {TouchStrip} from './strip.mjs'
+import type {Tile} from './tile.mjs'
 
 /**
  * A page's tiles by fixed grid position. Every slot is optional; an empty slot
@@ -22,38 +22,38 @@ import type { Tile } from './tiles/tile.mjs'
  *     [ bottomLeft ][ bottomMidLeft ][ bottomMidRight ][ bottomRight ]
  */
 export interface PageGrid {
-  topLeft?: Tile
-  topMidLeft?: Tile
-  topMidRight?: Tile
-  topRight?: Tile
-  bottomLeft?: Tile
-  bottomMidLeft?: Tile
-  bottomMidRight?: Tile
-  bottomRight?: Tile
+    topLeft?: Tile
+    topMidLeft?: Tile
+    topMidRight?: Tile
+    topRight?: Tile
+    bottomLeft?: Tile
+    bottomMidLeft?: Tile
+    bottomMidRight?: Tile
+    bottomRight?: Tile
 }
 
 /** Each named slot's physical key index, in reading order. */
 const SLOT_INDEX: ReadonlyArray<readonly [keyof PageGrid, number]> = [
-  ['topLeft', 0],
-  ['topMidLeft', 1],
-  ['topMidRight', 2],
-  ['topRight', 3],
-  ['bottomLeft', 4],
-  ['bottomMidLeft', 5],
-  ['bottomMidRight', 6],
-  ['bottomRight', 7],
+    ['topLeft', 0],
+    ['topMidLeft', 1],
+    ['topMidRight', 2],
+    ['topRight', 3],
+    ['bottomLeft', 4],
+    ['bottomMidLeft', 5],
+    ['bottomMidRight', 6],
+    ['bottomRight', 7],
 ]
 
 /** The tile at a physical key index, or undefined for an empty slot. */
 export function tileAt(grid: PageGrid, index: number): Tile | undefined {
-  const slot = SLOT_INDEX.find(([, physical]) => physical === index)
-  return slot ? grid[slot[0]] : undefined
+    const slot = SLOT_INDEX.find(([, physical]) => physical === index)
+    return slot ? grid[slot[0]] : undefined
 }
 
 export interface StreamDeckPage {
-  /** Shown by the page-switcher dial while you turn it, so you see where you land. */
-  name: string
-  grid: PageGrid
+    /** Shown by the page-switcher dial while you turn it, so you see where you land. */
+    name: string
+    grid: PageGrid
 }
 
 /**
@@ -64,8 +64,8 @@ export interface StreamDeckPage {
  * the BrightnessTile changes it while the deck is running.
  */
 export interface StreamDeckLayout {
-  pages: StreamDeckPage[]
-  dials: Dial[]
-  /** The 800x100 display above the dials, and which screen it shows when. */
-  strip: TouchStrip
+    pages: StreamDeckPage[]
+    dials: Dial[]
+    /** The 800x100 display above the dials, and which screen it shows when. */
+    strip: TouchStrip
 }

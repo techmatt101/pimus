@@ -71,20 +71,20 @@ central dispatcher:
   (icons, per-state styling, animation) belong in their own class rather than
   in the shared renderer. The set today:
 
-| Tile | What it is |
-| --- | --- |
-| `MediaTile` | Play/pause. Draws the play or pause glyph from the playback state, and the glyph breathes while playing. |
-| `VoiceTile` | Start Assist, or cancel the pipeline already running. Expanding rings while one is live. |
-| `BrightnessTile` | Steps the Stream Deck panel's own brightness through a few levels, showing the current percentage. Mutates display state on the model; the renderer re-lights the panel. |
-| `ShuffleTile` | Shuffle on the media player, set from and reflecting what Home Assistant reports. |
-| `PlaylistTile` | A one-press shortcut to a compiled-in playlist. |
-| `SceneTile` | Steps through a short list of scenes, showing the one it last applied. |
+| Tile               | What it is                                                                                                                                                                                                                                                                                                                                                     |
+|--------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `MediaTile`        | Play/pause. Draws the play or pause glyph from the playback state, and the glyph breathes while playing.                                                                                                                                                                                                                                                       |
+| `VoiceTile`        | Start Assist, or cancel the pipeline already running. Expanding rings while one is live.                                                                                                                                                                                                                                                                       |
+| `BrightnessTile`   | Steps the Stream Deck panel's own brightness through a few levels, showing the current percentage. Mutates display state on the model; the renderer re-lights the panel.                                                                                                                                                                                       |
+| `ShuffleTile`      | Shuffle on the media player, set from and reflecting what Home Assistant reports.                                                                                                                                                                                                                                                                              |
+| `PlaylistTile`     | A one-press shortcut to a compiled-in playlist.                                                                                                                                                                                                                                                                                                                |
+| `SceneTile`        | Steps through a short list of scenes, showing the one it last applied.                                                                                                                                                                                                                                                                                         |
 | `EntityToggleTile` | The general Home Assistant on/off key — lights, fan, blinds, PC. Its service comes from the entity's own domain, and it takes an icon plus an optional `spin` (the fan turns while it runs) and `level` (how far the blinds are down), so the four are one class configured four ways. Given the dynamic dial it also hands that dial its entity when pressed. |
-| `TimerTile` | A Home Assistant `timer` entity: a draining ring and a countdown, started and cancelled by the same key. |
-| `TemperatureTile` | A sensor reading, with the background banded by temperature. Read-only. |
-| `WeatherTile` | Condition glyph, short condition name, and the outside temperature. Read-only. |
-| `ClockTile` | Local time with a bar that sweeps once a minute. Needs nothing but the clock. |
-| `PageTile` | Page navigation from a grid slot, for a page that wants a "next" key of its own in addition to the page dial. |
+| `TimerTile`        | A Home Assistant `timer` entity: a draining ring and a countdown, started and cancelled by the same key.                                                                                                                                                                                                                                                       |
+| `TemperatureTile`  | A sensor reading, with the background banded by temperature. Read-only.                                                                                                                                                                                                                                                                                        |
+| `WeatherTile`      | Condition glyph, short condition name, and the outside temperature. Read-only.                                                                                                                                                                                                                                                                                 |
+| `ClockTile`        | Local time with a bar that sweeps once a minute. Needs nothing but the clock.                                                                                                                                                                                                                                                                                  |
+| `PageTile`         | Page navigation from a grid slot, for a page that wants a "next" key of its own in addition to the page dial.                                                                                                                                                                                                                                                  |
 
 A tile paints onto a `Surface` (`streamdeck/surface.mts`) the renderer owns: a
 Skia canvas (`@napi-rs/canvas`) wrapped in the operations the control surface
@@ -134,14 +134,14 @@ timer and subscription must be dropped in `unmount`.
 
 Sent to the Linux Voice Assistant peripheral socket.
 
-| Command | Effect |
-| --- | --- |
-| `start_listening` | Start a voice pipeline, the same as speaking the wake word. |
-| `mute_toggle` | Toggle the microphone mute. Tracks the mute state reported by LVA. |
-| `media_toggle` | Play or pause the media player. |
-| `stop` | Stop everything at once: timer ringing, the pipeline, and media playback. |
-| `listen_toggle` | Start a voice pipeline, or cancel the one already running. |
-| `stop_timer_ringing` | Silence a ringing timer, leaving media playback alone. |
+| Command              | Effect                                                                    |
+|----------------------|---------------------------------------------------------------------------|
+| `start_listening`    | Start a voice pipeline, the same as speaking the wake word.               |
+| `mute_toggle`        | Toggle the microphone mute. Tracks the mute state reported by LVA.        |
+| `media_toggle`       | Play or pause the media player.                                           |
+| `stop`               | Stop everything at once: timer ringing, the pipeline, and media playback. |
+| `listen_toggle`      | Start a voice pipeline, or cancel the one already running.                |
+| `stop_timer_ringing` | Silence a ringing timer, leaving media playback alone.                    |
 
 ```ts
 key('VOICE', '#006064', voice('start_listening'))
@@ -155,14 +155,22 @@ no key feedback; add them to the catalog when they need either.
 
 Drives the PipeWire default sink through `wpctl`.
 
-| Command | Effect |
-| --- | --- |
-| `up` | Raise the default sink by 5%, capped at 100%. |
-| `down` | Lower the default sink by 5%. |
-| `mute` | Toggle mute on the default sink. |
+| Command | Effect                                        |
+|---------|-----------------------------------------------|
+| `up`    | Raise the default sink by 5%, capped at 100%. |
+| `down`  | Lower the default sink by 5%.                 |
+| `mute`  | Toggle mute on the default sink.              |
 
 ```ts
-{ label: 'VOLUME', left: volume('down'), right: volume('up'), press: volume('mute') }
+{
+    label: 'VOLUME', left
+:
+    volume('down'), right
+:
+    volume('up'), press
+:
+    volume('mute')
+}
 ```
 
 ## Audio routes — `type: audio` with a `source`
@@ -171,10 +179,10 @@ Toggles a named route through the audio manager's control socket. `source` must
 be a route the audio manager owns, currently `aux` or `usb`; it rejects names it
 does not know.
 
-| Command | Effect |
-| --- | --- |
-| `on` | Enable the named audio route. |
-| `off` | Disable the named audio route. |
+| Command  | Effect                                |
+|----------|---------------------------------------|
+| `on`     | Enable the named audio route.         |
+| `off`    | Disable the named audio route.        |
 | `toggle` | Flip the named audio route on or off. |
 
 ```ts
@@ -194,23 +202,23 @@ fans, covers, switches, and helpers — `fan.office_ceiling` is flipped by
 `fan.toggle` and `cover.office_blinds` by `cover.toggle`, with no service named
 in the layout.
 
-| Command | Effect |
-| --- | --- |
-| `toggle` | Flip an entity on or off: a light, fan, switch, cover, or helper. |
-| `turn_on` | Turn an entity on. A cover opens. |
-| `turn_off` | Turn an entity off. A cover closes. |
-| `activate` | Activate a scene or run a script, which have no matching "off". |
-| `play_media` | Play a media id on a media player, such as a saved playlist. |
-| `media_next` | Skip a media player to the next track. |
-| `media_previous` | Send a media player back to the previous track. |
-| `media_shuffle` | Toggle shuffle, from the shuffle state the player reports. |
-| `brightness_up` | Raise a light's brightness by 10%. |
-| `brightness_down` | Lower a light's brightness by 10%. |
-| `fan_speed_up` | Raise a fan's speed by one of its own steps. |
-| `fan_speed_down` | Lower a fan's speed by one of its own steps. |
-| `cover_open` | Open a cover by 10%, or fully when it reports no position. |
-| `cover_close` | Close a cover by 10%, or fully when it reports no position. |
-| `timer_toggle` | Start a Home Assistant timer, or cancel the one already running. |
+| Command           | Effect                                                            |
+|-------------------|-------------------------------------------------------------------|
+| `toggle`          | Flip an entity on or off: a light, fan, switch, cover, or helper. |
+| `turn_on`         | Turn an entity on. A cover opens.                                 |
+| `turn_off`        | Turn an entity off. A cover closes.                               |
+| `activate`        | Activate a scene or run a script, which have no matching "off".   |
+| `play_media`      | Play a media id on a media player, such as a saved playlist.      |
+| `media_next`      | Skip a media player to the next track.                            |
+| `media_previous`  | Send a media player back to the previous track.                   |
+| `media_shuffle`   | Toggle shuffle, from the shuffle state the player reports.        |
+| `brightness_up`   | Raise a light's brightness by 10%.                                |
+| `brightness_down` | Lower a light's brightness by 10%.                                |
+| `fan_speed_up`    | Raise a fan's speed by one of its own steps.                      |
+| `fan_speed_down`  | Lower a fan's speed by one of its own steps.                      |
+| `cover_open`      | Open a cover by 10%, or fully when it reports no position.        |
+| `cover_close`     | Close a cover by 10%, or fully when it reports no position.       |
+| `timer_toggle`    | Start a Home Assistant timer, or cancel the one already running.  |
 
 ```ts
 key('FAN', '#00695c', ha('toggle', 'fan.office_ceiling'))
@@ -239,13 +247,13 @@ An `ActionTile` reports its target's live state through the bound action's
 catalog indicator, so a key changes colour and label without any extra
 configuration. Everything else keeps the label and colour you configured.
 
-| Bound action | While active |
-| --- | --- |
-| `lva` / `mute_toggle` | Label becomes `MIC OFF`, background red. |
-| `lva` / `media_toggle` | Label becomes `PAUSE`, background green. |
-| `lva` / `start_listening` | Background cyan while the pipeline is running. |
-| `lva` / `listen_toggle` | Label becomes `CANCEL`, background cyan while the pipeline is running. |
-| `audio` route (`on`/`off`/`toggle`) | Label gains ` ON` or ` OFF`, background green when on. |
+| Bound action                        | While active                                                           |
+|-------------------------------------|------------------------------------------------------------------------|
+| `lva` / `mute_toggle`               | Label becomes `MIC OFF`, background red.                               |
+| `lva` / `media_toggle`              | Label becomes `PAUSE`, background green.                               |
+| `lva` / `start_listening`           | Background cyan while the pipeline is running.                         |
+| `lva` / `listen_toggle`             | Label becomes `CANCEL`, background cyan while the pipeline is running. |
+| `audio` route (`on`/`off`/`toggle`) | Label gains ` ON` or ` OFF`, background green when on.                 |
 
 The `MediaTile` used on the MAIN page goes further than the `media_toggle`
 indicator: it draws a play or pause icon and colours itself from the playback
@@ -272,25 +280,25 @@ the content of that face:
   for a value that really is a level. A bar is what makes a value readable while
   the knob is still moving. A dial with nothing to plot omits it.
 
-| Dial | What it is |
-| --- | --- |
-| `ActionDial` | The default: a fixed name, up to three bindings, and a readout it is told. Also how a knob is held open — bound to nothing and saying so. |
-| `VolumeDial` | Master output volume, read from the controller's own state so it is right with nothing else reachable. `MUTED` is its own reading, and an empty bar. |
-| `MediaDial` | Transport: skip through the Music Assistant player, press to play or pause through LVA, and read `PLAYING` / `PAUSED`. |
-| `EntityDial` | A Home Assistant entity turned by its own domain. Built by `EntityDial.for(...)`, which returns nothing for a domain with nothing to turn. |
-| `PageDial` | Pages the key grid — turn to move between pages — and reads out the page you land on. Takes over the job the bottom-corner keys used to do. |
-| `DynamicDial` | The shared knob, delegating to whichever `Dial` a key last handed it. |
+| Dial          | What it is                                                                                                                                           |
+|---------------|------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `ActionDial`  | The default: a fixed name, up to three bindings, and a readout it is told. Also how a knob is held open — bound to nothing and saying so.            |
+| `VolumeDial`  | Master output volume, read from the controller's own state so it is right with nothing else reachable. `MUTED` is its own reading, and an empty bar. |
+| `MediaDial`   | Transport: skip through the Music Assistant player, press to play or pause through LVA, and read `PLAYING` / `PAUSED`.                               |
+| `EntityDial`  | A Home Assistant entity turned by its own domain. Built by `EntityDial.for(...)`, which returns nothing for a domain with nothing to turn.           |
+| `PageDial`    | Pages the key grid — turn to move between pages — and reads out the page you land on. Takes over the job the bottom-corner keys used to do.          |
+| `DynamicDial` | The shared knob, delegating to whichever `Dial` a key last handed it.                                                                                |
 
 Write a new `Dial` class when a knob needs a reading it has to work out for
 itself; use `ActionDial` when it can be told.
 
 The four dials as shipped:
 
-| Dial | Turn left / right | Press |
-| --- | --- | --- |
-| `VOLUME` | Master volume down / up | Mute |
-| `MEDIA` | Previous / next track | Play/pause |
-| `PAGE` | Previous / next page of keys | — |
+| Dial      | Turn left / right                           | Press              |
+|-----------|---------------------------------------------|--------------------|
+| `VOLUME`  | Master volume down / up                     | Mute               |
+| `MEDIA`   | Previous / next track                       | Play/pause         |
+| `PAGE`    | Previous / next page of keys                | —                  |
 | *dynamic* | Whatever the last room key you pressed does | Toggle that entity |
 
 Media transport goes through the Music Assistant player rather than LVA: the LVA
@@ -316,11 +324,11 @@ the three the knob will move without turning it to find out.
 What turning it does comes from the entity's own domain, exactly as the toggle
 service does (`EntityDial` in `streamdeck/dials/entity-dial.mts`):
 
-| Domain | Turn left / right | Readout |
-| --- | --- | --- |
-| `light` | `brightness_down` / `brightness_up` | Brightness, or `ON` / `OFF` |
-| `fan` | `fan_speed_down` / `fan_speed_up` | Speed, or `ON` / `OFF` |
-| `cover` | `cover_close` / `cover_open` | How far open, or `OPEN` / `CLOSED` |
+| Domain  | Turn left / right                   | Readout                            |
+|---------|-------------------------------------|------------------------------------|
+| `light` | `brightness_down` / `brightness_up` | Brightness, or `ON` / `OFF`        |
+| `fan`   | `fan_speed_down` / `fan_speed_up`   | Speed, or `ON` / `OFF`             |
+| `cover` | `cover_close` / `cover_open`        | How far open, or `OPEN` / `CLOSED` |
 
 A domain that is absent from that table has nothing worth turning, so a key for
 one — the desk PC switch — claims no dial when pressed and leaves the last claim
@@ -339,11 +347,11 @@ The strip is one full-width display rather than four dial labels. Which of its
 **screens** is showing is decided by `apps/controller/src/streamdeck/strip.mts`,
 in this order:
 
-| Showing | When | What it looks like |
-| --- | --- | --- |
-| Dial readout | For 2.5 s after a dial was last turned or pressed | The dial's name, its readout, and a bar for a dial with a level |
+| Showing      | When                                               | What it looks like                                                  |
+|--------------|----------------------------------------------------|---------------------------------------------------------------------|
+| Dial readout | For 2.5 s after a dial was last turned or pressed  | The dial's name, its readout, and a bar for a dial with a level     |
 | Notification | While a message pushed from Home Assistant is live | Its heading and message on its own colour, with a draining time bar |
-| Now playing | Otherwise | Track title, artist and album, and a position bar |
+| Now playing  | Otherwise                                          | Track title, artist and album, and a position bar                   |
 
 A hand on a knob wins over a live notification — feedback you cannot see while
 turning is no feedback — and the notification comes back when the hold expires.
@@ -409,11 +417,11 @@ in `layout.mts` and read over the connection the keys already use. Three things
 keep the panel lit, and each restarts the grace period rather than pinning it
 awake, so leaving the room always ends the same way:
 
-| Keeps the panel lit | Why |
-| --- | --- |
-| The presence sensor reading `on` | Somebody is in the room |
-| A live Assist pipeline — wake word, listening, thinking, speaking, a ringing timer | What Assist is doing has to be visible |
-| A key press, dial turn, or tap on the strip | The safety net for a sensor that is simply wrong |
+| Keeps the panel lit                                                                | Why                                              |
+|------------------------------------------------------------------------------------|--------------------------------------------------|
+| The presence sensor reading `on`                                                   | Somebody is in the room                          |
+| A live Assist pipeline — wake word, listening, thinking, speaking, a ringing timer | What Assist is doing has to be visible           |
+| A key press, dial turn, or tap on the strip                                        | The safety net for a sensor that is simply wrong |
 
 The panel goes dark two minutes after the last of those, and lights the instant
 presence returns. **The first press on a dark deck only wakes it** — that press

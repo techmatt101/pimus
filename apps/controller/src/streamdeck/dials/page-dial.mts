@@ -8,40 +8,41 @@
 // turns are harmless no-ops and it reads a neutral label, so a test that builds
 // the layout on its own never has to wire one up.
 
-import type { Binding } from '../bindings.mjs'
-import type { Dial } from './dial.mjs'
+import type {Binding} from '../bindings.mjs'
+import type {Dial} from './dial.mjs'
 
 /** How the page dial reaches paging, once the renderer that owns it exists. */
 export interface PageNavigator {
-  /** Move by whole pages, wrapping around at either end. */
-  changePage(delta: number): void
-  /** The name of the page currently showing, for the readout. */
-  currentName(): string
+    /** Move by whole pages, wrapping around at either end. */
+    changePage(delta: number): void
+
+    /** The name of the page currently showing, for the readout. */
+    currentName(): string
 }
 
 /** Read before a navigator is connected, so the dial still names itself. */
 const IDLE_DETAIL = 'PAGE'
 
 export class PageDial implements Dial {
-  readonly label = 'PAGE'
-  readonly left: Binding
-  readonly right: Binding
-  private nav: PageNavigator | null = null
+    readonly label = 'PAGE'
+    readonly left: Binding
+    readonly right: Binding
+    private nav: PageNavigator | null = null
 
-  constructor() {
-    // A noop action: paging navigates the surface rather than running a
-    // catalogued command, exactly as the old nav corners did. The behaviour is
-    // the run(), which reaches the renderer once one is connected.
-    this.left = { action: { type: 'noop' }, run: () => this.nav?.changePage(-1) }
-    this.right = { action: { type: 'noop' }, run: () => this.nav?.changePage(1) }
-  }
+    constructor() {
+        // A noop action: paging navigates the surface rather than running a
+        // catalogued command, exactly as the old nav corners did. The behaviour is
+        // the run(), which reaches the renderer once one is connected.
+        this.left = {action: {type: 'noop'}, run: () => this.nav?.changePage(-1)}
+        this.right = {action: {type: 'noop'}, run: () => this.nav?.changePage(1)}
+    }
 
-  /** Hand the dial the renderer's paging. Wired once the renderer exists. */
-  connect(nav: PageNavigator): void {
-    this.nav = nav
-  }
+    /** Hand the dial the renderer's paging. Wired once the renderer exists. */
+    connect(nav: PageNavigator): void {
+        this.nav = nav
+    }
 
-  detail(): string {
-    return this.nav?.currentName() || IDLE_DETAIL
-  }
+    detail(): string {
+        return this.nav?.currentName() || IDLE_DETAIL
+    }
 }

@@ -4,15 +4,25 @@ All supported settings live in `ansible/inventory/group_vars/all.yml`. Re-run `m
 
 ## Audio
 
-`hifiberry_aux_gain_db` is the analogue ADC input gain. Start at `0`; line-level sources can clip if this is raised too far. `hifiberry_output_volume_percent` is the safe boot-time hardware level. Normal volume control remains available through Home Assistant and the Stream Deck.
+`hifiberry_aux_gain_db` is the analogue ADC input gain. Start at `0`; line-level sources can clip if this is raised too
+far. `hifiberry_output_volume_percent` is the safe boot-time hardware level. Normal volume control remains available
+through Home Assistant and the Stream Deck.
 
-Device match expressions search every PipeWire/Pulse node property. Use `pactl list sinks` and `pactl list sources` on the Pi if your firmware exposes different names.
+Device match expressions search every PipeWire/Pulse node property. Use `pactl list sinks` and `pactl list sources` on
+the Pi if your firmware exposes different names.
 
-Set `smartamp_aux_enabled` to choose whether aux monitoring starts on boot. USB monitoring is initially enabled when `usb_audio_gadget_enabled` is true. Stream Deck route toggles last until the next reboot; every boot starts from these inventory defaults.
+Set `smartamp_aux_enabled` to choose whether aux monitoring starts on boot. USB monitoring is initially enabled when
+`usb_audio_gadget_enabled` is true. Stream Deck route toggles last until the next reboot; every boot starts from these
+inventory defaults.
 
-Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Sendspin and USB computer audio share the `smartamp_background_sink_name` bus and fade down to `smartamp_voice_duck_volume_percent` per cent of their normal level during an Assist interaction — the value is the level the music plays *at* while ducked (reduced to 15%, not by 15%), and it returns to 100% afterwards. `smartamp_voice_duck_fade_ms` controls the transition. The controller requests ducking over the audio manager's control socket, which releases the request automatically if the controller disconnects.
+Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Sendspin and USB computer audio share the
+`smartamp_background_sink_name` bus and fade down to `smartamp_voice_duck_volume_percent` per cent of their normal level
+during an Assist interaction — the value is the level the music plays *at* while ducked (reduced to 15%, not by 15%),
+and it returns to 100% afterwards. `smartamp_voice_duck_fade_ms` controls the transition. The controller requests
+ducking over the audio manager's control socket, which releases the request automatically if the controller disconnects.
 
-Aux is deliberately not on the duckable bus. It continues at its selected level during voice interactions. Set the generated source target to `background` as a code-level extension if aux should follow the same policy.
+Aux is deliberately not on the duckable bus. It continues at its selected level during voice interactions. Set the
+generated source target to `background` as a code-level extension if aux should follow the same policy.
 
 ## SD-card endurance
 
@@ -37,9 +47,16 @@ files can be placed in `/var/lib/smartamp/lva/wakewords` and selected by name.
 The remote Home Assistant Assist pipeline supplies speech-to-text,
 conversation handling, and text-to-speech.
 
-The XVF3800 already performs AEC, beamforming, dereverberation, noise suppression and gain control. Leave LVA software noise suppression and auto-gain disabled initially to avoid processing the signal twice.
+The XVF3800 already performs AEC, beamforming, dereverberation, noise suppression and gain control. Leave LVA software
+noise suppression and auto-gain disabled initially to avoid processing the signal twice.
 
-The device's two USB capture channels are separate DSP outputs, not a stereo pair: channel 0 is the Conference stream (tuned for human listeners), channel 1 the ASR stream (tuned for recognition). `smartamp_voice_capture_channel` (default `1`) tells the audio manager which channel to publish as the mono default source; set it to `null` to capture a device unmapped (a genuinely mono microphone). The voice assistant's capture is hardcoded to one channel in its systemd unit because that mono source is the entire capture either way — a second LVA channel would be forwarded to Home Assistant labelled as a far-end echo reference for server-side AEC, and on the XVF3800 that channel carries the voice, not an echo reference.
+The device's two USB capture channels are separate DSP outputs, not a stereo pair: channel 0 is the Conference stream (
+tuned for human listeners), channel 1 the ASR stream (tuned for recognition). `smartamp_voice_capture_channel` (default
+`1`) tells the audio manager which channel to publish as the mono default source; set it to `null` to capture a device
+unmapped (a genuinely mono microphone). The voice assistant's capture is hardcoded to one channel in its systemd unit
+because that mono source is the entire capture either way — a second LVA channel would be forwarded to Home Assistant
+labelled as a far-end echo reference for server-side AEC, and on the XVF3800 that channel carries the voice, not an echo
+reference.
 
 ## ReSpeaker effects
 
@@ -54,17 +71,17 @@ thinking: Leds.spin('#7c4dff'),
 listening: Leds.direction('#001018', '#00e5ff'),
 ```
 
-| Helper | What the ring shows |
-| --- | --- |
-| `Leds.off()` | Every LED dark. |
-| `Leds.solid(color)` | One steady colour. |
-| `Leds.pulse(color)` | The colour swelling and fading (firmware breathing). |
-| `Leds.rainbow()` | The firmware rainbow cycle. |
-| `Leds.colors([…])` | A fixed colour per LED — the list repeats around the ring, so an explicit rainbow (`rainbowColors()`) or a gradient is just a list. |
-| `Leds.spin(color \| [...])` | The colours rotating like a loading spinner; a single colour gets a comet tail. `periodMs` sets the rotation time. |
-| `Leds.blink(color)` | The whole ring flashing on and off. |
-| `Leds.progress(fraction, color)` | A fraction of the ring lit, for readouts. |
-| `Leds.direction(base, highlight)` | The LEDs facing the detected voice light in the highlight colour (the XVF3800's direction-of-arrival tracking). |
+| Helper                            | What the ring shows                                                                                                                 |
+|-----------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|
+| `Leds.off()`                      | Every LED dark.                                                                                                                     |
+| `Leds.solid(color)`               | One steady colour.                                                                                                                  |
+| `Leds.pulse(color)`               | The colour swelling and fading (firmware breathing).                                                                                |
+| `Leds.rainbow()`                  | The firmware rainbow cycle.                                                                                                         |
+| `Leds.colors([…])`                | A fixed colour per LED — the list repeats around the ring, so an explicit rainbow (`rainbowColors()`) or a gradient is just a list. |
+| `Leds.spin(color \| [...])`       | The colours rotating like a loading spinner; a single colour gets a comet tail. `periodMs` sets the rotation time.                  |
+| `Leds.blink(color)`               | The whole ring flashing on and off.                                                                                                 |
+| `Leds.progress(fraction, color)`  | A fraction of the ring lit, for readouts.                                                                                           |
+| `Leds.direction(base, highlight)` | The LEDs facing the detected voice light in the highlight colour (the XVF3800's direction-of-arrival tracking).                     |
 
 Every helper accepts a `brightness` override; `spin` and `blink` are animated
 by the controller, which streams per-LED frames over USB, while the other

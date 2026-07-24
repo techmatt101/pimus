@@ -6,33 +6,33 @@
 // controller's own playback state comes from — which is also what this dial
 // reads out, so the knob reports the same thing the play key does.
 
-import { createBindings, type Binding, type TileServices } from '../bindings.mjs'
-import type { Dial } from './dial.mjs'
-import type { ControlModel } from '../../state.mjs'
+import {type Binding, createBindings, type TileServices} from '../bindings.mjs'
+import type {Dial} from './dial.mjs'
+import type {ControlModel} from '../../state.mjs'
 
 export interface MediaDialConfig {
-  /** The `media_player.` entity the skips are sent to. */
-  player: string
-  label?: string
+    /** The `media_player.` entity the skips are sent to. */
+    player: string
+    label?: string
 }
 
 export class MediaDial implements Dial {
-  readonly label: string
-  readonly left: Binding
-  readonly right: Binding
-  readonly press: Binding
-  private readonly model: ControlModel
+    readonly label: string
+    readonly left: Binding
+    readonly right: Binding
+    readonly press: Binding
+    private readonly model: ControlModel
 
-  constructor(services: TileServices, { player, label = 'MEDIA' }: MediaDialConfig) {
-    const { ha, voice } = createBindings(services)
-    this.model = services.model
-    this.label = label
-    this.left = ha('media_previous', player)
-    this.right = ha('media_next', player)
-    this.press = voice('media_toggle')
-  }
+    constructor(services: TileServices, {player, label = 'MEDIA'}: MediaDialConfig) {
+        const {ha, voice} = createBindings(services)
+        this.model = services.model
+        this.label = label
+        this.left = ha('media_previous', player)
+        this.right = ha('media_next', player)
+        this.press = voice('media_toggle')
+    }
 
-  detail(): string {
-    return this.model.state.media ? 'PLAYING' : 'PAUSED'
-  }
+    detail(): string {
+        return this.model.state.media ? 'PLAYING' : 'PAUSED'
+    }
 }

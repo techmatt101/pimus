@@ -10,9 +10,9 @@
 // and the strip shows the new readout straight away, so the thing you just
 // pressed is also the thing under your hand.
 
-import type { Binding } from '../bindings.mjs'
-import type { Dial } from './dial.mjs'
-import type { ControlModel } from '../../state.mjs'
+import type {Binding} from '../bindings.mjs'
+import type {Dial} from './dial.mjs'
+import type {ControlModel} from '../../state.mjs'
 
 /** Shown before any key has claimed the dial, so it explains itself. */
 const IDLE_LABEL = 'CONTROL'
@@ -25,56 +25,57 @@ const IDLE_DETAIL = 'PICK A KEY'
  * the fixed three.
  */
 export class DynamicDial implements Dial {
-  private held: Dial | null = null
-  private reveal: (() => void) | null = null
+    private held: Dial | null = null
+    private reveal: (() => void) | null = null
 
-  constructor(private readonly model: ControlModel) {}
+    constructor(private readonly model: ControlModel) {
+    }
 
-  get label(): string {
-    return this.held?.label ?? IDLE_LABEL
-  }
+    get label(): string {
+        return this.held?.label ?? IDLE_LABEL
+    }
 
-  get left(): Binding | undefined {
-    return this.held?.left
-  }
+    get left(): Binding | undefined {
+        return this.held?.left
+    }
 
-  get right(): Binding | undefined {
-    return this.held?.right
-  }
+    get right(): Binding | undefined {
+        return this.held?.right
+    }
 
-  get press(): Binding | undefined {
-    return this.held?.press
-  }
+    get press(): Binding | undefined {
+        return this.held?.press
+    }
 
-  detail(): string {
-    return this.held?.detail() ?? IDLE_DETAIL
-  }
+    detail(): string {
+        return this.held?.detail() ?? IDLE_DETAIL
+    }
 
-  level(): number | undefined {
-    return this.held?.level?.()
-  }
+    level(): number | undefined {
+        return this.held?.level?.()
+    }
 
-  /**
-   * How to put this dial on the touch strip when it changes hands. Wired by the
-   * layout once the strip exists, since the dial is built before it.
-   */
-  revealOn(reveal: () => void): void {
-    this.reveal = reveal
-  }
+    /**
+     * How to put this dial on the touch strip when it changes hands. Wired by the
+     * layout once the strip exists, since the dial is built before it.
+     */
+    revealOn(reveal: () => void): void {
+        this.reveal = reveal
+    }
 
-  /** Hand the dial to `dial`. A key calls this as it is pressed. */
-  claim(dial: Dial): void {
-    const changed = this.held !== dial
-    this.held = dial
-    // Show the readout even on a re-press: the point of pressing BLINDS twice
-    // is usually to look at where they are before turning them.
-    this.reveal?.()
-    // Keys draw whether they hold the dial, so the whole panel is stale now.
-    if (changed) this.model.notify()
-  }
+    /** Hand the dial to `dial`. A key calls this as it is pressed. */
+    claim(dial: Dial): void {
+        const changed = this.held !== dial
+        this.held = dial
+        // Show the readout even on a re-press: the point of pressing BLINDS twice
+        // is usually to look at where they are before turning them.
+        this.reveal?.()
+        // Keys draw whether they hold the dial, so the whole panel is stale now.
+        if (changed) this.model.notify()
+    }
 
-  /** Whether `dial` is the one holding it, for a key's own face. */
-  holds(dial: Dial): boolean {
-    return this.held === dial
-  }
+    /** Whether `dial` is the one holding it, for a key's own face. */
+    holds(dial: Dial): boolean {
+        return this.held === dial
+    }
 }

@@ -1,29 +1,34 @@
 {
-  "compilerOptions": {
-    // The Pi runs the Debian "nodejs" package (18 on Bookworm, 20 on Trixie),
-    // so emit only language features those releases support natively.
-    "target": "ES2022",
-    "lib": ["ES2022"],
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "types": ["node"],
-
-    // .mts sources emit .mjs, so the deployed layout and every import
-    // specifier stay exactly as they were before the TypeScript migration.
-    "rootDir": ".",
-    "outDir": "dist",
-    "sourceMap": true,
-
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "verbatimModuleSyntax": true,
-    "isolatedModules": true,
-    "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true
-  },
-  "include": ["src/**/*.mts", "test/**/*.mts"]
+    "compilerOptions": {
+        // The Pi runs the Debian "nodejs" package (18 on Bookworm, 20 on Trixie),
+        // so emit only language features those releases support natively.
+        "target": "ES2022",
+        "lib": [
+            "ES2022"
+        ],
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "types": [
+            "node"
+        ],
+        // .mts sources emit .mjs, so the deployed layout and every import
+        // specifier stay exactly as they were before the TypeScript migration.
+        "rootDir": ".",
+        "outDir": "dist",
+        "sourceMap": true,
+        "strict": true,
+        "noUncheckedIndexedAccess": true,
+        "noImplicitOverride": true,
+        "noFallthroughCasesInSwitch": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "verbatimModuleSyntax": true,
+        "isolatedModules": true,
+        "forceConsistentCasingInFileNames": true,
+        "skipLibCheck": true
+    },
+    "include": [
+        "src/**/*.mts",
+        "test/**/*.mts"
+    ]
 }

@@ -1,31 +1,31 @@
-import type { LvaMessage } from '../types.mjs'
+import type {LvaMessage} from '../types.mjs'
 
 const ACTIVE_EVENTS = new Set([
-  'wake_word_detected',
-  'listening',
-  'thinking',
-  'tts_speaking',
-  'timer_ringing',
+    'wake_word_detected',
+    'listening',
+    'thinking',
+    'tts_speaking',
+    'timer_ringing',
 ])
 
 const RELEASE_EVENTS = new Set([
-  'idle',
-  'tts_finished',
-  'pipeline_error',
-  'disconnected',
+    'idle',
+    'tts_finished',
+    'pipeline_error',
+    'disconnected',
 ])
 
 /** Returns the requested duck state, or null when the event is irrelevant. */
 export function duckingForEvent(message: LvaMessage | undefined): boolean | null {
-  const event = String(message?.event || '')
-  if (ACTIVE_EVENTS.has(event)) return true
-  if (RELEASE_EVENTS.has(event) || event === 'snapshot') return false
-  return null
+    const event = String(message?.event || '')
+    if (ACTIVE_EVENTS.has(event)) return true
+    if (RELEASE_EVENTS.has(event) || event === 'snapshot') return false
+    return null
 }
 
 export interface VoiceDuckerOptions {
-  /** Forwards the request to the audio manager's control socket. */
-  setDuck: (active: boolean) => void
+    /** Forwards the request to the audio manager's control socket. */
+    setDuck: (active: boolean) => void
 }
 
 /**
@@ -35,25 +35,25 @@ export interface VoiceDuckerOptions {
  * holds the request against this socket, so ending the process releases it.
  */
 export class VoiceDucker {
-  active = false
-  private readonly setDuck: (active: boolean) => void
+    active = false
+    private readonly setDuck: (active: boolean) => void
 
-  constructor({ setDuck }: VoiceDuckerOptions) {
-    this.setDuck = setDuck
-  }
+    constructor({setDuck}: VoiceDuckerOptions) {
+        this.setDuck = setDuck
+    }
 
-  setActive(active: boolean): void {
-    if (this.active === active) return
-    this.active = active
-    this.setDuck(active)
-  }
+    setActive(active: boolean): void {
+        if (this.active === active) return
+        this.active = active
+        this.setDuck(active)
+    }
 
-  handleEvent(message: LvaMessage | undefined): void {
-    const active = duckingForEvent(message)
-    if (active !== null) this.setActive(active)
-  }
+    handleEvent(message: LvaMessage | undefined): void {
+        const active = duckingForEvent(message)
+        if (active !== null) this.setActive(active)
+    }
 
-  release(): void {
-    this.setActive(false)
-  }
+    release(): void {
+        this.setActive(false)
+    }
 }

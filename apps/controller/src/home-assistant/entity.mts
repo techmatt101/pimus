@@ -3,7 +3,7 @@
 // needs — is this on, what does this sensor read, how long is left on this
 // timer — lives here rather than being re-derived on each key face.
 
-import type { HomeAssistantEntity } from '../types.mjs'
+import type {HomeAssistantEntity} from '../types.mjs'
 
 /** States that mean "on" across the domains the control surface drives. */
 const ON_STATES = new Set(['on', 'open', 'opening', 'playing', 'active', 'home', 'heat', 'cool'])
@@ -17,26 +17,26 @@ const OFF_STATES = new Set(['off', 'closed', 'closing', 'idle', 'paused', 'stand
  * simply switched off.
  */
 export function isEntityOn(entity: HomeAssistantEntity | undefined): boolean | undefined {
-  if (!entity) return undefined
-  if (ON_STATES.has(entity.state)) return true
-  if (OFF_STATES.has(entity.state)) return false
-  return undefined
+    if (!entity) return undefined
+    if (ON_STATES.has(entity.state)) return true
+    if (OFF_STATES.has(entity.state)) return false
+    return undefined
 }
 
 /** A sensor's numeric reading, or undefined when it is not a number. */
 export function numericState(entity: HomeAssistantEntity | undefined): number | undefined {
-  if (!entity) return undefined
-  const value = Number(entity.state)
-  return Number.isFinite(value) ? value : undefined
+    if (!entity) return undefined
+    const value = Number(entity.state)
+    return Number.isFinite(value) ? value : undefined
 }
 
 /** A numeric attribute, for things like `temperature` on a weather entity. */
 export function numericAttribute(
-  entity: HomeAssistantEntity | undefined,
-  name: string,
+    entity: HomeAssistantEntity | undefined,
+    name: string,
 ): number | undefined {
-  const value = Number(entity?.attributes[name])
-  return Number.isFinite(value) ? value : undefined
+    const value = Number(entity?.attributes[name])
+    return Number.isFinite(value) ? value : undefined
 }
 
 /**
@@ -44,13 +44,13 @@ export function numericAttribute(
  * some integrations report plain seconds, so accept both.
  */
 export function durationSeconds(value: unknown): number | undefined {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined
-  if (typeof value !== 'string') return undefined
-  const parts = value.split(':').map(Number)
-  if (parts.length === 0 || parts.length > 3 || parts.some((part) => !Number.isFinite(part))) {
-    return undefined
-  }
-  return parts.reduce((total, part) => total * 60 + part, 0)
+    if (typeof value === 'number') return Number.isFinite(value) ? value : undefined
+    if (typeof value !== 'string') return undefined
+    const parts = value.split(':').map(Number)
+    if (parts.length === 0 || parts.length > 3 || parts.some((part) => !Number.isFinite(part))) {
+        return undefined
+    }
+    return parts.reduce((total, part) => total * 60 + part, 0)
 }
 
 /**
@@ -61,18 +61,18 @@ export function durationSeconds(value: unknown): number | undefined {
  * makes a paused timer hold its reading instead of counting to zero.
  */
 export function timerRemainingSeconds(
-  entity: HomeAssistantEntity | undefined,
-  now: number,
+    entity: HomeAssistantEntity | undefined,
+    now: number,
 ): number | undefined {
-  if (!entity) return undefined
-  if (entity.state === 'active') {
-    const finishesAt = entity.attributes.finishes_at
-    if (typeof finishesAt === 'string') {
-      const end = Date.parse(finishesAt)
-      if (Number.isFinite(end)) return Math.max(0, (end - now) / 1000)
+    if (!entity) return undefined
+    if (entity.state === 'active') {
+        const finishesAt = entity.attributes.finishes_at
+        if (typeof finishesAt === 'string') {
+            const end = Date.parse(finishesAt)
+            if (Number.isFinite(end)) return Math.max(0, (end - now) / 1000)
+        }
     }
-  }
-  return durationSeconds(entity.attributes.remaining) ?? durationSeconds(entity.attributes.duration)
+    return durationSeconds(entity.attributes.remaining) ?? durationSeconds(entity.attributes.duration)
 }
 
 /**
@@ -83,22 +83,22 @@ export function timerRemainingSeconds(
  * the position it reported.
  */
 export function mediaElapsedSeconds(
-  entity: HomeAssistantEntity | undefined,
-  now: number,
+    entity: HomeAssistantEntity | undefined,
+    now: number,
 ): number | undefined {
-  const position = numericAttribute(entity, 'media_position')
-  if (position === undefined || entity?.state !== 'playing') return position
-  const measuredAt = entity.attributes.media_position_updated_at
-  const measured = typeof measuredAt === 'string' ? Date.parse(measuredAt) : Number.NaN
-  if (!Number.isFinite(measured)) return position
-  return position + Math.max(0, (now - measured) / 1000)
+    const position = numericAttribute(entity, 'media_position')
+    if (position === undefined || entity?.state !== 'playing') return position
+    const measuredAt = entity.attributes.media_position_updated_at
+    const measured = typeof measuredAt === 'string' ? Date.parse(measuredAt) : Number.NaN
+    if (!Number.isFinite(measured)) return position
+    return position + Math.max(0, (now - measured) / 1000)
 }
 
 /** A countdown as `M:SS`, or `H:MM` once an hour or more is left. */
 export function formatDuration(seconds: number): string {
-  const whole = Math.max(0, Math.ceil(seconds))
-  const hours = Math.floor(whole / 3600)
-  const minutes = Math.floor((whole % 3600) / 60)
-  if (hours > 0) return `${hours}:${String(minutes).padStart(2, '0')}`
-  return `${minutes}:${String(whole % 60).padStart(2, '0')}`
+    const whole = Math.max(0, Math.ceil(seconds))
+    const hours = Math.floor(whole / 3600)
+    const minutes = Math.floor((whole % 3600) / 60)
+    if (hours > 0) return `${hours}:${String(minutes).padStart(2, '0')}`
+    return `${minutes}:${String(whole % 60).padStart(2, '0')}`
 }

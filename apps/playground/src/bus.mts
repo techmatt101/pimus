@@ -2,59 +2,59 @@
 // here, and the browser page is just a view of it. Keeping the transport in one
 // place means a fake only has to describe what happened, not how it is drawn.
 
-import { EventEmitter } from 'node:events'
+import {EventEmitter} from 'node:events'
 
 /** Which part of the controller a log line came from. Drives the UI colours. */
 export type LogCategory =
-  | 'system'
-  | 'deck'
-  | 'tile'
-  | 'lva'
-  | 'voice'
-  | 'audio'
-  | 'wpctl'
-  | 'led'
-  | 'duck'
-  | 'home-assistant'
-  | 'remote'
+    | 'system'
+    | 'deck'
+    | 'tile'
+    | 'lva'
+    | 'voice'
+    | 'audio'
+    | 'wpctl'
+    | 'led'
+    | 'duck'
+    | 'home-assistant'
+    | 'remote'
 
 export interface LogEntry {
-  time: number
-  category: LogCategory
-  /** Direction marker: what the controller sent, received, or did locally. */
-  direction: 'out' | 'in' | 'note'
-  message: string
-  detail?: string
+    time: number
+    category: LogCategory
+    /** Direction marker: what the controller sent, received, or did locally. */
+    direction: 'out' | 'in' | 'note'
+    message: string
+    detail?: string
 }
 
 /** Everything the state panel shows, sampled from the live controller. */
 export interface PlaygroundSnapshot {
-  deckAttached: boolean
-  /** Panel brightness, 0 while the deck is asleep because the room is empty. */
-  deckBrightness: number
-  lvaConnected: boolean
-  audioConnected: boolean
-  assist: string
-  muted: boolean
-  volume: number
-  outputMuted: boolean
-  media: boolean
-  sources: Record<string, boolean | undefined>
-  ducked: boolean
-  led: { effect?: string; color?: string; accent?: string; colors?: string[]; brightness?: number } | null
-  homeAssistant: boolean
-  /** The entities the Home Assistant tiles read, for the browser panel. */
-  entities: Record<string, { state: string; attributes: Record<string, unknown> }>
+    deckAttached: boolean
+    /** Panel brightness, 0 while the deck is asleep because the room is empty. */
+    deckBrightness: number
+    lvaConnected: boolean
+    audioConnected: boolean
+    assist: string
+    muted: boolean
+    volume: number
+    outputMuted: boolean
+    media: boolean
+    sources: Record<string, boolean | undefined>
+    ducked: boolean
+    led: { effect?: string; color?: string; accent?: string; colors?: string[]; brightness?: number } | null
+    homeAssistant: boolean
+    /** The entities the Home Assistant tiles read, for the browser panel. */
+    entities: Record<string, { state: string; attributes: Record<string, unknown> }>
 }
 
 export type Message =
-  /** Identifies this process, so a page can tell a restart from a reconnect. */
-  | { type: 'hello'; bootId: string }
-  /** Asks the page to reload itself; sent when the page source changes. */
-  | { type: 'reload' }
-  | { type: 'log'; entry: LogEntry }
-  | { type: 'keys'; keys: Record<string, string>; lcd?: string }
-  | { type: 'state'; state: PlaygroundSnapshot }
+/** Identifies this process, so a page can tell a restart from a reconnect. */
+    | { type: 'hello'; bootId: string }
+    /** Asks the page to reload itself; sent when the page source changes. */
+    | { type: 'reload' }
+    | { type: 'log'; entry: LogEntry }
+    | { type: 'keys'; keys: Record<string, string>; lcd?: string }
+    | { type: 'state'; state: PlaygroundSnapshot }
 
 const LOG_HISTORY = 300
 
@@ -68,24 +68,24 @@ const LOG_HISTORY = 300
  * without any compression dependency.
  */
 export function encodeRle(rgba: Buffer): string {
-  const out: number[] = []
-  let index = 0
-  while (index + 3 < rgba.length) {
-    const r = rgba[index] ?? 0
-    const g = rgba[index + 1] ?? 0
-    const b = rgba[index + 2] ?? 0
-    let run = 1
-    while (
-      run < 255
-      && index + run * 4 + 3 < rgba.length
-      && rgba[index + run * 4] === r
-      && rgba[index + run * 4 + 1] === g
-      && rgba[index + run * 4 + 2] === b
-    ) run += 1
-    out.push(run, r, g, b)
-    index += run * 4
-  }
-  return Buffer.from(out).toString('base64')
+    const out: number[] = []
+    let index = 0
+    while (index + 3 < rgba.length) {
+        const r = rgba[index] ?? 0
+        const g = rgba[index + 1] ?? 0
+        const b = rgba[index + 2] ?? 0
+        let run = 1
+        while (
+            run < 255
+            && index + run * 4 + 3 < rgba.length
+            && rgba[index + run * 4] === r
+            && rgba[index + run * 4 + 1] === g
+            && rgba[index + run * 4 + 2] === b
+            ) run += 1
+        out.push(run, r, g, b)
+        index += run * 4
+    }
+    return Buffer.from(out).toString('base64')
 }
 
 /**
@@ -94,53 +94,53 @@ export function encodeRle(rgba: Buffer): string {
  * mid-session immediately shows the current deck rather than a blank grid.
  */
 export class PlaygroundBus extends EventEmitter {
-  private readonly history: LogEntry[] = []
-  private readonly keyImages = new Map<number, string>()
-  private lcdImage: string | undefined
-  private snapshot: PlaygroundSnapshot | null = null
+    private readonly history: LogEntry[] = []
+    private readonly keyImages = new Map<number, string>()
+    private lcdImage: string | undefined
+    private snapshot: PlaygroundSnapshot | null = null
 
-  log(category: LogCategory, direction: LogEntry['direction'], message: string, detail?: string): void {
-    const entry: LogEntry = { time: Date.now(), category, direction, message, ...(detail ? { detail } : {}) }
-    this.history.push(entry)
-    if (this.history.length > LOG_HISTORY) this.history.shift()
-    // Mirror to the terminal so the playground is still usable over SSH or
-    // with the browser closed.
-    process.stdout.write(`${category.padEnd(7)} ${message}${detail ? ` ${detail}` : ''}\n`)
-    this.publish({ type: 'log', entry })
-  }
-
-  frame(keys: Record<string, string>, lcd?: string): void {
-    for (const [index, image] of Object.entries(keys)) this.keyImages.set(Number(index), image)
-    if (lcd) this.lcdImage = lcd
-    this.publish({ type: 'keys', keys, ...(lcd ? { lcd } : {}) })
-  }
-
-  state(snapshot: PlaygroundSnapshot): void {
-    this.snapshot = snapshot
-    this.publish({ type: 'state', state: snapshot })
-  }
-
-  /** Everything a newly connected page needs to catch up, in display order. */
-  replay(): Message[] {
-    const messages: Message[] = []
-    if (this.snapshot) messages.push({ type: 'state', state: this.snapshot })
-    const keys = Object.fromEntries([...this.keyImages].map(([index, image]) => [String(index), image]))
-    if (Object.keys(keys).length || this.lcdImage) {
-      messages.push({ type: 'keys', keys, ...(this.lcdImage ? { lcd: this.lcdImage } : {}) })
+    log(category: LogCategory, direction: LogEntry['direction'], message: string, detail?: string): void {
+        const entry: LogEntry = {time: Date.now(), category, direction, message, ...(detail ? {detail} : {})}
+        this.history.push(entry)
+        if (this.history.length > LOG_HISTORY) this.history.shift()
+        // Mirror to the terminal so the playground is still usable over SSH or
+        // with the browser closed.
+        process.stdout.write(`${category.padEnd(7)} ${message}${detail ? ` ${detail}` : ''}\n`)
+        this.publish({type: 'log', entry})
     }
-    for (const entry of this.history) messages.push({ type: 'log', entry })
-    return messages
-  }
 
-  /** The deck went away; forget its face so a reload does not show a stale one. */
-  clearFrame(): void {
-    this.keyImages.clear()
-    this.lcdImage = undefined
-  }
+    frame(keys: Record<string, string>, lcd?: string): void {
+        for (const [index, image] of Object.entries(keys)) this.keyImages.set(Number(index), image)
+        if (lcd) this.lcdImage = lcd
+        this.publish({type: 'keys', keys, ...(lcd ? {lcd} : {})})
+    }
 
-  private publish(message: Message): void {
-    this.emit('message', message)
-  }
+    state(snapshot: PlaygroundSnapshot): void {
+        this.snapshot = snapshot
+        this.publish({type: 'state', state: snapshot})
+    }
+
+    /** Everything a newly connected page needs to catch up, in display order. */
+    replay(): Message[] {
+        const messages: Message[] = []
+        if (this.snapshot) messages.push({type: 'state', state: this.snapshot})
+        const keys = Object.fromEntries([...this.keyImages].map(([index, image]) => [String(index), image]))
+        if (Object.keys(keys).length || this.lcdImage) {
+            messages.push({type: 'keys', keys, ...(this.lcdImage ? {lcd: this.lcdImage} : {})})
+        }
+        for (const entry of this.history) messages.push({type: 'log', entry})
+        return messages
+    }
+
+    /** The deck went away; forget its face so a reload does not show a stale one. */
+    clearFrame(): void {
+        this.keyImages.clear()
+        this.lcdImage = undefined
+    }
+
+    private publish(message: Message): void {
+        this.emit('message', message)
+    }
 }
 
 /**
@@ -148,12 +148,12 @@ export class PlaygroundBus extends EventEmitter {
  * the playground log instead of only the terminal.
  */
 export function busLogger(bus: PlaygroundBus, category: LogCategory): Console {
-  const write = (message: string, detail: unknown[]): void => {
-    bus.log(category, 'note', message, detail.length ? detail.map(String).join(' ') : undefined)
-  }
-  return {
-    log: (message: unknown, ...rest: unknown[]) => write(String(message), rest),
-    warn: (message: unknown, ...rest: unknown[]) => write(String(message), rest),
-    error: (message: unknown, ...rest: unknown[]) => write(String(message), rest),
-  } as Console
+    const write = (message: string, detail: unknown[]): void => {
+        bus.log(category, 'note', message, detail.length ? detail.map(String).join(' ') : undefined)
+    }
+    return {
+        log: (message: unknown, ...rest: unknown[]) => write(String(message), rest),
+        warn: (message: unknown, ...rest: unknown[]) => write(String(message), rest),
+        error: (message: unknown, ...rest: unknown[]) => write(String(message), rest),
+    } as Console
 }

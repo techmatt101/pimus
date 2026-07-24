@@ -9,8 +9,8 @@
 // tool nor any icon package is needed to build, test, or deploy the controller —
 // only to add an icon.
 
-import { readFile, writeFile } from 'node:fs/promises'
-import { fileURLToPath } from 'node:url'
+import {readFile, writeFile} from 'node:fs/promises'
+import {fileURLToPath} from 'node:url'
 
 /**
  * The installed Hugeicons release, stamped into the generated header so it
@@ -19,10 +19,10 @@ import { fileURLToPath } from 'node:url'
  */
 const PACKAGE = new URL('../node_modules/@hugeicons/core-free-icons/', import.meta.url)
 const VERSION = await readFile(new URL('package.json', PACKAGE), 'utf8')
-  .then((raw) => JSON.parse(raw).version)
-  .catch(() => {
-    throw new Error('@hugeicons/core-free-icons is not installed. Run `pnpm install` first.')
-  })
+    .then((raw) => JSON.parse(raw).version)
+    .catch(() => {
+        throw new Error('@hugeicons/core-free-icons is not installed. Run `pnpm install` first.')
+    })
 
 /**
  * The icons the control surface draws, as `name in the controller` ->
@@ -30,36 +30,36 @@ const VERSION = await readFile(new URL('package.json', PACKAGE), 'utf8')
  * export name; it is the file name under dist/esm without the .js.
  */
 const ICONS = {
-  // Control surface
-  mic: 'Mic01Icon',
-  shuffle: 'ShuffleIcon',
-  play: 'PlayIcon',
-  pause: 'PauseIcon',
-  next: 'ArrowRight01Icon',
-  previous: 'ArrowLeft01Icon',
-  volume: 'VolumeHighIcon',
-  usb: 'UsbIcon',
-  note: 'MusicNote01Icon',
-  playlist: 'Playlist01Icon',
-  timer: 'Timer01Icon',
-  // Room devices
-  fan: 'Fan01Icon',
-  blinds: 'BlindsIcon',
-  computer: 'ComputerIcon',
-  bulb: 'BulbIcon',
-  thermometer: 'TemperatureIcon',
-  // Weather conditions
-  sun: 'Sun03Icon',
-  moon: 'Moon02Icon',
-  sunCloud: 'SunCloud01Icon',
-  cloud: 'CloudIcon',
-  rain: 'CloudMidRainIcon',
-  snow: 'CloudMidSnowIcon',
-  lightning: 'CloudLightningIcon',
-  fog: 'CloudFogIcon',
-  wind: 'FastWindIcon',
-  hail: 'CloudHailstoneIcon',
-  alert: 'Alert02Icon',
+    // Control surface
+    mic: 'Mic01Icon',
+    shuffle: 'ShuffleIcon',
+    play: 'PlayIcon',
+    pause: 'PauseIcon',
+    next: 'ArrowRight01Icon',
+    previous: 'ArrowLeft01Icon',
+    volume: 'VolumeHighIcon',
+    usb: 'UsbIcon',
+    note: 'MusicNote01Icon',
+    playlist: 'Playlist01Icon',
+    timer: 'Timer01Icon',
+    // Room devices
+    fan: 'Fan01Icon',
+    blinds: 'BlindsIcon',
+    computer: 'ComputerIcon',
+    bulb: 'BulbIcon',
+    thermometer: 'TemperatureIcon',
+    // Weather conditions
+    sun: 'Sun03Icon',
+    moon: 'Moon02Icon',
+    sunCloud: 'SunCloud01Icon',
+    cloud: 'CloudIcon',
+    rain: 'CloudMidRainIcon',
+    snow: 'CloudMidSnowIcon',
+    lightning: 'CloudLightningIcon',
+    fog: 'CloudFogIcon',
+    wind: 'FastWindIcon',
+    hail: 'CloudHailstoneIcon',
+    alert: 'Alert02Icon',
 }
 
 const OUTPUT = fileURLToPath(new URL('../apps/controller/src/streamdeck/icon-set.mts', import.meta.url))
@@ -70,12 +70,12 @@ const OUTPUT = fileURLToPath(new URL('../apps/controller/src/streamdeck/icon-set
  * costs one module rather than loading all 5,448.
  */
 async function loadIcon(exportName) {
-  const module = await import(new URL(`dist/esm/${exportName}.js`, PACKAGE)).catch(() => {
-    throw new Error(`${exportName}: no such icon in @hugeicons/core-free-icons@${VERSION}`)
-  })
-  const elements = module.default
-  if (!Array.isArray(elements) || elements.length === 0) throw new Error(`${exportName}: no elements`)
-  return elements
+    const module = await import(new URL(`dist/esm/${exportName}.js`, PACKAGE)).catch(() => {
+        throw new Error(`${exportName}: no such icon in @hugeicons/core-free-icons@${VERSION}`)
+    })
+    const elements = module.default
+    if (!Array.isArray(elements) || elements.length === 0) throw new Error(`${exportName}: no elements`)
+    return elements
 }
 
 /** React-style attribute names (strokeWidth) as SVG writes them (stroke-width). */
@@ -83,33 +83,33 @@ const attributeName = (name) => name.replace(/[A-Z]/g, (letter) => `-${letter.to
 
 /** One icon's elements as SVG markup, for embedding in a <svg> wrapper. */
 function toMarkup(elements) {
-  return elements
-    .map(([tag, attributes]) => {
-      const written = Object.entries(attributes)
-        // `key` is React's list identity, meaningless in SVG.
-        .filter(([name]) => name !== 'key')
-        .map(([name, value]) => `${attributeName(name)}="${String(value).replace(/"/g, '&quot;')}"`)
-        .join(' ')
-      return `<${tag} ${written}/>`
-    })
-    .join('')
+    return elements
+        .map(([tag, attributes]) => {
+            const written = Object.entries(attributes)
+                // `key` is React's list identity, meaningless in SVG.
+                .filter(([name]) => name !== 'key')
+                .map(([name, value]) => `${attributeName(name)}="${String(value).replace(/"/g, '&quot;')}"`)
+                .join(' ')
+            return `<${tag} ${written}/>`
+        })
+        .join('')
 }
 
 const names = Object.keys(ICONS).sort()
 const markup = new Map()
 for (const name of names) {
-  const exportName = ICONS[name]
-  markup.set(name, toMarkup(await loadIcon(exportName)))
-  process.stdout.write(`  ${name} <- ${exportName}\n`)
+    const exportName = ICONS[name]
+    markup.set(name, toMarkup(await loadIcon(exportName)))
+    process.stdout.write(`  ${name} <- ${exportName}\n`)
 }
 
 const body = names
-  .map((name) => `  ${name}: '${markup.get(name).replace(/'/g, "\\'")}',`)
-  .join('\n')
+    .map((name) => `  ${name}: '${markup.get(name).replace(/'/g, "\\'")}',`)
+    .join('\n')
 
 await writeFile(
-  OUTPUT,
-  `// Generated by tools/generate-icons.mjs — do not edit.
+    OUTPUT,
+    `// Generated by tools/generate-icons.mjs — do not edit.
 //
 // Icon artwork from the Hugeicons free set ${VERSION} (MIT licence),
 // https://hugeicons.com. Each entry is the inner markup of a 24x24 icon,
@@ -127,7 +127,7 @@ ${body}
 /** The icons a tile or screen may draw, checked at compile time. */
 export type IconName = keyof typeof ICON_MARKUP
 `,
-  'utf8',
+    'utf8',
 )
 
 process.stdout.write(`\n${names.length} icons -> ${OUTPUT}\n`)

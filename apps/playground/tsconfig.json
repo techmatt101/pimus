@@ -1,31 +1,36 @@
 {
-  "compilerOptions": {
-    // These must stay identical to apps/controller/tsconfig.json: the
-    // playground compiles the controller's own sources, so a looser setting
-    // here would let controller code through that the real build rejects.
-    "target": "ES2022",
-    "lib": ["ES2022"],
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "types": ["node"],
-
-    // rootDir is the apps/ directory so the controller sources this app
-    // imports compile alongside it, keeping every relative .mjs specifier
-    // valid in the output: dist/playground/src/ and dist/controller/src/.
-    "rootDir": "..",
-    "outDir": "dist",
-    "sourceMap": true,
-
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "verbatimModuleSyntax": true,
-    "isolatedModules": true,
-    "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true
-  },
-  "include": ["src/**/*.mts", "../controller/src/**/*.mts"]
+    "compilerOptions": {
+        // These must stay identical to apps/controller/tsconfig.json: the
+        // playground compiles the controller's own sources, so a looser setting
+        // here would let controller code through that the real build rejects.
+        "target": "ES2022",
+        "lib": [
+            "ES2022"
+        ],
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "types": [
+            "node"
+        ],
+        // rootDir is the apps/ directory so the controller sources this app
+        // imports compile alongside it, keeping every relative .mjs specifier
+        // valid in the output: dist/playground/src/ and dist/controller/src/.
+        "rootDir": "..",
+        "outDir": "dist",
+        "sourceMap": true,
+        "strict": true,
+        "noUncheckedIndexedAccess": true,
+        "noImplicitOverride": true,
+        "noFallthroughCasesInSwitch": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "verbatimModuleSyntax": true,
+        "isolatedModules": true,
+        "forceConsistentCasingInFileNames": true,
+        "skipLibCheck": true
+    },
+    "include": [
+        "src/**/*.mts",
+        "../controller/src/**/*.mts"
+    ]
 }

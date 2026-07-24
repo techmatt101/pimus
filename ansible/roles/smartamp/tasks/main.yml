@@ -5,7 +5,7 @@
 # so a targeted update cannot deploy inventory values a full provision would reject.
 - name: Run preflight checks
   ansible.builtin.import_tasks: preflight.yml
-  tags: [always]
+  tags: [ always ]
 
 - name: Configure the base system
   ansible.builtin.import_tasks: base.yml
@@ -133,7 +133,7 @@
 # provisioned Pi without walking the audio, voice, and boot configuration.
 - name: Configure the local hardware controller
   ansible.builtin.import_tasks: controller.yml
-  tags: [controller]
+  tags: [ controller ]
 
 - name: Install diagnostics
   ansible.builtin.import_tasks: diagnostics.yml
@@ -144,4 +144,4 @@
 # task would be skipped under --tags and defer restarts to the end of play.
 - name: Flush configuration handlers
   ansible.builtin.meta: flush_handlers
-  tags: [always]
+  tags: [ always ]
