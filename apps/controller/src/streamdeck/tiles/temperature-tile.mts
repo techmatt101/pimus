@@ -6,7 +6,6 @@ import {requireEntity} from '../../actions/catalog.mjs'
 import {numericState} from '../../home-assistant/entity.mjs'
 import {drawBar, fittingSize, drawIcon, type Surface, drawText} from '../surface.mjs'
 import {drawBackground, drawCaption, FACE_CENTER, type Tile, type TileHost} from '../tile.mjs'
-import type {TileServices} from '../bindings.mjs'
 import type {HomeAssistantService} from '../../types.mjs'
 
 export interface TemperatureTileConfig {
@@ -42,8 +41,8 @@ export class TemperatureTile implements Tile {
     readonly #entity: string
     #unwatch: (() => void) | null = null
 
-    constructor(services: TileServices, config: TemperatureTileConfig) {
-        this.#ha = services.ha
+    constructor(ha: HomeAssistantService, config: TemperatureTileConfig) {
+        this.#ha = ha
         this.#config = config
         this.#entity = requireEntity(config.entity, `${config.label} temperature tile`)
     }

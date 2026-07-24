@@ -6,9 +6,10 @@
 // Muted is its own reading, not a volume of zero — the level you will come back
 // to when you unmute is still the level the deck remembers.
 
-import {type Binding, createBindings, type TileServices} from '../bindings.mjs'
+import {type Binding, volumeBinding} from '../bindings.mjs'
 import {type Dial, percent} from '../dial.mjs'
 import type {ControlModel} from '../../state.mjs'
+import type {AudioControls} from '../../types.mjs'
 
 export class VolumeDial implements Dial {
     readonly label: string
@@ -17,13 +18,12 @@ export class VolumeDial implements Dial {
     readonly press: Binding
     readonly #model: ControlModel
 
-    constructor(services: TileServices, label = 'VOLUME') {
-        const {volume} = createBindings(services)
-        this.#model = services.model
+    constructor(audio: AudioControls, model: ControlModel, label = 'VOLUME') {
+        this.#model = model
         this.label = label
-        this.left = volume('down')
-        this.right = volume('up')
-        this.press = volume('mute')
+        this.left = volumeBinding(audio, 'down')
+        this.right = volumeBinding(audio, 'up')
+        this.press = volumeBinding(audio, 'mute')
     }
 
     detail(): string {

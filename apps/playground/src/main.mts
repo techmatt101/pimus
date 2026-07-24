@@ -212,14 +212,16 @@ const layout = createLayout({
     lva,
     notifications,
     ...(remote ? {remote} : {}),
-    setSource: (name, command) => {
-        audio.setSource(name, command)
+    audio: {
+        setSource: (name, command) => {
+            audio.setSource(name, command)
+        },
+        setVolume: (command) => runVolumeCommand(command, {
+            onExit: () => model.notify(),
+            spawnProcess: wpctl.spawnProcess,
+            logger: busLogger(bus, 'wpctl'),
+        }),
     },
-    setVolume: (command) => runVolumeCommand(command, {
-        onExit: () => model.notify(),
-        spawnProcess: wpctl.spawnProcess,
-        logger: busLogger(bus, 'wpctl'),
-    }),
     // The real client speaks the WebSocket API and has its own tests; what the
     // playground is for is watching the keys, so this replaces the whole service.
     ha: homeAssistant,

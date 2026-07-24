@@ -7,8 +7,9 @@
 // The pick-and-confirm itself is the reusable SelectionDial
 // (streamdeck/selection-dial.mts); the glow and the fifteen-second timeout
 // are the shared dial's (streamdeck/dials/dynamic-dial.mts). This key only says
-// what a choice is (a media id for its player) and what confirming does, so it
-// takes only the Home Assistant service — not the whole tile-services bag.
+// what a choice is (a media id for its player) and what confirming does, so like
+// every tile it takes only the domain services it uses — here just the Home
+// Assistant service.
 //
 // It listens to the player and lights the playlist that is playing: when the
 // player reports a `media_content_id` matching one of these, that entry is drawn

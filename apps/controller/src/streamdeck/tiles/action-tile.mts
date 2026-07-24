@@ -3,7 +3,7 @@
 // indicator cannot express — then write a new Tile class in this folder.
 
 import {indicatorFor} from '../../actions/catalog.mjs'
-import type {Binding, TileServices} from '../bindings.mjs'
+import type {Binding} from '../bindings.mjs'
 import {drawLabelFace, type Tile} from '../tile.mjs'
 import type {Surface} from '../surface.mjs'
 import type {ControlModel} from '../../state.mjs'
@@ -52,8 +52,8 @@ export class ActionTile implements Tile {
     readonly #model: ControlModel
     readonly #config: ActionTileConfig
 
-    constructor(services: TileServices, config: ActionTileConfig) {
-        this.#model = services.model
+    constructor(model: ControlModel, config: ActionTileConfig) {
+        this.#model = model
         this.#config = config
     }
 

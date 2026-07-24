@@ -60,6 +60,16 @@ export interface Screen {
      * acting keeps presses in physical order through the deck's dispatch queue.
      */
     pressAt?(x: number): (() => unknown) | undefined
+
+    /**
+     * For a resting candidate: whether it should be the resting face right now.
+     * The strip shows the first of its resting screens whose `applies()` returns
+     * true — the now-playing face while a track is playing or paused, the idle
+     * clock otherwise. A screen without this method always applies, so the last
+     * candidate can be a catch-all. Ignored for the dial and notification faces,
+     * which the strip selects itself.
+     */
+    applies?(): boolean
 }
 
 export interface StripLineOptions {
@@ -124,6 +134,25 @@ export function drawStripLine(surface: Surface, value: string, options: StripLin
  */
 export function overflows(value: string, size: number, available = STRIP_WIDTH - STRIP_MARGIN * 2): boolean {
     return measureText(value, size) > available
+}
+
+/** Wall-clock milliseconds in a minute; the coarsest thing a strip clock shows. */
+const MINUTE = 60_000
+
+/**
+ * Milliseconds until the next minute boundary. A screen carrying a clock asks
+ * for this as its frame interval, so the strip repaints exactly when the digits
+ * change rather than ticking every second or drifting a fixed minute off the
+ * boundary — re-computing it each paint re-arms the strip's timer on the minute.
+ */
+export function minuteTick(now: number): number {
+    return MINUTE - (now % MINUTE)
+}
+
+/** The 24-hour wall time as `HH:MM`, in the machine's local timezone. */
+export function clockTime(now: number): string {
+    const at = new Date(now)
+    return `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
 }
 
 /**

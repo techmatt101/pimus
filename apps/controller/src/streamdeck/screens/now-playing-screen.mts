@@ -1,6 +1,8 @@
-// The strip's resting face: what is playing, across the full width. This is
-// what the touch strip shows whenever no dial is being turned and no
-// notification is up.
+// The strip's resting face while a track is playing or paused: what is playing,
+// across the full width. The touch strip shows it whenever no dial is being
+// turned and no notification is up and the player has a track; when the player
+// is stopped the strip shows IdleScreen (the clock) instead, which is why
+// `applies()` below reports whether there is a track to show.
 //
 // The reading comes from the Music Assistant player entity rather than from the
 // controller's own `media` flag, because that flag is only "is something
@@ -9,30 +11,33 @@
 // does, so the strip keeps working on pages where no key happens to watch the
 // player.
 //
-// The resting face is not only a readout: its right edge carries a play/pause
-// and a shuffle button, so the transport lives where the track is named rather
-// than needing its own keys. Those are the two controls that used to be a
-// dedicated key; the buttons both set and reflect their state, drawn from the
-// same player entity the rest of the face reads. Tapping the strip over one runs
-// it (streamdeck/strip.mts hands the resting screen the tap first); a tap that
-// misses them falls through to the dial in that zone.
+// The resting face is not only a readout: its left edge carries a play/pause and
+// a shuffle button, so the transport lives on the strip rather than needing its
+// own keys. Those are the two controls that used to be a dedicated key; the
+// buttons both set and reflect their state, drawn from the same player entity the
+// rest of the face reads. Tapping the strip over one runs it (streamdeck/strip.mts
+// hands the resting screen the tap first); a tap that misses them falls through to
+// the dial in that zone. The right edge, where those buttons used to sit, carries
+// a clock, so a glance at the strip always tells the time.
 
 import {requireEntity} from '../../actions/catalog.mjs'
-import {type Binding, createBindings, type TileServices} from '../bindings.mjs'
+import {type Binding, haBinding, voiceBinding} from '../bindings.mjs'
 import {mediaElapsedSeconds, numericAttribute} from '../../home-assistant/entity.mjs'
-import {drawIcon, fittingSize, REGULAR, type Surface, verticalGradient} from '../surface.mjs'
+import {drawIcon, drawText, fittingSize, REGULAR, type Surface, verticalGradient} from '../surface.mjs'
 import {
+    clockTime,
     drawStripBar,
     drawStripLine,
+    minuteTick,
     overflows,
     type Screen,
     type ScreenHost,
     SCROLL_FRAME_MILLISECONDS,
-    STRIP_MARGIN,
     STRIP_WIDTH,
 } from './screen.mjs'
 import type {IconName} from '../icon-set.mjs'
-import type {HomeAssistantEntity, HomeAssistantService} from '../../types.mjs'
+import type {ControlModel} from '../../state.mjs'
+import type {HomeAssistantEntity, HomeAssistantService, LvaSender} from '../../types.mjs'
 
 /** Title sizes tried in turn, so a short title is drawn large. */
 const TITLE_SIZES = [56, 46, 36]
@@ -40,17 +45,28 @@ const SECONDARY_SIZE = 24
 /** How often the position bar creeps forward while a track plays. */
 const POSITION_FRAME_MILLISECONDS = 1000
 
-// The two transport buttons occupy the right edge; each is a full-height tap
-// zone so the target is easy to hit blind. The text region is everything to
-// their left, which is the width a title has to fit before it starts scrolling.
+// The two transport buttons occupy the left edge now — play/pause then shuffle —
+// so the controls sit under the thumb; each is a full-height tap zone so the
+// target is easy to hit blind.
 const BUTTON_ICON = 44
 const BUTTON_Y = 44
-const PLAY_ZONE_LEFT = STRIP_WIDTH - 96
-const SHUFFLE_ZONE_LEFT = PLAY_ZONE_LEFT - 96
-const PLAY_CENTER = (PLAY_ZONE_LEFT + STRIP_WIDTH) / 2
-const SHUFFLE_CENTER = (SHUFFLE_ZONE_LEFT + PLAY_ZONE_LEFT) / 2
-/** Text stops short of the buttons, with a little breathing room before them. */
-const TEXT_AVAILABLE = SHUFFLE_ZONE_LEFT - 16 - STRIP_MARGIN
+const BUTTON_ZONE = 96
+const PLAY_ZONE_RIGHT = BUTTON_ZONE
+const SHUFFLE_ZONE_RIGHT = BUTTON_ZONE * 2
+const PLAY_CENTER = BUTTON_ZONE / 2
+const SHUFFLE_CENTER = BUTTON_ZONE + BUTTON_ZONE / 2
+
+// The clock takes the right edge, where the buttons used to be, so a glance at
+// the strip always carries the time.
+const CLOCK_SIZE = 40
+const CLOCK_WIDTH = 132
+const CLOCK_LEFT = STRIP_WIDTH - CLOCK_WIDTH
+const CLOCK_CENTER = CLOCK_LEFT + CLOCK_WIDTH / 2
+
+/** The text region is everything between the buttons and the clock: the width a
+ * title has to fit before it starts scrolling. */
+const TEXT_LEFT = SHUFFLE_ZONE_RIGHT + 16
+const TEXT_AVAILABLE = CLOCK_LEFT - 16 - TEXT_LEFT
 
 // The strip's LCD only reports a tap once the finger lifts (there is no
 // finger-down event for it), so a held "pressing" state is not something the
@@ -70,13 +86,14 @@ const BACKDROP = ['#16222b', '#0b1116'] as const
 const PLAYING_TITLE = '#ffffff'
 const PAUSED_TITLE = '#78909c'
 const SECONDARY = '#80deea'
-const IDLE = '#546e7a'
 /** Play/pause glyph: lit while playing, muted while paused. */
 const PLAY_ON = '#26c6da'
 const PLAY_OFF = '#78909c'
 /** Shuffle glyph: lit when shuffling, dim when the queue plays straight. */
 const SHUFFLE_ON = '#80deea'
 const SHUFFLE_OFF = '#37474f'
+/** The strip's own clock at the right edge, muted so the track stays the loud thing. */
+const CLOCK_COLOR = '#90a4ae'
 
 export interface NowPlayingOptions {
     /** The `media_player.` entity whose track the strip reports. */
@@ -121,21 +138,30 @@ export class NowPlayingScreen implements Screen {
     #pressed: Button | null = null
     #pressedAt = 0
 
-    constructor(services: TileServices, {player}: NowPlayingOptions) {
-        this.#ha = services.ha
-        this.#clock = services.clock
+    constructor(ha: HomeAssistantService, clock: () => number, lva: LvaSender, model: ControlModel, {player}: NowPlayingOptions) {
+        this.#ha = ha
+        this.#clock = clock
         this.#player = requireEntity(player, 'now playing screen')
-        const {voice, ha} = createBindings(services)
         // Play/pause goes through LVA exactly as the media dial's press does, so the
         // strip button and the knob toggle the same playback; shuffle lives on the
         // Music Assistant player, which is the only place a queue exists.
-        this.#playPause = voice('media_toggle')
-        this.#shuffle = ha('media_shuffle', this.#player)
+        this.#playPause = voiceBinding(lva, model, 'media_toggle')
+        this.#shuffle = haBinding(ha, 'media_shuffle', this.#player)
     }
 
     mount(host: ScreenHost): void {
         this.#host = host
         this.#unwatch = this.#ha.watch([this.#player], () => host.invalidate())
+    }
+
+    /**
+     * Whether there is a track to show: the strip shows this face while the player
+     * is playing or paused, and the idle clock (IdleScreen) once it is stopped.
+     * Paused keeps its track, so it stays here; a stopped player drops its title,
+     * so it falls through to the clock.
+     */
+    applies(): boolean {
+        return !nowPlayingLines(this.#ha.entity(this.#player), this.#ha.connected).idle
     }
 
     unmount(): void {
@@ -155,27 +181,29 @@ export class NowPlayingScreen implements Screen {
         // runs for its brief window.
         if (this.#flashing()) return FLASH_FRAME_MILLISECONDS
         const player = this.#ha.entity(this.#player)
-        const {title, idle} = nowPlayingLines(player, this.#ha.connected)
-        if (idle) return undefined
+        const {title} = nowPlayingLines(player, this.#ha.connected)
         if (overflows(title, fittingSize(title, TITLE_SIZES, TEXT_AVAILABLE), TEXT_AVAILABLE)) {
             return SCROLL_FRAME_MILLISECONDS
         }
+        // The right-edge clock must repaint at least on the minute boundary for its
+        // digits to change; a playing track already repaints faster for its position
+        // bar. Re-computing the boundary each paint re-arms the strip's frame timer
+        // on the minute rather than drifting a fixed minute off it.
         const playing = player?.state === 'playing'
-        return playing && hasPosition(player) ? POSITION_FRAME_MILLISECONDS : undefined
+        return playing && hasPosition(player) ? POSITION_FRAME_MILLISECONDS : minuteTick(this.#clock())
     }
 
     /**
-     * The right edge carries the two buttons; a tap over one runs it, and a tap
-     * anywhere else is left for the dial beneath. There is nothing to run while
-     * the strip is idle, so those taps fall through too. A hit also lights the
-     * button's press flash, which is the closest the LCD lets us get to showing a
-     * finger on it — the hardware only reports the tap once the finger lifts.
+     * The left edge carries the two buttons; a tap over one runs it, and a tap
+     * anywhere else is left for the dial beneath. This face only shows while there
+     * is a track (`applies`), so there is always something to play or shuffle. A
+     * hit also lights the button's press flash, which is the closest the LCD lets
+     * us get to showing a finger on it — the hardware only reports the tap once
+     * the finger lifts.
      */
     pressAt(x: number): (() => unknown) | undefined {
-        const {idle} = nowPlayingLines(this.#ha.entity(this.#player), this.#ha.connected)
-        if (idle) return undefined
-        if (x >= PLAY_ZONE_LEFT) return this.#press('play', this.#playPause)
-        if (x >= SHUFFLE_ZONE_LEFT) return this.#press('shuffle', this.#shuffle)
+        if (x < PLAY_ZONE_RIGHT) return this.#press('play', this.#playPause)
+        if (x < SHUFFLE_ZONE_RIGHT) return this.#press('shuffle', this.#shuffle)
         return undefined
     }
 
@@ -201,23 +229,18 @@ export class NowPlayingScreen implements Screen {
     draw(surface: Surface): void {
         const now = this.#clock()
         const player = this.#ha.entity(this.#player)
-        const {title, secondary, idle} = nowPlayingLines(player, this.#ha.connected)
+        const {title, secondary} = nowPlayingLines(player, this.#ha.connected)
         surface.fill(verticalGradient(surface, BACKDROP[0], BACKDROP[1]))
-
-        if (idle) {
-            drawStripLine(surface, title, {centerY: 50, size: 34, color: IDLE, now})
-            return
-        }
 
         const playing = player?.state === 'playing'
         // Title and credit both left-aligned and bounded to the text region, so
-        // they sit under a steady left edge and only ever scroll past the buttons,
-        // never over them.
+        // they sit under a steady left edge and only ever scroll between the
+        // buttons and the clock, never over either.
         drawStripLine(surface, title, {
             centerY: secondary ? 36 : 46,
             size: fittingSize(title, TITLE_SIZES, TEXT_AVAILABLE),
             color: playing ? PLAYING_TITLE : PAUSED_TITLE,
-            left: STRIP_MARGIN,
+            left: TEXT_LEFT,
             width: TEXT_AVAILABLE,
             now,
         })
@@ -229,13 +252,14 @@ export class NowPlayingScreen implements Screen {
                 size: SECONDARY_SIZE,
                 color: SECONDARY,
                 weight: REGULAR,
-                left: STRIP_MARGIN,
+                left: TEXT_LEFT,
                 width: TEXT_AVAILABLE,
                 now,
             })
         }
 
         this.#drawButtons(surface, playing, Boolean(player?.attributes.shuffle))
+        drawText(surface, clockTime(now), {x: CLOCK_CENTER, y: BUTTON_Y, size: CLOCK_SIZE, color: CLOCK_COLOR})
 
         // A position bar only where the player reports one; Music Assistant does for
         // a track and does not for a live stream.
@@ -246,12 +270,12 @@ export class NowPlayingScreen implements Screen {
         }
     }
 
-    /** The play/pause and shuffle glyphs at the right edge, each lit by its state. */
+    /** The play/pause and shuffle glyphs at the left edge, each lit by its state. */
     #drawButtons(surface: Surface, playing: boolean, shuffled: boolean): void {
         const flash = this.#flash()
         const play = {icon: (playing ? 'pause' : 'play') as IconName, color: playing ? PLAY_ON : PLAY_OFF}
-        this.#drawButton(surface, PLAY_ZONE_LEFT, PLAY_CENTER, play.icon, play.color, this.#pressed === 'play' ? flash : 0)
-        this.#drawButton(surface, SHUFFLE_ZONE_LEFT, SHUFFLE_CENTER, 'shuffle', shuffled ? SHUFFLE_ON : SHUFFLE_OFF, this.#pressed === 'shuffle' ? flash : 0)
+        this.#drawButton(surface, 0, PLAY_CENTER, play.icon, play.color, this.#pressed === 'play' ? flash : 0)
+        this.#drawButton(surface, BUTTON_ZONE, SHUFFLE_CENTER, 'shuffle', shuffled ? SHUFFLE_ON : SHUFFLE_OFF, this.#pressed === 'shuffle' ? flash : 0)
     }
 
     /**
@@ -266,7 +290,7 @@ export class NowPlayingScreen implements Screen {
             ctx.globalAlpha = flash * FLASH_PEAK
             ctx.fillStyle = '#ffffff'
             ctx.beginPath()
-            ctx.roundRect(zoneLeft + 10, BUTTON_Y - 34, PLAY_ZONE_LEFT - SHUFFLE_ZONE_LEFT - 20, 68, 14)
+            ctx.roundRect(zoneLeft + 10, BUTTON_Y - 34, BUTTON_ZONE - 20, 68, 14)
             ctx.fill()
             ctx.restore()
         }

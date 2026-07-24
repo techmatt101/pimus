@@ -87,10 +87,12 @@ const layout = createLayout({
     model,
     clock: Date.now,
     lva,
-    setSource: (name, command) => {
-        audio.setSource(name, command)
+    audio: {
+        setSource: (name, command) => {
+            audio.setSource(name, command)
+        },
+        setVolume: (command) => runVolumeCommand(command, {onExit: () => model.notify()}),
     },
-    setVolume: (command) => runVolumeCommand(command, {onExit: () => model.notify()}),
     ha: homeAssistant,
     notifications,
     ...(remote ? {remote} : {}),

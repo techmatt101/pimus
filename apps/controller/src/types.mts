@@ -216,6 +216,20 @@ export interface LvaSender {
     send(command: string, data?: Record<string, unknown>): void
 }
 
+/**
+ * The amplifier's own audio controls, both applied through the audio manager
+ * socket: the master output volume and the aux/USB route toggles. The one domain
+ * service the volume dial and the route keys depend on, so neither reaches for a
+ * bag of every controller service to move a knob or flip a source.
+ */
+export interface AudioControls {
+    /** Applies up/down/mute to the PipeWire default sink. */
+    setVolume(command: string): unknown
+
+    /** Applies on/off/toggle to a named audio route. */
+    setSource(name: string, command: string): unknown
+}
+
 /** Shared control-surface state rendered on the Stream Deck. */
 export interface ControlState {
     assist: string

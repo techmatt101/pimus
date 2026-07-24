@@ -32,8 +32,13 @@ export const DIAL_HOLD_MILLISECONDS = 2500
 const ZONE_WIDTH = 200
 
 export interface TouchStripOptions {
-    /** What the strip shows when nothing else is claiming it. */
-    resting: Screen
+    /**
+     * What the strip shows when nothing else is claiming it, in priority order:
+     * the strip shows the first whose `applies()` returns true, falling back to
+     * the last (a catch-all, usually with no `applies`). The now-playing face,
+     * then the idle clock.
+     */
+    resting: readonly Screen[]
     /** The layout's dials, so a press on the strip runs the dial beneath it. */
     dials: readonly Dial[]
     /** Messages pushed from Home Assistant; omitted when nothing can push any. */
@@ -44,7 +49,7 @@ export interface TouchStripOptions {
 }
 
 export class TouchStrip {
-    readonly #resting: Screen
+    readonly #resting: readonly Screen[]
     readonly #dials: readonly Dial[]
     readonly #notifications: NotificationFeed | undefined
     readonly #dialHoldMilliseconds: number
@@ -78,7 +83,18 @@ export class TouchStrip {
 
     /** Every screen the strip can show, in no particular order. */
     get #screens(): Screen[] {
-        return [this.#resting, this.#dialScreen, this.#notificationScreen]
+        return [...this.#resting, this.#dialScreen, this.#notificationScreen]
+    }
+
+    /**
+     * The resting face for right now: the first candidate that applies, or the
+     * last as a catch-all. All the candidates stay mounted, so the one not
+     * showing keeps watching its entity and repaints the strip when the pick
+     * should change (a track starting or stopping).
+     */
+    #restingScreen(): Screen {
+        const chosen = this.#resting.find((screen) => screen.applies?.() ?? true)
+        return chosen ?? this.#resting[this.#resting.length - 1] ?? this.#dialScreen
     }
 
     /** Called when the strip is live on an attached deck. */
@@ -128,7 +144,7 @@ export class TouchStrip {
         // play/pause and shuffle buttons) claim the tap before the dial beneath
         // them does; a tap that misses them falls through to the dial zone.
         if (!this.#pinnedDial() && now >= this.#dialUntil) {
-            const hit = this.#resting.pressAt?.(x)
+            const hit = this.#restingScreen().pressAt?.(x)
             if (hit) return hit
         }
         const index = Math.max(0, Math.min(this.#dials.length - 1, Math.floor(x / ZONE_WIDTH)))
@@ -177,7 +193,7 @@ export class TouchStrip {
             this.#notificationScreen.show(notification)
             return this.#notificationScreen
         }
-        return this.#resting
+        return this.#restingScreen()
     }
 
     #showingNotification(now: number): boolean {

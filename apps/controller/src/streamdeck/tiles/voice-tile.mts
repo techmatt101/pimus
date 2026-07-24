@@ -5,11 +5,11 @@
 // the room.
 
 import {isAssistRunning} from '../../actions/catalog.mjs'
-import {type Binding, createBindings, type TileServices} from '../bindings.mjs'
+import {type Binding, voiceBinding} from '../bindings.mjs'
 import {drawIcon, type Surface, withAlpha} from '../surface.mjs'
 import {drawBackground, drawCaption, FACE_CENTER, type Tile, type TileHost} from '../tile.mjs'
 import type {ControlModel, Unsubscribe} from '../../state.mjs'
-import type {Action} from '../../types.mjs'
+import type {Action, LvaSender} from '../../types.mjs'
 
 /** How often the listening face is repainted while a pipeline is running. */
 const FRAME_MILLISECONDS = 120
@@ -29,9 +29,9 @@ export class VoiceTile implements Tile {
     // time however often the tile happens to repaint.
     #phase = 0
 
-    constructor(services: TileServices) {
-        this.#model = services.model
-        this.#toggle = createBindings(services).voice('listen_toggle')
+    constructor(model: ControlModel, lva: LvaSender) {
+        this.#model = model
+        this.#toggle = voiceBinding(lva, model, 'listen_toggle')
     }
 
     action(): Action {

@@ -27,10 +27,10 @@
 
 import {entityDomain, type HaActionName} from '../../actions/catalog.mjs'
 import {isEntityOn, numericAttribute} from '../../home-assistant/entity.mjs'
-import {type Binding, createBindings, type TileServices} from '../bindings.mjs'
+import {type Binding, haBinding} from '../bindings.mjs'
 import {type Dial, fraction, percent} from '../dial.mjs'
 import type {ControlModel} from '../../state.mjs'
-import type {HomeAssistantEntity} from '../../types.mjs'
+import type {HomeAssistantEntity, HomeAssistantService} from '../../types.mjs'
 
 /** Shown before any key has claimed the dial, so it explains itself. */
 const IDLE_LABEL = 'CONTROL'
@@ -178,10 +178,10 @@ export class DynamicDial implements Dial {
      * with nothing to turn (a switch) claims nothing and leaves the last claim in
      * place. The claim is sticky, so the entity stays under the knob across pages.
      */
-    controlEntity(services: TileServices, label: string, entity: string): void {
+    controlEntity(ha: HomeAssistantService, label: string, entity: string): void {
         const domain = DIAL_DOMAINS[entityDomain(entity)]
         if (!domain) return
-        this.claim(this.#entityDial(services, label, entity, domain))
+        this.claim(this.#entityDial(ha, label, entity, domain))
         this.#entity = entity
     }
 
@@ -226,14 +226,13 @@ export class DynamicDial implements Dial {
      * deck. An unreachable Home Assistant reads `--` rather than a light turned
      * down to nothing, the same rule the Home Assistant keys follow.
      */
-    #entityDial(services: TileServices, label: string, entity: string, domain: DialDomain): Dial {
-        const {ha} = createBindings(services)
-        const read = (): HomeAssistantEntity | undefined => services.ha.entity(entity)
+    #entityDial(ha: HomeAssistantService, label: string, entity: string, domain: DialDomain): Dial {
+        const read = (): HomeAssistantEntity | undefined => ha.entity(entity)
         return {
             label,
-            left: ha(domain.down, entity),
-            right: ha(domain.up, entity),
-            press: ha('toggle', entity),
+            left: haBinding(ha, domain.down, entity),
+            right: haBinding(ha, domain.up, entity),
+            press: haBinding(ha, 'toggle', entity),
             detail: () => {
                 const current = read()
                 const on = isEntityOn(current)

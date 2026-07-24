@@ -14,7 +14,7 @@
 
 import {requireEntity} from '../../actions/catalog.mjs'
 import {isEntityOn} from '../../home-assistant/entity.mjs'
-import {type Binding, createBindings, type TileServices} from '../bindings.mjs'
+import {type Binding, haBinding} from '../bindings.mjs'
 import {DynamicDial} from '../dials/dynamic-dial.mjs'
 import {drawBar, drawIcon, drawRadialGradient, type Surface, withAlpha} from '../surface.mjs'
 import {drawBackground, drawCaption, drawLabelFace, FACE_CENTER, type Tile, type TileHost,} from '../tile.mjs'
@@ -71,7 +71,6 @@ const LEVEL_HEIGHT = 5
 
 export class EntityToggleTile implements Tile {
     readonly #ha: HomeAssistantService
-    readonly #services: TileServices
     readonly #config: EntityToggleTileConfig
     readonly #entity: string
     readonly #toggle: Binding
@@ -83,12 +82,11 @@ export class EntityToggleTile implements Tile {
     // the icon turns by real elapsed time rather than being read off a clock.
     #phase = 0
 
-    constructor(services: TileServices, config: EntityToggleTileConfig) {
-        this.#ha = services.ha
-        this.#services = services
+    constructor(ha: HomeAssistantService, config: EntityToggleTileConfig) {
+        this.#ha = ha
         this.#config = config
         this.#entity = requireEntity(config.entity, `${config.label} tile`)
-        this.#toggle = createBindings(services).ha('toggle', this.#entity)
+        this.#toggle = haBinding(ha, 'toggle', this.#entity)
         this.#dial = config.dial
     }
 
@@ -99,7 +97,7 @@ export class EntityToggleTile implements Tile {
     press(): void {
         // Claim first: the strip then shows what this key controls as it flips,
         // rather than a beat later. A domain with nothing to turn claims nothing.
-        this.#dial?.controlEntity(this.#services, this.#config.label, this.#entity)
+        this.#dial?.controlEntity(this.#ha, this.#config.label, this.#entity)
         this.#toggle.run()
     }
 

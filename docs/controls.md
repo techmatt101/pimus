@@ -81,8 +81,6 @@ central dispatcher:
 | `EntityToggleTile` | The general Home Assistant on/off key — lights, fan, blinds, PC. Its service comes from the entity's own domain, and it takes an icon plus an optional `spin` (the fan turns while it runs) and `level` (how far the blinds are down), so the four are one class configured four ways. Given the dynamic dial it also hands that dial its entity when pressed. |
 | `TimerTile`        | A Home Assistant `timer` entity: a draining ring and a countdown, started and cancelled by the same key.                                                                                                                                                                                                                                                       |
 | `TemperatureTile`  | A sensor reading, with the background banded by temperature. Read-only.                                                                                                                                                                                                                                                                                        |
-| `WeatherTile`      | Condition glyph, short condition name, and the outside temperature. Read-only.                                                                                                                                                                                                                                                                                 |
-| `ClockTile`        | Local time with a bar that sweeps once a minute. Needs nothing but the clock.                                                                                                                                                                                                                                                                                  |
 | `PageTile`         | Page navigation from a grid slot, for a page that wants a "next" key of its own in addition to the page dial.                                                                                                                                                                                                                                                  |
 
 A tile paints onto a `Surface` (`streamdeck/surface.mts`) the renderer owns: a
@@ -359,28 +357,42 @@ in this order:
 |--------------|----------------------------------------------------|---------------------------------------------------------------------|
 | Dial readout | For 2.5 s after a dial was last turned or pressed, or the whole time a key is mid-pick on the shared dial | The dial's name, its readout, and a bar for a dial with a level     |
 | Notification | While a message pushed from Home Assistant is live | Its heading and message on its own colour, with a draining time bar |
-| Now playing  | Otherwise                                          | Track title and credit (left-aligned, scrolling only when too long), a play/pause and a shuffle button at the right edge, and a position bar |
+| Now playing  | A track is playing or paused                       | A play/pause and a shuffle button at the left edge, the track title and credit (scrolling only when too long), a clock at the right edge, and a position bar |
+| Idle clock   | The player is stopped (nothing playing)            | The time centred, with the current outdoor conditions beside it |
 
 A hand on a knob wins over a live notification — feedback you cannot see while
 turning is no feedback — and the notification comes back when the hold expires.
 
 Each screen is a class in `streamdeck/screens/`, the strip's equivalent of a
 tile: it paints the whole 800×100 face and may run the same `mount`/`unmount`
-lifecycle, watching an entity and asking for animation frames. `NowPlayingScreen`
-watches the media player entity itself, so the strip keeps working on pages where
-no key happens to watch it. The title and credit are left-aligned; a title too
-wide for the text region is drawn smaller, and scrolls once even the smallest
-size will not fit; a playing track repaints once a second so its position bar
-creeps forward, since Music Assistant reports a position once and then says
-nothing.
+lifecycle, watching an entity and asking for animation frames. The resting face
+is two screens rather than one — `NowPlayingScreen` while a track is playing or
+paused, `IdleScreen` (the clock) once the player is stopped. The strip is handed
+both and shows the first whose `applies()` returns true; both stay mounted, so
+the one not showing keeps watching its entity and swaps the strip over the moment
+a track starts or stops. `NowPlayingScreen` watches the media player entity
+itself, so the strip keeps working on pages where no key happens to watch it. Its
+title and credit are left-aligned; a title too wide for the text region is drawn
+smaller, and scrolls once even the smallest size will not fit; a playing track
+repaints once a second so its position bar creeps forward, since Music Assistant
+reports a position once and then says nothing.
 
-The right edge of the now-playing face carries two buttons — play/pause and
+The left edge of the now-playing face carries two buttons — play/pause and
 shuffle — each of which both reflects and sets its state: the play glyph is lit
 while playing, the shuffle glyph while the queue is shuffled. Tapping the strip
 over a button runs it (play/pause through LVA like the media dial, shuffle on the
 Music Assistant player); a tap that misses them falls through to the dial in that
-zone, exactly as before. There is nothing to act on while the strip is idle, so
-the buttons are hidden and those taps fall through too.
+zone, exactly as before. The right edge, where those buttons used to sit, carries
+a clock, so a glance at the strip always tells the time.
+
+`IdleScreen` is the resting face when the player is stopped: the time centred,
+with the current outdoor conditions beside it — read from the `weather.` entity
+it is given — rather than a "nothing playing" placeholder. The clock needs
+nothing but its own wall clock, so it still works with no Home Assistant
+configured; the weather simply stays away then. Paused counts as playing here —
+it keeps its track, so the strip stays on the now-playing face — and only a
+genuinely stopped player falls through to the clock. There is nothing to act on
+then, so a tap anywhere falls through to the dial beneath.
 
 A tapped button flashes — it lights and fades over about a fifth of a second —
 so a press is acknowledged rather than only its result. This is as close to a

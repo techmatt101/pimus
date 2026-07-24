@@ -36,28 +36,30 @@
 // does and what it reads out, so the strip never has to work that out.
 
 
+import type {RouteActionName} from '../actions/catalog.mjs'
 import {isEntityOn, numericAttribute} from '../home-assistant/entity.mjs'
-import {type Binding, createBindings, type TileServices} from './bindings.mjs'
+import {type Binding, routeBinding, voiceBinding} from './bindings.mjs'
 import type {Dial} from './dial.mjs'
 import {DynamicDial} from './dials/dynamic-dial.mjs'
 import {MediaDial} from './dials/media-dial.mjs'
 import {PageDial} from './dials/page-dial.mjs'
 import {VolumeDial} from './dials/volume-dial.mjs'
 import type {StreamDeckLayout, StreamDeckPage} from './grid.mjs'
+import {IdleScreen} from './screens/idle-screen.mjs'
 import {NowPlayingScreen} from './screens/now-playing-screen.mjs'
 import {TouchStrip} from './strip.mjs'
 import {ActionTile} from './tiles/action-tile.mjs'
 import {BrightnessTile} from './tiles/brightness-tile.mjs'
-import {ClockTile} from './tiles/clock-tile.mjs'
 import {EntityToggleTile} from './tiles/entity-toggle-tile.mjs'
 import {PlaylistTile} from './tiles/playlist-tile.mjs'
 import {RemoteTile} from './tiles/remote-tile.mjs'
 import {SceneTile} from './tiles/scene-tile.mjs'
 import {TemperatureTile} from './tiles/temperature-tile.mjs'
 import {TimerTile} from './tiles/timer-tile.mjs'
-import {WeatherTile} from './tiles/weather-tile.mjs'
 import type {Tile} from './tile.mjs'
 import {VoiceTile} from './tiles/voice-tile.mjs'
+import type {ControlModel} from '../state.mjs'
+import type {AudioControls, HomeAssistantService, LvaSender, NotificationFeed, RemoteTileFeed} from '../types.mjs'
 
 /**
  * The Home Assistant entities this layout drives. They are compiled in with the
@@ -71,17 +73,17 @@ import {VoiceTile} from './tiles/voice-tile.mjs'
  */
 const HA = {
     /** The Music Assistant player this deck controls. */
-    player: 'media_player.office_amp',
+    player: 'media_player.house_speakers2',
     lights: 'light.office',
     fan: 'fan.office_ceiling',
     blinds: 'cover.office_blinds',
     /** A wake-on-LAN switch, so the key both starts the PC and reports it. */
-    pc: 'switch.office_pc',
+    pc: 'device_tracker.techmatt_pc',
     timer: 'timer.office',
     /** Reads `on` while somebody is in the room; the panel sleeps when it clears. */
     presence: 'binary_sensor.office_presence',
     temperature: 'sensor.office_temperature',
-    weather: 'weather.home',
+    weather: 'weather.met_office_stafford',
     scenes: [
         {label: 'BRIGHT', entity: 'scene.office_bright', color: '#f9a825'},
         {label: 'WORK', entity: 'scene.office_work', color: '#0277bd'},
@@ -125,17 +127,59 @@ export const SLEEP = {
  * volume, and Home Assistant commands are checked against the catalog at
  * compile time.
  */
-export function createLayout(services: TileServices): StreamDeckLayout {
-    // `route` binds a key straight to one audio route: MAIN carries a dedicated
-    // AUX and USB key, each toggling its own route independently.
-    const {voice, route} = createBindings(services)
+/**
+ * The controller's domain services, threaded in here at the one composition root
+ * and handed down to each tile, dial, and screen as the narrow slice it actually
+ * uses — the model, the Home Assistant service, the voice transport, the
+ * amplifier's audio controls — rather than as one bag every leaf depends on. The
+ * layout is where they are wired together; nothing below it sees the whole set.
+ */
+export interface ControllerServices {
+    /** The observable control-surface model; mutate its state, then notify. */
+    model: ControlModel
+    /**
+     * Wall-clock milliseconds, injected so a face that shows the time of day or
+     * counts down to an instant (the clock strip, the timer key) can be pinned in
+     * a test. Decorative animation uses the `deltaTime` a draw is handed instead.
+     */
+    clock: () => number
+    /** The voice transport LVA commands are sent over. */
+    lva: LvaSender
+    /** The amplifier's master volume and route toggles. */
+    audio: AudioControls
+    /**
+     * Reads entity state and calls services. Always present: a deployment with no
+     * Home Assistant configured gets the offline stand-in, so a tile never has to
+     * ask whether the integration exists.
+     */
+    ha: HomeAssistantService
+    /**
+     * Messages pushed from Home Assistant for the touch strip. Optional: a
+     * deployment with no Home Assistant simply never has one, and the strip falls
+     * back to what is playing.
+     */
+    notifications?: NotificationFeed
+    /**
+     * Key faces pushed over the remote-tile socket (remote/server.mts). Optional,
+     * and unlike Home Assistant its absence removes the surface: the layout only
+     * builds the REMOTE page when the feature is configured.
+     */
+    remote?: RemoteTileFeed
+}
+
+export function createLayout(services: ControllerServices): StreamDeckLayout {
+    const {model, clock, lva, audio, ha, notifications, remote} = services
+    // `voice` and `route` build a binding from just the one service each needs:
+    // MAIN carries a dedicated AUX and USB key, each toggling its own route.
+    const voice = (command: string): Binding => voiceBinding(lva, model, command)
+    const route = (source: string, command: RouteActionName): Binding => routeBinding(audio, source, command)
     const key = (label: string, color: string, binding: Binding): Tile =>
-        new ActionTile(services, {label, color, binding})
+        new ActionTile(model, {label, color, binding})
 
     // The one dial with no fixed job. The lights, fan, and blinds keys below hand
     // it their entity as they are pressed, so a single knob dims, changes speed,
     // and opens without the deck needing a dial for each.
-    const dynamic = new DynamicDial(services.model)
+    const dynamic = new DynamicDial(model)
 
     // Each page is a fixed grid of eight named slots; an omitted slot renders
     // blank. Every tile keeps its grid position across pages, so adding a page
@@ -148,36 +192,34 @@ export function createLayout(services: TileServices): StreamDeckLayout {
             // the house.
             name: 'MAIN',
             grid: {
-                topLeft: new ClockTile(),
-                topMidLeft: new WeatherTile(services, {entity: HA.weather}),
-                topMidRight: new EntityToggleTile(services, {
+                topMidRight: new EntityToggleTile(ha, {
                     label: 'PC',
                     entity: HA.pc,
                     icon: 'computer',
                     onColor: '#283593',
                     offColor: '#151a30',
                 }),
-                topRight: new TimerTile(services, {entity: HA.timer, duration: TIMER_DURATION}),
+                topRight: new TimerTile(ha, clock, {entity: HA.timer, duration: TIMER_DURATION}),
 
-                bottomLeft: new VoiceTile(services),
+                topLeft: new VoiceTile(model, lva),
                 // Play/pause and shuffle are not keys: they live on the now-playing
                 // strip beside the track they act on (streamdeck/screens/now-playing-screen.mts).
                 // One key for several playlists: press to arm, turn the dynamic dial
                 // to pick, press again to play. It claims the shared dial exactly as
                 // the room keys do, so the same knob that dims the lights picks a
                 // playlist while this key glows.
-                bottomMidRight: new PlaylistTile(services.ha, dynamic, { player: HA.player, playlists: HA.playlists }),
+                topMidLeft: new PlaylistTile(ha, dynamic, { player: HA.player, playlists: HA.playlists }),
             },
         },
         {
             // The room itself: lights, the things that move, and the desk PC.
             name: 'ROOM',
             grid: {
-                topLeft: new SceneTile(services, {scenes: HA.scenes}),
+                topLeft: new SceneTile(ha, {scenes: HA.scenes}),
                 // The three keys that also drive the dynamic dial: pressing one flips
                 // it and hands the dial its entity, so the knob is always pointed at
                 // whatever you last touched.
-                topMidLeft: new EntityToggleTile(services, {
+                topMidLeft: new EntityToggleTile(ha, {
                     label: 'FAN',
                     entity: HA.fan,
                     icon: 'fan',
@@ -190,7 +232,7 @@ export function createLayout(services: TileServices): StreamDeckLayout {
                     animationMilliseconds: 100,
                     dial: dynamic,
                 }),
-                topMidRight: new EntityToggleTile(services, {
+                topMidRight: new EntityToggleTile(ha, {
                     label: 'BLINDS',
                     entity: HA.blinds,
                     icon: 'blinds',
@@ -202,7 +244,7 @@ export function createLayout(services: TileServices): StreamDeckLayout {
                     level: (entity) => 1 - (numericAttribute(entity, 'current_position') ?? (isEntityOn(entity) ? 80 : 0)) / 100,
                     dial: dynamic,
                 }),
-                bottomMidRight: new EntityToggleTile(services, {
+                bottomMidRight: new EntityToggleTile(ha, {
                     label: 'LIGHTS',
                     entity: HA.lights,
                     icon: 'bulb',
@@ -216,10 +258,10 @@ export function createLayout(services: TileServices): StreamDeckLayout {
             // A glanceable page: the top row changes nothing when pressed.
             name: 'INFO',
             grid: {
-                topMidLeft: new TemperatureTile(services, {label: 'OFFICE', entity: HA.temperature}),
+                topMidLeft: new TemperatureTile(ha, {label: 'OFFICE', entity: HA.temperature}),
                 // Panel brightness sits on the quiet page: a setting you go looking for
                 // rather than reach for, like the stop key below it.
-                topRight: new BrightnessTile(services),
+                topRight: new BrightnessTile(model),
                 bottomLeft: key('STOP', '#b71c1c', voice('stop')),
                 topLeft: key('MIC', '#7f0000', voice('mute_toggle')),
 
@@ -235,16 +277,16 @@ export function createLayout(services: TileServices): StreamDeckLayout {
         // presses back. The page exists only when the feature is configured —
         // unlike the Home Assistant keys there is no unknown state to show, just
         // slots nothing could ever fill.
-        ...(services.remote
+        ...(remote
             ? [{
                 name: 'REMOTE',
                 grid: {
-                    topLeft: new RemoteTile(services, {slot: 0}),
-                    topMidLeft: new RemoteTile(services, {slot: 1}),
-                    topMidRight: new RemoteTile(services, {slot: 2}),
-                    topRight: new RemoteTile(services, {slot: 3}),
-                    bottomMidLeft: new RemoteTile(services, {slot: 4}),
-                    bottomMidRight: new RemoteTile(services, {slot: 5}),
+                    topLeft: new RemoteTile(remote, {slot: 0}),
+                    topMidLeft: new RemoteTile(remote, {slot: 1}),
+                    topMidRight: new RemoteTile(remote, {slot: 2}),
+                    topRight: new RemoteTile(remote, {slot: 3}),
+                    bottomMidLeft: new RemoteTile(remote, {slot: 4}),
+                    bottomMidRight: new RemoteTile(remote, {slot: 5}),
                 },
             }]
             : []),
@@ -257,8 +299,8 @@ export function createLayout(services: TileServices): StreamDeckLayout {
     // display stays correct however these are ordered. That readout is shown
     // across the whole touch strip while the dial is being turned — see below.
     const dials: Dial[] = [
-        new VolumeDial(services),
-        new MediaDial(services, {player: HA.player}),
+        new VolumeDial(audio, model),
+        new MediaDial(ha, lva, model, {player: HA.player}),
         // Turning it moves between pages; it reads out the page you land on. The
         // renderer hands it its paging once it exists (streamdeck/dials/page-dial.mts).
         new PageDial(),
@@ -267,12 +309,17 @@ export function createLayout(services: TileServices): StreamDeckLayout {
 
     // The touch strip is one display, not four dial labels: it rests on what is
     // playing, hands itself to a dial while one is being turned, and to a
-    // notification pushed from Home Assistant while one is live.
+    // notification pushed from Home Assistant while one is live. Its resting face
+    // is the now-playing strip while a track is playing or paused, and the idle
+    // clock once the player is stopped — the strip shows the first that applies.
     const strip = new TouchStrip({
-        resting: new NowPlayingScreen(services, {player: HA.player}),
+        resting: [
+            new NowPlayingScreen(ha, clock, lva, model, {player: HA.player}),
+            new IdleScreen(ha, clock, {weatherEntityId: HA.weather}),
+        ],
         dials,
-        clock: services.clock,
-        ...(services.notifications ? {notifications: services.notifications} : {}),
+        clock,
+        ...(notifications ? {notifications} : {}),
     })
 
     // Claiming the dial also puts it on the strip, so pressing LIGHTS shows the

@@ -5,9 +5,10 @@
 // was set from somewhere else.
 
 import {requireEntity} from '../../actions/catalog.mjs'
-import {type Binding, createBindings, type TileServices} from '../bindings.mjs'
+import {type Binding, haBinding} from '../bindings.mjs'
 import {fittingSize, drawIcon, type Surface, drawText} from '../surface.mjs'
 import {drawBackground, drawCaption, drawDots, type Tile} from '../tile.mjs'
+import type {HomeAssistantService} from '../../types.mjs'
 
 /** One scene in the cycle: what to call it and which entity to activate. */
 export interface SceneChoice {
@@ -33,14 +34,13 @@ export class SceneTile implements Tile {
     // -1 means "nothing applied from this key yet".
     #applied = -1
 
-    constructor(services: TileServices, {scenes, label = 'SCENE'}: SceneTileConfig) {
+    constructor(ha: HomeAssistantService, {scenes, label = 'SCENE'}: SceneTileConfig) {
         if (scenes.length === 0) throw new Error('a scene tile needs at least one scene')
-        const {ha} = createBindings(services)
         this.#scenes = scenes
         this.#label = label
         // Building every binding up front checks every entity id while the layout
         // is built, not only the one that happens to be selected.
-        this.#bindings = scenes.map((scene) => ha('activate', requireEntity(scene.entity, `${scene.label} scene`)))
+        this.#bindings = scenes.map((scene) => haBinding(ha, 'activate', requireEntity(scene.entity, `${scene.label} scene`)))
     }
 
     press(): void {

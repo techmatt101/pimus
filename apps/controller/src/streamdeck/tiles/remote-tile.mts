@@ -5,8 +5,8 @@
 // state. Pressing the key reports straight back to the client that owns it.
 
 import {type Surface, withAlpha} from '../surface.mjs'
-import type {TileServices} from '../bindings.mjs'
 import {drawBackground, drawCaption, type Tile} from '../tile.mjs'
+import type {RemoteTileFeed} from '../../types.mjs'
 
 export interface RemoteTileConfig {
     /** Which REMOTE-page slot this key shows, 0 to 5 in reading order. */
@@ -14,20 +14,20 @@ export interface RemoteTileConfig {
 }
 
 export class RemoteTile implements Tile {
-    readonly #services: TileServices
+    readonly #remote: RemoteTileFeed
     readonly #slot: number
 
-    constructor(services: TileServices, {slot}: RemoteTileConfig) {
-        this.#services = services
+    constructor(remote: RemoteTileFeed, {slot}: RemoteTileConfig) {
+        this.#remote = remote
         this.#slot = slot
     }
 
     press(): void {
-        this.#services.remote?.press(this.#slot)
+        this.#remote.press(this.#slot)
     }
 
     draw(surface: Surface): void {
-        const face = this.#services.remote?.tile(this.#slot)
+        const face = this.#remote.tile(this.#slot)
         if (!face) {
             // An empty socket: dark, with a faint marker so the page reads as six
             // places a client can fill rather than as a dead key.

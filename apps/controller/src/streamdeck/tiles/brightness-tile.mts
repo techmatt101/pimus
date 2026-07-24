@@ -7,7 +7,6 @@
 
 import {fittingSize, drawIcon, type Surface, drawText} from '../surface.mjs'
 import {drawBackground, drawCaption, drawDots, FACE_CENTER, type Tile} from '../tile.mjs'
-import type {TileServices} from '../bindings.mjs'
 import type {ControlModel} from '../../state.mjs'
 
 export interface BrightnessTileConfig {
@@ -25,9 +24,9 @@ export class BrightnessTile implements Tile {
     readonly #levels: readonly number[]
     readonly #label: string
 
-    constructor(services: TileServices, {levels = DEFAULT_LEVELS, label = 'BRIGHT'}: BrightnessTileConfig = {}) {
+    constructor(model: ControlModel, {levels = DEFAULT_LEVELS, label = 'BRIGHT'}: BrightnessTileConfig = {}) {
         if (levels.length === 0) throw new Error('a brightness tile needs at least one level')
-        this.#model = services.model
+        this.#model = model
         this.#levels = levels
         this.#label = label
     }

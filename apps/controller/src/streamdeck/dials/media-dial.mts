@@ -6,9 +6,10 @@
 // controller's own playback state comes from — which is also what this dial
 // reads out, so the knob reports the same thing the play key does.
 
-import {type Binding, createBindings, type TileServices} from '../bindings.mjs'
+import {type Binding, haBinding, voiceBinding} from '../bindings.mjs'
 import type {Dial} from '../dial.mjs'
 import type {ControlModel} from '../../state.mjs'
+import type {HomeAssistantService, LvaSender} from '../../types.mjs'
 
 export interface MediaDialConfig {
     /** The `media_player.` entity the skips are sent to. */
@@ -23,13 +24,12 @@ export class MediaDial implements Dial {
     readonly press: Binding
     readonly #model: ControlModel
 
-    constructor(services: TileServices, {player, label = 'MEDIA'}: MediaDialConfig) {
-        const {ha, voice} = createBindings(services)
-        this.#model = services.model
+    constructor(ha: HomeAssistantService, lva: LvaSender, model: ControlModel, {player, label = 'MEDIA'}: MediaDialConfig) {
+        this.#model = model
         this.label = label
-        this.left = ha('media_previous', player)
-        this.right = ha('media_next', player)
-        this.press = voice('media_toggle')
+        this.left = haBinding(ha, 'media_previous', player)
+        this.right = haBinding(ha, 'media_next', player)
+        this.press = voiceBinding(lva, model, 'media_toggle')
     }
 
     detail(): string {

@@ -129,9 +129,14 @@ runtime validation, and relevant documentation together.
 - Each Stream Deck key is a `Tile` — an interface in
   `streamdeck/tiles/tile.mts`, with one implementing class per file in
   `streamdeck/tiles/`. A tile owns what pressing it does and how it renders its
-  own face; tiles get the controller's services (`TileServices`,
-  `streamdeck/bindings.mts`) injected by the layout factory, and there is no
-  central action dispatcher. Use `ActionTile` with a `Binding` for a fixed key;
+  own face; the layout factory (`ControllerServices`, `streamdeck/layout.mts`)
+  injects each tile only the domain services it uses — the `ControlModel`, the
+  `HomeAssistantService`, the `LvaSender`, the `AudioControls`, or the `clock` —
+  not one bag of every service, and there is no central action dispatcher. A key
+  that runs a command builds it from the matching binding builder in
+  `streamdeck/bindings.mts` (`haBinding`, `voiceBinding`, `volumeBinding`,
+  `routeBinding`), each closed over just that one service. Use `ActionTile` with
+  a `Binding` for a fixed key;
   write a new `Tile` class (as `MediaTile` does for play/pause) when a key
   needs behaviour or stateful rendering — icons, styling, animation — the
   catalog indicator cannot express. Never push per-key rendering back into the

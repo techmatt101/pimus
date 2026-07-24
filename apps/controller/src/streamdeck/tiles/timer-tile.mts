@@ -10,7 +10,7 @@
 
 import {requireEntity} from '../../actions/catalog.mjs'
 import {durationSeconds, formatDuration, timerRemainingSeconds} from '../../home-assistant/entity.mjs'
-import {type Binding, createBindings, type TileServices} from '../bindings.mjs'
+import {type Binding, haBinding} from '../bindings.mjs'
 import {type Surface, drawText} from '../surface.mjs'
 import {drawBackground, drawCaption, drawValue, FACE_CENTER, type Tile, type TileHost} from '../tile.mjs'
 import type {Action, HomeAssistantService} from '../../types.mjs'
@@ -40,12 +40,12 @@ export class TimerTile implements Tile {
     #unwatch: (() => void) | null = null
     #tick: NodeJS.Timeout | null = null
 
-    constructor(services: TileServices, {entity, label = 'TIMER', duration = '00:05:00'}: TimerTileConfig) {
-        this.#ha = services.ha
-        this.#clock = services.clock
+    constructor(ha: HomeAssistantService, clock: () => number, {entity, label = 'TIMER', duration = '00:05:00'}: TimerTileConfig) {
+        this.#ha = ha
+        this.#clock = clock
         this.#entity = requireEntity(entity, 'timer tile')
         this.#label = label
-        this.#toggle = createBindings(services).ha('timer_toggle', this.#entity, {duration})
+        this.#toggle = haBinding(ha, 'timer_toggle', this.#entity, {duration})
     }
 
     action(): Action {
