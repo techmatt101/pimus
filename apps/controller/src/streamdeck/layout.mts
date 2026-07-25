@@ -182,7 +182,7 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
     const dials: Dial[] = [
         new VolumeDial(audio, model),
         new MediaDial(ha, {player: HA.player}),
-        new PageDial(),
+        new PageDial(clock),
         dynamic,
     ]
 

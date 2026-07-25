@@ -14,10 +14,19 @@ smartamp_swapfile_enabled: false
 # HiFiBerry DAC2 ADC Pro + AAmp60
 hifiberry_overlay: hifiberry-dacplusadcpro
 hifiberry_card_name: sndrpihifiberry
-hifiberry_output_volume_percent: 30
+# The DAC's hardware output ceiling. The ALSA percent scale is logarithmic
+# across -103.5..0 dB, about -1 dB per point below 100: 90 is a -10 dB
+# ceiling, but 30 is -72.5 dB — inaudible on any speaker. Day-to-day loudness
+# comes from the volume dial (PipeWire), not this.
+hifiberry_output_volume_percent: 100
 hifiberry_aux_gain_db: 0
 hifiberry_aux_input_left: "VINL1[SE]"
 hifiberry_aux_input_right: "VINR1[SE]"
+
+# The PipeWire output volume applied once per boot, so every start has the
+# same predictable loudness (WirePlumber otherwise restores whatever level the
+# sink last had). The volume dial takes over from there.
+smartamp_startup_volume_percent: 20
 
 # PipeWire device matching. These are regular expressions, matched against
 # the Pulse/PipeWire node name, description and properties.

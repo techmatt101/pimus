@@ -180,6 +180,10 @@ def atomic_json(path: Path, value: dict[str, Any]) -> None:
 
 
 class AudioManager:
+    # Class-level default so tests building a bare instance with __new__ read
+    # "nothing pending" rather than an AttributeError.
+    startup_volume_pending = False
+
     def __init__(
         self,
         config_path: Path,
@@ -211,6 +215,7 @@ class AudioManager:
         self.subscribe_retry_at = 0.0
         self.pending_reconcile: float | None = None
         self.next_resync = 0.0
+        self.startup_volume_pending = "startup_volume_percent" in self.config
 
     def stop(self, *_args: object) -> None:
         self.running = False
@@ -475,6 +480,19 @@ class AudioManager:
 
         return background_sink, sinks, sources
 
+    # WirePlumber restores whatever volume the output sink last had, which
+    # after a crash, reimage, or interrupted session can be anything from
+    # silent to full. The first reconcile that sees the sink pins it to the
+    # configured startup level, once per daemon start; the volume dial owns it
+    # from then on.
+    def apply_startup_volume(self, sink: dict[str, Any] | None) -> None:
+        if not self.startup_volume_pending or sink is None:
+            return
+        self.startup_volume_pending = False
+        percent = max(0, min(100, int(self.config["startup_volume_percent"])))
+        run("pactl", "set-sink-volume", sink["name"], f"{percent}%", check=False)
+        LOG.info("Set startup output volume to %d%%", percent)
+
     def reconcile(self) -> None:
         self.refresh_modules()
         sinks = pactl_json("sinks")
@@ -511,6 +529,7 @@ class AudioManager:
             run("pactl", "set-default-sink", sink["name"], check=False)
         if voice and run("pactl", "get-default-source", check=False).stdout.strip() != voice["name"]:
             run("pactl", "set-default-source", voice["name"], check=False)
+        self.apply_startup_volume(sink)
 
         aec_config = self.config.get("aec_reference", {})
         aec_sink = find_node(sinks, aec_config.get("sink_match", "a^"))

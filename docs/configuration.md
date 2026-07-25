@@ -5,8 +5,11 @@ All supported settings live in `ansible/inventory/group_vars/all.yml`. Re-run `m
 ## Audio
 
 `hifiberry_aux_gain_db` is the analogue ADC input gain. Start at `0`; line-level sources can clip if this is raised too
-far. `hifiberry_output_volume_percent` is the safe boot-time hardware level. Normal volume control remains available
-through Home Assistant and the Stream Deck.
+far. `hifiberry_output_volume_percent` is the DAC's hardware output ceiling, not the playing loudness — its percent
+scale is logarithmic (about −1 dB per point below 100), so values much below 90 attenuate to silence; leave it at 100
+and control loudness in PipeWire. `smartamp_startup_volume_percent` is that PipeWire volume applied once at each boot,
+so the device always starts at a predictable level. Normal volume control remains available through Home Assistant and
+the Stream Deck.
 
 Device match expressions search every PipeWire/Pulse node property. Use `pactl list sinks` and `pactl list sources` on
 the Pi if your firmware exposes different names.

@@ -207,6 +207,33 @@ class AudioManagerTests(unittest.TestCase):
         manager.background_ducked = None
         return manager
 
+    def test_startup_volume_applies_once_when_the_sink_appears(self) -> None:
+        manager = self._duckable_manager()
+        manager.config["startup_volume_percent"] = 20
+        manager.startup_volume_pending = True
+
+        with mock.patch.object(audio_manager, "run") as run:
+            # The sink is not up yet, so the pending level must survive.
+            manager.apply_startup_volume(None)
+            run.assert_not_called()
+
+            manager.apply_startup_volume({"name": "hifi"})
+            run.assert_called_once_with(
+                "pactl", "set-sink-volume", "hifi", "20%", check=False
+            )
+
+            # A later reconcile must not fight the volume dial.
+            manager.apply_startup_volume({"name": "hifi"})
+            run.assert_called_once()
+
+    def test_startup_volume_stays_untouched_without_the_setting(self) -> None:
+        manager = self._duckable_manager()
+        manager.startup_volume_pending = "startup_volume_percent" in manager.config
+
+        with mock.patch.object(audio_manager, "run") as run:
+            manager.apply_startup_volume({"name": "hifi"})
+            run.assert_not_called()
+
     def test_duck_requests_are_held_against_the_requesting_connection(self) -> None:
         manager = self._duckable_manager()
         connection = mock.Mock()
