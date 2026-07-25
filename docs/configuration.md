@@ -14,9 +14,18 @@ the Stream Deck.
 Device match expressions search every PipeWire/Pulse node property. Use `pactl list sinks` and `pactl list sources` on
 the Pi if your firmware exposes different names.
 
-Set `smartamp_aux_enabled` to choose whether aux monitoring starts on boot. USB monitoring is initially enabled when
-`usb_audio_gadget_enabled` is true. Stream Deck route toggles last until the next reboot; every boot starts from these
-inventory defaults.
+## Logging
+
+Both daemons log to the systemd journal: `journalctl -u smartamp-controller` and `journalctl -u smartamp-audio-manager`.
+Set `smartamp_debug_logging: true` and re-provision to trace every action — deck input, route commands, Home Assistant
+service calls, LVA commands, and each `pactl` invocation the audio manager makes. `smartamp_journal_in_ram` chooses
+where the journal lives: `true` keeps it in RAM to spare the SD card (logs vanish at reboot), `false` persists it capped
+at 64M so crashes leave evidence. Flip it to `false` while chasing a crash and back afterwards.
+
+Set `smartamp_aux_enabled` and `smartamp_usb_enabled` to choose whether aux and USB monitoring start on boot. Both
+default to off: with no computer actively streaming, the USB gadget's capture clock never ticks, which stalls the whole
+output graph while the route is up. Turn routes on from the deck when the source is actually playing. Stream Deck route
+toggles last until the next reboot; every boot starts from these inventory defaults.
 
 Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Sendspin and USB computer audio share the
 `smartamp_background_sink_name` bus and fade down to `smartamp_voice_duck_volume_percent` per cent of their normal level

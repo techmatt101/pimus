@@ -23,7 +23,11 @@ LOG = logging.getLogger("smartamp-audio")
 
 
 def run(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, check=check, text=True, capture_output=True)
+    result = subprocess.run(args, check=check, text=True, capture_output=True)
+    # Every pactl mutation and query in one place; the debug journal is the
+    # full trace of what the manager did to the graph and when.
+    LOG.debug("%s -> rc %d", " ".join(args), result.returncode)
+    return result
 
 
 def pactl_json(kind: str) -> list[dict[str, Any]]:
@@ -580,6 +584,7 @@ class AudioManager:
                 self.unload(name)
 
         atomic_json(self.status_path, status)
+        LOG.debug("reconciled: %s", json.dumps(status))
 
     def state_event(self) -> dict[str, Any]:
         return {
@@ -594,6 +599,7 @@ class AudioManager:
         """Apply one socket command; returns (reply, reconcile needed)."""
         if not isinstance(message, dict):
             return {"event": "error", "error": "message must be a JSON object"}, False
+        LOG.debug("socket command: %s", json.dumps(message))
         command = message.get("command")
         if command == "set-duck":
             active = message.get("active")
@@ -841,7 +847,8 @@ def main() -> int:
     parser.add_argument("--socket", type=Path, required=True)
     parser.add_argument("--status", type=Path, required=True)
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    level = getattr(logging, os.environ.get("SMARTAMP_LOG_LEVEL", "info").upper(), logging.INFO)
+    logging.basicConfig(level=level, format="%(asctime)s %(levelname)s %(message)s")
     manager = AudioManager(args.config, args.socket, args.status)
     signal.signal(signal.SIGTERM, manager.stop)
     signal.signal(signal.SIGINT, manager.stop)

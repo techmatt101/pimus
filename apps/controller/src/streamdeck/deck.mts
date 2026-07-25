@@ -9,6 +9,9 @@ import {
 import type {Binding} from './bindings.mjs'
 import type {DeckRenderer} from './renderer.mjs'
 import type {StreamDeckLayout} from './grid.mjs'
+import {logger as componentLogger} from '../log.mjs'
+
+const log = componentLogger('deck')
 
 const sleep = (milliseconds: number): Promise<void> =>
     new Promise((resolve) => setTimeout(resolve, milliseconds))
@@ -84,6 +87,7 @@ export async function runDeckLoop({
             })
             const disconnected = new Promise<void>((resolve) => deck?.once('error', () => resolve()))
             deck.on('down', (controlDefinition) => {
+                log.debug('down', controlDefinition.type, controlDefinition.index)
                 if (consumedByWake()) return
                 if (controlDefinition.type === 'button') {
                     void dispatch(renderer.pressAt(controlDefinition.index))
@@ -94,6 +98,7 @@ export async function runDeckLoop({
                 }
             })
             deck.on('rotate', (controlDefinition, amount) => {
+                log.debug('rotate', controlDefinition.index, amount)
                 if (consumedByWake()) return
                 // A turn that cancelled an active claim on another knob does not also step.
                 if (renderer.showDial(controlDefinition.index)) return
@@ -104,6 +109,7 @@ export async function runDeckLoop({
                 void dispatch(() => renderer.refreshStrip())
             })
             deck.on('lcdShortPress', (_controlDefinition, position) => {
+                log.debug('strip tap', position.x)
                 if (consumedByWake()) return
                 void dispatch(renderer.stripPressAt(position.x))
             })

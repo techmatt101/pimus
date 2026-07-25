@@ -1,6 +1,9 @@
 import net from 'node:net'
 
+import {logger} from '../log.mjs'
 import type {AudioState} from '../types.mjs'
+
+const log = logger('audio')
 
 interface ManagerEvent {
     event?: string
@@ -132,7 +135,9 @@ export class AudioManagerClient {
     }
 
     #write(message: Record<string, unknown>): void {
-        if (this.connected && this.#socket) this.#socket.write(`${JSON.stringify(message)}\n`)
+        if (!this.connected || !this.#socket) return
+        log.debug('send', JSON.stringify(message))
+        this.#socket.write(`${JSON.stringify(message)}\n`)
     }
 
     #receive(chunk: string): void {

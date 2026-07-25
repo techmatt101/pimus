@@ -4,9 +4,15 @@ smartamp_hostname: office-amp
 smartamp_timezone: Europe/London
 smartamp_service_user: smartamp
 
-# SD-card endurance. Keeps systemd logs for the current boot in RAM only;
-# logs do not survive a reboot. Set to false to restore persistent journals.
-smartamp_journal_in_ram: true
+# SD-card endurance. True keeps systemd logs for the current boot in RAM only;
+# false persists them (capped at 64M) so crashes leave evidence. Currently off
+# while the USB-gadget crash is being investigated.
+smartamp_journal_in_ram: false
+
+# Log verbosity for the controller and audio manager. Debug traces every
+# action: deck input, route commands, Home Assistant calls, and each pactl
+# invocation. Leave off day-to-day; the traces are chatty by design.
+smartamp_debug_logging: false
 # The stock SD swapfile is removed; memory exhaustion then OOM-kills and
 # restarts a service instead of wearing the card. Set to true to restore it.
 smartamp_swapfile_enabled: false
@@ -47,6 +53,11 @@ smartamp_voice_capture_channel: 1
 # changing. Override only if a future kernel renames that card.
 smartamp_usb_gadget_match: "UAC2Gadget"
 smartamp_aux_enabled: false
+# Whether the USB computer-audio route starts enabled on boot. Off: with no
+# host streaming, the gadget's capture clock never ticks and stalls the whole
+# output graph, and a crash while the route is live would re-enable it every
+# boot, looping. Turn it on from the deck when a computer is actually playing.
+smartamp_usb_enabled: false
 # Target buffer depth for every PipeWire loopback bridge the audio manager
 # builds (aux, USB, ducking bus, and the AEC reference). Lower tightens sync but
 # risks dropouts. PipeWire's stock quantum on the Pi is ~21 ms (48 kHz / 1024),

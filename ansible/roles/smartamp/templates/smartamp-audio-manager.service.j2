@@ -13,6 +13,7 @@ Environment=PULSE_SERVER=/run/user/{{ smartamp_uid }}/pulse/native
 # The manager parses English `pactl subscribe` lines; a localized pactl would
 # silently disable event-driven reconciliation.
 Environment=LC_ALL=C
+Environment=SMARTAMP_LOG_LEVEL={{ 'debug' if smartamp_debug_logging | bool else 'info' }}
 # Remove the previous process's readiness file before starting. Consumers must
 # wait for a fresh hardware scan instead of trusting stale device names.
 ExecStartPre=/usr/bin/rm -f /run/user/{{ smartamp_uid }}/smartamp-audio-status.json

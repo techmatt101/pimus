@@ -1,7 +1,10 @@
 import WebSocket, {type RawData} from 'ws'
 
 import {applyLvaEvent} from '../state.mjs'
+import {logger} from '../log.mjs'
 import type {ControlState, LvaMessage, LvaSender} from '../types.mjs'
+
+const log = logger('voice')
 
 export interface LvaClientOptions {
     uri: string
@@ -88,6 +91,7 @@ export class LvaClient implements LvaSender {
     send(command: string, data?: Record<string, unknown>): boolean {
         const socket = this.#socket
         if (socket?.readyState !== this.#WebSocketImpl.OPEN) return false
+        log.debug('send', command, data ? JSON.stringify(data) : '')
         socket.send(JSON.stringify({command, ...(data ? {data} : {})}))
         return true
     }

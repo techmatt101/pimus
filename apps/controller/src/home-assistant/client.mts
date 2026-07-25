@@ -1,7 +1,10 @@
 import WebSocket, {type RawData} from 'ws'
 
 import {EntityStore} from './store.mjs'
+import {logger} from '../log.mjs'
 import type {HomeAssistantEntity, HomeAssistantService} from '../types.mjs'
+
+const log = logger('ha')
 
 interface HomeAssistantMessage {
     id?: number
@@ -98,6 +101,7 @@ export class HomeAssistantClient implements HomeAssistantService {
     }
 
     call(domain: string, service: string, entityId: string, data?: Record<string, unknown>): void {
+        log.debug('call', `${domain}.${service}`, entityId, data ? JSON.stringify(data) : '')
         this.#send({
             type: 'call_service',
             domain,

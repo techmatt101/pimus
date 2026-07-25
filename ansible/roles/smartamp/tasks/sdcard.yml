@@ -2,8 +2,10 @@
 # Raspberry Pi OS persists the journal under /var/log/journal, and this
 # system's failure modes are chatty: a broken audio graph logs every second
 # until someone notices. Keeping logs for the current boot in RAM removes that
-# steady flash wear; smartamp-doctor and the troubleshooting guide only read
-# the current boot anyway.
+# steady flash wear, but also destroys the evidence when the Pi crashes or
+# reboots. The persistent mode stays capped so a chatty failure loop cannot
+# eat the card either way; flip smartamp_journal_in_ram off while chasing a
+# crash, back on for normal duty.
 - name: Create journald configuration directory
   ansible.builtin.file:
     path: /etc/systemd/journald.conf.d
@@ -11,29 +13,23 @@
     owner: root
     group: root
     mode: "0755"
-  when: smartamp_journal_in_ram | bool
 
-- name: Keep the systemd journal in RAM
+- name: Configure journal storage
   ansible.builtin.copy:
     dest: /etc/systemd/journald.conf.d/smartamp.conf
     content: |
       [Journal]
+      {% if smartamp_journal_in_ram | bool %}
       Storage=volatile
       RuntimeMaxUse=32M
+      {% else %}
+      Storage=persistent
+      SystemMaxUse=64M
+      {% endif %}
     owner: root
     group: root
     mode: "0644"
   notify: Restart journald
-  when: smartamp_journal_in_ram | bool
-
-# Restore the distribution default (persistent storage under /var/log/journal)
-# when the override is turned off.
-- name: Remove journal RAM override when disabled
-  ansible.builtin.file:
-    path: /etc/systemd/journald.conf.d/smartamp.conf
-    state: absent
-  notify: Restart journald
-  when: not (smartamp_journal_in_ram | bool)
 
 # Swapping to the SD card is the fastest way to wear it out, and this stack
 # fits in Pi 5 RAM. Without swap, true memory exhaustion means the kernel
