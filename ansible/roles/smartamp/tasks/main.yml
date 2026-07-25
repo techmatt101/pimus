@@ -80,27 +80,6 @@
   notify: Reload systemd
   when: not (sendspin_enabled | bool)
 
-# Earlier releases played Music Assistant audio through Squeezelite. Stop and
-# remove it regardless of flags so an upgraded Pi does not advertise a stale
-# SlimProto player alongside the Sendspin one.
-- name: Stop legacy Squeezelite service
-  ansible.builtin.systemd_service:
-    name: smartamp-squeezelite.service
-    enabled: false
-    state: stopped
-  failed_when: false
-
-- name: Remove legacy Squeezelite unit
-  ansible.builtin.file:
-    path: /etc/systemd/system/smartamp-squeezelite.service
-    state: absent
-  notify: Reload systemd
-
-- name: Remove legacy Squeezelite package
-  ansible.builtin.apt:
-    name: squeezelite-pulseaudio
-    state: absent
-
 - name: Configure Home Assistant voice
   ansible.builtin.import_tasks: voice.yml
   when: voice_assistant_enabled | bool

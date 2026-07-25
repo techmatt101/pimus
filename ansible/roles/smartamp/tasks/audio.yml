@@ -34,22 +34,6 @@
     mode: "0755"
   notify: Restart audio manager
 
-# The controller acts on wpctl and the audio manager's control socket
-# directly; the retired smartampctl helper must not linger as a stale command
-# on upgraded devices.
-- name: Remove retired smartampctl command
-  ansible.builtin.file:
-    path: /usr/local/bin/smartampctl
-    state: absent
-
-# Route state moved from an on-disk file to the manager's memory, controlled
-# over its runtime Unix socket. The old copy must not linger where it looks
-# authoritative.
-- name: Remove legacy on-disk audio state
-  ansible.builtin.file:
-    path: "{{ smartamp_state_dir }}/audio-state.json"
-    state: absent
-
 # ALSA mixer defaults are not guaranteed after a clean image. Apply the chosen
 # ADC pins/gain and a conservative amplifier level on every boot.
 - name: Install HiFiBerry mixer initialisation

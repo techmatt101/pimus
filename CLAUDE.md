@@ -262,8 +262,6 @@ runtime validation, and relevant documentation together.
   preserve its folders on the Pi so import specifiers stay valid. The Pi gets no
   TypeScript toolchain; `make build` compiles on the control computer, and
   provisioning fails with an instruction if that output is missing.
-- Preserve the migration cleanup for the legacy `smartamp-peripherals` and
-  `smartamp-streamdeck` units.
 
 ## Validation
 

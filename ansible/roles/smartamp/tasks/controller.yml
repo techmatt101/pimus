@@ -1,40 +1,4 @@
 ---
-# Earlier releases used separate Python ReSpeaker and Node Stream Deck units.
-# Stop them before removing their files so an upgraded Pi runs only the unified
-# controller and does not process voice events or button presses twice.
-- name: Stop legacy hardware controller services
-  ansible.builtin.systemd_service:
-    name: "{{ item }}"
-    enabled: false
-    state: stopped
-  loop:
-    - smartamp-peripherals.service
-    - smartamp-streamdeck.service
-  failed_when: false
-
-- name: Remove legacy hardware controller units
-  ansible.builtin.file:
-    path: "/etc/systemd/system/{{ item }}"
-    state: absent
-  loop:
-    - smartamp-peripherals.service
-    - smartamp-streamdeck.service
-  notify: Reload systemd
-
-# These paths are no longer deployed. Removing them keeps /opt and /etc aligned
-# with the repository layout and avoids mistaking dead files for active code.
-- name: Remove legacy hardware controller files
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: absent
-  loop:
-    - "{{ smartamp_app_dir }}/peripheral.py"
-    - "{{ smartamp_app_dir }}/streamdeck"
-    - "{{ smartamp_config_dir }}/peripherals.yml"
-    - "{{ smartamp_config_dir }}/streamdeck.json"
-    # The LED lamp-override feature was removed; the ring is reactive only.
-    - "{{ smartamp_state_dir }}/led-state.json"
-
 # Voice ducking consumes the same LVA event stream as the physical feedback
 # devices, so it also needs the controller when both USB surfaces are disabled.
 - name: Determine whether the local controller is needed
@@ -181,8 +145,6 @@
 
 # TypeScript no longer emits a module after its source is deleted. Remove any
 # corresponding old file on the Pi so Node cannot load code from a prior build.
-# This also clears the flat layout left by releases before the modules moved
-# into folders.
 - name: Find deployed hardware controller modules
   ansible.builtin.find:
     paths: "{{ smartamp_app_dir }}/controller/src"

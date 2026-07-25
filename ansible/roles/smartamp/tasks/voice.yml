@@ -37,15 +37,8 @@
     update: true
   register: voice_assistant_checkout
 
-# Older revisions installed a pip constraints file. Upstream's own dependency
-# ranges now drive setup, so remove the retired file to avoid implying otherwise.
-- name: Remove retired Linux Voice Assistant constraints
-  ansible.builtin.file:
-    path: "{{ smartamp_app_dir }}/linux-voice-assistant/.smartamp-constraints.txt"
-    state: absent
-
-# Markers from superseded releases (and from the retired commit pin) would
-# otherwise accumulate and imply installs that are no longer present.
+# Markers from superseded releases would otherwise accumulate and imply
+# installs that are no longer present.
 - name: Find superseded Linux Voice Assistant setup markers
   ansible.builtin.find:
     paths: "{{ smartamp_app_dir }}/linux-voice-assistant"
