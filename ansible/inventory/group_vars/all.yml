@@ -37,7 +37,7 @@ smartamp_voice_capture_channel: 1
 # independent of usb_audio_product (the host-facing name), so this rarely needs
 # changing. Override only if a future kernel renames that card.
 smartamp_usb_gadget_match: "UAC2Gadget"
-smartamp_aux_enabled: true
+smartamp_aux_enabled: false
 # Target buffer depth for every PipeWire loopback bridge the audio manager
 # builds (aux, USB, ducking bus, and the AEC reference). Lower tightens sync but
 # risks dropouts. PipeWire's stock quantum on the Pi is ~21 ms (48 kHz / 1024),

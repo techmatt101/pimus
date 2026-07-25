@@ -37,11 +37,13 @@ start_gadget() {
     printf '100' > configs/c.1/MaxPower
 
     /usr/bin/mkdir -p functions/uac2.usb0
-    # "Playback" is from the USB host into the Pi. Disable the opposite path.
-    printf '0x3' > functions/uac2.usb0/p_chmask
-    printf '0x0' > functions/uac2.usb0/c_chmask
-    printf '%s' "$SAMPLE_RATE" > functions/uac2.usb0/p_srate
-    printf '%s' "$SAMPLE_SIZE_BYTES" > functions/uac2.usb0/p_ssize
+    # f_uac2 names its directions after the gadget's own ALSA card: "capture"
+    # (c_*) is audio the USB host plays into the Pi, "playback" (p_*) would
+    # stream the Pi to the host as a microphone. Enable only the inbound path.
+    printf '0x3' > functions/uac2.usb0/c_chmask
+    printf '0x0' > functions/uac2.usb0/p_chmask
+    printf '%s' "$SAMPLE_RATE" > functions/uac2.usb0/c_srate
+    printf '%s' "$SAMPLE_SIZE_BYTES" > functions/uac2.usb0/c_ssize
     [ ! -e configs/c.1/uac2.usb0 ] && /usr/bin/ln -s functions/uac2.usb0 configs/c.1/
 
     UDC=$(/usr/bin/ls /sys/class/udc | /usr/bin/head -n 1)

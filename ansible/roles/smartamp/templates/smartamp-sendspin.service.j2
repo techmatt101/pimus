@@ -21,9 +21,13 @@ Restart=on-failure
 RestartSec=3
 # Apply a small, predictable isolation baseline without restricting the network
 # and local PipeWire connections Sendspin needs for playback and discovery.
+# ProtectHome=true would also hide /run/user, where the PipeWire/PulseAudio
+# sockets live; tmpfs mode allows BindPaths to mount the runtime directory
+# back into the sandbox.
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectHome=true
+ProtectHome=tmpfs
+BindPaths=/run/user/{{ smartamp_uid }}
 ProtectSystem=full
 UMask=0027
 

@@ -34,6 +34,25 @@ def pactl_json(kind: str) -> list[dict[str, Any]]:
     return value
 
 
+def pactl_modules() -> list[dict[str, Any]]:
+    # PipeWire's pactl (observed on 17.0) omits the module index from
+    # `--format=json list modules`, so module adoption and cleanup parse the
+    # short listing instead. A module argument can span several lines; the
+    # continuation lines belong to the previous module.
+    modules: list[dict[str, Any]] = []
+    for line in run("pactl", "list", "short", "modules").stdout.splitlines():
+        index, _, rest = line.partition("\t")
+        if index.isdigit():
+            name, _, argument = rest.partition("\t")
+            modules.append(
+                {"index": int(index), "name": name, "argument": argument.strip()}
+            )
+        elif modules:
+            previous = modules[-1]
+            previous["argument"] = f"{previous['argument']} {line.strip()}".strip()
+    return modules
+
+
 def searchable(node: dict[str, Any]) -> str:
     properties = node.get("properties") or {}
     return " ".join(
@@ -213,11 +232,7 @@ class AudioManager:
             run("pactl", "unload-module", str(module_id), check=False)
 
     def refresh_modules(self) -> None:
-        loaded_ids = {
-            int(module["index"])
-            for module in pactl_json("modules")
-            if module.get("index") is not None
-        }
+        loaded_ids = {int(module["index"]) for module in pactl_modules()}
         for name, module_id in list(self.modules.items()):
             if module_id in loaded_ids:
                 continue
@@ -242,7 +257,7 @@ class AudioManager:
             self.unload(name)
         if name not in self.modules:
             existing = find_loaded_module(
-                pactl_json("modules"),
+                pactl_modules(),
                 "module-loopback",
                 (f"source={source}", f"sink={sink}"),
             )
@@ -305,7 +320,7 @@ class AudioManager:
             self.unload("_voice_capture")
         if "_voice_capture" not in self.modules:
             existing = find_loaded_module(
-                pactl_json("modules"),
+                pactl_modules(),
                 "module-remap-source",
                 (f"master={voice['name']}", f"master_channel_map={master_channel}"),
             )

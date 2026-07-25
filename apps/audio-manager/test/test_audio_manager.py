@@ -168,6 +168,33 @@ class AudioManagerTests(unittest.TestCase):
         )
         self.assertEqual(selected["index"], 12)
 
+    def test_module_listing_parses_indices_and_multiline_arguments(self) -> None:
+        # pactl 17's JSON module listing has no index field, so the manager
+        # reads `pactl list short modules`, where a module's argument block can
+        # continue over several lines.
+        listing = (
+            "1\tlibpipewire-module-rt\t{\n"
+            "            nice.level    = -11\n"
+            "            rt.prio       = 88\n"
+            "        }\t\n"
+            "536870912\tmodule-loopback\tsource=background.monitor sink=hifiberry latency_msec=40\t\n"
+        )
+        completed = subprocess.CompletedProcess(
+            ("pactl", "list", "short", "modules"), 0, stdout=listing, stderr=""
+        )
+        with mock.patch.object(audio_manager, "run", return_value=completed):
+            modules = audio_manager.pactl_modules()
+
+        self.assertEqual(
+            [module["index"] for module in modules], [1, 536870912]
+        )
+        selected = audio_manager.find_loaded_module(
+            modules,
+            "module-loopback",
+            ("source=background.monitor", "sink=hifiberry"),
+        )
+        self.assertEqual(selected["index"], 536870912)
+
     @staticmethod
     def _duckable_manager() -> audio_manager.AudioManager:
         manager = audio_manager.AudioManager.__new__(audio_manager.AudioManager)
@@ -269,6 +296,8 @@ class AudioManagerTests(unittest.TestCase):
         manager.load_module = load_module
         with mock.patch.object(
             audio_manager, "pactl_json", side_effect=lambda kind: responses[kind]
+        ), mock.patch.object(
+            audio_manager, "pactl_modules", side_effect=lambda: responses["modules"]
         ):
             selected, _, _ = manager.ensure_background([output], [], output)
 
@@ -337,6 +366,8 @@ class AudioManagerTests(unittest.TestCase):
         with mock.patch.object(
             audio_manager, "pactl_json", side_effect=lambda kind: responses[kind]
         ), mock.patch.object(
+            audio_manager, "pactl_modules", side_effect=lambda: responses["modules"]
+        ), mock.patch.object(
             audio_manager, "run", side_effect=self._fake_run
         ), mock.patch.object(audio_manager, "atomic_json") as status_write:
             manager.reconcile()
@@ -397,6 +428,8 @@ class AudioManagerTests(unittest.TestCase):
         with mock.patch.object(
             audio_manager, "pactl_json", side_effect=lambda kind: responses[kind]
         ), mock.patch.object(
+            audio_manager, "pactl_modules", side_effect=lambda: responses["modules"]
+        ), mock.patch.object(
             audio_manager, "run", side_effect=self._fake_run
         ) as pactl_run, mock.patch.object(audio_manager, "atomic_json") as status_write:
             manager.reconcile()
@@ -449,6 +482,8 @@ class AudioManagerTests(unittest.TestCase):
         with mock.patch.object(
             audio_manager, "pactl_json", side_effect=lambda kind: responses[kind]
         ), mock.patch.object(
+            audio_manager, "pactl_modules", side_effect=lambda: responses["modules"]
+        ), mock.patch.object(
             audio_manager, "run", side_effect=self._fake_run
         ) as pactl_run, mock.patch.object(audio_manager, "atomic_json") as status_write:
             manager.reconcile()
@@ -477,6 +512,8 @@ class AudioManagerTests(unittest.TestCase):
         with mock.patch.object(
             audio_manager, "pactl_json", side_effect=lambda kind: responses[kind]
         ), mock.patch.object(
+            audio_manager, "pactl_modules", side_effect=lambda: responses["modules"]
+        ), mock.patch.object(
             audio_manager, "run", side_effect=self._fake_run
         ) as pactl_run, mock.patch.object(audio_manager, "atomic_json"):
             manager.reconcile()
@@ -498,6 +535,8 @@ class AudioManagerTests(unittest.TestCase):
         }
         with mock.patch.object(
             audio_manager, "pactl_json", side_effect=lambda kind: responses[kind]
+        ), mock.patch.object(
+            audio_manager, "pactl_modules", side_effect=lambda: responses["modules"]
         ), mock.patch.object(
             audio_manager, "run", side_effect=self._fake_run
         ) as pactl_run, mock.patch.object(audio_manager, "atomic_json") as status_write:
