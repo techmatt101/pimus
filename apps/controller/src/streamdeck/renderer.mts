@@ -23,6 +23,10 @@ export class DeckRenderer implements PageNavigator {
     #deck: StreamDeck | null = null
     #asleep = false
     #renderPending = false
+    readonly #dirtyKeys = new Set<number>()
+    #stripDirty = false
+    #allDirty = false
+    #pump: Promise<void> | null = null
     #lastBrightness: number | null = null
     #pageIndex = 0
     readonly #mounted = new Map<number, Tile>()
@@ -84,7 +88,7 @@ export class DeckRenderer implements PageNavigator {
 
     #mountVisible(): void {
         this.#mountPage()
-        this.layout.strip.mount({invalidate: () => void this.#renderStrip()})
+        this.layout.strip.mount({invalidate: () => this.#invalidateStrip()})
     }
 
     #unmountVisible(): void {
@@ -127,7 +131,7 @@ export class DeckRenderer implements PageNavigator {
     // this after a turn's steps so the readout tracks the detent rather than
     // trailing it, since `showDial` paints before the step runs.
     refreshStrip(): void {
-        void this.#renderStrip()
+        this.#invalidateStrip()
     }
 
     #currentPage(): StreamDeckPage | undefined {
@@ -189,7 +193,7 @@ export class DeckRenderer implements PageNavigator {
 
     #hostFor(index: number): TileHost {
         return {
-            invalidate: () => void this.#renderKey(index),
+            invalidate: () => this.#invalidateKey(index),
             changePage: (delta) => this.changePage(delta),
             pageName: (delta) => this.#pageNameAt(delta),
         }
@@ -209,25 +213,14 @@ export class DeckRenderer implements PageNavigator {
         this.#lastKeyDrawAt.clear()
     }
 
-    async #renderKey(index: number): Promise<void> {
-        const deck = this.#deck
-        const tile = this.#mounted.get(index)
-        if (!deck || !tile || this.#asleep) return
-        try {
-            await deck.fillKeyBuffer(index, this.#paintTile(tile, this.#keyDelta(index, this.#now())), FORMAT)
-        } catch (error) {
-            this.#logger.error('render failed', error)
-        }
+    #invalidateKey(index: number): void {
+        this.#dirtyKeys.add(index)
+        void this.#drain()
     }
 
-    async #renderStrip(): Promise<void> {
-        const deck = this.#deck
-        if (!deck || this.#asleep) return
-        try {
-            await deck.fillLcd(0, this.#paintStrip(this.#stripDelta(this.#now())), FORMAT)
-        } catch (error) {
-            this.#logger.error('render failed', error)
-        }
+    #invalidateStrip(): void {
+        this.#stripDirty = true
+        void this.#drain()
     }
 
     schedule(): void {
@@ -238,17 +231,74 @@ export class DeckRenderer implements PageNavigator {
 
     async render(): Promise<void> {
         this.#renderPending = false
+        this.#allDirty = true
+        await this.#drain()
+    }
+
+    // One write is in flight at a time: a repaint asked for mid-write marks its
+    // surface dirty and is picked up by the same loop, so a burst of
+    // invalidations collapses into one repaint instead of queueing USB writes.
+    #drain(): Promise<void> {
+        this.#pump ??= (async () => {
+            try {
+                while (this.#deck && !this.#asleep && this.#hasWork()) await this.#step()
+            } finally {
+                this.#pump = null
+            }
+        })()
+        return this.#pump
+    }
+
+    #hasWork(): boolean {
+        return this.#allDirty || this.#dirtyKeys.size > 0 || this.#stripDirty
+    }
+
+    async #step(): Promise<void> {
+        if (this.#allDirty) {
+            this.#allDirty = false
+            this.#dirtyKeys.clear()
+            this.#stripDirty = false
+            await this.#writeAll()
+            return
+        }
+        const next = this.#dirtyKeys.values().next()
+        if (!next.done) {
+            this.#dirtyKeys.delete(next.value)
+            await this.#writeKey(next.value)
+            return
+        }
+        this.#stripDirty = false
+        await this.#writeStrip()
+    }
+
+    async #writeAll(): Promise<void> {
+        const at = this.#now()
+        // The deck retains its last image, so blank slots must be painted too.
+        for (let index = 0; index < 8; index += 1) {
+            // A page switch mid-pass re-marks everything; restart rather than
+            // finish painting a mix of the two pages.
+            if (this.#allDirty) return
+            await this.#writeKey(index, at)
+        }
+        if (!this.#allDirty) await this.#writeStrip(at)
+    }
+
+    async #writeKey(index: number, at = this.#now()): Promise<void> {
+        const deck = this.#deck
+        if (!deck || this.#asleep) return
+        const page = this.#currentPage()
+        const tile = page ? tileAt(page.grid, index) : undefined
+        try {
+            await deck.fillKeyBuffer(index, this.#paintTile(tile, this.#keyDelta(index, at)), FORMAT)
+        } catch (error) {
+            this.#logger.error('render failed', error)
+        }
+    }
+
+    async #writeStrip(at = this.#now()): Promise<void> {
         const deck = this.#deck
         if (!deck || this.#asleep) return
         try {
-            const at = this.#now()
-            const page = this.#currentPage()
-            // The deck retains its last image, so blank slots must be painted too.
-            for (let index = 0; index < 8; index += 1) {
-                const tile = page ? tileAt(page.grid, index) : undefined
-                await deck.fillKeyBuffer(index, this.#paintTile(tile, this.#keyDelta(index, at)), FORMAT)
-            }
-
             await deck.fillLcd(0, this.#paintStrip(this.#stripDelta(at)), FORMAT)
         } catch (error) {
             this.#logger.error('render failed', error)

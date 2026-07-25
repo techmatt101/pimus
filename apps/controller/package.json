@@ -14,6 +14,7 @@
     },
     "dependencies": {
         "@elgato-stream-deck/node": "7.6.3",
+        "@julusian/jpeg-turbo": "3.0.1",
         "@napi-rs/canvas": "1.0.2",
         "usb": "2.18.0",
         "ws": "8.21.1"

@@ -86,9 +86,12 @@ export function startOutputMonitor({
         try {
             const {stdout} = await execute('wpctl', ['get-volume', '@DEFAULT_AUDIO_SINK@'])
             const output = parseOutputState(stdout)
+            const changed =
+                (output.volume !== undefined && output.volume !== state.volume)
+                || output.outputMuted !== state.outputMuted
             if (output.volume !== undefined) state.volume = output.volume
             state.outputMuted = output.outputMuted
-            onStateChange()
+            if (changed) onStateChange()
         } catch {
             // PipeWire may still be starting; the next interval retries automatically.
         }
