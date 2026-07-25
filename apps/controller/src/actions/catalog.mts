@@ -232,6 +232,13 @@ export const HA_ACTIONS = {
             ha.call('media_player', 'shuffle_set', entity, {shuffle: !isShuffled(ha, entity)})
         },
     },
+    media_repeat: {
+        summary: 'Cycle a media player through off, all, and one, from the mode it reports.',
+        example: "ha('media_repeat', 'media_player.office')",
+        run: ({ha, entity}) => {
+            ha.call('media_player', 'repeat_set', entity, {repeat: nextRepeat(ha, entity)})
+        },
+    },
     brightness_up: {
         summary: `Raise a light's brightness by ${BRIGHTNESS_STEP_PERCENT}%.`,
         example: "ha('brightness_up', 'light.office')",
@@ -284,6 +291,19 @@ export type HaActionName = keyof typeof HA_ACTIONS
 
 export function isShuffled(ha: HomeAssistantService, entityId: string): boolean {
     return Boolean(ha.entity(entityId)?.attributes.shuffle)
+}
+
+const REPEAT_CYCLE = {off: 'all', all: 'one', one: 'off'} as const
+
+export type RepeatMode = keyof typeof REPEAT_CYCLE
+
+export function repeatMode(ha: HomeAssistantService, entityId: string): RepeatMode {
+    const reported = ha.entity(entityId)?.attributes.repeat
+    return reported === 'all' || reported === 'one' ? reported : 'off'
+}
+
+function nextRepeat(ha: HomeAssistantService, entityId: string): RepeatMode {
+    return REPEAT_CYCLE[repeatMode(ha, entityId)]
 }
 
 const has = <T extends object>(table: T, key: string): key is Extract<keyof T, string> =>

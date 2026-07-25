@@ -33,6 +33,8 @@ const ICONS = {
     // Control surface
     mic: 'Mic01Icon',
     shuffle: 'ShuffleIcon',
+    repeat: 'RepeatIcon',
+    repeatOne: 'RepeatOne01Icon',
     play: 'PlayIcon',
     pause: 'PauseIcon',
     next: 'ArrowRight01Icon',

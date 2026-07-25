@@ -100,9 +100,41 @@ export function minuteTick(now: number): number {
     return MINUTE - (now % MINUTE)
 }
 
-export function clockTime(now: number): string {
+export type ClockFormat = '24h' | '12h'
+
+export interface ClockStyle {
+    /** The horizontal centre the time and any AM/PM are balanced around. */
+    centerX: number
+    y: number
+    size: number
+    color?: string
+}
+
+/**
+ * The clock, centred around `centerX`: the time at `size`, and in 12-hour format
+ * a smaller AM/PM riding against its top edge. Returns the drawn span so a caller
+ * can place something beside it. `getHours()` reads the host's own local time.
+ */
+export function drawClock(surface: Surface, now: number, format: ClockFormat, style: ClockStyle): { left: number; right: number } {
+    const {centerX, y, size, color = '#ffffff'} = style
     const at = new Date(now)
-    return `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
+    const minutes = String(at.getMinutes()).padStart(2, '0')
+    const twelveHour = format === '12h'
+    const hours = twelveHour ? String(((at.getHours() + 11) % 12) + 1) : String(at.getHours()).padStart(2, '0')
+    const time = `${hours}:${minutes}`
+
+    const timeWidth = measureText(time, size)
+    const meridiemSize = Math.round(size * 0.42)
+    const gap = Math.round(size * 0.16)
+    const meridiem = twelveHour ? (at.getHours() < 12 ? 'AM' : 'PM') : undefined
+    const meridiemWidth = meridiem ? gap + measureText(meridiem, meridiemSize) : 0
+
+    const left = centerX - (timeWidth + meridiemWidth) / 2
+    drawText(surface, time, {x: left, y, size, color, align: 'left'})
+    if (meridiem) {
+        drawText(surface, meridiem, {x: left + timeWidth + gap, y: y - (size - meridiemSize) / 2, size: meridiemSize, color, align: 'left'})
+    }
+    return {left, right: left + timeWidth + meridiemWidth}
 }
 
 /** A progress bar along the bottom edge. `fraction` is clamped. */

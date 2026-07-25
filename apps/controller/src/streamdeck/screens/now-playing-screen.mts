@@ -1,9 +1,10 @@
-import {requireEntity} from '../../actions/catalog.mjs'
+import {repeatMode, requireEntity} from '../../actions/catalog.mjs'
 import {type Binding, haBinding} from '../bindings.mjs'
 import {mediaElapsedSeconds, numericAttribute} from '../../home-assistant/entity.mjs'
-import {drawIcon, drawText, fittingSize, REGULAR, type Surface, verticalGradient} from '../surface.mjs'
+import {drawIcon, fittingSize, REGULAR, type Surface, verticalGradient} from '../surface.mjs'
 import {
-    clockTime,
+    type ClockFormat,
+    drawClock,
     drawStripBar,
     drawStripLine,
     minuteTick,
@@ -24,17 +25,23 @@ const BUTTON_ICON = 44
 const BUTTON_Y = 44
 const BUTTON_ZONE = 96
 const PLAY_ZONE_RIGHT = BUTTON_ZONE
-const SHUFFLE_ZONE_RIGHT = BUTTON_ZONE * 2
 const PLAY_CENTER = BUTTON_ZONE / 2
-const SHUFFLE_CENTER = BUTTON_ZONE + BUTTON_ZONE / 2
 
 const CLOCK_SIZE = 40
 const CLOCK_WIDTH = 132
 const CLOCK_LEFT = STRIP_WIDTH - CLOCK_WIDTH
 const CLOCK_CENTER = CLOCK_LEFT + CLOCK_WIDTH / 2
 
-const TEXT_LEFT = SHUFFLE_ZONE_RIGHT + 16
+const TEXT_LEFT = PLAY_ZONE_RIGHT + 16
 const TEXT_AVAILABLE = CLOCK_LEFT - 16 - TEXT_LEFT
+
+// Tapping the title swaps it for a transient row of transport extras that fades
+// back to the title after a few idle seconds; each tap refreshes the countdown.
+// `back` dismisses the row rather than acting, so it leads on the left.
+const CONTROLS = ['back', 'shuffle', 'repeat'] as const
+const CONTROLS_LEFT = PLAY_ZONE_RIGHT
+const CONTROLS_SLOT = (CLOCK_LEFT - CONTROLS_LEFT) / CONTROLS.length
+const CONTROLS_MILLISECONDS = 5000
 
 // The strip's LCD only reports a tap once the finger lifts — there is no
 // finger-down event — so a brief fading flash is the closest a button gets to a
@@ -43,7 +50,7 @@ const FLASH_MILLISECONDS = 200
 const FLASH_FRAME_MILLISECONDS = 30
 const FLASH_PEAK = 0.24
 const PRESSED_ICON = '#ffffff'
-type Button = 'play' | 'shuffle'
+type Button = 'play' | (typeof CONTROLS)[number]
 
 const BACKDROP = ['#16222b', '#0b1116'] as const
 
@@ -52,12 +59,14 @@ const PAUSED_TITLE = '#78909c'
 const SECONDARY = '#80deea'
 const PLAY_ON = '#26c6da'
 const PLAY_OFF = '#78909c'
-const SHUFFLE_ON = '#80deea'
-const SHUFFLE_OFF = '#37474f'
+const TOGGLE_ON = '#80deea'
+const TOGGLE_OFF = '#37474f'
+const BACK_COLOR = '#b0bec5'
 const CLOCK_COLOR = '#90a4ae'
 
 export interface NowPlayingOptions {
     player: string
+    clockFormat?: ClockFormat
 }
 
 export function nowPlayingLines(
@@ -79,18 +88,24 @@ export class NowPlayingScreen implements Screen {
     readonly #clock: () => number
     readonly #player: string
     readonly #playPause: Binding
-    readonly #shuffle: Binding
+    readonly #controls: {shuffle: Binding; repeat: Binding}
+    readonly #clockFormat: ClockFormat
     #host: ScreenHost | null = null
     #unwatch: (() => void) | null = null
     #pressed: Button | null = null
     #pressedAt = 0
+    #controlsShownAt: number | null = null
 
-    constructor(ha: HomeAssistantService, clock: () => number, {player}: NowPlayingOptions) {
+    constructor(ha: HomeAssistantService, clock: () => number, {player, clockFormat = '12h'}: NowPlayingOptions) {
         this.#ha = ha
         this.#clock = clock
         this.#player = requireEntity(player, 'now playing screen')
         this.#playPause = haBinding(ha, 'media_play_pause', this.#player)
-        this.#shuffle = haBinding(ha, 'media_shuffle', this.#player)
+        this.#controls = {
+            shuffle: haBinding(ha, 'media_shuffle', this.#player),
+            repeat: haBinding(ha, 'media_repeat', this.#player),
+        }
+        this.#clockFormat = clockFormat
     }
 
     mount(host: ScreenHost): void {
@@ -106,25 +121,46 @@ export class NowPlayingScreen implements Screen {
         this.#unwatch?.()
         this.#unwatch = null
         this.#host = null
+        this.#controlsShownAt = null
+        this.#pressed = null
     }
 
     animationMilliseconds(): number | undefined {
-        if (this.#flashing()) return FLASH_FRAME_MILLISECONDS
         const player = this.#ha.entity(this.#player)
-        const {title} = nowPlayingLines(player, this.#ha.connected)
-        if (overflows(title, fittingSize(title, TITLE_SIZES, TEXT_AVAILABLE), TEXT_AVAILABLE)) {
-            return SCROLL_FRAME_MILLISECONDS
+        const frames = [minuteTick(this.#clock())]
+        if (this.#flashing()) frames.push(FLASH_FRAME_MILLISECONDS)
+        // A wake at the moment the extras time out repaints the title back in.
+        const controlsLeft = this.#controlsRemaining()
+        if (controlsLeft > 0) frames.push(controlsLeft)
+        else {
+            const {title} = nowPlayingLines(player, this.#ha.connected)
+            if (overflows(title, fittingSize(title, TITLE_SIZES, TEXT_AVAILABLE), TEXT_AVAILABLE)) {
+                frames.push(SCROLL_FRAME_MILLISECONDS)
+            }
         }
         // Music Assistant reports a track's position once and then goes quiet, so
         // the bar needs its own tick to creep forward.
-        const playing = player?.state === 'playing'
-        return playing && hasPosition(player) ? POSITION_FRAME_MILLISECONDS : minuteTick(this.#clock())
+        if (player?.state === 'playing' && hasPosition(player)) frames.push(POSITION_FRAME_MILLISECONDS)
+        return Math.min(...frames)
     }
 
     pressAt(x: number): (() => unknown) | undefined {
         if (x < PLAY_ZONE_RIGHT) return this.#press('play', this.#playPause)
-        if (x < SHUFFLE_ZONE_RIGHT) return this.#press('shuffle', this.#shuffle)
-        return undefined
+        if (x >= CLOCK_LEFT) return undefined
+        if (!this.#controlsShown()) {
+            this.#controlsShownAt = this.#clock()
+            this.#host?.invalidate()
+            return () => {}
+        }
+        const slot = Math.min(CONTROLS.length - 1, Math.max(0, Math.floor((x - CONTROLS_LEFT) / CONTROLS_SLOT)))
+        const button = CONTROLS[slot] as (typeof CONTROLS)[number]
+        if (button === 'back') {
+            this.#controlsShownAt = null
+            this.#host?.invalidate()
+            return () => {}
+        }
+        this.#controlsShownAt = this.#clock()
+        return this.#press(button, this.#controls[button])
     }
 
     #press(button: Button, binding: Binding): () => unknown {
@@ -132,6 +168,15 @@ export class NowPlayingScreen implements Screen {
         this.#pressedAt = this.#clock()
         this.#host?.invalidate()
         return () => binding.run()
+    }
+
+    #controlsRemaining(): number {
+        if (this.#controlsShownAt === null) return 0
+        return Math.max(0, CONTROLS_MILLISECONDS - (this.#clock() - this.#controlsShownAt))
+    }
+
+    #controlsShown(): boolean {
+        return this.#controlsRemaining() > 0
     }
 
     #flash(): number {
@@ -147,10 +192,25 @@ export class NowPlayingScreen implements Screen {
     draw(surface: Surface): void {
         const now = this.#clock()
         const player = this.#ha.entity(this.#player)
-        const {title, secondary} = nowPlayingLines(player, this.#ha.connected)
+        const playing = player?.state === 'playing'
         surface.fill(verticalGradient(surface, BACKDROP[0], BACKDROP[1]))
 
-        const playing = player?.state === 'playing'
+        if (this.#controlsShown()) this.#drawControls(surface, player)
+        else this.#drawTrack(surface, player, playing, now)
+
+        const play = (playing ? 'pause' : 'play') as IconName
+        this.#drawButton(surface, PLAY_CENTER, BUTTON_ZONE, play, playing ? PLAY_ON : PLAY_OFF, this.#pressed === 'play')
+        drawClock(surface, now, this.#clockFormat, {centerX: CLOCK_CENTER, y: BUTTON_Y, size: CLOCK_SIZE, color: CLOCK_COLOR})
+
+        const duration = numericAttribute(player, 'media_duration')
+        const elapsed = mediaElapsedSeconds(player, now)
+        if (hasPosition(player) && duration && elapsed !== undefined) {
+            drawStripBar(surface, elapsed / duration, {color: playing ? '#26c6da' : '#37474f'})
+        }
+    }
+
+    #drawTrack(surface: Surface, player: HomeAssistantEntity | undefined, playing: boolean, now: number): void {
+        const {title, secondary} = nowPlayingLines(player, this.#ha.connected)
         drawStripLine(surface, title, {
             centerY: secondary ? 36 : 46,
             size: fittingSize(title, TITLE_SIZES, TEXT_AVAILABLE),
@@ -170,32 +230,30 @@ export class NowPlayingScreen implements Screen {
                 now,
             })
         }
+    }
 
-        this.#drawButtons(surface, playing, Boolean(player?.attributes.shuffle))
-        drawText(surface, clockTime(now), {x: CLOCK_CENTER, y: BUTTON_Y, size: CLOCK_SIZE, color: CLOCK_COLOR})
-
-        const duration = numericAttribute(player, 'media_duration')
-        const elapsed = mediaElapsedSeconds(player, now)
-        if (hasPosition(player) && duration && elapsed !== undefined) {
-            drawStripBar(surface, elapsed / duration, {color: playing ? '#26c6da' : '#37474f'})
+    #drawControls(surface: Surface, player: HomeAssistantEntity | undefined): void {
+        const repeat = this.#ha.connected ? repeatMode(this.#ha, this.#player) : 'off'
+        const face: Record<(typeof CONTROLS)[number], { icon: IconName; color: string }> = {
+            shuffle: {icon: 'shuffle', color: player?.attributes.shuffle ? TOGGLE_ON : TOGGLE_OFF},
+            repeat: {icon: repeat === 'one' ? 'repeatOne' : 'repeat', color: repeat === 'off' ? TOGGLE_OFF : TOGGLE_ON},
+            back: {icon: 'previous', color: BACK_COLOR},
         }
+        CONTROLS.forEach((button, slot) => {
+            const {icon, color} = face[button]
+            this.#drawButton(surface, CONTROLS_LEFT + CONTROLS_SLOT * (slot + 0.5), CONTROLS_SLOT, icon, color, this.#pressed === button)
+        })
     }
 
-    #drawButtons(surface: Surface, playing: boolean, shuffled: boolean): void {
-        const flash = this.#flash()
-        const play = {icon: (playing ? 'pause' : 'play') as IconName, color: playing ? PLAY_ON : PLAY_OFF}
-        this.#drawButton(surface, 0, PLAY_CENTER, play.icon, play.color, this.#pressed === 'play' ? flash : 0)
-        this.#drawButton(surface, BUTTON_ZONE, SHUFFLE_CENTER, 'shuffle', shuffled ? SHUFFLE_ON : SHUFFLE_OFF, this.#pressed === 'shuffle' ? flash : 0)
-    }
-
-    #drawButton(surface: Surface, zoneLeft: number, center: number, icon: IconName, color: string, flash: number): void {
+    #drawButton(surface: Surface, center: number, zoneWidth: number, icon: IconName, color: string, pressed: boolean): void {
+        const flash = pressed ? this.#flash() : 0
         if (flash > 0) {
             const {ctx} = surface
             ctx.save()
             ctx.globalAlpha = flash * FLASH_PEAK
             ctx.fillStyle = '#ffffff'
             ctx.beginPath()
-            ctx.roundRect(zoneLeft + 10, BUTTON_Y - 34, BUTTON_ZONE - 20, 68, 14)
+            ctx.roundRect(center - zoneWidth / 2 + 10, BUTTON_Y - 34, zoneWidth - 20, 68, 14)
             ctx.fill()
             ctx.restore()
         }

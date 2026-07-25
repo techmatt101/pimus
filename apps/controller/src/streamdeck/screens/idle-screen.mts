@@ -1,8 +1,8 @@
 import {requireEntity} from '../../actions/catalog.mjs'
 import {numericAttribute} from '../../home-assistant/entity.mjs'
 import {conditionIcon} from '../icons.mjs'
-import {drawIcon, drawText, measureText, type Surface, verticalGradient} from '../surface.mjs'
-import {clockTime, minuteTick, type Screen, type ScreenHost, STRIP_WIDTH} from './screen.mjs'
+import {drawIcon, drawText, type Surface, verticalGradient} from '../surface.mjs'
+import {type ClockFormat, drawClock, minuteTick, type Screen, type ScreenHost, STRIP_WIDTH} from './screen.mjs'
 import type {HomeAssistantService} from '../../types.mjs'
 
 const BACKDROP = ['#16222b', '#0b1116'] as const
@@ -14,6 +14,7 @@ const WEATHER_GAP = 28
 export interface IdleScreenOptions {
     /** The `weather.` entity shown beside the clock; omitting it leaves the clock alone. */
     weatherEntityId?: string
+    clockFormat?: ClockFormat
 }
 
 /** The strip's resting face when nothing is playing: a clock, with the weather beside it. */
@@ -21,12 +22,14 @@ export class IdleScreen implements Screen {
     readonly #ha: HomeAssistantService
     readonly #clock: () => number
     readonly #weather: string | undefined
+    readonly #clockFormat: ClockFormat
     #unwatch: (() => void) | null = null
 
-    constructor(ha: HomeAssistantService, clock: () => number, {weatherEntityId}: IdleScreenOptions) {
+    constructor(ha: HomeAssistantService, clock: () => number, {weatherEntityId, clockFormat = '24h'}: IdleScreenOptions) {
         this.#ha = ha
         this.#clock = clock
         this.#weather = weatherEntityId ? requireEntity(weatherEntityId, 'idle screen') : undefined
+        this.#clockFormat = clockFormat
     }
 
     mount(host: ScreenHost): void {
@@ -46,9 +49,8 @@ export class IdleScreen implements Screen {
 
     draw(surface: Surface): void {
         surface.fill(verticalGradient(surface, BACKDROP[0], BACKDROP[1]))
-        const time = clockTime(this.#clock())
-        drawText(surface, time, {x: STRIP_WIDTH / 2, y: 50, size: TIME_SIZE, color: TIME_COLOR})
-        this.#drawWeather(surface, STRIP_WIDTH / 2 + measureText(time, TIME_SIZE) / 2 + WEATHER_GAP)
+        const clock = drawClock(surface, this.#clock(), this.#clockFormat, {centerX: STRIP_WIDTH / 2, y: 50, size: TIME_SIZE, color: TIME_COLOR})
+        this.#drawWeather(surface, clock.right + WEATHER_GAP)
     }
 
     #drawWeather(surface: Surface, left: number): void {

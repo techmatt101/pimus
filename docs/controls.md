@@ -224,6 +224,7 @@ in the layout.
 | `media_next`      | Skip a media player to the next track.                            |
 | `media_previous`  | Send a media player back to the previous track.                   |
 | `media_shuffle`   | Toggle shuffle, from the shuffle state the player reports.        |
+| `media_repeat`    | Cycle repeat off, all, one, from the mode the player reports.     |
 | `brightness_up`   | Raise a light's brightness by 10%.                                |
 | `brightness_down` | Lower a light's brightness by 10%.                                |
 | `fan_speed_up`    | Raise a fan's speed by one of its own steps.                      |
@@ -366,7 +367,7 @@ in this order:
 |--------------|----------------------------------------------------|---------------------------------------------------------------------|
 | Dial readout | For 2.5 s after a dial was last turned or pressed, or the whole time a key is mid-pick on the shared dial | The dial's name, its readout, and a bar for a dial with a level     |
 | Notification | While a message pushed from Home Assistant is live | Its heading and message on its own colour, with a draining time bar |
-| Now playing  | A track is playing or paused                       | A play/pause and a shuffle button at the left edge, the track title and credit (scrolling only when too long), a clock at the right edge, and a position bar |
+| Now playing  | A track is playing or paused                       | A play/pause button at the left edge, the track title and credit (scrolling only when too long, tap to reveal shuffle/repeat/back), a clock at the right edge, and a position bar |
 | Idle clock   | The player is stopped (nothing playing)            | The time centred, with the current outdoor conditions beside it |
 
 A hand on a knob wins over a live notification — feedback you cannot see while
@@ -386,19 +387,24 @@ smaller, and scrolls once even the smallest size will not fit; a playing track
 repaints once a second so its position bar creeps forward, since Music Assistant
 reports a position once and then says nothing.
 
-The left edge of the now-playing face carries two buttons — play/pause and
-shuffle — each of which both reflects and sets its state: the play glyph is lit
-while playing, the shuffle glyph while the queue is shuffled. Tapping the strip
-over a button runs it on the Music Assistant player, exactly as the media dial
-does; a tap that misses them falls through to the dial in that
-zone, exactly as before. The right edge, where those buttons used to sit, carries
-a clock, so a glance at the strip always tells the time.
+The left edge of the now-playing face carries the play/pause button — the glyph
+is lit while playing — and tapping it runs on the Music Assistant player, exactly
+as the media dial does. Tapping the track title swaps it for a transient row of
+transport extras: a back button on the left that just dismisses the row, then
+shuffle and repeat (off, then all, then one — its glyph lit whenever it is not
+off, with a `1` while it repeats one). Shuffle and repeat reflect and set their
+state the same way; the row also fades back to the title a few idle seconds after
+the last tap. The right edge carries a clock, so a glance at the strip always
+tells the time; a tap on the clock falls through to the dial in that zone.
 
 `IdleScreen` is the resting face when the player is stopped: the time centred,
 with the current outdoor conditions beside it — read from the `weather.` entity
 it is given — rather than a "nothing playing" placeholder. The clock needs
 nothing but its own wall clock, so it still works with no Home Assistant
-configured; the weather simply stays away then. Paused counts as playing here —
+configured; the weather simply stays away then. It reads 24- or 12-hour from the
+`clockFormat` the layout hands both strip faces — `12h` adding a small AM/PM
+riding against the top of the time — so the two clocks always agree. Paused
+counts as playing here —
 it keeps its track, so the strip stays on the now-playing face — and only a
 genuinely stopped player falls through to the clock. There is nothing to act on
 then, so a tap anywhere falls through to the dial beneath.
