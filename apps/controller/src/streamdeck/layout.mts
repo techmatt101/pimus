@@ -99,8 +99,10 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
                 spin: (_entity, phase) => (phase % 1200) / 1200,
                 animationMilliseconds: 100,
                 caption: (entity, on) => {
+                    if (on === undefined) return '?'
+                    if (!on) return 'OFF'
                     const percentage = numericAttribute(entity, 'percentage')
-                    return !on || percentage === undefined ? undefined : `FAN ${Math.round(percentage)}%`
+                    return percentage === undefined ? 'ON' : `${Math.round(percentage)}%`
                 },
                 dial: dynamic,
             }),
@@ -112,7 +114,12 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
                 offColor: '#1c2429',
                 // A cover reporting no position falls back to fully raised or down.
                 level: (entity) => 1 - (numericAttribute(entity, 'current_position') ?? (isEntityOn(entity) ? 80 : 0)) / 100,
-                caption: (_entity, on) => `BLINDS ${on ? 'OPEN' : 'CLOSED'}`,
+                caption: (entity, on) => {
+                    if (on === undefined) return '?'
+                    const position = numericAttribute(entity, 'current_position')
+                    if (position !== undefined && position > 0 && position < 100) return `${Math.round(position)}%`
+                    return on ? 'OPEN' : 'CLOSED'
+                },
                 dial: dynamic,
             }),
             new EntityToggleTile(ha, {
@@ -121,6 +128,14 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
                 icon: 'bulb',
                 onColor: '#6b5200',
                 offColor: '#1e1a0c',
+                caption: (entity, on) => {
+                    if (on === undefined) return '?'
+                    if (!on) return 'OFF'
+                    const brightness = numericAttribute(entity, 'brightness')
+                    if (brightness === undefined) return 'ON'
+                    const percentage = Math.round((brightness / 255) * 100)
+                    return percentage > 0 && percentage < 100 ? `${percentage}%` : 'ON'
+                },
                 dial: dynamic,
             }),
         ],

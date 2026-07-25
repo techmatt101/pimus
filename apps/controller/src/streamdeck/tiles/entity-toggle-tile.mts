@@ -25,8 +25,11 @@ export interface EntityToggleTileConfig {
     /** A 0..1 reading shown as a bar under the icon, or undefined for none. */
     level?(entity: HomeAssistantEntity | undefined): number | undefined
 
-    /** Replaces the default `LABEL ON/OFF` caption, e.g. a fan's speed or a cover's open/closed. */
-    caption?(entity: HomeAssistantEntity | undefined, on: boolean): string | undefined
+    /**
+     * Replaces the default `LABEL ON/OFF`/`LABEL ?` caption, e.g. a fan's speed
+     * or a cover's open/closed. `on` is undefined for the unknown state.
+     */
+    caption?(entity: HomeAssistantEntity | undefined, on: boolean | undefined): string | undefined
 
     /** Repaint interval while the entity is on, for an animated icon. */
     animationMilliseconds?: number
@@ -128,7 +131,7 @@ export class EntityToggleTile implements Tile {
         const x = surface.width / 2
 
         if (on === undefined) {
-            drawLabelFace(surface, UNKNOWN_COLOR, `${label} ?`)
+            drawLabelFace(surface, UNKNOWN_COLOR, this.#config.caption?.(entity, undefined) ?? `${label} ?`)
             drawIcon(surface, iconName, {x, y: FACE_CENTER, size: ICON_SIZE, color: UNKNOWN_ICON, rotate: spin})
             this.#drawArmed(surface)
             return

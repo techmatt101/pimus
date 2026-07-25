@@ -51,6 +51,13 @@ export interface HomeAssistantService {
 
     call(domain: string, service: string, entityId: string, data?: Record<string, unknown>): void
 
+    /**
+     * Optimistically overwrite an entity's cached state so the key and strip move
+     * the instant a command is issued, before Home Assistant echoes it back.
+     * Merges onto the entity's current attributes; a no-op where nothing is cached.
+     */
+    patch(entityId: string, state: string, attributes: Record<string, unknown>): void
+
     /** Report changes to any of `entityIds`. Returns an unsubscribe function. */
     watch(entityIds: readonly string[], listener: () => void): () => void
 

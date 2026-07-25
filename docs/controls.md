@@ -78,7 +78,7 @@ central dispatcher:
 | `BrightnessTile`   | Steps the Stream Deck panel's own brightness through a few levels. Press to arm, turn the dynamic dial to pick a level, press again to apply; shows the picked percentage while armed, the panel's actual percentage at rest. Mutates display state on the model; the renderer re-lights the panel.                                                               |
 | `PlaylistTile`     | Picks and plays one of a short list of playlists. Press to arm (the key glows and claims the dynamic dial), turn the dynamic dial to choose, press again — the key or the knob — to confirm. A single playlist is just press-then-confirm. The armed state releases itself after 15s, or when any other dial or key is touched — that first touch only cancels the arm and does nothing else.        |
 | `SceneTile`        | Picks one of a short list of scenes. Press to arm, turn to choose, press again — key or knob — to apply. Scenes have no state to read back, so it stays dim until the first apply, then shows the one last applied.                                                                                                                                              |
-| `EntityToggleTile` | The general Home Assistant on/off key — lights, fan, blinds, PC. Its service comes from the entity's own domain, plus an icon and an optional `spin` (the fan turns while it runs) and `level` (how far the blinds are down), so the four are one class configured four ways. Given the dynamic dial, the first press arms it — glow, strip readout, 15s timeout — turning adjusts the level live and a second press toggles, so a double-press turns it on; a plain switch like PC has nothing to adjust and just toggles at once. |
+| `EntityToggleTile` | The general Home Assistant on/off key — lights, fan, blinds, PC. Its service comes from the entity's own domain, plus an icon and an optional `spin` (the fan turns while it runs) and `level` (how far the blinds are down), so the four are one class configured four ways. Its caption reads its own state rather than repeating the key's name: the icon says which device it is, so the room keys drop the label and show just `ON`/`OFF`, `OPEN`/`CLOSED`, or a percentage when part-way (fan speed, light brightness, blind position); `?` when unreachable. Given the dynamic dial, the first press arms it — glow, strip readout, 15s timeout — turning adjusts the level live and a second press toggles, so a double-press turns it on; a plain switch like PC has nothing to adjust and just toggles at once. |
 | `TimerTile`        | A Home Assistant `timer` entity: a draining ring and a countdown. Idle, press to arm the dynamic dial and set the length — it starts fresh at five minutes and the detent scales (a second under ten, five under a minute, then fifteen, thirty, a minute past ten minutes) — press again to start. While it runs the key just cancels it.                       |
 | `TemperatureTile`  | A sensor reading, with the background banded by temperature. Read-only.                                                                                                                                                                                                                                                                                        |
 | `PageTile`         | Page navigation from a grid slot, for a page that wants a "next" key of its own in addition to the page dial.                                                                                                                                                                                                                                                  |
@@ -225,12 +225,6 @@ in the layout.
 | `media_previous`  | Send a media player back to the previous track.                   |
 | `media_shuffle`   | Toggle shuffle, from the shuffle state the player reports.        |
 | `media_repeat`    | Cycle repeat off, all, one, from the mode the player reports.     |
-| `brightness_up`   | Raise a light's brightness by 10%.                                |
-| `brightness_down` | Lower a light's brightness by 10%.                                |
-| `fan_speed_up`    | Raise a fan's speed by one of its own steps.                      |
-| `fan_speed_down`  | Lower a fan's speed by one of its own steps.                      |
-| `cover_open`      | Open a cover by 10%, or fully when it reports no position.        |
-| `cover_close`     | Close a cover by 10%, or fully when it reports no position.       |
 | `timer_toggle`    | Start a Home Assistant timer, or cancel the one already running.  |
 
 ```ts
@@ -331,18 +325,26 @@ What turning it does comes from the entity's own domain, which `DynamicDial`
 derives itself (`streamdeck/dials/dynamic-dial.mts`) exactly as the toggle
 service does:
 
-| Domain  | Turn left / right                   | Readout                            |
-|---------|-------------------------------------|------------------------------------|
-| `light` | `brightness_down` / `brightness_up` | Brightness, or `ON` / `OFF`        |
-| `fan`   | `fan_speed_down` / `fan_speed_up`   | Speed, or `ON` / `OFF`             |
-| `cover` | `cover_close` / `cover_open`        | How far open, or `OPEN` / `CLOSED` |
+| Domain  | Turn left / right         | Readout                            |
+|---------|---------------------------|------------------------------------|
+| `light` | Brightness down / up      | Brightness, or `ON` / `OFF`        |
+| `fan`   | Speed down / up           | Speed, or `ON` / `OFF`             |
+| `cover` | Close / open by position  | How far open, or `OPEN` / `CLOSED` |
+
+Each detent nudges the cached level so the strip and key move under your hand at
+once, but the device command is debounced (`EntityLevel` in
+`streamdeck/dials/entity-level.mts`): a quick spin settles into a single absolute
+set — `brightness_pct`, `set_percentage`, `set_cover_position` — rather than a
+burst of steps, so a fast turn never floods the light, fan, or blind. The nudge
+goes through `HomeAssistantService.patch`, which overwrites the cached state
+until Home Assistant echoes the real one back.
 
 A domain that is absent from that table has nothing worth turning, so a key for
 one — the desk PC switch — claims no dial when pressed and leaves the last claim
 in place. Give a key the dial by passing `dial: dynamic` to its
 `EntityToggleTile` in the layout; a new domain becomes turnable by adding a row
-to `DIAL_DOMAINS`, which needs the stepping actions to exist in the catalog
-first.
+to `DIAL_DOMAINS` with how to read, step, set, and optimistically cache its
+level.
 
 Before anything has been pressed the dial reads `CONTROL` / `PICK A KEY`, and an
 unreachable Home Assistant reads `--` rather than a light turned all the way

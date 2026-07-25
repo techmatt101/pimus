@@ -107,6 +107,13 @@ export class HomeAssistantClient implements HomeAssistantService {
         })
     }
 
+    patch(entityId: string, state: string, attributes: Record<string, unknown>): void {
+        const current = this.#store.get(entityId)
+        if (!current) return
+        this.#store.set({entity_id: entityId, state, attributes: {...current.attributes, ...attributes}})
+        this.#onStateChange()
+    }
+
     connect(): void {
         const socket = new this.#WebSocketImpl(this.url)
         this.#socket = socket
@@ -225,6 +232,8 @@ export function createOfflineHomeAssistant(
         entity: () => undefined,
         call: (domain, service, entityId) => {
             logger.log(`no Home Assistant configured; dropped ${domain}.${service} on ${entityId}`)
+        },
+        patch: () => {
         },
         watch: () => () => {
         },

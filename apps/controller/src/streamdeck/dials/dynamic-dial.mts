@@ -1,21 +1,22 @@
-import {entityDomain, type HaActionName} from '../../actions/catalog.mjs'
+import {entityDomain} from '../../actions/catalog.mjs'
 import {isEntityOn, numericAttribute} from '../../home-assistant/entity.mjs'
 import {type Binding, haBinding} from '../bindings.mjs'
 import {type Dial, fraction, percent} from '../dial.mjs'
+import {EntityLevel, type LevelDomain} from './entity-level.mjs'
 import type {ControlModel} from '../../state.mjs'
-import type {HomeAssistantEntity, HomeAssistantService} from '../../types.mjs'
+import type {HomeAssistantService} from '../../types.mjs'
 
 const IDLE_LABEL = 'CONTROL'
 const IDLE_DETAIL = 'PICK A KEY'
 
 export const CLAIM_TIMEOUT_MILLISECONDS = 15_000
 
-interface DialDomain {
-    down: HaActionName
-    up: HaActionName
+// Home Assistant reports brightness on 0-255, position and fan speed as a
+// percentage; every domain drives the dial in 0..1 and sets an absolute value.
+const BRIGHTNESS_MAX = 255
+const STEP = 0.1
 
-    level(entity: HomeAssistantEntity | undefined): number | undefined
-
+interface DialDomain extends LevelDomain {
     /** Readout while on with no level to show, and while off. */
     on: string
     off: string
@@ -23,24 +24,37 @@ interface DialDomain {
 
 const DIAL_DOMAINS: Record<string, DialDomain> = {
     light: {
-        down: 'brightness_down',
-        up: 'brightness_up',
-        // Home Assistant reports brightness on 0-255, not as a percentage.
-        level: (entity) => fraction(numericAttribute(entity, 'brightness'), 255),
+        read: (entity) => fraction(numericAttribute(entity, 'brightness'), BRIGHTNESS_MAX),
+        step: () => STEP,
+        optimistic: (level) => level > 0
+            ? {state: 'on', attributes: {brightness: Math.round(level * BRIGHTNESS_MAX)}}
+            : {state: 'off', attributes: {brightness: null}},
+        apply: (ha, entity, level) => level > 0
+            ? ha.call('light', 'turn_on', entity, {brightness_pct: Math.round(level * 100)})
+            : ha.call('light', 'turn_off', entity),
         on: 'ON',
         off: 'OFF',
     },
     fan: {
-        down: 'fan_speed_down',
-        up: 'fan_speed_up',
-        level: (entity) => fraction(numericAttribute(entity, 'percentage'), 100),
+        read: (entity) => fraction(numericAttribute(entity, 'percentage'), 100),
+        // A fan steps by its own speed increment so a three-speed fan reaches
+        // medium in one turn, not four; without one, fall back to a quarter.
+        step: (entity) => (numericAttribute(entity, 'percentage_step') ?? 25) / 100,
+        optimistic: (level) => level > 0
+            ? {state: 'on', attributes: {percentage: Math.round(level * 100)}}
+            : {state: 'off', attributes: {percentage: 0}},
+        apply: (ha, entity, level) => ha.call('fan', 'set_percentage', entity, {percentage: Math.round(level * 100)}),
         on: 'ON',
         off: 'OFF',
     },
     cover: {
-        down: 'cover_close',
-        up: 'cover_open',
-        level: (entity) => fraction(numericAttribute(entity, 'current_position'), 100),
+        read: (entity) => fraction(numericAttribute(entity, 'current_position'), 100),
+        step: () => STEP,
+        optimistic: (level) => ({
+            state: level > 0 ? 'open' : 'closed',
+            attributes: {current_position: Math.round(level * 100)},
+        }),
+        apply: (ha, entity, level) => ha.call('cover', 'set_cover_position', entity, {position: Math.round(level * 100)}),
         on: 'OPEN',
         off: 'CLOSED',
     },
@@ -48,28 +62,29 @@ const DIAL_DOMAINS: Record<string, DialDomain> = {
 
 /**
  * The dial a Home Assistant entity lends the shared knob: turning steps its
- * level (brightness, fan speed, cover position) live, the knob toggles, and the
- * readout comes from the entity's own domain. Returns null for a domain with
- * nothing to turn (a switch), so its key falls back to a plain toggle.
+ * level (brightness, fan speed, cover position) live and debounced, the knob
+ * toggles, and the readout comes from the entity's own domain. Returns null for
+ * a domain with nothing to turn (a switch), so its key falls back to a plain
+ * toggle.
  */
 export function entityDial(ha: HomeAssistantService, label: string, entity: string): Dial | null {
     const domain = DIAL_DOMAINS[entityDomain(entity)]
     if (!domain) return null
-    const read = (): HomeAssistantEntity | undefined => ha.entity(entity)
+    const control = new EntityLevel(ha, entity, domain)
+    const turn = (direction: number): Binding => ({action: {type: 'noop'}, run: () => control.step(direction)})
     return {
         label,
-        left: haBinding(ha, domain.down, entity),
-        right: haBinding(ha, domain.up, entity),
+        left: turn(-1),
+        right: turn(1),
         press: haBinding(ha, 'toggle', entity),
         detail: () => {
-            const current = read()
-            const on = isEntityOn(current)
+            const on = isEntityOn(ha.entity(entity))
             if (on === undefined) return '--'
-            const level = domain.level(current)
+            const level = control.level()
             if (level === undefined) return on ? domain.on : domain.off
             return percent(level)
         },
-        level: () => domain.level(read()),
+        level: () => control.level(),
     }
 }
 

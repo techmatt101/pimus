@@ -1,4 +1,3 @@
-import {numericAttribute} from '../home-assistant/entity.mjs'
 import type {Action, AudioState, ControlState, HomeAssistantService, LvaSender,} from '../types.mjs'
 
 export interface IndicatorContext {
@@ -164,23 +163,6 @@ export function requireEntity(entityId: string, where: string): string {
     return entityId
 }
 
-const BRIGHTNESS_STEP_PERCENT = 10
-
-const COVER_STEP_PERCENT = 10
-
-// Home Assistant has no relative service for a cover the way `brightness_step_pct`
-// is for a light, so the step is applied to the position the cover reports. A
-// cover reporting no position gets the plain full open or close instead.
-function stepCover({ha, entity}: HaContext, step: number): void {
-    const position = numericAttribute(ha.entity(entity), 'current_position')
-    if (position === undefined) {
-        ha.call('cover', step > 0 ? 'open_cover' : 'close_cover', entity)
-        return
-    }
-    ha.call('cover', 'set_cover_position', entity, {
-        position: Math.max(0, Math.min(100, Math.round(position + step))),
-    })
-}
 
 export const HA_ACTIONS = {
     toggle: {
@@ -238,42 +220,6 @@ export const HA_ACTIONS = {
         run: ({ha, entity}) => {
             ha.call('media_player', 'repeat_set', entity, {repeat: nextRepeat(ha, entity)})
         },
-    },
-    brightness_up: {
-        summary: `Raise a light's brightness by ${BRIGHTNESS_STEP_PERCENT}%.`,
-        example: "ha('brightness_up', 'light.office')",
-        run: ({ha, entity}) => {
-            ha.call('light', 'turn_on', entity, {brightness_step_pct: BRIGHTNESS_STEP_PERCENT})
-        },
-    },
-    brightness_down: {
-        summary: `Lower a light's brightness by ${BRIGHTNESS_STEP_PERCENT}%.`,
-        example: "ha('brightness_down', 'light.office')",
-        run: ({ha, entity}) => {
-            ha.call('light', 'turn_on', entity, {brightness_step_pct: -BRIGHTNESS_STEP_PERCENT})
-        },
-    },
-    fan_speed_up: {
-        summary: "Raise a fan's speed by one of its own steps.",
-        example: "ha('fan_speed_up', 'fan.office_ceiling')",
-        // The fan's own step count, not percentage_step: a three-speed ceiling fan
-        // should not need four turns to reach medium.
-        run: ({ha, entity}) => ha.call('fan', 'increase_speed', entity),
-    },
-    fan_speed_down: {
-        summary: "Lower a fan's speed by one of its own steps.",
-        example: "ha('fan_speed_down', 'fan.office_ceiling')",
-        run: ({ha, entity}) => ha.call('fan', 'decrease_speed', entity),
-    },
-    cover_open: {
-        summary: `Open a cover by ${COVER_STEP_PERCENT}%, or fully when it reports no position.`,
-        example: "ha('cover_open', 'cover.office_blinds')",
-        run: (context) => stepCover(context, COVER_STEP_PERCENT),
-    },
-    cover_close: {
-        summary: `Close a cover by ${COVER_STEP_PERCENT}%, or fully when it reports no position.`,
-        example: "ha('cover_close', 'cover.office_blinds')",
-        run: (context) => stepCover(context, -COVER_STEP_PERCENT),
     },
     timer_toggle: {
         summary: 'Start a Home Assistant timer, or cancel the one already running.',
