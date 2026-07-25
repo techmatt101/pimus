@@ -125,6 +125,19 @@ def find_loaded_module(
     )
 
 
+def usb_host_attached(base: Path = Path("/sys/class/udc")) -> bool:
+    # The UDC state file reads "configured" once a USB host has enumerated the
+    # gadget, and "not attached" when the port carries only power or nothing.
+    # The controller shows this on the strip as the "computer connected" icon.
+    try:
+        for state_file in base.glob("*/state"):
+            if state_file.read_text(encoding="utf-8").strip() == "configured":
+                return True
+    except OSError:
+        pass
+    return False
+
+
 def default_sources(config: dict[str, Any]) -> dict[str, bool]:
     return {
         name: bool(source.get("enabled", False))
@@ -583,6 +596,7 @@ class AudioManager:
             else:
                 self.unload(name)
 
+        status["usb_host"] = usb_host_attached()
         atomic_json(self.status_path, status)
         LOG.debug("reconciled: %s", json.dumps(status))
 
@@ -591,6 +605,7 @@ class AudioManager:
             "event": "state",
             "sources": dict(self.sources),
             "ducked": self.desired_ducking(),
+            "usb_host": usb_host_attached(),
         }
 
     def apply_command(

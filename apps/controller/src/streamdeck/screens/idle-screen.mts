@@ -1,8 +1,10 @@
 import {requireEntity} from '../../actions/catalog.mjs'
 import {numericAttribute} from '../../home-assistant/entity.mjs'
 import {conditionIcon} from '../icons.mjs'
+import {drawStatusIcons} from './status-icons.mjs'
 import {drawIcon, drawText, measureText, type Surface, verticalGradient} from '../surface.mjs'
 import {type ClockFormat, drawClock, formatDate, minuteTick, type Screen, type ScreenHost, STRIP_WIDTH} from './screen.mjs'
+import type {ControlModel} from '../../state.mjs'
 import type {HomeAssistantService} from '../../types.mjs'
 
 const BACKDROP = ['#16222b', '#0b1116'] as const
@@ -21,16 +23,22 @@ export interface IdleScreenOptions {
     clockFormat?: ClockFormat
 }
 
+const STATUS_X = 44
+const STATUS_SIZE = 24
+const STATUS_GAP = 12
+
 /** The strip's resting face when nothing is playing: a clock, with the weather beside it. */
 export class IdleScreen implements Screen {
     readonly #ha: HomeAssistantService
+    readonly #model: ControlModel
     readonly #clock: () => number
     readonly #weather: string | undefined
     readonly #clockFormat: ClockFormat
     #unwatch: (() => void) | null = null
 
-    constructor(ha: HomeAssistantService, clock: () => number, {weatherEntityId, clockFormat = '24h'}: IdleScreenOptions) {
+    constructor(ha: HomeAssistantService, model: ControlModel, clock: () => number, {weatherEntityId, clockFormat = '24h'}: IdleScreenOptions) {
         this.#ha = ha
+        this.#model = model
         this.#clock = clock
         this.#weather = weatherEntityId ? requireEntity(weatherEntityId, 'idle screen') : undefined
         this.#clockFormat = clockFormat
@@ -59,6 +67,7 @@ export class IdleScreen implements Screen {
         const dateLeft = clock.right + DATE_GAP
         drawText(surface, date, {x: dateLeft, y: ROW_Y, size: DATE_SIZE, color: DATE_COLOR, align: 'left'})
         this.#drawWeather(surface, dateLeft + measureText(date, DATE_SIZE) + WEATHER_GAP)
+        drawStatusIcons(surface, this.#model.state.health, {x: STATUS_X, y: ROW_Y, size: STATUS_SIZE, gap: STATUS_GAP})
     }
 
     #drawWeather(surface: Surface, left: number): void {

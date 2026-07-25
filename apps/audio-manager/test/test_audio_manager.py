@@ -55,7 +55,7 @@ class AudioManagerTests(unittest.TestCase):
         )
         self.assertEqual(
             reply,
-            {"event": "state", "sources": {"aux": True, "usb": True}, "ducked": False},
+            {"event": "state", "sources": {"aux": True, "usb": True}, "ducked": False, "usb_host": False},
         )
         self.assertTrue(reconcile)
 
@@ -84,7 +84,7 @@ class AudioManagerTests(unittest.TestCase):
         # Unknown routes and non-boolean values are ignored, not coerced.
         self.assertEqual(
             reply,
-            {"event": "state", "sources": {"aux": False, "usb": False}, "ducked": False},
+            {"event": "state", "sources": {"aux": False, "usb": False}, "ducked": False, "usb_host": False},
         )
         self.assertTrue(reconcile)
 
@@ -113,7 +113,7 @@ class AudioManagerTests(unittest.TestCase):
 
         self.assertEqual(
             json.loads(right.recv(4096)),
-            {"event": "state", "sources": {"aux": True}, "ducked": False},
+            {"event": "state", "sources": {"aux": True}, "ducked": False, "usb_host": False},
         )
         manager.safe_reconcile.assert_called_once()
 
@@ -206,6 +206,23 @@ class AudioManagerTests(unittest.TestCase):
         manager.background_stream_index = None
         manager.background_ducked = None
         return manager
+
+    def test_usb_host_detection_reads_the_udc_state_file(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as base:
+            root = Path(base)
+            self.assertFalse(audio_manager.usb_host_attached(root))
+
+            udc = root / "1000480000.usb"
+            udc.mkdir()
+            (udc / "state").write_text("not attached\n", encoding="utf-8")
+            self.assertFalse(audio_manager.usb_host_attached(root))
+
+            (udc / "state").write_text("configured\n", encoding="utf-8")
+            self.assertTrue(audio_manager.usb_host_attached(root))
+
+        self.assertFalse(audio_manager.usb_host_attached(root / "missing"))
 
     def test_startup_volume_applies_once_when_the_sink_appears(self) -> None:
         manager = self._duckable_manager()

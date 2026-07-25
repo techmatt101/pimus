@@ -179,6 +179,6 @@ test('malformed audio manager events are ignored', () => {
     client.connect()
     fake.emit('connect')
     fake.emit('data', 'garbage\n{"event":"state","sources":{"aux":true}}\n{"event":"state","sources":null}\n')
-    assert.deepEqual(client.state, {sources: {aux: true}})
+    assert.deepEqual(client.state, {sources: {aux: true}, usbHost: false})
     client.close()
 })

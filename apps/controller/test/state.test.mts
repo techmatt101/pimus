@@ -16,6 +16,8 @@ test('LVA snapshots and events update shared display state', () => {
         awake: true,
         // Nor about the panel brightness, which the deck owns.
         brightness: 40,
+        // Nor about subsystem health, which the health monitor owns.
+        health: {network: true, ha: true, audio: true, usbHost: false},
     })
 
     applyLvaEvent(state, {event: 'wake_word_detected'})

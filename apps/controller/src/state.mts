@@ -29,6 +29,9 @@ export function createState(overrides: Partial<ControlState> = {}): ControlState
         media: false,
         awake: true,
         brightness: DEFAULT_BRIGHTNESS,
+        // Optimistic until the health monitor's first sample, so boot does not
+        // open with every icon red and a burst of "lost" banners.
+        health: {network: true, ha: true, audio: true, usbHost: false},
         ...overrides,
     }
 }

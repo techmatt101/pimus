@@ -125,6 +125,13 @@ export interface AudioControls {
     setSource(name: string, command: string): unknown
 }
 
+export interface HealthState {
+    network: boolean
+    ha: boolean
+    audio: boolean
+    usbHost: boolean
+}
+
 export interface ControlState {
     assist: string
     muted: boolean
@@ -134,10 +141,12 @@ export interface ControlState {
     /** Only the panel sleeps: the wake word, LED ring, and playback keep running. */
     awake: boolean
     brightness: number
+    health: HealthState
 }
 
 export interface AudioState {
     sources: Record<string, boolean | undefined>
+    usbHost?: boolean
 }
 
 export interface UsbControlDevice {

@@ -2,8 +2,10 @@ import {VoiceDucker} from './audio/ducking.mjs'
 import {AudioManagerClient} from './audio/manager-client.mjs'
 import {runVolumeCommand, startOutputMonitor} from './audio/volume.mjs'
 import {loadConfig} from './config.mjs'
+import {defaultRouteExists, HealthMonitor} from './health.mjs'
 import {createOfflineHomeAssistant, HomeAssistantClient} from './home-assistant/client.mjs'
 import {NotificationCenter} from './home-assistant/notifications.mjs'
+import {logger} from './log.mjs'
 import {RemoteTileServer} from './remote/server.mjs'
 import {ControlModel, createState} from './state.mjs'
 import {runDeckLoop} from './streamdeck/deck.mjs'
@@ -12,6 +14,19 @@ import {DeckRenderer} from './streamdeck/renderer.mjs'
 import {SleepController} from './streamdeck/sleep.mjs'
 import {LvaClient} from './voice/lva-client.mjs'
 import {ReSpeakerController} from './voice/respeaker.mjs'
+
+const log = logger('main')
+
+// A crash must reach the journal and hand the process back to systemd rather
+// than leave a half-alive daemon holding the deck's last image.
+process.on('uncaughtException', (error) => {
+    log.error('uncaught exception', error)
+    process.exit(1)
+})
+process.on('unhandledRejection', (reason) => {
+    log.error('unhandled rejection', reason)
+    process.exit(1)
+})
 
 const config = loadConfig()
 const state = createState()
@@ -86,9 +101,23 @@ const layout = createLayout({
 
 const renderer = new DeckRenderer({layout, model})
 
+const health = new HealthMonitor({
+    model,
+    notifications,
+    sources: {
+        network: () => defaultRouteExists(),
+        // A deployment without Home Assistant keeps its icon healthy rather
+        // than flagging an integration that was never configured.
+        ha: config.home_assistant?.enabled ? () => homeAssistant.connected : () => true,
+        audio: () => audio.connected,
+        usbHost: () => audio.state.usbHost === true,
+    },
+})
+
 respeaker?.start()
 audio.connect()
 notifications.start()
+health.start()
 remote?.start()
 if (homeAssistant instanceof HomeAssistantClient) homeAssistant.connect()
 if (config.voice_enabled) lva.connect()

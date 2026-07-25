@@ -15,7 +15,9 @@ import {
     SCROLL_FRAME_MILLISECONDS,
     STRIP_WIDTH,
 } from './screen.mjs'
+import {drawStatusIcons} from './status-icons.mjs'
 import type {IconName} from '../icon-set.mjs'
+import type {ControlModel} from '../../state.mjs'
 import type {HomeAssistantEntity, HomeAssistantService} from '../../types.mjs'
 
 const TITLE_SIZES = [56, 46, 36]
@@ -87,8 +89,13 @@ export function nowPlayingLines(
     return {title, secondary: [artist, album].filter(Boolean).join(' - '), idle: false}
 }
 
+const FAULT_ICON_SIZE = 14
+const FAULT_ICON_GAP = 8
+const FAULT_ICON_Y = 88
+
 export class NowPlayingScreen implements Screen {
     readonly #ha: HomeAssistantService
+    readonly #model: ControlModel
     readonly #clock: () => number
     readonly #player: string
     readonly #playPause: Binding
@@ -100,8 +107,9 @@ export class NowPlayingScreen implements Screen {
     #pressedAt = 0
     #controlsShownAt: number | null = null
 
-    constructor(ha: HomeAssistantService, clock: () => number, {player, clockFormat = '12h'}: NowPlayingOptions) {
+    constructor(ha: HomeAssistantService, model: ControlModel, clock: () => number, {player, clockFormat = '12h'}: NowPlayingOptions) {
         this.#ha = ha
+        this.#model = model
         this.#clock = clock
         this.#player = requireEntity(player, 'now playing screen')
         this.#playPause = haBinding(ha, 'media_play_pause', this.#player)
@@ -214,6 +222,14 @@ export class NowPlayingScreen implements Screen {
         if (hasPosition(player) && duration && elapsed !== undefined) {
             drawStripBar(surface, elapsed / duration, {color: playing ? '#26c6da' : '#37474f'})
         }
+
+        drawStatusIcons(surface, this.#model.state.health, {
+            x: CLOCK_LEFT + FAULT_ICON_SIZE / 2,
+            y: FAULT_ICON_Y,
+            size: FAULT_ICON_SIZE,
+            gap: FAULT_ICON_GAP,
+            faultsOnly: true,
+        })
     }
 
     #drawTrack(surface: Surface, player: HomeAssistantEntity | undefined, playing: boolean, now: number): void {

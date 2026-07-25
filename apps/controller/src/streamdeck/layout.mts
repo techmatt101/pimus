@@ -188,8 +188,8 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
 
     const strip = new TouchStrip({
         resting: [
-            new NowPlayingScreen(ha, clock, {player: HA.player, clockFormat: CLOCK_FORMAT}),
-            new IdleScreen(ha, clock, {weatherEntityId: HA.weather, clockFormat: CLOCK_FORMAT}),
+            new NowPlayingScreen(ha, model, clock, {player: HA.player, clockFormat: CLOCK_FORMAT}),
+            new IdleScreen(ha, model, clock, {weatherEntityId: HA.weather, clockFormat: CLOCK_FORMAT}),
         ],
         dials,
         clock,
