@@ -1,12 +1,10 @@
-// Skipping goes through the Music Assistant player rather than LVA: the LVA
-// media player is the satellite's own announcement player and has no queue.
-// Play/pause stays on LVA, which is where the controller's playback state
-// comes from.
+// All transport goes through the Music Assistant player, not LVA: the LVA media
+// player is the satellite's own announcement player, with no queue to skip and
+// no bearing on what the speakers are playing.
 
-import {type Binding, haBinding, voiceBinding} from '../bindings.mjs'
+import {type Binding, haBinding} from '../bindings.mjs'
 import type {Dial} from '../dial.mjs'
-import type {ControlModel} from '../../state.mjs'
-import type {HomeAssistantService, LvaSender} from '../../types.mjs'
+import type {HomeAssistantService} from '../../types.mjs'
 
 export interface MediaDialConfig {
     player: string
@@ -18,17 +16,19 @@ export class MediaDial implements Dial {
     readonly left: Binding
     readonly right: Binding
     readonly press: Binding
-    readonly #model: ControlModel
+    readonly #ha: HomeAssistantService
+    readonly #player: string
 
-    constructor(ha: HomeAssistantService, lva: LvaSender, model: ControlModel, {player, label = 'MEDIA'}: MediaDialConfig) {
-        this.#model = model
+    constructor(ha: HomeAssistantService, {player, label = 'MEDIA'}: MediaDialConfig) {
+        this.#ha = ha
+        this.#player = player
         this.label = label
         this.left = haBinding(ha, 'media_previous', player)
         this.right = haBinding(ha, 'media_next', player)
-        this.press = voiceBinding(lva, model, 'media_toggle')
+        this.press = haBinding(ha, 'media_play_pause', player)
     }
 
     detail(): string {
-        return this.#model.state.media ? 'PLAYING' : 'PAUSED'
+        return this.#ha.entity(this.#player)?.state === 'playing' ? 'PLAYING' : 'PAUSED'
     }
 }

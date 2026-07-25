@@ -163,14 +163,14 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
 
     const dials: Dial[] = [
         new VolumeDial(audio, model),
-        new MediaDial(ha, lva, model, {player: HA.player}),
+        new MediaDial(ha, {player: HA.player}),
         new PageDial(),
         dynamic,
     ]
 
     const strip = new TouchStrip({
         resting: [
-            new NowPlayingScreen(ha, clock, lva, model, {player: HA.player}),
+            new NowPlayingScreen(ha, clock, {player: HA.player}),
             new IdleScreen(ha, clock, {weatherEntityId: HA.weather}),
         ],
         dials,

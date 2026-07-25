@@ -150,7 +150,6 @@ Sent to the Linux Voice Assistant peripheral socket.
 |----------------------|---------------------------------------------------------------------------|
 | `start_listening`    | Start a voice pipeline, the same as speaking the wake word.               |
 | `mute_toggle`        | Toggle the microphone mute. Tracks the mute state reported by LVA.        |
-| `media_toggle`       | Play or pause the media player.                                           |
 | `stop`               | Stop everything at once: timer ringing, the pipeline, and media playback. |
 | `listen_toggle`      | Start a voice pipeline, or cancel the one already running.                |
 | `stop_timer_ringing` | Silence a ringing timer, leaving media playback alone.                    |
@@ -221,6 +220,7 @@ in the layout.
 | `turn_off`        | Turn an entity off. A cover closes.                               |
 | `activate`        | Activate a scene or run a script, which have no matching "off".   |
 | `play_media`      | Play a media id on a media player, such as a saved playlist.      |
+| `media_play_pause`| Play or pause a media player, from the state it reports.          |
 | `media_next`      | Skip a media player to the next track.                            |
 | `media_previous`  | Send a media player back to the previous track.                   |
 | `media_shuffle`   | Toggle shuffle, from the shuffle state the player reports.        |
@@ -262,15 +262,9 @@ configuration. Everything else keeps the label and colour you configured.
 | Bound action                        | While active                                                           |
 |-------------------------------------|------------------------------------------------------------------------|
 | `lva` / `mute_toggle`               | Label becomes `MIC OFF`, background red.                               |
-| `lva` / `media_toggle`              | Label becomes `PAUSE`, background green.                               |
 | `lva` / `start_listening`           | Background cyan while the pipeline is running.                         |
 | `lva` / `listen_toggle`             | Label becomes `CANCEL`, background cyan while the pipeline is running. |
 | `audio` route (`on`/`off`/`toggle`) | Label gains ` ON` or ` OFF`, background green when on.                 |
-
-The `MediaTile` used on the MAIN page goes further than the `media_toggle`
-indicator: it draws a play or pause icon and colours itself from the playback
-state. That state-driven rendering lives in the tile (see [Tiles](#tiles)), not
-in the catalog.
 
 ## Dials
 
@@ -296,7 +290,7 @@ the content of that face:
 |---------------|------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `ActionDial`  | The default: a fixed name, up to three bindings, and a readout it is told. Also how a knob is held open — bound to nothing and saying so.            |
 | `VolumeDial`  | Master output volume, read from the controller's own state so it is right with nothing else reachable. `MUTED` is its own reading, and an empty bar. |
-| `MediaDial`   | Transport: skip through the Music Assistant player, press to play or pause through LVA, and read `PLAYING` / `PAUSED`.                               |
+| `MediaDial`   | Transport through the Music Assistant player: skip with a turn, play or pause with a press, and read `PLAYING` / `PAUSED` from the player.           |
 | `PageDial`    | Pages the key grid — turn to move between pages — and reads out the page you land on. Takes over the job the bottom-corner keys used to do.          |
 | `DynamicDial` | The shared knob. A playlist key hands it a `Dial` to delegate to; a room key hands it the `Dial` its entity's domain builds (`entityDial`).           |
 
@@ -312,10 +306,10 @@ The four dials as shipped:
 | `PAGE`    | Previous / next page of keys                | —                  |
 | *dynamic* | Whatever the last room key you pressed does | Toggle that entity |
 
-Media transport goes through the Music Assistant player rather than LVA: the LVA
-media player is the satellite's own announcement player and has no queue to skip
-through. Play/pause stays on LVA, because that is where the controller's
-playback state comes from.
+All media transport — skip, shuffle, and play/pause alike — goes through the
+Music Assistant player rather than LVA: the LVA media player is the satellite's
+own announcement player, with no queue to skip through and no bearing on what
+the speakers are playing.
 
 ### The dynamic dial
 
@@ -395,8 +389,8 @@ reports a position once and then says nothing.
 The left edge of the now-playing face carries two buttons — play/pause and
 shuffle — each of which both reflects and sets its state: the play glyph is lit
 while playing, the shuffle glyph while the queue is shuffled. Tapping the strip
-over a button runs it (play/pause through LVA like the media dial, shuffle on the
-Music Assistant player); a tap that misses them falls through to the dial in that
+over a button runs it on the Music Assistant player, exactly as the media dial
+does; a tap that misses them falls through to the dial in that
 zone, exactly as before. The right edge, where those buttons used to sit, carries
 a clock, so a glance at the strip always tells the time.
 

@@ -74,21 +74,6 @@ export const VOICE_ACTIONS = {
             lva.send(state.muted ? 'unmute_mic' : 'mute_mic')
         },
     },
-    media_toggle: {
-        summary: 'Play or pause the media player.',
-        example: '{ type: lva, command: media_toggle }',
-        indicator: {
-            isActive: ({state}) => state.media,
-            activeColor: '#00c853',
-            label: (configured, active) => (active ? 'PAUSE' : configured),
-        },
-        run: ({state, lva, onStateChange}) => {
-            lva.send(state.media ? 'pause_media_player' : 'resume_media_player')
-            // Optimistic repaint; LVA's media_player_* event reconciles any disagreement.
-            state.media = !state.media
-            onStateChange()
-        },
-    },
     stop: {
         summary: 'Stop everything at once: timer ringing, the pipeline, and media playback.',
         example: '{ type: lva, command: stop }',
@@ -222,6 +207,11 @@ export const HA_ACTIONS = {
         summary: 'Play a media id on a media player, such as a saved playlist.',
         example: "ha('play_media', 'media_player.office', { media_content_id: '...', media_content_type: 'playlist' })",
         run: ({ha, entity, data}) => ha.call('media_player', 'play_media', entity, data),
+    },
+    media_play_pause: {
+        summary: 'Play or pause a media player, from the state it reports.',
+        example: "ha('media_play_pause', 'media_player.office')",
+        run: ({ha, entity}) => ha.call('media_player', 'media_play_pause', entity),
     },
     media_next: {
         summary: 'Skip a media player to the next track.',

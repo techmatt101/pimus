@@ -1,5 +1,5 @@
 import {requireEntity} from '../../actions/catalog.mjs'
-import {type Binding, haBinding, voiceBinding} from '../bindings.mjs'
+import {type Binding, haBinding} from '../bindings.mjs'
 import {mediaElapsedSeconds, numericAttribute} from '../../home-assistant/entity.mjs'
 import {drawIcon, drawText, fittingSize, REGULAR, type Surface, verticalGradient} from '../surface.mjs'
 import {
@@ -14,8 +14,7 @@ import {
     STRIP_WIDTH,
 } from './screen.mjs'
 import type {IconName} from '../icon-set.mjs'
-import type {ControlModel} from '../../state.mjs'
-import type {HomeAssistantEntity, HomeAssistantService, LvaSender} from '../../types.mjs'
+import type {HomeAssistantEntity, HomeAssistantService} from '../../types.mjs'
 
 const TITLE_SIZES = [56, 46, 36]
 const SECONDARY_SIZE = 24
@@ -86,11 +85,11 @@ export class NowPlayingScreen implements Screen {
     #pressed: Button | null = null
     #pressedAt = 0
 
-    constructor(ha: HomeAssistantService, clock: () => number, lva: LvaSender, model: ControlModel, {player}: NowPlayingOptions) {
+    constructor(ha: HomeAssistantService, clock: () => number, {player}: NowPlayingOptions) {
         this.#ha = ha
         this.#clock = clock
         this.#player = requireEntity(player, 'now playing screen')
-        this.#playPause = voiceBinding(lva, model, 'media_toggle')
+        this.#playPause = haBinding(ha, 'media_play_pause', this.#player)
         this.#shuffle = haBinding(ha, 'media_shuffle', this.#player)
     }
 
