@@ -6,7 +6,7 @@ import type {LedAppearance} from './led-appearance.mjs'
 import {Leds} from './led-appearance.mjs'
 
 export const VOICE_LED_STATES: ReadonlyMap<string, LedAppearance> = new Map(Object.entries({
-    idle: Leds.direction('#102030', '#00bcd4'),
+    idle: Leds.off(),
     wake_word_detected: Leds.pulse('#00bcd4'),
     listening: Leds.direction('#001018', '#00e5ff'),
     thinking: Leds.spin('#7c4dff'),

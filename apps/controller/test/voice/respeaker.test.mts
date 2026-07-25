@@ -40,19 +40,14 @@ test('ReSpeaker LEDs follow voice, media, and mute state', async () => {
     assert.deepEqual(rendered.at(-1),
         {effect: LedEffect.Solid, brightness: 64, speed: 2, color: 0x1565c0})
     await controller.handleEvent({event: 'media_player_idle'})
-    assert.deepEqual(rendered.at(-1), {
-        effect: LedEffect.Doa,
-        brightness: 64,
-        speed: 2,
-        color: 0x102030,
-        direction: {base: 0x102030, highlight: 0x00bcd4},
-    })
+    assert.deepEqual(rendered.at(-1),
+        {effect: LedEffect.Off, brightness: 64, speed: 2, color: 0})
 
     // Mute overrides whatever voice state is active until it is lifted.
     await controller.handleEvent({event: 'muted', data: {muted: true}})
     assert.equal(rendered.at(-1)?.color, 0xd50000)
     await controller.handleEvent({event: 'muted', data: {muted: false}})
-    assert.equal(rendered.at(-1)?.effect, LedEffect.Doa)
+    assert.equal(rendered.at(-1)?.effect, LedEffect.Off)
 })
 
 test('LED-only mode does not force a disconnected warning', () => {
@@ -65,7 +60,7 @@ test('LED-only mode does not force a disconnected warning', () => {
         },
     })
 
-    assert.deepEqual(controller.desired(), Leds.direction('#102030', '#00bcd4'))
+    assert.deepEqual(controller.desired(), Leds.off())
 })
 
 test('ReSpeaker USB failures are retried without flooding the journal', async () => {
