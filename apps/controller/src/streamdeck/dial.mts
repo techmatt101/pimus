@@ -7,6 +7,9 @@ export interface Dial {
     readonly right?: Binding | undefined
     readonly press?: Binding | undefined
 
+    /** When true, turning or pressing runs the binding without taking over the strip with a readout. */
+    readonly silent?: boolean
+
     /**
      * The value line under the label. Must return something short and true even
      * when nothing is connected: "unknown" has to read as unknown rather than as

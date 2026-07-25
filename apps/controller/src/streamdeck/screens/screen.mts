@@ -112,7 +112,7 @@ export interface ClockStyle {
 
 /**
  * The clock, centred around `centerX`: the time at `size`, and in 12-hour format
- * a smaller AM/PM riding against its top edge. Returns the drawn span so a caller
+ * a smaller AM/PM riding against its bottom edge. Returns the drawn span so a caller
  * can place something beside it. `getHours()` reads the host's own local time.
  */
 export function drawClock(surface: Surface, now: number, format: ClockFormat, style: ClockStyle): { left: number; right: number } {
@@ -132,9 +132,29 @@ export function drawClock(surface: Surface, now: number, format: ClockFormat, st
     const left = centerX - (timeWidth + meridiemWidth) / 2
     drawText(surface, time, {x: left, y, size, color, align: 'left'})
     if (meridiem) {
-        drawText(surface, meridiem, {x: left + timeWidth + gap, y: y - (size - meridiemSize) / 2, size: meridiemSize, color, align: 'left'})
+        drawText(surface, meridiem, {x: left + timeWidth + gap, y: y + (size - meridiemSize * 1.5) / 2, size: meridiemSize, color, align: 'left'})
     }
     return {left, right: left + timeWidth + meridiemWidth}
+}
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const
+
+export interface DateStyle {
+    centerX: number
+    y: number
+    size: number
+    color?: string
+}
+
+/** The date, e.g. `Sat 25 Jul`, read from the host's local time. */
+export function formatDate(now: number): string {
+    const at = new Date(now)
+    return `${WEEKDAYS[at.getDay()]} ${at.getDate()} ${MONTHS[at.getMonth()]}`
+}
+
+export function drawDate(surface: Surface, now: number, {centerX, y, size, color = '#90a4ae'}: DateStyle): void {
+    drawText(surface, formatDate(now), {x: centerX, y, size, color})
 }
 
 /** A progress bar along the bottom edge. `fraction` is clamped. */

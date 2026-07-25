@@ -13,6 +13,7 @@ export interface MediaDialConfig {
 
 export class MediaDial implements Dial {
     readonly label: string
+    readonly silent = true
     readonly left: Binding
     readonly right: Binding
     readonly press: Binding

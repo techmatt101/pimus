@@ -80,6 +80,7 @@ export class TouchStrip {
     /** Called for every rotation step; each call extends the hold. */
     showDial(index: number, now = this.#clock()): void {
         if (index < 0 || index >= this.#dials.length) return
+        if (this.#dials[index]?.silent) return
         this.#dialIndex = index
         this.#dialUntil = now + this.#dialHoldMilliseconds
         this.#host?.invalidate()

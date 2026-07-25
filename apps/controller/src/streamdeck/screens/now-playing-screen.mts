@@ -5,6 +5,7 @@ import {drawIcon, fittingSize, REGULAR, type Surface, verticalGradient} from '..
 import {
     type ClockFormat,
     drawClock,
+    drawDate,
     drawStripBar,
     drawStripLine,
     minuteTick,
@@ -29,8 +30,11 @@ const PLAY_CENTER = BUTTON_ZONE / 2
 
 const CLOCK_SIZE = 40
 const CLOCK_WIDTH = 132
+const CLOCK_Y = 34
 const CLOCK_LEFT = STRIP_WIDTH - CLOCK_WIDTH
 const CLOCK_CENTER = CLOCK_LEFT + CLOCK_WIDTH / 2
+const DATE_SIZE = 20
+const DATE_Y = 68
 
 const TEXT_LEFT = PLAY_ZONE_RIGHT + 16
 const TEXT_AVAILABLE = CLOCK_LEFT - 16 - TEXT_LEFT
@@ -146,7 +150,9 @@ export class NowPlayingScreen implements Screen {
 
     pressAt(x: number): (() => unknown) | undefined {
         if (x < PLAY_ZONE_RIGHT) return this.#press('play', this.#playPause)
-        if (x >= CLOCK_LEFT) return undefined
+        // The clock corner has no button, so swallow the tap rather than let it
+        // fall through to the dial zone beneath it.
+        if (x >= CLOCK_LEFT) return () => {}
         if (!this.#controlsShown()) {
             this.#controlsShownAt = this.#clock()
             this.#host?.invalidate()
@@ -200,7 +206,8 @@ export class NowPlayingScreen implements Screen {
 
         const play = (playing ? 'pause' : 'play') as IconName
         this.#drawButton(surface, PLAY_CENTER, BUTTON_ZONE, play, playing ? PLAY_ON : PLAY_OFF, this.#pressed === 'play')
-        drawClock(surface, now, this.#clockFormat, {centerX: CLOCK_CENTER, y: BUTTON_Y, size: CLOCK_SIZE, color: CLOCK_COLOR})
+        drawClock(surface, now, this.#clockFormat, {centerX: CLOCK_CENTER, y: CLOCK_Y, size: CLOCK_SIZE, color: CLOCK_COLOR})
+        drawDate(surface, now, {centerX: CLOCK_CENTER, y: DATE_Y, size: DATE_SIZE, color: CLOCK_COLOR})
 
         const duration = numericAttribute(player, 'media_duration')
         const elapsed = mediaElapsedSeconds(player, now)

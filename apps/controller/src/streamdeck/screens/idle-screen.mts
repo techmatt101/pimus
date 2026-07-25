@@ -1,14 +1,18 @@
 import {requireEntity} from '../../actions/catalog.mjs'
 import {numericAttribute} from '../../home-assistant/entity.mjs'
 import {conditionIcon} from '../icons.mjs'
-import {drawIcon, drawText, type Surface, verticalGradient} from '../surface.mjs'
-import {type ClockFormat, drawClock, minuteTick, type Screen, type ScreenHost, STRIP_WIDTH} from './screen.mjs'
+import {drawIcon, drawText, measureText, type Surface, verticalGradient} from '../surface.mjs'
+import {type ClockFormat, drawClock, formatDate, minuteTick, type Screen, type ScreenHost, STRIP_WIDTH} from './screen.mjs'
 import type {HomeAssistantService} from '../../types.mjs'
 
 const BACKDROP = ['#16222b', '#0b1116'] as const
 const TIME_COLOR = '#eceff1'
+const DATE_COLOR = '#90a4ae'
 const TEMPERATURE_COLOR = '#80deea'
 const TIME_SIZE = 64
+const ROW_Y = 50
+const DATE_SIZE = 24
+const DATE_GAP = 20
 const WEATHER_GAP = 28
 
 export interface IdleScreenOptions {
@@ -49,18 +53,22 @@ export class IdleScreen implements Screen {
 
     draw(surface: Surface): void {
         surface.fill(verticalGradient(surface, BACKDROP[0], BACKDROP[1]))
-        const clock = drawClock(surface, this.#clock(), this.#clockFormat, {centerX: STRIP_WIDTH / 2, y: 50, size: TIME_SIZE, color: TIME_COLOR})
-        this.#drawWeather(surface, clock.right + WEATHER_GAP)
+        const now = this.#clock()
+        const clock = drawClock(surface, now, this.#clockFormat, {centerX: STRIP_WIDTH / 2, y: ROW_Y, size: TIME_SIZE, color: TIME_COLOR})
+        const date = formatDate(now)
+        const dateLeft = clock.right + DATE_GAP
+        drawText(surface, date, {x: dateLeft, y: ROW_Y, size: DATE_SIZE, color: DATE_COLOR, align: 'left'})
+        this.#drawWeather(surface, dateLeft + measureText(date, DATE_SIZE) + WEATHER_GAP)
     }
 
     #drawWeather(surface: Surface, left: number): void {
         const weather = this.#weather ? this.#ha.entity(this.#weather) : undefined
         if (!weather || weather.state === 'unknown' || weather.state === 'unavailable') return
         const {icon, color} = conditionIcon(weather.state)
-        drawIcon(surface, icon, {x: left + 22, y: 50, size: 44, color})
+        drawIcon(surface, icon, {x: left + 22, y: ROW_Y, size: 44, color})
         const temperature = numericAttribute(weather, 'temperature')
         if (temperature !== undefined) {
-            drawText(surface, `${Math.round(temperature)}°`, {x: left + 52, y: 50, size: 30, color: TEMPERATURE_COLOR, align: 'left'})
+            drawText(surface, `${Math.round(temperature)}°`, {x: left + 52, y: ROW_Y, size: 30, color: TEMPERATURE_COLOR, align: 'left'})
         }
     }
 }
