@@ -40,6 +40,15 @@ export function durationSeconds(value: unknown): number | undefined {
     return parts.reduce((total, part) => total * 60 + part, 0)
 }
 
+/** `HH:MM:SS`, the shape Home Assistant's `timer.start` wants a duration in. */
+export function secondsToHms(seconds: number): string {
+    const whole = Math.max(0, Math.round(seconds))
+    const hours = Math.floor(whole / 3600)
+    const minutes = Math.floor((whole % 3600) / 60)
+    const secs = whole % 60
+    return [hours, minutes, secs].map((part) => String(part).padStart(2, '0')).join(':')
+}
+
 // A running timer only re-reports `remaining` when paused or reset, so the
 // countdown comes from `finishes_at`; the `remaining` fallback is what makes a
 // paused timer hold its reading.

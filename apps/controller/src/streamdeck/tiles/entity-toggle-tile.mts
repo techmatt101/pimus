@@ -1,9 +1,10 @@
 import {requireEntity} from '../../actions/catalog.mjs'
 import {isEntityOn} from '../../home-assistant/entity.mjs'
+import {ArmedControl} from '../armed-control.mjs'
 import {type Binding, haBinding} from '../bindings.mjs'
-import {DynamicDial} from '../dials/dynamic-dial.mjs'
+import {DynamicDial, entityDial} from '../dials/dynamic-dial.mjs'
 import {drawBar, drawIcon, drawRadialGradient, type Surface, withAlpha} from '../surface.mjs'
-import {drawBackground, drawCaption, drawLabelFace, FACE_CENTER, type Tile, type TileHost,} from '../tile.mjs'
+import {drawActiveGlow, drawBackground, drawCaption, drawLabelFace, FACE_CENTER, type Tile, type TileHost,} from '../tile.mjs'
 import type {IconName} from '../icon-set.mjs'
 import type {Action, HomeAssistantEntity, HomeAssistantService} from '../../types.mjs'
 
@@ -33,9 +34,6 @@ export interface EntityToggleTileConfig {
 const UNKNOWN_COLOR = '#1a1a1a'
 const UNKNOWN_ICON = '#424242'
 
-const HOLDING_COLOR = '#26c6da'
-const HOLDING_HEIGHT = 4
-
 const ICON_SIZE = 54
 const LEVEL_Y = 78
 const LEVEL_WIDTH = 64
@@ -46,7 +44,9 @@ export class EntityToggleTile implements Tile {
     readonly #config: EntityToggleTileConfig
     readonly #entity: string
     readonly #toggle: Binding
-    readonly #dial: DynamicDial | undefined
+    // Present only when the key both has the shared dial and controls a domain
+    // the dial can turn; a plain switch (a PC key) has neither and just toggles.
+    readonly #armed: ArmedControl | null
     #host: TileHost | null = null
     #unwatch: (() => void) | null = null
     #animation: NodeJS.Timeout | null = null
@@ -57,7 +57,10 @@ export class EntityToggleTile implements Tile {
         this.#config = config
         this.#entity = requireEntity(config.entity, `${config.label} tile`)
         this.#toggle = haBinding(ha, 'toggle', this.#entity)
-        this.#dial = config.dial
+        const dial = config.dial ? entityDial(ha, config.label, this.#entity) : null
+        this.#armed = config.dial && dial
+            ? new ArmedControl(config.dial, dial, () => this.#toggle.run())
+            : null
     }
 
     action(): Action {
@@ -65,10 +68,15 @@ export class EntityToggleTile implements Tile {
     }
 
     press(): void {
-        // Claim first: the strip then shows what this key controls as it flips,
-        // rather than a beat later.
-        this.#dial?.controlEntity(this.#ha, this.#config.label, this.#entity)
-        this.#toggle.run()
+        // First press arms the dial so the strip shows what this key controls
+        // and turning adjusts it; the next press toggles. A key with no
+        // adjustable dial has nothing to arm, so it toggles at once.
+        if (this.#armed) this.#armed.press()
+        else this.#toggle.run()
+    }
+
+    holdsDial(): boolean {
+        return this.#armed?.armed ?? false
     }
 
     mount(host: TileHost): void {
@@ -84,6 +92,7 @@ export class EntityToggleTile implements Tile {
         this.#unwatch?.()
         this.#unwatch = null
         this.#stopAnimation()
+        this.#armed?.release()
         this.#host = null
     }
 
@@ -118,7 +127,7 @@ export class EntityToggleTile implements Tile {
         if (on === undefined) {
             drawLabelFace(surface, UNKNOWN_COLOR, `${label} ?`)
             drawIcon(surface, iconName, {x, y: FACE_CENTER, size: ICON_SIZE, color: UNKNOWN_ICON, rotate: spin})
-            this.#drawHolding(surface)
+            this.#drawArmed(surface)
             return
         }
 
@@ -148,12 +157,10 @@ export class EntityToggleTile implements Tile {
         }
 
         drawCaption(surface, `${label} ${on ? 'ON' : 'OFF'}`)
-        this.#drawHolding(surface)
+        this.#drawArmed(surface)
     }
 
-    #drawHolding(surface: Surface): void {
-        if (!this.#dial?.controls(this.#entity)) return
-        surface.ctx.fillStyle = HOLDING_COLOR
-        surface.ctx.fillRect(0, 0, surface.width, HOLDING_HEIGHT)
+    #drawArmed(surface: Surface): void {
+        if (this.#armed?.armed) drawActiveGlow(surface)
     }
 }

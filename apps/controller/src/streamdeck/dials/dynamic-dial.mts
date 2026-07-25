@@ -47,6 +47,33 @@ const DIAL_DOMAINS: Record<string, DialDomain> = {
 }
 
 /**
+ * The dial a Home Assistant entity lends the shared knob: turning steps its
+ * level (brightness, fan speed, cover position) live, the knob toggles, and the
+ * readout comes from the entity's own domain. Returns null for a domain with
+ * nothing to turn (a switch), so its key falls back to a plain toggle.
+ */
+export function entityDial(ha: HomeAssistantService, label: string, entity: string): Dial | null {
+    const domain = DIAL_DOMAINS[entityDomain(entity)]
+    if (!domain) return null
+    const read = (): HomeAssistantEntity | undefined => ha.entity(entity)
+    return {
+        label,
+        left: haBinding(ha, domain.down, entity),
+        right: haBinding(ha, domain.up, entity),
+        press: haBinding(ha, 'toggle', entity),
+        detail: () => {
+            const current = read()
+            const on = isEntityOn(current)
+            if (on === undefined) return '--'
+            const level = domain.level(current)
+            if (level === undefined) return on ? domain.on : domain.off
+            return percent(level)
+        },
+        level: () => domain.level(read()),
+    }
+}
+
+/**
  * The one dial with no fixed job: it delegates to whichever dial a key last
  * handed it. A sticky claim (a room key) stays until replaced; a transient
  * claim (a playlist picker) expires after idle time and is dropped when another
@@ -55,7 +82,6 @@ const DIAL_DOMAINS: Record<string, DialDomain> = {
 export class DynamicDial implements Dial {
     readonly #model: ControlModel
     #held: Dial | null = null
-    #entity: string | null = null
     #reveal: (() => void) | null = null
     #transient = false
     #idleTimer: NodeJS.Timeout | null = null
@@ -101,7 +127,6 @@ export class DynamicDial implements Dial {
     claim(dial: Dial, transient = false): void {
         const changed = this.#held !== dial
         this.#held = dial
-        this.#entity = null
         this.#transient = transient
         if (transient) this.#rearm()
         else this.#stopIdle()
@@ -112,26 +137,9 @@ export class DynamicDial implements Dial {
         if (changed) this.#model.notify()
     }
 
-    /**
-     * Hand the dial a Home Assistant entity to turn. The turn and readout come
-     * from the entity's domain; a domain with nothing to turn (a switch) claims
-     * nothing and leaves the last claim in place.
-     */
-    controlEntity(ha: HomeAssistantService, label: string, entity: string): void {
-        const domain = DIAL_DOMAINS[entityDomain(entity)]
-        if (!domain) return
-        this.claim(this.#entityDial(ha, label, entity, domain))
-        this.#entity = entity
-    }
-
-    controls(entity: string): boolean {
-        return this.#entity === entity
-    }
-
     release(): void {
         this.#stopIdle()
         this.#transient = false
-        this.#entity = null
         if (!this.#held) return
         this.#held = null
         this.#model.notify()
@@ -144,25 +152,6 @@ export class DynamicDial implements Dial {
 
     holds(dial: Dial): boolean {
         return this.#held === dial
-    }
-
-    #entityDial(ha: HomeAssistantService, label: string, entity: string, domain: DialDomain): Dial {
-        const read = (): HomeAssistantEntity | undefined => ha.entity(entity)
-        return {
-            label,
-            left: haBinding(ha, domain.down, entity),
-            right: haBinding(ha, domain.up, entity),
-            press: haBinding(ha, 'toggle', entity),
-            detail: () => {
-                const current = read()
-                const on = isEntityOn(current)
-                if (on === undefined) return '--'
-                const level = domain.level(current)
-                if (level === undefined) return on ? domain.on : domain.off
-                return percent(level)
-            },
-            level: () => domain.level(read()),
-        }
     }
 
     /** Running a transient claim's binding also restarts its idle timer. */

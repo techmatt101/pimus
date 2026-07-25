@@ -1,4 +1,5 @@
 import {requireEntity} from '../../actions/catalog.mjs'
+import {ArmedControl} from '../armed-control.mjs'
 import {haBinding} from '../bindings.mjs'
 import {DynamicDial} from '../dials/dynamic-dial.mjs'
 import {SelectionDial, type SelectionOption} from '../selection-dial.mjs'
@@ -34,6 +35,7 @@ export class PlaylistTile implements Tile {
     readonly #player: string
     readonly #playlists: readonly PlaylistChoice[]
     readonly #selection: SelectionDial<PlaylistChoice>
+    readonly #armed: ArmedControl
     #host: TileHost | null = null
     #unwatch: (() => void) | null = null
 
@@ -50,11 +52,15 @@ export class PlaylistTile implements Tile {
             onConfirm: () => this.#confirm(),
             onChange: () => this.#host?.invalidate(),
         })
+        this.#armed = new ArmedControl(dial, this.#selection, () => this.#confirm())
     }
 
     press(): void {
-        if (this.#dial.holds(this.#selection)) return this.#confirm()
-        this.#dial.claim(this.#selection, true)
+        this.#armed.press()
+    }
+
+    holdsDial(): boolean {
+        return this.#armed.armed
     }
 
     #confirm(): void {
@@ -75,11 +81,11 @@ export class PlaylistTile implements Tile {
         this.#host = null
         // Paging away must not leave the shared dial pointed at a picker the
         // user can no longer see.
-        if (this.#dial.holds(this.#selection)) this.#dial.release()
+        this.#armed.release()
     }
 
     draw(surface: Surface): void {
-        const active = this.#dial.holds(this.#selection)
+        const active = this.#armed.armed
         const playing = this.#playingIndex()
         const lit = active || playing >= 0
         const shown = active ? this.#selection.index : playing

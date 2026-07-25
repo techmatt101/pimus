@@ -24,12 +24,12 @@ import type {ControlModel} from '../state.mjs'
 import type {AudioControls, HomeAssistantService, LvaSender, NotificationFeed, RemoteTileFeed} from '../types.mjs'
 
 const HA = {
-    player: 'media_player.house_speakers2',
+    player: 'media_player.house_speakers',
     lights: 'light.office',
-    fan: 'fan.office_ceiling',
+    fan: 'fan.office_ceiling_fan',
     blinds: 'cover.office_blinds',
     pc: 'device_tracker.techmatt_pc',
-    timer: 'timer.office',
+    timer: 'timer.office_timer',
     presence: 'binary_sensor.office_presence',
     temperature: 'sensor.office_temperature',
     weather: 'weather.met_office_stafford',
@@ -83,10 +83,10 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
                 onColor: '#283593',
                 offColor: '#151a30',
             }),
-            new TimerTile(ha, clock, {entity: HA.timer, duration: TIMER_DURATION}),
+            new TimerTile(ha, clock, dynamic, {entity: HA.timer, duration: TIMER_DURATION}),
         ],
         [
-            new SceneTile(ha, {scenes: HA.scenes}),
+            new SceneTile(ha, dynamic, {scenes: HA.scenes}),
             new EntityToggleTile(ha, {
                 label: 'FAN',
                 entity: HA.fan,
@@ -120,16 +120,16 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
 
     const infoGrid: PageGrid = [
         [
-            key('MIC', '#7f0000', voice('mute_toggle')),
             new TemperatureTile(ha, {label: 'OFFICE', entity: HA.temperature}),
+            new BrightnessTile(model, dynamic),
             null,
-            new BrightnessTile(model),
+            null
         ],
         [
             key('STOP', '#b71c1c', voice('stop')),
             key('AUX', '#4a148c', route('aux', 'toggle')),
             key('USB', '#0d47a1', route('usb', 'toggle')),
-            null,
+            key('MUTE', '#7f0000', voice('mute_toggle')),
         ],
     ]
 
@@ -142,10 +142,10 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
                 new RemoteTile(remote, {slot: 3}),
             ],
             [
-                null,
                 new RemoteTile(remote, {slot: 4}),
                 new RemoteTile(remote, {slot: 5}),
-                null,
+                new RemoteTile(remote, {slot: 6}),
+                new RemoteTile(remote, {slot: 7}),
             ],
         ]
         : null

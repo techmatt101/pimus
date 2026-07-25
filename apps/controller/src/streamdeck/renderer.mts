@@ -107,14 +107,27 @@ export class DeckRenderer implements PageNavigator {
         }
     }
 
-    showDial(index: number): void {
-        // Reaching for a different knob abandons a transient claim on the shared dial.
-        if (this.#sharedDial && index !== this.#sharedDialIndex) this.#sharedDial.autoRelease()
+    // Returns true when the touch was spent cancelling an active claim: reaching
+    // for a different knob abandons the shared dial's claim, and that turn or
+    // press does nothing else. The strip stays put so the escape reads as one.
+    showDial(index: number): boolean {
+        if (this.#sharedDial?.pinned() && index !== this.#sharedDialIndex) {
+            this.#sharedDial.autoRelease()
+            return true
+        }
         this.layout.strip.showDial(index)
+        return false
     }
 
     stripPressAt(x: number): (() => unknown) | undefined {
         return this.layout.strip.pressAt(x)
+    }
+
+    // Repaint the strip now, reading each dial's live readout. The deck queues
+    // this after a turn's steps so the readout tracks the detent rather than
+    // trailing it, since `showDial` paints before the step runs.
+    refreshStrip(): void {
+        void this.#renderStrip()
     }
 
     #currentPage(): StreamDeckPage | undefined {
@@ -143,6 +156,13 @@ export class DeckRenderer implements PageNavigator {
         const page = this.#currentPage()
         const tile = page ? tileAt(page.grid, index) : undefined
         if (!tile) return undefined
+        // While a key holds the shared dial, any other key's press is spent
+        // cancelling that claim, not on its own action; the owner's press
+        // through to confirm.
+        if (this.#sharedDial?.pinned() && !(tile.holdsDial?.() ?? false)) {
+            this.#sharedDial.autoRelease()
+            return undefined
+        }
         return () => tile.press()
     }
 

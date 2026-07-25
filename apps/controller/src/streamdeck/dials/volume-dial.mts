@@ -13,9 +13,26 @@ export class VolumeDial implements Dial {
     constructor(audio: AudioControls, model: ControlModel, label = 'VOLUME') {
         this.#model = model
         this.label = label
-        this.left = volumeBinding(audio, 'down')
-        this.right = volumeBinding(audio, 'up')
+        // wpctl moves the sink in 5% steps, but the real level only returns on the
+        // next output poll. Nudge the reading now so the readout tracks each
+        // detent; the poll then corrects it to the true value.
+        this.left = this.#nudged(volumeBinding(audio, 'down'), -0.05)
+        this.right = this.#nudged(volumeBinding(audio, 'up'), 0.05)
         this.press = volumeBinding(audio, 'mute')
+    }
+
+    #nudged(binding: Binding, delta: number): Binding {
+        return {
+            action: binding.action,
+            run: () => {
+                const {state} = this.#model
+                if (!state.outputMuted) {
+                    state.volume = Math.max(0, Math.min(1, state.volume + delta))
+                    this.#model.notify()
+                }
+                return binding.run()
+            },
+        }
     }
 
     detail(): string {

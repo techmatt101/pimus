@@ -19,6 +19,9 @@ export interface Dial {
 
     /** Whether this dial holds the strip on its readout beyond the short after-turn hold. */
     pinned?(): boolean
+
+    /** Drop a transient claim; called when the touch that would use another dial should cancel this one instead. */
+    autoRelease?(): void
 }
 
 export function fraction(value: number | undefined, full: number): number | undefined {

@@ -36,6 +36,13 @@ export interface Tile {
     /** The declarative action this tile stands for, for catalog validation. */
     action?(): Action | undefined
 
+    /**
+     * Whether this key currently holds the shared dial's active claim. The
+     * dispatcher spends any press on a key that does not hold it on cancelling
+     * the claim, so only the owner's second press confirms.
+     */
+    holdsDial?(): boolean
+
     mount?(host: TileHost): void
 
     unmount?(): void

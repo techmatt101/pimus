@@ -94,12 +94,18 @@ export class TouchStrip {
             this.#host?.invalidate()
             return undefined
         }
+        const pinned = this.#pinnedDial()
         // The resting screen's own controls claim the tap before the dial beneath.
-        if (!this.#pinnedDial() && now >= this.#dialUntil) {
+        if (!pinned && now >= this.#dialUntil) {
             const hit = this.#restingScreen().pressAt?.(x)
             if (hit) return hit
         }
         const index = Math.max(0, Math.min(this.#dials.length - 1, Math.floor(x / ZONE_WIDTH)))
+        // A tap on any zone but the armed dial's is spent cancelling its claim.
+        if (pinned && this.#dials[index] !== pinned) {
+            pinned.autoRelease?.()
+            return undefined
+        }
         this.showDial(index, now)
         const press = this.#dials[index]?.press
         return press ? () => press.run() : undefined

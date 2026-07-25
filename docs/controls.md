@@ -75,13 +75,28 @@ central dispatcher:
 |--------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `MediaTile`        | Play/pause. Draws the play or pause glyph from the playback state, and the glyph breathes while playing.                                                                                                                                                                                                                                                       |
 | `VoiceTile`        | Start Assist, or cancel the pipeline already running. Expanding rings while one is live.                                                                                                                                                                                                                                                                       |
-| `BrightnessTile`   | Steps the Stream Deck panel's own brightness through a few levels, showing the current percentage. Mutates display state on the model; the renderer re-lights the panel.                                                                                                                                                                                       |
-| `PlaylistTile`     | Picks and plays one of a short list of playlists. Press to arm (the key glows and claims the dynamic dial), turn the dynamic dial to choose, press again — the key or the knob — to confirm. A single playlist is just press-then-confirm. The armed state releases itself after 15s, when another dial is turned, or when a different key claims the dial.        |
-| `SceneTile`        | Steps through a short list of scenes, showing the one it last applied.                                                                                                                                                                                                                                                                                         |
-| `EntityToggleTile` | The general Home Assistant on/off key — lights, fan, blinds, PC. Its service comes from the entity's own domain, and it takes an icon plus an optional `spin` (the fan turns while it runs) and `level` (how far the blinds are down), so the four are one class configured four ways. Given the dynamic dial it also hands that dial its entity when pressed. |
-| `TimerTile`        | A Home Assistant `timer` entity: a draining ring and a countdown, started and cancelled by the same key.                                                                                                                                                                                                                                                       |
+| `BrightnessTile`   | Steps the Stream Deck panel's own brightness through a few levels. Press to arm, turn the dynamic dial to pick a level, press again to apply; shows the picked percentage while armed, the panel's actual percentage at rest. Mutates display state on the model; the renderer re-lights the panel.                                                               |
+| `PlaylistTile`     | Picks and plays one of a short list of playlists. Press to arm (the key glows and claims the dynamic dial), turn the dynamic dial to choose, press again — the key or the knob — to confirm. A single playlist is just press-then-confirm. The armed state releases itself after 15s, or when any other dial or key is touched — that first touch only cancels the arm and does nothing else.        |
+| `SceneTile`        | Picks one of a short list of scenes. Press to arm, turn to choose, press again — key or knob — to apply. Scenes have no state to read back, so it stays dim until the first apply, then shows the one last applied.                                                                                                                                              |
+| `EntityToggleTile` | The general Home Assistant on/off key — lights, fan, blinds, PC. Its service comes from the entity's own domain, plus an icon and an optional `spin` (the fan turns while it runs) and `level` (how far the blinds are down), so the four are one class configured four ways. Given the dynamic dial, the first press arms it — glow, strip readout, 15s timeout — turning adjusts the level live and a second press toggles, so a double-press turns it on; a plain switch like PC has nothing to adjust and just toggles at once. |
+| `TimerTile`        | A Home Assistant `timer` entity: a draining ring and a countdown. Idle, press to arm the dynamic dial and set the length — it starts fresh at five minutes and the detent scales (a second under ten, five under a minute, then fifteen, thirty, a minute past ten minutes) — press again to start. While it runs the key just cancels it.                       |
 | `TemperatureTile`  | A sensor reading, with the background banded by temperature. Read-only.                                                                                                                                                                                                                                                                                        |
 | `PageTile`         | Page navigation from a grid slot, for a page that wants a "next" key of its own in addition to the page dial.                                                                                                                                                                                                                                                  |
+
+The arm-then-confirm behaviour those keys share — playlist, scene, brightness,
+and the room keys — is one helper, `streamdeck/armed-control.mts`: the key
+composes an `ArmedControl` over the dynamic dial and the `Dial` it lends (a
+`SelectionDial` picker, a `DurationDial` for the timer, or the one `entityDial`
+builds from the entity's domain),
+which owns the transient claim, the confirm-on-second-press, and the release. The
+key keeps only its own drawing — the glow and what it shows while armed.
+
+While a claim is armed it behaves like a light modal: touching any other dial or
+key first cancels the claim, and that touch does nothing else — the dispatcher
+swallows it rather than turning the volume or toggling a different room. Only the
+owning key (`holdsDial()`) and the dynamic dial itself pass through, so the second
+press confirms and the knob keeps switching. The renderer and touch strip enforce
+this at the point a press is dispatched.
 
 A tile paints onto a `Surface` (`streamdeck/surface.mts`) the renderer owns: a
 Skia canvas (`@napi-rs/canvas`) wrapped in the operations the control surface
@@ -283,7 +298,7 @@ the content of that face:
 | `VolumeDial`  | Master output volume, read from the controller's own state so it is right with nothing else reachable. `MUTED` is its own reading, and an empty bar. |
 | `MediaDial`   | Transport: skip through the Music Assistant player, press to play or pause through LVA, and read `PLAYING` / `PAUSED`.                               |
 | `PageDial`    | Pages the key grid — turn to move between pages — and reads out the page you land on. Takes over the job the bottom-corner keys used to do.          |
-| `DynamicDial` | The shared knob. A playlist key hands it a `Dial` to delegate to; a room key hands it an entity, which it turns by that entity's own domain.         |
+| `DynamicDial` | The shared knob. A playlist key hands it a `Dial` to delegate to; a room key hands it the `Dial` its entity's domain builds (`entityDial`).           |
 
 Write a new `Dial` class when a knob needs a reading it has to work out for
 itself; use `ActionDial` when it can be told.
