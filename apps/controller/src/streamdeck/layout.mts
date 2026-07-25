@@ -95,6 +95,10 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
                 offColor: '#0d2320',
                 spin: (_entity, phase) => (phase % 1200) / 1200,
                 animationMilliseconds: 100,
+                caption: (entity, on) => {
+                    const percentage = numericAttribute(entity, 'percentage')
+                    return !on || percentage === undefined ? undefined : `FAN ${Math.round(percentage)}%`
+                },
                 dial: dynamic,
             }),
             new EntityToggleTile(ha, {
@@ -105,6 +109,7 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
                 offColor: '#1c2429',
                 // A cover reporting no position falls back to fully raised or down.
                 level: (entity) => 1 - (numericAttribute(entity, 'current_position') ?? (isEntityOn(entity) ? 80 : 0)) / 100,
+                caption: (_entity, on) => `BLINDS ${on ? 'OPEN' : 'CLOSED'}`,
                 dial: dynamic,
             }),
             new EntityToggleTile(ha, {

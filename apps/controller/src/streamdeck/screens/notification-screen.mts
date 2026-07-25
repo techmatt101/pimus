@@ -3,6 +3,8 @@ import {drawStripBar, drawStripLine, type Screen, STRIP_MARGIN, STRIP_WIDTH,} fr
 import type {Notification} from '../../types.mjs'
 
 const MESSAGE_SIZES = [56, 46, 36]
+// A title takes the top row, so the message shrinks to sit clear beneath it.
+const TITLED_MESSAGE_SIZES = [40, 34, 28]
 const TITLE_SIZE = 24
 const TITLE_COLOR = '#eceff1'
 const DRAIN_FRAME_MILLISECONDS = 250
@@ -39,8 +41,8 @@ export class NotificationScreen implements Screen {
             drawStripLine(surface, title, {centerY: 24, size: TITLE_SIZE, color: TITLE_COLOR, now})
         }
         drawStripLine(surface, message, {
-            centerY: title ? 58 : 46,
-            size: fittingSize(message, MESSAGE_SIZES, STRIP_WIDTH - STRIP_MARGIN * 2),
+            centerY: title ? 62 : 46,
+            size: fittingSize(message, title ? TITLED_MESSAGE_SIZES : MESSAGE_SIZES, STRIP_WIDTH - STRIP_MARGIN * 2),
             now,
         })
 
