@@ -102,8 +102,9 @@ runtime validation, and relevant documentation together.
   manager and Ansible keep their explanatory comments — that side is
   magic-heavy and harder to make self-describing.
 - Write ESM `.mts` modules compiled to `.mjs` output that runs on Node
-  `>=18.18`. Do not use language or library features newer than the `ES2022`
-  target; the Pi runs the Debian `nodejs` package.
+  `>=22.18`. Do not use language or library features newer than the `ES2022`
+  target; the Pi runs NodeSource's Node 24 LTS `nodejs` package, installed by
+  Ansible (Debian's own package is too old for the native JPEG encoder).
 - Type checking is strict, including `noUncheckedIndexedAccess`. Prefer
   narrowing and explicit guards over `any` or non-null assertions.
 - Declare shared configuration, voice-event, and device shapes in `types.mts`.

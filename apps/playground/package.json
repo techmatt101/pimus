@@ -5,7 +5,7 @@
     "type": "module",
     "description": "Local debug playground for the smartamp controller. Development only; never deployed to the Pi.",
     "engines": {
-        "node": ">=18.18"
+        "node": ">=22.18"
     },
     "scripts": {
         "build": "pnpm run clean && tsc",

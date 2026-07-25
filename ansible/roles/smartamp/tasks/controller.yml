@@ -94,8 +94,9 @@
   failed_when: false
   when: smartamp_controller_enabled | bool
 
-# Omit development tooling and the optional native JPEG peer. Elgato falls back
-# to jpeg-js, avoiding an unnecessary native image build chain on the Pi.
+# Omit development tooling. The native JPEG encoder (@julusian/jpeg-turbo) is a
+# direct pinned dependency with an arm64 prebuild — without it Elgato falls back
+# to pure-JS jpeg-js, which saturates the CPU repainting the deck.
 - name: Install hardware controller dependencies
   ansible.builtin.command: npm install --omit=dev --omit=peer --no-audit --no-fund
   args:
@@ -108,8 +109,8 @@
   notify: Restart controller
 
 # The controller is written in TypeScript and compiled on this computer, so the
-# Pi needs no build tooling and keeps running plain ESM under the Debian nodejs
-# package. "make provision" builds first; check the output before copying so a
+# Pi needs no build tooling and keeps running plain ESM under the NodeSource
+# nodejs package. "make provision" builds first; check the output before copying so a
 # missing build fails here instead of leaving a stale controller on the Pi.
 # The compiled tree is nested (actions/, audio/, streamdeck/, voice/), so search
 # recursively and track each module by its path relative to dist/src. That

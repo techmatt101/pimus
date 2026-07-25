@@ -17,6 +17,42 @@
   changed_when: true
   when: configured_timezone.stdout != smartamp_timezone
 
+# Debian ships Node 20, but the controller's native JPEG encoder
+# (@julusian/jpeg-turbo) needs Node >= 22.18, so nodejs comes from NodeSource's
+# 24.x LTS repository instead. apt accepts an armored key when signed-by points
+# at an .asc file.
+- name: Add the NodeSource repository signing key
+  ansible.builtin.get_url:
+    url: https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key
+    dest: /etc/apt/keyrings/nodesource.asc
+    mode: "0644"
+
+- name: Add the NodeSource Node 24 repository
+  ansible.builtin.apt_repository:
+    repo: deb [signed-by=/etc/apt/keyrings/nodesource.asc] https://deb.nodesource.com/node_24.x nodistro main
+    filename: nodesource
+    state: present
+
+# NodeSource's nodejs bundles npm. Debian's separate npm package depends on
+# Debian's nodejs and blocks the upgrade, so it goes first; a Pi imaged before
+# the NodeSource switch has both installed.
+- name: Remove the Debian npm package
+  ansible.builtin.apt:
+    name: npm
+    state: absent
+
+# Runs the local, headless Stream Deck+ and ReSpeaker controller and installs
+# its exactly pinned dependencies (the NodeSource package bundles npm). latest
+# moves an already-imaged Pi from Debian's nodejs 20 onto the repository's 24.x
+# line; the running controller keeps its old runtime until restarted, so an
+# upgrade notifies the restart handler.
+- name: Install Node.js from NodeSource
+  ansible.builtin.apt:
+    name: nodejs
+    state: latest
+    update_cache: true
+  notify: Restart controller
+
 - name: Install base packages
   ansible.builtin.apt:
     name:
@@ -48,10 +84,6 @@
       - libusb-1.0-0
       # Headers used if a compatible prebuilt USB Node module is unavailable.
       - libusb-1.0-0-dev
-      # Runs the local, headless Stream Deck+ and ReSpeaker controller.
-      - nodejs
-      # Installs the controller's exactly pinned USB and WebSocket dependencies.
-      - npm
       # Core audio server that mixes aux, USB, Sendspin, and voice playback.
       - pipewire
       # Redirects ALSA-only clients into PipeWire's shared audio graph.
