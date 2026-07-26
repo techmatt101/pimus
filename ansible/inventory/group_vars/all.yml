@@ -12,7 +12,8 @@ smartamp_journal_in_ram: false
 # Log verbosity for the controller and audio manager. Debug traces every
 # action: deck input, route commands, Home Assistant calls, and each pactl
 # invocation. Leave off day-to-day; the traces are chatty by design.
-smartamp_debug_logging: false
+# Currently on, with the persistent journal, for the USB-gadget crash hunt.
+smartamp_debug_logging: true
 # The stock SD swapfile is removed; memory exhaustion then OOM-kills and
 # restarts a service instead of wearing the card. Set to true to restore it.
 smartamp_swapfile_enabled: false
