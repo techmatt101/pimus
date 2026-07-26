@@ -10,18 +10,46 @@ The command exits non-zero when required hardware, an enabled service, or an
 enabled audio path is unavailable. Power-throttle history remains a warning so
 you can distinguish a past transient from a currently broken endpoint.
 
-Then inspect a specific service:
+## Reading logs
+
+Everything logs to the systemd journal. There are no log files to `tail`.
 
 ```sh
-sudo journalctl -b -u smartamp-audio-manager
-sudo journalctl -b -u smartamp-voice-assistant
-sudo journalctl -b -u smartamp-controller
+sudo journalctl -b -u smartamp-controller       # everything since power-on
+sudo journalctl -u smartamp-controller -f       # follow live from now
+sudo journalctl -b -u smartamp-controller -f    # replay this boot, then follow
 ```
 
-To spare the SD card, the journal lives in RAM (`smartamp_journal_in_ram`), so
-logs cover the current boot only and do not survive a reboot. Capture output
-before rebooting when investigating a problem, or set the variable to false
-and re-provision to keep persistent journals while debugging.
+`-b` replays the whole boot, so it is never too late to look: run it minutes
+after the problem and the startup lines are still there. Only `-f` on its own
+starts at "now" and misses startup.
+
+The other units are `smartamp-audio-manager`, `smartamp-voice-assistant`,
+`smartamp-sendspin`, and `smartamp-usb-audio-gadget`.
+
+From the control computer, straight over SSH:
+
+```sh
+ssh office-amp.local sudo journalctl -b -u smartamp-controller -f
+```
+
+To save a copy off the Pi:
+
+```sh
+ssh office-amp.local sudo journalctl -b -u smartamp-controller --no-pager > controller.log
+```
+
+One caveat: `smartamp_journal_in_ram` (in
+`/etc/systemd/journald.conf.d/smartamp.conf`) decides whether the journal
+survives a reboot:
+
+- `false` — on the SD card, capped at 64M, survives reboots.
+- `true` — in RAM, capped at 32M, wiped at reboot; capture logs before
+  rebooting, or set it to `false` and re-provision while debugging.
+
+The audio manager's live state is not a log: it is a JSON snapshot at
+`/run/user/*/smartamp-audio-status.json`, which is RAM-backed and rewritten
+continuously.
 
 ## HiFiBerry is missing
 

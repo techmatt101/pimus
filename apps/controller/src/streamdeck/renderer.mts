@@ -66,6 +66,9 @@ export class DeckRenderer implements PageNavigator {
     clearDeck(deck: StreamDeck | null): void {
         if (this.#deck !== deck) return
         this.#deck = null
+        // A write abandoned by an unplug may never settle; drop the pump so the
+        // next connection pumps afresh instead of awaiting it forever.
+        this.#pump = null
         this.#unmountVisible()
     }
 
@@ -238,15 +241,21 @@ export class DeckRenderer implements PageNavigator {
     // One write is in flight at a time: a repaint asked for mid-write marks its
     // surface dirty and is picked up by the same loop, so a burst of
     // invalidations collapses into one repaint instead of queueing USB writes.
+    // The idle check must come before the pump is created: a loop that never
+    // awaits settles synchronously, its cleanup runs before the assignment, and
+    // the field would keep the settled promise forever — no paint ever again.
+    // Entering with work guarantees at least one await, so cleanup runs late
+    // enough; it must still guard against clobbering a successor pump.
     #drain(): Promise<void> {
-        this.#pump ??= (async () => {
-            try {
-                while (this.#deck && !this.#asleep && this.#hasWork()) await this.#step()
-            } finally {
-                this.#pump = null
-            }
-        })()
-        return this.#pump
+        if (!this.#deck || this.#asleep || !this.#hasWork()) return this.#pump ?? Promise.resolve()
+        if (this.#pump) return this.#pump
+        const pump: Promise<void> = (async () => {
+            while (this.#deck && !this.#asleep && this.#hasWork()) await this.#step()
+        })().finally(() => {
+            if (this.#pump === pump) this.#pump = null
+        })
+        this.#pump = pump
+        return pump
     }
 
     #hasWork(): boolean {

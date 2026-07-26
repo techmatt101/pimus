@@ -16,11 +16,23 @@ the Pi if your firmware exposes different names.
 
 ## Logging
 
-Both daemons log to the systemd journal: `journalctl -u smartamp-controller` and `journalctl -u smartamp-audio-manager`.
+No component writes a log file of its own. Every service logs to stdout/stderr and systemd captures it in the journal,
+so `journalctl -u <unit>` is the only place to read logs: `smartamp-controller`, `smartamp-audio-manager`,
+`smartamp-voice-assistant`, `smartamp-sendspin`, `smartamp-usb-audio-gadget`, and `smartamp-hifiberry`.
+
+`smartamp_journal_in_ram` chooses where that journal is stored, through
+`/etc/systemd/journald.conf.d/smartamp.conf`:
+
+| Setting | Storage | On-disk location | Cap | Survives reboot |
+| --- | --- | --- | --- | --- |
+| `smartamp_journal_in_ram: true` | `volatile` | `/run/log/journal/` (RAM) | 32M | No |
+| `smartamp_journal_in_ram: false` | `persistent` | `/var/log/journal/` (SD card) | 64M | Yes |
+
+Flip it to `false` while chasing a crash so the evidence survives, and back to `true` for normal duty to spare the card.
+
 Set `smartamp_debug_logging: true` and re-provision to trace every action — deck input, route commands, Home Assistant
-service calls, LVA commands, and each `pactl` invocation the audio manager makes. `smartamp_journal_in_ram` chooses
-where the journal lives: `true` keeps it in RAM to spare the SD card (logs vanish at reboot), `false` persists it capped
-at 64M so crashes leave evidence. Flip it to `false` while chasing a crash and back afterwards.
+service calls, LVA commands, and each `pactl` invocation the audio manager makes. It sets `SMARTAMP_LOG_LEVEL=debug` in
+the controller and audio-manager units; both default to `info`.
 
 Set `smartamp_aux_enabled` and `smartamp_usb_enabled` to choose whether aux and USB monitoring start on boot. Both
 default to off: with no computer actively streaming, the USB gadget's capture clock never ticks, which stalls the whole
@@ -38,9 +50,10 @@ generated source target to `background` as a code-level extension if aux should 
 
 ## SD-card endurance
 
-The image is tuned for minimal flash writes. `smartamp_journal_in_ram` keeps
-systemd logs for the current boot in RAM (see the troubleshooting note about
-logs not surviving reboots), and `smartamp_swapfile_enabled: false` removes the
+The image is tuned for minimal flash writes. `smartamp_journal_in_ram: true`
+keeps systemd logs for the current boot in RAM instead of on the card (see
+Logging above for the paths and the reboot trade-off), and
+`smartamp_swapfile_enabled: false` removes the
 stock dphys-swapfile so memory pressure cannot grind the card — if RAM is ever
 exhausted, the kernel OOM-kills the largest process and systemd restarts it.
 Route toggles and duck requests live in the audio manager's memory and travel
