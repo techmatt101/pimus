@@ -21,6 +21,7 @@
     "aux": {
       "match": {{ smartamp_aux_match | to_json }},
       "enabled": {{ smartamp_aux_enabled | bool | to_json }},
+      "mute_when_off": true,
       "latency_ms": {{ smartamp_aux_latency_ms | int }}
     },
     "usb": {

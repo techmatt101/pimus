@@ -154,6 +154,11 @@ EVENT_DEBOUNCE_SECONDS = 0.3
 # this often to gate the USB route and refresh the controller's status icon.
 USB_HOST_POLL_SECONDS = 2.0
 
+# How long a mute_when_off route takes to fade between silent and full when
+# toggled. A code constant rather than configuration: it only needs to be slow
+# enough that a DC step becomes an inaudible ramp.
+ROUTE_FADE_MS = 200
+
 # Control-socket commands are tiny; a client that streams this much without a
 # newline is broken and must not grow the buffer without limit.
 MAX_CLIENT_BUFFER_BYTES = 64 * 1024
@@ -218,6 +223,10 @@ class AudioManager:
         self.status_path = status_path
         self.modules: dict[str, int] = {}
         self.bindings: dict[str, tuple[str, str]] = {}
+        # The applied toggle state of each mute_when_off route's stream, so a
+        # reconcile only fades on a change and a recreated stream (absent
+        # here) is snapped to the toggle before it can play at full volume.
+        self.route_unmuted: dict[str, bool] = {}
         self.background_stream_index: int | None = None
         self.background_ducked: bool | None = None
         self.running = True
@@ -255,6 +264,7 @@ class AudioManager:
     def unload(self, source_name: str) -> None:
         module_id = self.modules.pop(source_name, None)
         self.bindings.pop(source_name, None)
+        self.route_unmuted.pop(source_name, None)
         if source_name == "_background_bridge":
             self.background_stream_index = None
             self.background_ducked = None
@@ -268,6 +278,7 @@ class AudioManager:
                 continue
             self.modules.pop(name, None)
             self.bindings.pop(name, None)
+            self.route_unmuted.pop(name, None)
             if name == "_background_bridge":
                 self.background_stream_index = None
                 self.background_ducked = None
@@ -389,6 +400,23 @@ class AudioManager:
             return False
         return bool(self.duck_requests)
 
+    def fade_sink_input(
+        self, stream_index: int, start: int, target: int, fade_ms: int
+    ) -> None:
+        steps = 1 if start == target else max(1, min(10, fade_ms // 50))
+        delay = fade_ms / steps / 1000 if fade_ms else 0
+        for step in range(1, steps + 1):
+            volume = round(start + (target - start) * step / steps)
+            run(
+                "pactl",
+                "set-sink-input-volume",
+                str(stream_index),
+                f"{volume}%",
+                check=False,
+            )
+            if delay and step < steps:
+                time.sleep(delay)
+
     def set_background_ducking(self, ducked: bool) -> None:
         if self.background_stream_index is None or self.background_ducked == ducked:
             return
@@ -402,22 +430,9 @@ class AudioManager:
         else:
             start_volume = duck_volume if self.background_ducked else 100
         fade_ms = max(0, int(background_config.get("fade_ms", 250)))
-        steps = (
-            1
-            if start_volume == target_volume
-            else max(1, min(10, fade_ms // 50))
+        self.fade_sink_input(
+            self.background_stream_index, start_volume, target_volume, fade_ms
         )
-        delay = fade_ms / steps / 1000 if fade_ms else 0
-        for step in range(1, steps + 1):
-            volume = round(start_volume + (target_volume - start_volume) * step / steps)
-            run(
-                "pactl",
-                "set-sink-input-volume",
-                str(self.background_stream_index),
-                f"{volume}%",
-            )
-            if delay and step < steps:
-                time.sleep(delay)
         self.background_ducked = ducked
         LOG.info("%s background audio", "Ducked" if ducked else "Restored")
 
@@ -579,6 +594,7 @@ class AudioManager:
             self.unload("_aec")
 
         self.usb_host = usb_host_attached()
+        sink_inputs: list[dict[str, Any]] | None = None
         for name, source_config in self.config["sources"].items():
             node = find_node(sources, source_config["match"])
             enabled = self.sources.get(name, False)
@@ -588,6 +604,12 @@ class AudioManager:
             # Keep the route's enabled flag but only build the loopback while
             # a host is actually there.
             attached = not source_config.get("requires_usb_host", False) or self.usb_host
+            # Connecting an analogue route's stream pops: any DC offset on the
+            # input lands as a step on the speakers, at full amp gain because
+            # only PipeWire volume sits in the path. A mute_when_off route
+            # therefore keeps its bridge loaded from boot and toggles by
+            # fading the stream volume, so the connect happens exactly once.
+            mute_when_off = bool(source_config.get("mute_when_off", False))
             status["sources"][name] = {
                 "enabled": enabled,
                 "available": node is not None and attached,
@@ -598,18 +620,57 @@ class AudioManager:
                 if source_config.get("target") == "background"
                 else sink
             )
-            should_run = enabled and attached and node is not None and target is not None
-            if should_run:
-                created = self.ensure_loopback(
-                    name,
-                    node["name"],
-                    target["name"],
-                    int(source_config["latency_ms"]),
-                )
+            if not (
+                (enabled or mute_when_off)
+                and attached
+                and node is not None
+                and target is not None
+            ):
+                self.unload(name)
+                continue
+            created = self.ensure_loopback(
+                name,
+                node["name"],
+                target["name"],
+                int(source_config["latency_ms"]),
+            )
+            if not mute_when_off:
                 if created:
                     LOG.info("Enabled %s input monitor", name)
+                continue
+            if sink_inputs is None:
+                sink_inputs = pactl_json("sink-inputs")
+            stream = find_owned_stream(
+                sink_inputs, self.modules.get(name), f"SmartAmp.{name.strip('_')}"
+            )
+            if stream is None:
+                continue
+            stream_index = int(stream["index"])
+            was_enabled = self.route_unmuted.get(name)
+            if was_enabled == enabled:
+                continue
+            if was_enabled is None:
+                # A new stream starts at full volume; snap it to the toggle
+                # before it is audible so a boot with the route off is silent.
+                run(
+                    "pactl",
+                    "set-sink-input-volume",
+                    str(stream_index),
+                    f"{100 if enabled else 0}%",
+                    check=False,
+                )
+                LOG.info(
+                    "Bridged %s input %s", name, "unmuted" if enabled else "muted"
+                )
             else:
-                self.unload(name)
+                self.fade_sink_input(
+                    stream_index,
+                    100 if was_enabled else 0,
+                    100 if enabled else 0,
+                    ROUTE_FADE_MS,
+                )
+                LOG.info("%s %s input monitor", "Enabled" if enabled else "Muted", name)
+            self.route_unmuted[name] = enabled
 
         status["usb_host"] = self.usb_host
         atomic_json(self.status_path, status)

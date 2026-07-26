@@ -38,8 +38,13 @@ Set `smartamp_aux_enabled` and `smartamp_usb_enabled` to choose whether aux and 
 default to off. The USB route is additionally gated on a computer being enumerated on the gadget port: the audio
 manager only builds the bridge while `/sys/class/udc/*/state` reads `configured`, because a gadget with no host has a
 dead capture clock that would stall the whole output graph and silence everything else. Toggling USB on with nothing
-plugged in is therefore safe — the route simply waits for a computer. Stream Deck route toggles last until the next
-reboot; every boot starts from these inventory defaults.
+plugged in is therefore safe — the route simply waits for a computer.
+
+The aux bridge is loaded once, at boot, whether or not the route is on; the toggle fades the bridge stream between
+silent and full over ~200 ms. Connecting the stream on demand used to land any DC offset on the line input as a step on
+the speakers — at full amplifier gain, since the volume dial only scales PipeWire — so the pop-prone connect now
+happens exactly once, muted, while nothing is playing. Stream Deck route toggles last until the next reboot; every boot
+starts from these inventory defaults.
 
 Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Sendspin and USB computer audio share the
 `smartamp_background_sink_name` bus and fade down to `smartamp_voice_duck_volume_percent` per cent of their normal level

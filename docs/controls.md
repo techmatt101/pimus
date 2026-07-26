@@ -188,7 +188,10 @@ Drives the PipeWire default sink through `wpctl`.
 
 Toggles a named route through the audio manager's control socket. `source` must
 be a route the audio manager owns, currently `aux` or `usb`; it rejects names it
-does not know.
+does not know. Aux toggles are a short fade of a permanently loaded bridge
+rather than a stream connect, so they are pop-free; the USB route connects and
+disconnects for real, and only while a computer is enumerated on the gadget
+port.
 
 | Command  | Effect                                |
 |----------|---------------------------------------|

@@ -281,6 +281,73 @@ class AudioManagerTests(unittest.TestCase):
         self.assertNotIn("usb", manager.modules)
         self.assertFalse(status["sources"]["usb"]["available"])
 
+    def test_muted_route_keeps_its_bridge_and_toggles_by_fading(self) -> None:
+        manager = self._reconciling_manager()
+        manager.config["aec_reference"] = {"enabled": False}
+        manager.config["sources"] = {
+            "aux": {"match": "ADC Pro", "mute_when_off": True, "latency_ms": 20}
+        }
+        manager.sources = {"aux": False}
+        loaded: list[str] = []
+        responses = {
+            "modules": [],
+            "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
+            "sources": [
+                {
+                    "name": "hifiberry_adc",
+                    "description": "HiFiBerry DAC2 ADC Pro",
+                    "monitor_of_sink": 4294967295,
+                }
+            ],
+            "sink-inputs": [{"index": 61, "owner_module": 60}],
+        }
+
+        def load_module(name: str, module: str, *arguments: str) -> int:
+            manager.modules[name] = 60
+            responses["modules"].append(
+                {"index": 60, "name": module, "argument": " ".join(arguments)}
+            )
+            loaded.append(name)
+            return 60
+
+        manager.load_module = load_module
+
+        def reconcile() -> list[str]:
+            with mock.patch.object(
+                audio_manager, "pactl_json", side_effect=lambda kind: responses[kind]
+            ), mock.patch.object(
+                audio_manager, "pactl_modules", side_effect=lambda: responses["modules"]
+            ), mock.patch.object(
+                audio_manager, "run", side_effect=self._fake_run
+            ) as pactl_run, mock.patch.object(
+                audio_manager.time, "sleep"
+            ), mock.patch.object(audio_manager, "atomic_json"):
+                manager.reconcile()
+            return [
+                call.args[-1]
+                for call in pactl_run.call_args_list
+                if "set-sink-input-volume" in call.args
+            ]
+
+        # Off at boot: the bridge still loads, snapped straight to silent so
+        # the pop-prone stream connect happens once, before anything plays.
+        self.assertEqual(reconcile(), ["0%"])
+        self.assertEqual(loaded, ["aux"])
+
+        # Turning the route on is a fade, not a module load.
+        manager.sources["aux"] = True
+        volumes = reconcile()
+        self.assertEqual(loaded, ["aux"])
+        self.assertGreater(len(volumes), 1)
+        self.assertEqual(volumes[-1], "100%")
+
+        manager.sources["aux"] = False
+        volumes = reconcile()
+        self.assertEqual(volumes[-1], "0%")
+
+        # A settled toggle fades nothing on the next reconcile.
+        self.assertEqual(reconcile(), [])
+
     def test_startup_volume_applies_once_when_the_sink_appears(self) -> None:
         manager = self._duckable_manager()
         manager.config["startup_volume_percent"] = 20
@@ -425,6 +492,7 @@ class AudioManagerTests(unittest.TestCase):
         manager.status_path = Path("/unused/status.json")
         manager.modules = {}
         manager.bindings = {}
+        manager.route_unmuted = {}
         manager.sources = {}
         manager.duck_requests = set()
         manager.background_stream_index = None
