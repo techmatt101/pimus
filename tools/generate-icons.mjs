@@ -40,6 +40,7 @@ const ICONS = {
     next: 'ArrowRight01Icon',
     previous: 'ArrowLeft01Icon',
     volume: 'VolumeHighIcon',
+    volumeMute: 'VolumeMute02Icon',
     usb: 'UsbIcon',
     note: 'MusicNote01Icon',
     playlist: 'Playlist01Icon',

@@ -1,10 +1,14 @@
 import {drawIcon, type Surface} from '../surface.mjs'
 import type {IconName} from '../icon-set.mjs'
-import type {HealthState} from '../../types.mjs'
+import type {ControlState} from '../../types.mjs'
 
-const OK_COLOR = '#37474f'
+const OK_COLOR = '#607d8b'
 const FAULT_COLOR = '#ef5350'
 const USB_ATTACHED_COLOR = '#26c6da'
+
+const FLASH_PERIOD_MILLISECONDS = 1000
+const FLASH_FLOOR = 0.12
+export const STATUS_FLASH_FRAME_MILLISECONDS = 60
 
 interface StatusSlot {
     icon: IconName
@@ -12,15 +16,20 @@ interface StatusSlot {
     fault: boolean
 }
 
-function slots(health: HealthState): StatusSlot[] {
+function slots(state: ControlState): StatusSlot[] {
+    const {health} = state
     return [
         {icon: 'wifi', color: OK_COLOR, fault: !health.network},
         {icon: 'home', color: OK_COLOR, fault: !health.ha},
-        {icon: 'volume', color: OK_COLOR, fault: !health.audio},
+        {icon: state.outputMuted ? 'volumeMute' : 'volume', color: OK_COLOR, fault: !health.audio},
         // Informational, never a fault: lit while a computer is enumerated on
         // the USB-C gadget port.
         {icon: 'usb', color: health.usbHost ? USB_ATTACHED_COLOR : OK_COLOR, fault: false},
     ]
+}
+
+export function hasFault(state: ControlState): boolean {
+    return slots(state).some((slot) => slot.fault)
 }
 
 export interface StatusIconOptions {
@@ -28,16 +37,29 @@ export interface StatusIconOptions {
     y: number
     size: number
     gap: number
+    /** The instant of this repaint, which is what pulses a red icon. */
+    now: number
     /** Draw only the slots that are red, for faces with no room for a full row. */
     faultsOnly?: boolean
 }
 
-export function drawStatusIcons(surface: Surface, health: HealthState, options: StatusIconOptions): void {
-    const {x, y, size, gap, faultsOnly = false} = options
+function faultOpacity(now: number): number {
+    const phase = (now % FLASH_PERIOD_MILLISECONDS) / FLASH_PERIOD_MILLISECONDS
+    return FLASH_FLOOR + (1 - FLASH_FLOOR) * (0.5 + 0.5 * Math.cos(phase * 2 * Math.PI))
+}
+
+export function drawStatusIcons(surface: Surface, state: ControlState, options: StatusIconOptions): void {
+    const {x, y, size, gap, now, faultsOnly = false} = options
     let at = x
-    for (const slot of slots(health)) {
+    for (const slot of slots(state)) {
         if (faultsOnly && !slot.fault) continue
-        drawIcon(surface, slot.icon, {x: at, y, size, color: slot.fault ? FAULT_COLOR : slot.color})
+        drawIcon(surface, slot.icon, {
+            x: at,
+            y,
+            size,
+            color: slot.fault ? FAULT_COLOR : slot.color,
+            opacity: slot.fault ? faultOpacity(now) : undefined,
+        })
         at += size + gap
     }
 }

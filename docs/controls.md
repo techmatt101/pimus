@@ -378,13 +378,15 @@ turning is no feedback — and the notification comes back when the hold expires
 ### Status icons
 
 The idle clock carries a row of system-health icons at its left edge: network
-(wifi), Home Assistant (home), the audio manager (volume), and the USB gadget
-port (usb, lit cyan while a computer is enumerated on the USB-C port). Healthy
-icons sit dim; a failed subsystem turns its icon red, and the transition also
-posts a strip banner ("HOME ASSISTANT LOST" / "RESTORED"). The now-playing face
-has no room for the full row and shows only red fault icons, tucked under the
-clock. A deployment without Home Assistant configured keeps that icon healthy
-rather than flagging an integration that was never set up.
+(wifi), Home Assistant (home), the audio manager (volume, drawn crossed out
+while the output is muted), and the USB gadget port (usb, lit cyan while a
+computer is enumerated on the USB-C port). Healthy icons sit dim; a failed
+subsystem turns its icon red and pulses it, and the loss also posts a strip
+banner ("HOME ASSISTANT LOST"). Recovery is silent: the icon stops flashing.
+The now-playing face has no room for the full row and shows only red fault
+icons, tucked under the clock. A deployment without Home Assistant configured
+keeps that icon healthy rather than flagging an integration that was never set
+up.
 
 Each screen is a class in `streamdeck/screens/`, the strip's equivalent of a
 tile: it paints the whole 800×100 face and may run the same `mount`/`unmount`

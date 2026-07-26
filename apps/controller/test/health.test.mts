@@ -20,7 +20,7 @@ function makeMonitor(flags: {network: boolean; ha: boolean; audio: boolean; usbH
     return {model, posts, monitor}
 }
 
-test('health transitions update state and banner after the first sample', () => {
+test('a loss banners after the first sample and a recovery does not', () => {
     const flags = {network: true, ha: true, audio: true, usbHost: false}
     const {model, posts, monitor} = makeMonitor(flags)
 
@@ -38,8 +38,7 @@ test('health transitions update state and banner after the first sample', () => 
     flags.ha = true
     monitor.sample()
     assert.equal(model.state.health.ha, true)
-    assert.equal(posts.length, 2)
-    assert.equal(posts[1]?.message, 'RESTORED')
+    assert.equal(posts.length, 1)
 })
 
 test('a subsystem already down at boot shows without a banner burst', () => {

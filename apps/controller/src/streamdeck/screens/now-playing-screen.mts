@@ -1,7 +1,7 @@
 import {repeatMode, requireEntity} from '../../actions/catalog.mjs'
 import {type Binding, haBinding} from '../bindings.mjs'
 import {mediaElapsedSeconds, numericAttribute} from '../../home-assistant/entity.mjs'
-import {drawIcon, fittingSize, REGULAR, type Surface, verticalGradient} from '../surface.mjs'
+import {drawIcon, fittingSize, REGULAR, type Surface} from '../surface.mjs'
 import {
     type ClockFormat,
     drawClock,
@@ -15,7 +15,7 @@ import {
     SCROLL_FRAME_MILLISECONDS,
     STRIP_WIDTH,
 } from './screen.mjs'
-import {drawStatusIcons} from './status-icons.mjs'
+import {drawStatusIcons, hasFault, STATUS_FLASH_FRAME_MILLISECONDS} from './status-icons.mjs'
 import type {IconName} from '../icon-set.mjs'
 import type {ControlModel} from '../../state.mjs'
 import type {HomeAssistantEntity, HomeAssistantService} from '../../types.mjs'
@@ -58,7 +58,7 @@ const FLASH_PEAK = 0.24
 const PRESSED_ICON = '#ffffff'
 type Button = 'play' | (typeof CONTROLS)[number]
 
-const BACKDROP = ['#16222b', '#0b1116'] as const
+const BACKDROP = '#000000'
 
 const PLAYING_TITLE = '#ffffff'
 const PAUSED_TITLE = '#78909c'
@@ -141,6 +141,7 @@ export class NowPlayingScreen implements Screen {
         const player = this.#ha.entity(this.#player)
         const frames = [minuteTick(this.#clock())]
         if (this.#flashing()) frames.push(FLASH_FRAME_MILLISECONDS)
+        if (hasFault(this.#model.state)) frames.push(STATUS_FLASH_FRAME_MILLISECONDS)
         // A wake at the moment the extras time out repaints the title back in.
         const controlsLeft = this.#controlsRemaining()
         if (controlsLeft > 0) frames.push(controlsLeft)
@@ -207,7 +208,7 @@ export class NowPlayingScreen implements Screen {
         const now = this.#clock()
         const player = this.#ha.entity(this.#player)
         const playing = player?.state === 'playing'
-        surface.fill(verticalGradient(surface, BACKDROP[0], BACKDROP[1]))
+        surface.fill(BACKDROP)
 
         if (this.#controlsShown()) this.#drawControls(surface, player)
         else this.#drawTrack(surface, player, playing, now)
@@ -223,11 +224,12 @@ export class NowPlayingScreen implements Screen {
             drawStripBar(surface, elapsed / duration, {color: playing ? '#26c6da' : '#37474f'})
         }
 
-        drawStatusIcons(surface, this.#model.state.health, {
+        drawStatusIcons(surface, this.#model.state, {
             x: CLOCK_LEFT + FAULT_ICON_SIZE / 2,
             y: FAULT_ICON_Y,
             size: FAULT_ICON_SIZE,
             gap: FAULT_ICON_GAP,
+            now,
             faultsOnly: true,
         })
     }

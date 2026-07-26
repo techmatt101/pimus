@@ -1,13 +1,13 @@
 import {requireEntity} from '../../actions/catalog.mjs'
 import {numericAttribute} from '../../home-assistant/entity.mjs'
 import {conditionIcon} from '../icons.mjs'
-import {drawStatusIcons} from './status-icons.mjs'
-import {drawIcon, drawText, measureText, type Surface, verticalGradient} from '../surface.mjs'
+import {drawStatusIcons, hasFault, STATUS_FLASH_FRAME_MILLISECONDS} from './status-icons.mjs'
+import {drawIcon, drawText, measureText, type Surface} from '../surface.mjs'
 import {type ClockFormat, drawClock, formatDate, minuteTick, type Screen, type ScreenHost, STRIP_WIDTH} from './screen.mjs'
 import type {ControlModel} from '../../state.mjs'
 import type {HomeAssistantService} from '../../types.mjs'
 
-const BACKDROP = ['#16222b', '#0b1116'] as const
+const BACKDROP = '#000000'
 const TIME_COLOR = '#eceff1'
 const DATE_COLOR = '#90a4ae'
 const TEMPERATURE_COLOR = '#80deea'
@@ -56,18 +56,19 @@ export class IdleScreen implements Screen {
     }
 
     animationMilliseconds(): number {
-        return minuteTick(this.#clock())
+        const tick = minuteTick(this.#clock())
+        return hasFault(this.#model.state) ? Math.min(tick, STATUS_FLASH_FRAME_MILLISECONDS) : tick
     }
 
     draw(surface: Surface): void {
-        surface.fill(verticalGradient(surface, BACKDROP[0], BACKDROP[1]))
+        surface.fill(BACKDROP)
         const now = this.#clock()
         const clock = drawClock(surface, now, this.#clockFormat, {centerX: STRIP_WIDTH / 2, y: ROW_Y, size: TIME_SIZE, color: TIME_COLOR})
         const date = formatDate(now)
         const dateLeft = clock.right + DATE_GAP
         drawText(surface, date, {x: dateLeft, y: ROW_Y, size: DATE_SIZE, color: DATE_COLOR, align: 'left'})
         this.#drawWeather(surface, dateLeft + measureText(date, DATE_SIZE) + WEATHER_GAP)
-        drawStatusIcons(surface, this.#model.state.health, {x: STATUS_X, y: ROW_Y, size: STATUS_SIZE, gap: STATUS_GAP})
+        drawStatusIcons(surface, this.#model.state, {x: STATUS_X, y: ROW_Y, size: STATUS_SIZE, gap: STATUS_GAP, now})
     }
 
     #drawWeather(surface: Surface, left: number): void {

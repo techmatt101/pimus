@@ -7,7 +7,6 @@ import type {HealthState} from './types.mjs'
 const log = logger('health')
 
 const LOST_COLOR = '#b71c1c'
-const RESTORED_COLOR = '#2e7d32'
 
 const BANNERS: ReadonlyArray<{ key: keyof HealthState; label: string }> = [
     {key: 'network', label: 'NETWORK'},
@@ -47,9 +46,10 @@ export interface HealthMonitorOptions {
 
 /**
  * Samples each subsystem, keeps `state.health` current for the strip's status
- * icons, and turns transitions into strip banners. The first sample sets the
- * icons silently: a subsystem that is down at boot shows red rather than
- * greeting every start with a burst of "lost" banners.
+ * icons, and turns a loss into a strip banner. The first sample sets the icons
+ * silently: a subsystem that is down at boot shows red rather than greeting
+ * every start with a burst of "lost" banners. A recovery gets no banner — the
+ * icon stopping its red flash is the whole message.
  */
 export class HealthMonitor {
     readonly #model: ControlModel
@@ -96,12 +96,8 @@ export class HealthMonitor {
                 if (!changed.includes(key)) continue
                 const up = next[key]
                 log[up ? 'info' : 'warn'](label.toLowerCase(), up ? 'restored' : 'lost')
-                this.#notifications.post({
-                    title: label,
-                    message: up ? 'RESTORED' : 'LOST',
-                    color: up ? RESTORED_COLOR : LOST_COLOR,
-                    seconds: up ? 4 : 8,
-                })
+                if (up) continue
+                this.#notifications.post({title: label, message: 'LOST', color: LOST_COLOR, seconds: 8})
             }
         }
         this.#model.notify()
