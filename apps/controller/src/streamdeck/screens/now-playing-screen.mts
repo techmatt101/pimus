@@ -89,6 +89,11 @@ export function nowPlayingLines(
     return {title, secondary: [artist, album].filter(Boolean).join(' - '), idle: false}
 }
 
+/** Whether the player has a track worth showing a now-playing face for. */
+export function hasMedia(ha: HomeAssistantService, player: string): boolean {
+    return !nowPlayingLines(ha.entity(player), ha.connected).idle
+}
+
 const FAULT_ICON_SIZE = 14
 const FAULT_ICON_GAP = 8
 const FAULT_ICON_Y = 88
@@ -106,6 +111,7 @@ export class NowPlayingScreen implements Screen {
     #pressed: Button | null = null
     #pressedAt = 0
     #controlsShownAt: number | null = null
+    #showIdle: (() => void) | null = null
 
     constructor(ha: HomeAssistantService, model: ControlModel, clock: () => number, {player, clockFormat = '12h'}: NowPlayingOptions) {
         this.#ha = ha
@@ -126,7 +132,12 @@ export class NowPlayingScreen implements Screen {
     }
 
     applies(): boolean {
-        return !nowPlayingLines(this.#ha.entity(this.#player), this.#ha.connected).idle
+        return hasMedia(this.#ha, this.#player)
+    }
+
+    /** Wired by the layout once the strip exists, since the screen is built before it. */
+    showIdleOn(reveal: () => void): void {
+        this.#showIdle = reveal
     }
 
     unmount(): void {
@@ -159,9 +170,13 @@ export class NowPlayingScreen implements Screen {
 
     pressAt(x: number): (() => unknown) | undefined {
         if (x < PLAY_ZONE_RIGHT) return this.#press('play', this.#playPause)
-        // The clock corner has no button, so swallow the tap rather than let it
-        // fall through to the dial zone beneath it.
-        if (x >= CLOCK_LEFT) return () => {}
+        // The clock corner hands the strip back to the idle face, and swallows
+        // the tap either way rather than letting it fall through to the dial
+        // zone beneath it.
+        if (x >= CLOCK_LEFT) {
+            const reveal = this.#showIdle
+            return () => reveal?.()
+        }
         if (!this.#controlsShown()) {
             this.#controlsShownAt = this.#clock()
             this.#host?.invalidate()

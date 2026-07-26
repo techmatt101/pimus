@@ -9,13 +9,32 @@ SAMPLE_SIZE_BYTES="${USB_AUDIO_SAMPLE_SIZE_BYTES:?USB_AUDIO_SAMPLE_SIZE_BYTES is
 
 GADGET=/sys/kernel/config/usb_gadget/smartamp
 
+# The dwc2 controller can probe after this oneshot unit starts at boot; a
+# single failed lookup would leave the gadget absent until the next reboot.
+find_udc() {
+    tries=0
+    while :; do
+        UDC=$(/usr/bin/ls /sys/class/udc 2>/dev/null | /usr/bin/head -n 1)
+        [ -n "$UDC" ] && return 0
+        tries=$((tries + 1))
+        [ "$tries" -ge 20 ] && return 1
+        /usr/bin/sleep 0.5
+    done
+}
+
+require_udc() {
+    if ! find_udc; then
+        echo 'No USB device controller appeared; is dtoverlay=dwc2,dr_mode=peripheral active?' >&2
+        exit 1
+    fi
+}
+
 start_gadget() {
     /usr/sbin/modprobe libcomposite
     /usr/bin/mountpoint -q /sys/kernel/config || /usr/bin/mount -t configfs none /sys/kernel/config
 
     if [ -d "$GADGET" ]; then
-        UDC=$(/usr/bin/ls /sys/class/udc | /usr/bin/head -n 1)
-        [ -n "$UDC" ] || { echo 'No USB device controller found' >&2; exit 1; }
+        require_udc
         printf '%s' "$UDC" > "$GADGET/UDC"
         return 0
     fi
@@ -34,7 +53,10 @@ start_gadget() {
 
     /usr/bin/mkdir -p configs/c.1/strings/0x409
     printf 'UAC2 stereo input' > configs/c.1/strings/0x409/configuration
-    printf '100' > configs/c.1/MaxPower
+    # The Pi is powered through GPIO by the amp stack, so tell the host this
+    # device is self-powered and draws nothing from the port.
+    printf '0xc0' > configs/c.1/bmAttributes
+    printf '0' > configs/c.1/MaxPower
 
     /usr/bin/mkdir -p functions/uac2.usb0
     # f_uac2 names its directions after the gadget's own ALSA card: "capture"
@@ -46,11 +68,7 @@ start_gadget() {
     printf '%s' "$SAMPLE_SIZE_BYTES" > functions/uac2.usb0/c_ssize
     [ ! -e configs/c.1/uac2.usb0 ] && /usr/bin/ln -s functions/uac2.usb0 configs/c.1/
 
-    UDC=$(/usr/bin/ls /sys/class/udc | /usr/bin/head -n 1)
-    if [ -z "$UDC" ]; then
-        echo 'No USB device controller found; is dtoverlay=dwc2,dr_mode=peripheral active?' >&2
-        exit 1
-    fi
+    require_udc
     printf '%s' "$UDC" > UDC
 }
 

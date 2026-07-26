@@ -224,6 +224,63 @@ class AudioManagerTests(unittest.TestCase):
 
         self.assertFalse(audio_manager.usb_host_attached(root / "missing"))
 
+    def test_usb_route_bridges_only_while_a_host_is_enumerated(self) -> None:
+        manager = self._reconciling_manager()
+        manager.config["aec_reference"] = {"enabled": False}
+        manager.config["sources"] = {
+            "usb": {"match": "UAC2Gadget", "requires_usb_host": True, "latency_ms": 20}
+        }
+        manager.sources = {"usb": True}
+        loaded: list[str] = []
+
+        def load_module(name: str, module: str, *arguments: str) -> int:
+            manager.modules[name] = 50
+            loaded.append(name)
+            return 50
+
+        manager.load_module = load_module
+        responses = {
+            "modules": [],
+            "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
+            "sources": [
+                {
+                    "name": "uac2_capture",
+                    "description": "UAC2Gadget",
+                    "monitor_of_sink": 4294967295,
+                }
+            ],
+        }
+
+        def reconcile(attached: bool) -> dict[str, object]:
+            with mock.patch.object(
+                audio_manager, "pactl_json", side_effect=lambda kind: responses[kind]
+            ), mock.patch.object(
+                audio_manager, "pactl_modules", side_effect=lambda: responses["modules"]
+            ), mock.patch.object(
+                audio_manager, "run", side_effect=self._fake_run
+            ), mock.patch.object(
+                audio_manager, "usb_host_attached", return_value=attached
+            ), mock.patch.object(audio_manager, "atomic_json") as status_write:
+                manager.reconcile()
+            return status_write.call_args.args[1]
+
+        # Enabled but unplugged: no bridge, or the gadget's dead capture clock
+        # would stall the whole output graph.
+        status = reconcile(attached=False)
+        self.assertEqual(loaded, [])
+        self.assertFalse(status["usb_host"])
+        self.assertFalse(status["sources"]["usb"]["available"])
+        self.assertTrue(status["sources"]["usb"]["enabled"])
+
+        status = reconcile(attached=True)
+        self.assertEqual(loaded, ["usb"])
+        self.assertTrue(status["usb_host"])
+        self.assertTrue(status["sources"]["usb"]["available"])
+
+        status = reconcile(attached=False)
+        self.assertNotIn("usb", manager.modules)
+        self.assertFalse(status["sources"]["usb"]["available"])
+
     def test_startup_volume_applies_once_when_the_sink_appears(self) -> None:
         manager = self._duckable_manager()
         manager.config["startup_volume_percent"] = 20

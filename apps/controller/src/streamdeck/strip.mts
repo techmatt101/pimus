@@ -31,6 +31,7 @@ export class TouchStrip {
     readonly #dialScreen: DialScreen
     readonly #notificationScreen: NotificationScreen
     #host: ScreenHost | null = null
+    #preferred: Screen | null = null
     #dialIndex = -1
     #dialUntil = 0
     #frames: NodeJS.Timeout | null = null
@@ -60,8 +61,18 @@ export class TouchStrip {
     // All candidates stay mounted, so the one not showing keeps watching its
     // entity and repaints the strip when the pick should change.
     #restingScreen(): Screen {
-        const chosen = this.#resting.find((screen) => screen.applies?.() ?? true)
-        return chosen ?? this.#resting[this.#resting.length - 1] ?? this.#dialScreen
+        const candidates = this.#resting.filter((screen) => screen.applies?.() ?? true)
+        // A choice only means something while there is something else to show,
+        // so it lapses rather than outliving the face it was made against.
+        if (this.#preferred && (candidates.length < 2 || !candidates.includes(this.#preferred))) this.#preferred = null
+        return this.#preferred ?? candidates[0] ?? this.#resting[this.#resting.length - 1] ?? this.#dialScreen
+    }
+
+    /** Rest on `screen` in place of the highest-priority candidate that applies. */
+    showResting(screen: Screen): void {
+        if (!this.#resting.includes(screen)) return
+        this.#preferred = screen
+        this.#host?.invalidate()
     }
 
     mount(host: ScreenHost): void {

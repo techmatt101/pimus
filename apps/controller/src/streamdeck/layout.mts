@@ -186,16 +186,18 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
         dynamic,
     ]
 
+    const nowPlaying = new NowPlayingScreen(ha, model, clock, {player: HA.player, clockFormat: CLOCK_FORMAT})
+    const idle = new IdleScreen(ha, model, clock, {player: HA.player, weatherEntityId: HA.weather, clockFormat: CLOCK_FORMAT})
+
     const strip = new TouchStrip({
-        resting: [
-            new NowPlayingScreen(ha, model, clock, {player: HA.player, clockFormat: CLOCK_FORMAT}),
-            new IdleScreen(ha, model, clock, {weatherEntityId: HA.weather, clockFormat: CLOCK_FORMAT}),
-        ],
+        resting: [nowPlaying, idle],
         dials,
         clock,
         ...(notifications ? {notifications} : {}),
     })
 
+    idle.showNowPlayingOn(() => strip.showResting(nowPlaying))
+    nowPlaying.showIdleOn(() => strip.showResting(idle))
     dynamic.revealOn(() => strip.showDial(dials.indexOf(dynamic)))
 
     return {pages, dials, strip}

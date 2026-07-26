@@ -149,6 +149,11 @@ def default_sources(config: dict[str, Any]) -> dict[str, bool]:
 # into one reconcile scheduled this far ahead of the first event.
 EVENT_DEBOUNCE_SECONDS = 0.3
 
+# Plugging or unplugging the USB-C gadget cable changes only a sysfs file, not
+# the PipeWire graph, so pactl subscribe never reports it. Poll the UDC state
+# this often to gate the USB route and refresh the controller's status icon.
+USB_HOST_POLL_SECONDS = 2.0
+
 # Control-socket commands are tiny; a client that streams this much without a
 # newline is broken and must not grow the buffer without limit.
 MAX_CLIENT_BUFFER_BYTES = 64 * 1024
@@ -197,9 +202,10 @@ def atomic_json(path: Path, value: dict[str, Any]) -> None:
 
 
 class AudioManager:
-    # Class-level default so tests building a bare instance with __new__ read
-    # "nothing pending" rather than an AttributeError.
+    # Class-level defaults so tests building a bare instance with __new__ read
+    # a resting state rather than an AttributeError.
     startup_volume_pending = False
+    usb_host = False
 
     def __init__(
         self,
@@ -232,6 +238,8 @@ class AudioManager:
         self.subscribe_retry_at = 0.0
         self.pending_reconcile: float | None = None
         self.next_resync = 0.0
+        self.next_usb_poll = 0.0
+        self.usb_host = usb_host_attached()
         self.startup_volume_pending = "startup_volume_percent" in self.config
 
     def stop(self, *_args: object) -> None:
@@ -570,12 +578,19 @@ class AudioManager:
         else:
             self.unload("_aec")
 
+        self.usb_host = usb_host_attached()
         for name, source_config in self.config["sources"].items():
             node = find_node(sources, source_config["match"])
             enabled = self.sources.get(name, False)
+            # The gadget's capture clock only ticks while a computer is
+            # enumerated and streaming; bridging it with no host attached
+            # stalls the whole PipeWire driver group, silencing every output.
+            # Keep the route's enabled flag but only build the loopback while
+            # a host is actually there.
+            attached = not source_config.get("requires_usb_host", False) or self.usb_host
             status["sources"][name] = {
                 "enabled": enabled,
-                "available": node is not None,
+                "available": node is not None and attached,
                 "node": node.get("name") if node else None,
             }
             target = (
@@ -583,7 +598,7 @@ class AudioManager:
                 if source_config.get("target") == "background"
                 else sink
             )
-            should_run = enabled and node is not None and target is not None
+            should_run = enabled and attached and node is not None and target is not None
             if should_run:
                 created = self.ensure_loopback(
                     name,
@@ -596,7 +611,7 @@ class AudioManager:
             else:
                 self.unload(name)
 
-        status["usb_host"] = usb_host_attached()
+        status["usb_host"] = self.usb_host
         atomic_json(self.status_path, status)
         LOG.debug("reconciled: %s", json.dumps(status))
 
@@ -821,6 +836,7 @@ class AudioManager:
             # loop no longer needs a poll interval to notice a duck request.
             deadline = min(
                 self.next_resync,
+                self.next_usb_poll,
                 self.pending_reconcile
                 if self.pending_reconcile is not None
                 else self.next_resync,
@@ -835,6 +851,19 @@ class AudioManager:
                 # Graph events may have been missed while the stream was down.
                 if self.pending_reconcile is None:
                     self.pending_reconcile = time.monotonic()
+            now = time.monotonic()
+            if now >= self.next_usb_poll:
+                self.next_usb_poll = now + USB_HOST_POLL_SECONDS
+                if usb_host_attached() != self.usb_host:
+                    LOG.info(
+                        "USB host %s",
+                        "detached" if self.usb_host else "attached",
+                    )
+                    # Reconcile builds or tears down the gated USB route and
+                    # records the new state; broadcast so the controller's
+                    # status icon updates without waiting for a command.
+                    self.safe_reconcile()
+                    self.broadcast_state()
             now = time.monotonic()
             if now >= self.next_resync or (
                 self.pending_reconcile is not None and now >= self.pending_reconcile

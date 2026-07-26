@@ -21,15 +21,18 @@ interface StatusSlot {
 
 function slots(state: ControlState): StatusSlot[] {
     const {health, muted, outputMuted} = state
-    return [
+    const row: StatusSlot[] = [
         {icon: 'wifi', color: OK_COLOR, fault: !health.network, muted: false},
         {icon: 'home', color: OK_COLOR, fault: !health.ha, muted: false},
         {icon: muted ? 'micOff' : 'mic', color: OK_COLOR, fault: false, muted},
         {icon: outputMuted ? 'volumeMute' : 'volume', color: OK_COLOR, fault: !health.audio, muted: outputMuted},
-        // Informational, never a fault: lit while a computer is enumerated on
-        // the USB-C gadget port.
-        {icon: 'usb', color: health.usbHost ? USB_ATTACHED_COLOR : OK_COLOR, fault: false, muted: false},
     ]
+    // Informational, never a fault: present only while a computer is
+    // enumerated on the USB-C gadget port.
+    if (health.usbHost) {
+        row.push({icon: 'usb', color: USB_ATTACHED_COLOR, fault: false, muted: false})
+    }
+    return row
 }
 
 export function hasFault(state: ControlState): boolean {

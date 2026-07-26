@@ -378,9 +378,9 @@ turning is no feedback — and the notification comes back when the hold expires
 ### Status icons
 
 The idle clock carries a row of system-health icons at its left edge: network
-(wifi), Home Assistant (home), the microphone (mic), the audio manager
-(volume), and the USB gadget port (usb, lit cyan while a computer is enumerated
-on the USB-C port). Healthy icons sit dim. A failed subsystem turns its icon red
+(wifi), Home Assistant (home), the microphone (mic), and the audio manager
+(volume). A cyan usb icon joins the row only while a computer is enumerated on
+the USB-C gadget port, and disappears when it unplugs. Healthy icons sit dim. A failed subsystem turns its icon red
 and pulses it, and the loss also posts a strip banner ("HOME ASSISTANT LOST");
 recovery is silent, the icon simply stops flashing. A mute is red too but
 steady, since it is deliberate rather than a failure: the mic and volume icons

@@ -80,10 +80,25 @@ controller is connected to the socket in the `smartamp-controller` log, then loo
 
 ## USB audio device does not appear on the computer
 
-The cable must be connected to the Pi 5 USB-C port, not a USB-A port. Check
-`systemctl status smartamp-usb-audio-gadget`, `ls /sys/class/udc`, and confirm `dtoverlay=dwc2,dr_mode=peripheral`. The
-USB-C port cannot simultaneously be the normal dedicated PSU connection in this mode; the HiFiBerry/AAmp60 stack powers
-the Pi through GPIO.
+The cable must be connected to the Pi 5 USB-C port, not a USB-A port. Work down the chain on the Pi:
+
+```sh
+systemctl status smartamp-usb-audio-gadget   # the gadget was assembled and bound
+ls /sys/class/udc                            # dwc2 probed a device controller
+cat /sys/class/udc/*/state                   # "configured" once the computer enumerates it
+dmesg | grep -iE 'dwc2|gadget'               # controller mode and enumeration attempts
+```
+
+If `/sys/class/udc` is empty, confirm `dtoverlay=dwc2,dr_mode=peripheral` survived in `/boot/firmware/config.txt` and
+reboot. If the state never leaves `not attached` while the computer reports only a charging or power event, the data
+pairs are not connecting: try a different USB-C cable (charge-only and some e-marked cables fail here) and the
+computer's other ports.
+
+Because the Pi is powered through GPIO, its 5V rail also appears on the USB-C connector, so a connected laptop may
+report that it is charging (slowly) from the Pi. That is a property of the Pi 5's power design, not a fault in the
+gadget; if it bothers the laptop, use a cable or adapter that blocks VBUS while passing data. The USB-C port cannot
+simultaneously be the normal dedicated PSU connection in gadget mode; the HiFiBerry/AAmp60 stack powers the Pi through
+GPIO.
 
 ## USB devices disconnect or LEDs flicker
 

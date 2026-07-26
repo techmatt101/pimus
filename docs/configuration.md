@@ -35,9 +35,11 @@ service calls, LVA commands, and each `pactl` invocation the audio manager makes
 the controller and audio-manager units; both default to `info`.
 
 Set `smartamp_aux_enabled` and `smartamp_usb_enabled` to choose whether aux and USB monitoring start on boot. Both
-default to off: with no computer actively streaming, the USB gadget's capture clock never ticks, which stalls the whole
-output graph while the route is up. Turn routes on from the deck when the source is actually playing. Stream Deck route
-toggles last until the next reboot; every boot starts from these inventory defaults.
+default to off. The USB route is additionally gated on a computer being enumerated on the gadget port: the audio
+manager only builds the bridge while `/sys/class/udc/*/state` reads `configured`, because a gadget with no host has a
+dead capture clock that would stall the whole output graph and silence everything else. Toggling USB on with nothing
+plugged in is therefore safe — the route simply waits for a computer. Stream Deck route toggles last until the next
+reboot; every boot starts from these inventory defaults.
 
 Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Sendspin and USB computer audio share the
 `smartamp_background_sink_name` bus and fade down to `smartamp_voice_duck_volume_percent` per cent of their normal level

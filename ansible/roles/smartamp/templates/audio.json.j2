@@ -26,6 +26,7 @@
     "usb": {
       "match": {{ smartamp_usb_gadget_match | to_json }},
       "enabled": {{ ((usb_audio_gadget_enabled | bool) and (smartamp_usb_enabled | bool)) | to_json }},
+      "requires_usb_host": true,
       "target": {{ ('background' if voice_ducking_enabled else 'output') | to_json }},
       "latency_ms": {{ smartamp_loopback_latency_ms | int }}
     }
