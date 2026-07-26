@@ -119,6 +119,12 @@ VBUS sensing. With the blocker in place the dock no longer powers on from the Pi
 USB-C port cannot simultaneously be the normal dedicated PSU connection in gadget mode; the HiFiBerry/AAmp60 stack
 powers the Pi through GPIO.
 
+## macOS names the USB device "Playback Inactive"
+
+macOS labels a USB audio device with its AudioStreaming interface string, and the kernel's UAC2 gadget driver
+hardcodes that one to "Playback Inactive" — it is not among the strings configfs exposes, so `usb_audio_product`
+cannot reach it. Cosmetic only; Windows and Linux name the device from the product string and show it correctly.
+
 ## USB audio plays but sounds like an old radio
 
 Loud static with the music faintly underneath means the sample format, not the route: the Pi 5's dwc2 gadget

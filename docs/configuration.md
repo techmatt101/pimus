@@ -40,11 +40,17 @@ manager only builds the bridge while `/sys/class/udc/*/state` reads `configured`
 dead capture clock that would stall the whole output graph and silence everything else. Toggling USB on with nothing
 plugged in is therefore safe — the route simply waits for a computer.
 
-The gadget's ALSA card boots with no active profile: it has no mixer controls, so WirePlumber is offered only "off" and
-"pro-audio" and picks neither. While the USB route is enabled the audio manager switches a parked card to its pro-audio
-profile itself; that is what creates the capture node it bridges. Keep `usb_audio_sample_size_bytes` at `2` (16-bit) —
-the Pi 5's dwc2 gadget controller corrupts 3-byte (24-bit) samples on its isochronous endpoints, which plays as loud
-static with the audio faintly underneath.
+The gadget's ALSA card boots with no active profile: it has no PipeWire-visible mixer path, so WirePlumber is offered
+only "off" and "pro-audio" and picks neither. While the USB route is enabled the audio manager switches a parked card
+to its pro-audio profile itself; that is what creates the capture node it bridges. Keep `usb_audio_sample_size_bytes`
+at `2` (16-bit) — the Pi 5's dwc2 gadget controller corrupts 3-byte (24-bit) samples on its isochronous endpoints,
+which plays as loud static with the audio faintly underneath.
+
+The gadget advertises a UAC2 mute/volume control, and the connected computer's writes to it land on the gadget card's
+`PCM Capture` ALSA controls. The audio manager keeps those and the default sink's volume and mute converged in both
+directions (an `alsactl monitor` stream wakes it on host changes; sink changes it already sees): change the volume on
+the computer and the amp follows, turn the amp's dial and the computer's slider follows. Whichever side moved since
+they last agreed wins, and when a computer first plugs in the amp's current volume seeds its slider.
 
 The aux bridge is loaded once, at boot, whether or not the route is on; the toggle fades the bridge stream between
 silent and full over ~200 ms. Connecting the stream on demand used to land any DC offset on the line input as a step on

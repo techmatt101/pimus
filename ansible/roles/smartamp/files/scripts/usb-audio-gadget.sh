@@ -66,6 +66,17 @@ start_gadget() {
     printf '0x0' > functions/uac2.usb0/p_chmask
     printf '%s' "$SAMPLE_RATE" > functions/uac2.usb0/c_srate
     printf '%s' "$SAMPLE_SIZE_BYTES" > functions/uac2.usb0/c_ssize
+    # Hosts label the audio device from the audio-function strings, not the
+    # USB product string; the kernel defaults them to "Source/Sink" and
+    # terminal names like "USBH Out".
+    printf '%s' "$PRODUCT" > functions/uac2.usb0/function_name
+    printf '%s' "$PRODUCT" > functions/uac2.usb0/c_it_name
+    printf '%s' "$PRODUCT" > functions/uac2.usb0/c_ot_name
+    # The mute/volume function unit gives the host a working volume control
+    # whose writes land on the gadget ALSA card's "PCM Capture" controls; the
+    # audio manager keeps those and the amp's sink volume in sync.
+    printf '1' > functions/uac2.usb0/c_mute_present
+    printf '1' > functions/uac2.usb0/c_volume_present
     [ ! -e configs/c.1/uac2.usb0 ] && /usr/bin/ln -s functions/uac2.usb0 configs/c.1/
 
     require_udc

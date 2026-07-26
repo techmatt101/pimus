@@ -164,7 +164,10 @@ no key feedback; add them to the catalog when they need either.
 
 ## Master volume — `type: audio` with no `source`
 
-Drives the PipeWire default sink through `wpctl`.
+Drives the PipeWire default sink through `wpctl`. While a computer is on the
+USB-C gadget port, the audio manager keeps this volume and the computer's
+volume control for the device converged in both directions: the computer's
+volume keys move the amp, and the dial moves the computer's slider.
 
 | Command | Effect                                        |
 |---------|-----------------------------------------------|

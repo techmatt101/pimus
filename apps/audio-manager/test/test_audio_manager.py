@@ -315,6 +315,85 @@ class AudioManagerTests(unittest.TestCase):
         self.assertNotIn("usb", manager.modules)
         self.assertFalse(status["sources"]["usb"]["available"])
 
+    def test_usb_volume_sync_follows_whichever_side_moved(self) -> None:
+        manager = self._reconciling_manager()
+        manager.config["aec_reference"] = {"enabled": False}
+        gadget = {"volume": 30, "muted": False}
+        sinks = [
+            {
+                "name": "hifiberry",
+                "description": "HiFiBerry DAC2 ADC Pro",
+                "mute": False,
+                "volume": {
+                    "front-left": {"value_percent": "40%"},
+                    "front-right": {"value_percent": "40%"},
+                },
+            }
+        ]
+        responses = {"modules": [], "sinks": sinks, "sources": []}
+        commands: list[tuple[str, ...]] = []
+
+        def fake_run(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+            commands.append(args)
+            if args[0] == "amixer" and "sget" in args:
+                state = f"[{gadget['volume']}%] [{'off' if gadget['muted'] else 'on'}]"
+                return subprocess.CompletedProcess(
+                    args, 0, stdout=f"  Mono: Capture 123 {state}\n", stderr=""
+                )
+            if args[0] == "amixer" and "sset" in args:
+                gadget["volume"] = int(args[6].rstrip("%"))
+                gadget["muted"] = args[7] == "nocap"
+                return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+            if args[:2] == ("pactl", "set-sink-volume"):
+                sinks[0]["volume"] = {
+                    "mono": {"value_percent": args[3]},
+                }
+                return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+            if args[:2] == ("pactl", "set-sink-mute"):
+                sinks[0]["mute"] = args[3] == "1"
+                return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+            return self._fake_run(*args, check=check)
+
+        def reconcile() -> None:
+            with mock.patch.object(
+                audio_manager, "pactl_json", side_effect=lambda kind: responses[kind]
+            ), mock.patch.object(
+                audio_manager, "pactl_modules", side_effect=lambda: responses["modules"]
+            ), mock.patch.object(
+                audio_manager, "run", side_effect=fake_run
+            ), mock.patch.object(
+                audio_manager, "usb_gadget_card_present", return_value=True
+            ), mock.patch.object(
+                audio_manager, "usb_host_attached", return_value=True
+            ), mock.patch.object(audio_manager, "atomic_json"):
+                manager.reconcile()
+
+        # First sight: the amp's volume seeds the gadget, so a computer
+        # plugging in reads the real level rather than a stale one.
+        reconcile()
+        self.assertEqual(gadget, {"volume": 40, "muted": False})
+
+        # The computer moves its slider and mutes: the amp follows.
+        gadget.update(volume=55, muted=True)
+        reconcile()
+        self.assertIn(("pactl", "set-sink-volume", "hifiberry", "55%"), commands)
+        self.assertIn(("pactl", "set-sink-mute", "hifiberry", "1"), commands)
+
+        # A settled graph stays quiet: no further writes on the next pass.
+        writes = len(commands)
+        reconcile()
+        self.assertEqual(
+            [c for c in commands[writes:] if "sset" in c or "set-sink-volume" in c],
+            [],
+        )
+
+        # The amp dial moves and unmutes: the gadget follows, so the
+        # computer's slider tracks the amp.
+        sinks[0]["volume"] = {"mono": {"value_percent": "70%"}}
+        sinks[0]["mute"] = False
+        reconcile()
+        self.assertEqual(gadget, {"volume": 70, "muted": False})
+
     def test_muted_route_keeps_its_bridge_and_toggles_by_fading(self) -> None:
         manager = self._reconciling_manager()
         manager.config["aec_reference"] = {"enabled": False}

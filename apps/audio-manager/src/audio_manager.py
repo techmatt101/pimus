@@ -138,6 +138,42 @@ def usb_host_attached(base: Path = Path("/sys/class/udc")) -> bool:
     return False
 
 
+def usb_gadget_card_present(base: Path = Path("/proc/asound")) -> bool:
+    return (base / USB_GADGET_CARD).exists()
+
+
+def read_gadget_mixer() -> tuple[int, bool] | None:
+    """The gadget card's (volume percent, muted) as the USB host last set it."""
+    result = run("amixer", "-c", USB_GADGET_CARD, "-M", "sget", "PCM", check=False)
+    if result.returncode != 0:
+        return None
+    volume = re.search(r"\[(\d+)%\]", result.stdout)
+    switch = re.search(r"\[(on|off)\]", result.stdout)
+    if volume is None or switch is None:
+        return None
+    return int(volume.group(1)), switch.group(1) == "off"
+
+
+def sink_volume_state(sink: dict[str, Any]) -> tuple[int, bool] | None:
+    channels = sink.get("volume") or {}
+    percents = [
+        int(match.group(1))
+        for channel in channels.values()
+        if isinstance(channel, dict)
+        and (match := re.match(r"(\d+)%", str(channel.get("value_percent", ""))))
+    ]
+    if not percents:
+        return None
+    return max(percents), bool(sink.get("mute", False))
+
+
+def volumes_match(a: tuple[int, bool], b: tuple[int, bool]) -> bool:
+    # The gadget control quantises to its UAC2 volume resolution, so a value
+    # can come back one percent off what was written; treating that as equal
+    # is what stops the two sides nudging each other forever.
+    return abs(a[0] - b[0]) <= 1 and a[1] == b[1]
+
+
 def default_sources(config: dict[str, Any]) -> dict[str, bool]:
     return {
         name: bool(source.get("enabled", False))
@@ -166,6 +202,11 @@ MAX_CLIENT_BUFFER_BYTES = 64 * 1024
 # The mono source published for the voice assistant when a capture channel is
 # selected; see ensure_voice_capture for why the device is not used directly.
 VOICE_CAPTURE_SOURCE = "smartamp_voice_capture"
+
+# The gadget kernel driver hardcodes its ALSA card id. A USB host's volume and
+# mute changes land on this card's "PCM Capture" mixer controls, and writing
+# them from this side sends the host a UAC2 interrupt so its slider follows.
+USB_GADGET_CARD = "UAC2Gadget"
 
 # Facilities whose subscribe events can invalidate the reconciled graph.
 # `client` is deliberately excluded: every pactl invocation this process makes
@@ -211,6 +252,10 @@ class AudioManager:
     # a resting state rather than an AttributeError.
     startup_volume_pending = False
     usb_host = False
+    # The last (gadget, sink) volume states the two sides agreed on, each
+    # remembered as read from its own side so quantisation differences between
+    # them cannot register as a fresh change.
+    usb_volume_synced: tuple[tuple[int, bool], tuple[int, bool]] | None = None
 
     def __init__(
         self,
@@ -245,6 +290,9 @@ class AudioManager:
         self.subscribe_process: subprocess.Popen[bytes] | None = None
         self.subscribe_buffer = b""
         self.subscribe_retry_at = 0.0
+        self.mixer_process: subprocess.Popen[bytes] | None = None
+        self.mixer_buffer = b""
+        self.mixer_retry_at = 0.0
         self.pending_reconcile: float | None = None
         self.next_resync = 0.0
         self.next_usb_poll = 0.0
@@ -544,6 +592,48 @@ class AudioManager:
     # silent to full. The first reconcile that sees the sink pins it to the
     # configured startup level, once per daemon start; the volume dial owns it
     # from then on.
+    def sync_usb_volume(self, sink: dict[str, Any] | None) -> None:
+        """Keep the USB host's volume slider and the amp volume converged.
+
+        The host writes volume and mute to the gadget card's mixer; the amp's
+        is the default sink's. Whichever side moved since the last agreement
+        wins, the host on a tie, and at first sight the amp seeds the gadget
+        so a computer plugging in reads the real volume.
+        """
+        if sink is None or not usb_gadget_card_present():
+            return
+        gadget = read_gadget_mixer()
+        sink_state = sink_volume_state(sink)
+        if gadget is None or sink_state is None:
+            return
+        last = self.usb_volume_synced
+        if last is not None and not volumes_match(gadget, last[0]):
+            run("pactl", "set-sink-volume", sink["name"], f"{gadget[0]}%", check=False)
+            run(
+                "pactl",
+                "set-sink-mute",
+                sink["name"],
+                "1" if gadget[1] else "0",
+                check=False,
+            )
+            self.usb_volume_synced = (gadget, gadget)
+            LOG.info(
+                "USB host set volume %d%%%s", gadget[0], " muted" if gadget[1] else ""
+            )
+        elif last is None or not volumes_match(sink_state, last[1]):
+            run(
+                "amixer",
+                "-c",
+                USB_GADGET_CARD,
+                "-M",
+                "sset",
+                "PCM",
+                f"{sink_state[0]}%",
+                "nocap" if sink_state[1] else "cap",
+                check=False,
+            )
+            self.usb_volume_synced = (read_gadget_mixer() or sink_state, sink_state)
+
     def apply_startup_volume(self, sink: dict[str, Any] | None) -> None:
         if not self.startup_volume_pending or sink is None:
             return
@@ -589,6 +679,7 @@ class AudioManager:
         if voice and run("pactl", "get-default-source", check=False).stdout.strip() != voice["name"]:
             run("pactl", "set-default-source", voice["name"], check=False)
         self.apply_startup_volume(sink)
+        self.sync_usb_volume(sink)
 
         aec_config = self.config.get("aec_reference", {})
         aec_sink = find_node(sinks, aec_config.get("sink_match", "a^"))
@@ -891,6 +982,62 @@ class AudioManager:
             ):
                 self.pending_reconcile = time.monotonic() + EVENT_DEBOUNCE_SECONDS
 
+    # The USB host's volume writes change only ALSA controls on the gadget
+    # card, which pactl subscribe cannot see; alsactl monitor is the ALSA
+    # equivalent, one line per control event.
+    def start_mixer_monitor(self) -> None:
+        try:
+            self.mixer_process = subprocess.Popen(
+                ["alsactl", "monitor", f"hw:{USB_GADGET_CARD}"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError as error:
+            LOG.warning("alsactl monitor failed to start: %s", error)
+            self.mixer_process = None
+            self.mixer_retry_at = time.monotonic() + 5.0
+            return
+        stdout = self.mixer_process.stdout
+        assert stdout is not None
+        os.set_blocking(stdout.fileno(), False)
+        self.mixer_buffer = b""
+        self.selector.register(stdout, selectors.EVENT_READ, self.read_mixer_monitor)
+
+    def stop_mixer_monitor(self) -> None:
+        process = self.mixer_process
+        if process is None:
+            return
+        self.mixer_process = None
+        self.mixer_retry_at = time.monotonic() + 5.0
+        if process.stdout is not None:
+            try:
+                self.selector.unregister(process.stdout)
+            except (KeyError, ValueError):
+                pass
+            process.stdout.close()
+        process.terminate()
+        try:
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            process.kill()
+
+    def read_mixer_monitor(self) -> None:
+        process = self.mixer_process
+        if process is None or process.stdout is None:
+            return
+        try:
+            data = os.read(process.stdout.fileno(), 4096)
+        except (BlockingIOError, OSError):
+            return
+        if not data:
+            self.stop_mixer_monitor()
+            return
+        self.mixer_buffer += data
+        while b"\n" in self.mixer_buffer:
+            line, _, self.mixer_buffer = self.mixer_buffer.partition(b"\n")
+            if self.pending_reconcile is None and b"PCM Capture" in line:
+                self.pending_reconcile = time.monotonic() + EVENT_DEBOUNCE_SECONDS
+
     def safe_reconcile(self) -> None:
         try:
             self.reconcile()
@@ -933,6 +1080,14 @@ class AudioManager:
                 # Graph events may have been missed while the stream was down.
                 if self.pending_reconcile is None:
                     self.pending_reconcile = time.monotonic()
+            if self.mixer_process is not None and self.mixer_process.poll() is not None:
+                self.stop_mixer_monitor()
+            if (
+                self.mixer_process is None
+                and time.monotonic() >= self.mixer_retry_at
+                and usb_gadget_card_present()
+            ):
+                self.start_mixer_monitor()
             now = time.monotonic()
             if now >= self.next_usb_poll:
                 self.next_usb_poll = now + USB_HOST_POLL_SECONDS
