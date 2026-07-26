@@ -249,7 +249,13 @@ class AudioManagerTests(unittest.TestCase):
                     "monitor_of_sink": 4294967295,
                 }
             ],
+            "cards": [],
         }
+        commands: list[tuple[str, ...]] = []
+
+        def fake_run(*args: str, check: bool = True) -> object:
+            commands.append(args)
+            return self._fake_run(*args, check=check)
 
         def reconcile(attached: bool) -> dict[str, object]:
             with mock.patch.object(
@@ -257,12 +263,40 @@ class AudioManagerTests(unittest.TestCase):
             ), mock.patch.object(
                 audio_manager, "pactl_modules", side_effect=lambda: responses["modules"]
             ), mock.patch.object(
-                audio_manager, "run", side_effect=self._fake_run
+                audio_manager, "run", side_effect=fake_run
             ), mock.patch.object(
                 audio_manager, "usb_host_attached", return_value=attached
             ), mock.patch.object(audio_manager, "atomic_json") as status_write:
                 manager.reconcile()
             return status_write.call_args.args[1]
+
+        # The gadget card boots parked in its "off" profile (it has no mixer,
+        # so WirePlumber never activates a profile itself) and offers no
+        # capture node until the manager switches it on.
+        capture_node = responses["sources"]
+        responses["sources"] = []
+        responses["cards"] = [
+            {
+                "name": "alsa_card.platform-1000480000.usb",
+                "properties": {"alsa.id": "UAC2Gadget"},
+                "profiles": {"off": {}, "pro-audio": {}},
+                "active_profile": "off",
+            }
+        ]
+        status = reconcile(attached=True)
+        self.assertIn(
+            (
+                "pactl",
+                "set-card-profile",
+                "alsa_card.platform-1000480000.usb",
+                "pro-audio",
+            ),
+            commands,
+        )
+        self.assertEqual(loaded, [])
+        self.assertFalse(status["sources"]["usb"]["available"])
+        responses["sources"] = capture_node
+        responses["cards"][0]["active_profile"] = "pro-audio"
 
         # Enabled but unplugged: no bridge, or the gadget's dead capture clock
         # would stall the whole output graph.

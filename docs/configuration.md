@@ -40,6 +40,12 @@ manager only builds the bridge while `/sys/class/udc/*/state` reads `configured`
 dead capture clock that would stall the whole output graph and silence everything else. Toggling USB on with nothing
 plugged in is therefore safe — the route simply waits for a computer.
 
+The gadget's ALSA card boots with no active profile: it has no mixer controls, so WirePlumber is offered only "off" and
+"pro-audio" and picks neither. While the USB route is enabled the audio manager switches a parked card to its pro-audio
+profile itself; that is what creates the capture node it bridges. Keep `usb_audio_sample_size_bytes` at `2` (16-bit) —
+the Pi 5's dwc2 gadget controller corrupts 3-byte (24-bit) samples on its isochronous endpoints, which plays as loud
+static with the audio faintly underneath.
+
 The aux bridge is loaded once, at boot, whether or not the route is on; the toggle fades the bridge stream between
 silent and full over ~200 ms. Connecting the stream on demand used to land any DC offset on the line input as a step on
 the speakers — at full amplifier gain, since the volume dial only scales PipeWire — so the pop-prone connect now

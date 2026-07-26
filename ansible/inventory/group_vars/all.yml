@@ -88,14 +88,16 @@ smartamp_voice_duck_volume_percent: 15
 # starts immediately, in up to ten volume steps spread over this time.
 smartamp_voice_duck_fade_ms: 250
 
-# Make the Pi appear as a 48 kHz 24-bit stereo USB sound card to a computer
+# Make the Pi appear as a 48 kHz 16-bit stereo USB sound card to a computer
 # connected to the Pi 5 USB-C port. The AAmp60/DAC stack must power the Pi
 # through GPIO. Sample size is bytes per sample: 2 = 16-bit, 3 = 24-bit,
-# 4 = 32-bit; 24-bit matches the HiFiBerry DAC's depth for a bit-perfect path.
+# 4 = 32-bit. Keep it at 2: the dwc2 gadget controller corrupts 3-byte
+# samples on its isochronous endpoints, which plays as loud static with the
+# audio faintly underneath.
 usb_audio_gadget_enabled: true
 usb_audio_product: "Office Amp USB"
 usb_audio_sample_rate: 48000
-usb_audio_sample_size_bytes: 3
+usb_audio_sample_size_bytes: 2
 
 # Sendspin, Music Assistant's native player protocol. Leave the URL empty so
 # the player advertises itself over mDNS and Music Assistant discovers it, or

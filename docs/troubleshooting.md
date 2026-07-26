@@ -94,11 +94,27 @@ reboot. If the state never leaves `not attached` while the computer reports only
 pairs are not connecting: try a different USB-C cable (charge-only and some e-marked cables fail here) and the
 computer's other ports.
 
+A Mac connected directly with a C-to-C cable may settle into a pure power relationship — it supplies 5V (visible as
+`EXT5V_V` in `vcgencmd pmic_read_adc`) but never takes the USB host role, so the state stays `not attached` with any
+cable. Connecting the Pi through a USB-C dock or hub forces the Mac into host mode and it enumerates immediately.
+
+If the state reads `configured` but no sound arrives, check the `smartamp-audio-manager` journal: its reconcile status
+should show the `usb` source with `"available": true` and a node name. The manager activates the gadget card's
+pro-audio profile itself when the card is parked off; an older deployment without that logic needs
+`pactl set-card-profile alsa_card.platform-1000480000.usb pro-audio` once.
+
 Because the Pi is powered through GPIO, its 5V rail also appears on the USB-C connector, so a connected laptop may
 report that it is charging (slowly) from the Pi. That is a property of the Pi 5's power design, not a fault in the
 gadget; if it bothers the laptop, use a cable or adapter that blocks VBUS while passing data. The USB-C port cannot
 simultaneously be the normal dedicated PSU connection in gadget mode; the HiFiBerry/AAmp60 stack powers the Pi through
 GPIO.
+
+## USB audio plays but sounds like an old radio
+
+Loud static with the music faintly underneath means the sample format, not the route: the Pi 5's dwc2 gadget
+controller corrupts 3-byte (24-bit) samples on its isochronous endpoints. Keep `usb_audio_sample_size_bytes: 2` in
+inventory (16-bit is the tested, clean configuration) and re-provision; the gadget descriptors only change on a
+reboot, which provisioning schedules automatically.
 
 ## USB devices disconnect or LEDs flicker
 

@@ -271,6 +271,25 @@ class AudioManager:
         if module_id is not None:
             run("pactl", "unload-module", str(module_id), check=False)
 
+    def ensure_card_active(self, pattern: str) -> None:
+        # The UAC2 gadget's ALSA card exposes no mixer controls, so the card
+        # profiler offers only "off" and "pro-audio" and WirePlumber activates
+        # neither on its own; the card boots parked off with no capture node.
+        # Switch a matching parked card on and let the resulting graph event
+        # schedule the reconcile that finds its node.
+        card = find_node(pactl_json("cards"), pattern)
+        if card is None or card.get("active_profile") != "off":
+            return
+        profiles = card.get("profiles") or {}
+        profile = next(
+            (name for name in ("pro-audio", *profiles) if name in profiles and name != "off"),
+            None,
+        )
+        if profile is None:
+            return
+        run("pactl", "set-card-profile", str(card["name"]), profile, check=False)
+        LOG.info("Activated %s profile on card %s", profile, card.get("name"))
+
     def refresh_modules(self) -> None:
         loaded_ids = {int(module["index"]) for module in pactl_modules()}
         for name, module_id in list(self.modules.items()):
@@ -610,6 +629,8 @@ class AudioManager:
             # therefore keeps its bridge loaded from boot and toggles by
             # fading the stream volume, so the connect happens exactly once.
             mute_when_off = bool(source_config.get("mute_when_off", False))
+            if node is None and (enabled or mute_when_off):
+                self.ensure_card_active(source_config["match"])
             status["sources"][name] = {
                 "enabled": enabled,
                 "available": node is not None and attached,
