@@ -98,6 +98,12 @@ usb_audio_gadget_enabled: true
 usb_audio_product: "Office Amp USB"
 usb_audio_sample_rate: 48000
 usb_audio_sample_size_bytes: 2
+# What the GPIO 5V rail can supply, declared to the bootloader EEPROM
+# (PSU_MAX_CURRENT) because a GPIO-powered Pi has no USB-PD source to
+# negotiate with; without it the firmware assumes a weak supply, warns at
+# boot, and caps USB-A output at 600mA. Do not raise to 5000 without
+# validating the AAmp60 stack's power budget.
+usb_audio_psu_max_current_ma: 3000
 
 # Sendspin, Music Assistant's native player protocol. Leave the URL empty so
 # the player advertises itself over mDNS and Music Assistant discovers it, or

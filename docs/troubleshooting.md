@@ -97,6 +97,8 @@ computer's other ports.
 A Mac connected directly with a C-to-C cable may settle into a pure power relationship — it supplies 5V (visible as
 `EXT5V_V` in `vcgencmd pmic_read_adc`) but never takes the USB host role, so the state stays `not attached` with any
 cable. Connecting the Pi through a USB-C dock or hub forces the Mac into host mode and it enumerates immediately.
+Setting `PSU_MAX_CURRENT` in the bootloader EEPROM does not change this — it was tested and the Mac still refused the
+direct connection; the dock is the fix.
 
 If the state reads `configured` but no sound arrives, check the `smartamp-audio-manager` journal: its reconcile status
 should show the `usb` source with `"available": true` and a node name. The manager activates the gadget card's
@@ -121,6 +123,13 @@ reboot, which provisioning schedules automatically.
 Run `vcgencmd get_throttled`. Any non-zero under-voltage bits indicate a power problem. Put the ReSpeaker and Stream
 Deck+ on a quality powered USB hub, ensure the AAmp60 supply and wiring are appropriately rated, and use active Pi 5
 cooling.
+
+Provisioning sets `PSU_MAX_CURRENT` in the bootloader EEPROM from `usb_audio_psu_max_current_ma` (check with
+`sudo rpi-eeprom-config`). A GPIO-powered Pi has no USB-PD source to negotiate with, so without the setting the
+firmware assumes a weak supply, logs a low-power warning, and caps the USB-A ports at 600mA total. The 3000 mA
+default states what the AAmp60's 5V rail realistically provides; do not raise it to 5000 without validating the
+stack's power budget. Disabling `usb_audio_gadget_enabled` removes the declaration again so a USB-C PSU negotiates
+normally.
 
 ## Stream Deck is dark
 
