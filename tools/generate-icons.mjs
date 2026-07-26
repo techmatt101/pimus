@@ -32,6 +32,7 @@ const VERSION = await readFile(new URL('package.json', PACKAGE), 'utf8')
 const ICONS = {
     // Control surface
     mic: 'Mic01Icon',
+    micOff: 'MicOff01Icon',
     shuffle: 'ShuffleIcon',
     repeat: 'RepeatIcon',
     repeatOne: 'RepeatOne01Icon',

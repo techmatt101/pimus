@@ -230,7 +230,7 @@ export class NowPlayingScreen implements Screen {
             size: FAULT_ICON_SIZE,
             gap: FAULT_ICON_GAP,
             now,
-            faultsOnly: true,
+            alertsOnly: true,
         })
     }
 
