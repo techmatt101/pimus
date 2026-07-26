@@ -110,7 +110,7 @@ const health = new HealthMonitor({
         // than flagging an integration that was never configured.
         ha: config.home_assistant?.enabled ? () => homeAssistant.connected : () => true,
         audio: () => audio.connected,
-        usbHost: () => audio.state.usbHost === true,
+        usbPlayback: () => audio.state.usbPlayback === true,
     },
 })
 

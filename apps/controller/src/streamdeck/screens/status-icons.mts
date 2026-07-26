@@ -4,7 +4,7 @@ import type {ControlState} from '../../types.mjs'
 
 const OK_COLOR = '#607d8b'
 const ALERT_COLOR = '#ef5350'
-const USB_ATTACHED_COLOR = '#26c6da'
+const USB_PLAYBACK_COLOR = '#26c6da'
 
 const FLASH_PERIOD_MILLISECONDS = 1000
 const FLASH_FLOOR = 0.12
@@ -27,10 +27,11 @@ function slots(state: ControlState): StatusSlot[] {
         {icon: muted ? 'micOff' : 'mic', color: OK_COLOR, fault: false, muted},
         {icon: outputMuted ? 'volumeMute' : 'volume', color: OK_COLOR, fault: !health.audio, muted: outputMuted},
     ]
-    // Informational, never a fault: present only while a computer is
-    // enumerated on the USB-C gadget port.
-    if (health.usbHost) {
-        row.push({icon: 'usb', color: USB_ATTACHED_COLOR, fault: false, muted: false})
+    // Informational, never a fault: present only while a computer is actively
+    // streaming audio to the USB-C gadget port. Enumeration alone is not
+    // shown because the VBUS-blocked port never reports an unplug.
+    if (health.usbPlayback) {
+        row.push({icon: 'usb', color: USB_PLAYBACK_COLOR, fault: false, muted: false})
     }
     return row
 }

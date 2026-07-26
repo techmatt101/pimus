@@ -55,7 +55,7 @@ class AudioManagerTests(unittest.TestCase):
         )
         self.assertEqual(
             reply,
-            {"event": "state", "sources": {"aux": True, "usb": True}, "ducked": False, "usb_host": False},
+            {"event": "state", "sources": {"aux": True, "usb": True}, "ducked": False, "usb_playback": False},
         )
         self.assertTrue(reconcile)
 
@@ -84,7 +84,7 @@ class AudioManagerTests(unittest.TestCase):
         # Unknown routes and non-boolean values are ignored, not coerced.
         self.assertEqual(
             reply,
-            {"event": "state", "sources": {"aux": False, "usb": False}, "ducked": False, "usb_host": False},
+            {"event": "state", "sources": {"aux": False, "usb": False}, "ducked": False, "usb_playback": False},
         )
         self.assertTrue(reconcile)
 
@@ -113,7 +113,7 @@ class AudioManagerTests(unittest.TestCase):
 
         self.assertEqual(
             json.loads(right.recv(4096)),
-            {"event": "state", "sources": {"aux": True}, "ducked": False, "usb_host": False},
+            {"event": "state", "sources": {"aux": True}, "ducked": False, "usb_playback": False},
         )
         manager.safe_reconcile.assert_called_once()
 
@@ -224,7 +224,26 @@ class AudioManagerTests(unittest.TestCase):
 
         self.assertFalse(audio_manager.usb_host_attached(root / "missing"))
 
-    def test_usb_route_bridges_only_while_a_host_is_enumerated(self) -> None:
+    def test_usb_streaming_detection_reads_the_gadget_rate_control(self) -> None:
+        def completed(returncode: int, stdout: str) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(("amixer",), returncode, stdout, "")
+
+        listing = (
+            "numid=4,iface=PCM,name='Capture Rate'\n"
+            "  ; type=INTEGER,access=r--v----,values=1,min=48000,max=48000,step=0\n"
+            "  : values={rate}\n"
+        )
+        cases = [
+            (completed(0, listing.format(rate=48000)), True),
+            (completed(0, listing.format(rate=0)), False),
+            (completed(1, ""), False),
+            (completed(0, "garbage"), False),
+        ]
+        for result, expected in cases:
+            with mock.patch.object(audio_manager, "run", return_value=result):
+                self.assertEqual(audio_manager.usb_gadget_streaming(), expected)
+
+    def test_usb_route_bridges_only_while_the_host_is_streaming(self) -> None:
         manager = self._reconciling_manager()
         manager.config["aec_reference"] = {"enabled": False}
         manager.config["sources"] = {
@@ -257,7 +276,7 @@ class AudioManagerTests(unittest.TestCase):
             commands.append(args)
             return self._fake_run(*args, check=check)
 
-        def reconcile(attached: bool) -> dict[str, object]:
+        def reconcile(attached: bool, streaming: bool) -> dict[str, object]:
             with mock.patch.object(
                 audio_manager, "pactl_json", side_effect=lambda kind: responses[kind]
             ), mock.patch.object(
@@ -266,6 +285,8 @@ class AudioManagerTests(unittest.TestCase):
                 audio_manager, "run", side_effect=fake_run
             ), mock.patch.object(
                 audio_manager, "usb_host_attached", return_value=attached
+            ), mock.patch.object(
+                audio_manager, "usb_gadget_streaming", return_value=streaming
             ), mock.patch.object(audio_manager, "atomic_json") as status_write:
                 manager.reconcile()
             return status_write.call_args.args[1]
@@ -283,7 +304,7 @@ class AudioManagerTests(unittest.TestCase):
                 "active_profile": "off",
             }
         ]
-        status = reconcile(attached=True)
+        status = reconcile(attached=True, streaming=True)
         self.assertIn(
             (
                 "pactl",
@@ -298,20 +319,23 @@ class AudioManagerTests(unittest.TestCase):
         responses["sources"] = capture_node
         responses["cards"][0]["active_profile"] = "pro-audio"
 
-        # Enabled but unplugged: no bridge, or the gadget's dead capture clock
-        # would stall the whole output graph.
-        status = reconcile(attached=False)
+        # Enabled and enumerated but not streaming — the computer is playing
+        # to another output, or the cable is gone and the VBUS-blocked port
+        # never noticed. Either way the capture clock is dead and bridging it
+        # would stall the whole output graph, so no bridge.
+        status = reconcile(attached=True, streaming=False)
         self.assertEqual(loaded, [])
-        self.assertFalse(status["usb_host"])
+        self.assertTrue(status["usb_host"])
+        self.assertFalse(status["usb_playback"])
         self.assertFalse(status["sources"]["usb"]["available"])
         self.assertTrue(status["sources"]["usb"]["enabled"])
 
-        status = reconcile(attached=True)
+        status = reconcile(attached=True, streaming=True)
         self.assertEqual(loaded, ["usb"])
-        self.assertTrue(status["usb_host"])
+        self.assertTrue(status["usb_playback"])
         self.assertTrue(status["sources"]["usb"]["available"])
 
-        status = reconcile(attached=False)
+        status = reconcile(attached=True, streaming=False)
         self.assertNotIn("usb", manager.modules)
         self.assertFalse(status["sources"]["usb"]["available"])
 

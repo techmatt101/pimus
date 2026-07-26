@@ -129,7 +129,7 @@ export interface HealthState {
     network: boolean
     ha: boolean
     audio: boolean
-    usbHost: boolean
+    usbPlayback: boolean
 }
 
 export interface ControlState {
@@ -146,7 +146,7 @@ export interface ControlState {
 
 export interface AudioState {
     sources: Record<string, boolean | undefined>
-    usbHost?: boolean
+    usbPlayback?: boolean
 }
 
 export interface UsbControlDevice {

@@ -101,7 +101,19 @@ that, connecting the Pi through a USB-C dock or hub forces the Mac into host mod
 Setting `PSU_MAX_CURRENT` in the bootloader EEPROM does not change this — it was tested and the Mac still refused the
 direct connection.
 
-If the state reads `configured` but no sound arrives, check the `smartamp-audio-manager` journal: its reconcile status
+The state file is only reliable in the attach direction: with the VBUS-blocking adapter in place the controller never
+sees the session drop, so it keeps reading `configured` after an unplug until the next replug. The live signal is the
+gadget card's rate control, which reads the negotiated rate while the computer is actually streaming and `0` when it
+is idle, playing to another output, or gone:
+
+```sh
+amixer -c UAC2Gadget cget iface=PCM,name='Capture Rate'   # values=48000 streaming, values=0 idle or unplugged
+```
+
+The audio manager gates the USB bridge and the Stream Deck's usb status icon on that control, so both follow actual
+playback rather than enumeration.
+
+If the computer is playing but no sound arrives, check the `smartamp-audio-manager` journal: its reconcile status
 should show the `usb` source with `"available": true` and a node name. The manager activates the gadget card's
 pro-audio profile itself when the card is parked off; an older deployment without that logic needs
 `pactl set-card-profile alsa_card.platform-1000480000.usb pro-audio` once.

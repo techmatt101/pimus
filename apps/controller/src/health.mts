@@ -30,7 +30,7 @@ export interface HealthSources {
     network(): boolean
     ha(): boolean
     audio(): boolean
-    usbHost(): boolean
+    usbPlayback(): boolean
 }
 
 export interface HealthPoster {
@@ -83,7 +83,7 @@ export class HealthMonitor {
             network: this.#sources.network(),
             ha: this.#sources.ha(),
             audio: this.#sources.audio(),
-            usbHost: this.#sources.usbHost(),
+            usbPlayback: this.#sources.usbPlayback(),
         }
         const previous = this.#model.state.health
         const changed = (Object.keys(next) as Array<keyof HealthState>).filter((key) => next[key] !== previous[key])

@@ -35,10 +35,14 @@ service calls, LVA commands, and each `pactl` invocation the audio manager makes
 the controller and audio-manager units; both default to `info`.
 
 Set `smartamp_aux_enabled` and `smartamp_usb_enabled` to choose whether aux and USB monitoring start on boot. Both
-default to off. The USB route is additionally gated on a computer being enumerated on the gadget port: the audio
-manager only builds the bridge while `/sys/class/udc/*/state` reads `configured`, because a gadget with no host has a
-dead capture clock that would stall the whole output graph and silence everything else. Toggling USB on with nothing
-plugged in is therefore safe — the route simply waits for a computer.
+default to off. The USB route is additionally gated on the computer actively streaming to the gadget: the audio
+manager only builds the bridge while the gadget card's `Capture Rate` control reads a non-zero rate, because the
+gadget's capture clock only ticks while the host holds its playback stream open. A computer that is plugged in but
+playing to another output, or a cable that was unplugged, leaves a dead clock that would stall the whole output graph
+and silence everything else — including Sendspin and Home Assistant media on the background bus. Enumeration
+(`/sys/class/udc/*/state` reading `configured`) cannot gate this: with the recommended VBUS-blocking adapter the port
+never reports a disconnect, so that file stays `configured` after an unplug until the next replug. Toggling USB on
+with nothing plugged in or nothing playing is therefore safe — the route simply waits for audio to arrive.
 
 The gadget's ALSA card boots with no active profile: it has no PipeWire-visible mixer path, so WirePlumber is offered
 only "off" and "pro-audio" and picks neither. While the USB route is enabled the audio manager switches a parked card

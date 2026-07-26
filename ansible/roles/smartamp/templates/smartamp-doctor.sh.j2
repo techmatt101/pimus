@@ -67,9 +67,11 @@ if [ -r "$STATUS_FILE" ] && jq -e 'type == "object"' "$STATUS_FILE" >/dev/null 2
         || fail 'Aux input source is unavailable'
 {% endif %}
 {% if usb_audio_gadget_enabled %}
-    jq -e '.sources.usb.available == true' "$STATUS_FILE" >/dev/null 2>&1 \
-        && pass 'USB gadget input source is available' \
-        || fail 'USB gadget input source is unavailable'
+    # "available" additionally requires the computer to be streaming right
+    # now, so the durable health check is the capture node existing.
+    jq -e '.sources.usb.node | type == "string" and length > 0' "$STATUS_FILE" >/dev/null 2>&1 \
+        && pass 'USB gadget capture node is present' \
+        || fail 'USB gadget capture node is missing'
 {% endif %}
 else
     fail 'Audio router status is missing or invalid JSON'

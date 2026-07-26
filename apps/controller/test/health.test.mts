@@ -4,7 +4,7 @@ import test from 'node:test'
 import {defaultRouteExists, HealthMonitor} from '../src/health.mjs'
 import {ControlModel, createState} from '../src/state.mjs'
 
-function makeMonitor(flags: {network: boolean; ha: boolean; audio: boolean; usbHost: boolean}) {
+function makeMonitor(flags: {network: boolean; ha: boolean; audio: boolean; usbPlayback: boolean}) {
     const model = new ControlModel(createState())
     const posts: Array<Record<string, unknown>> = []
     const monitor = new HealthMonitor({
@@ -14,14 +14,14 @@ function makeMonitor(flags: {network: boolean; ha: boolean; audio: boolean; usbH
             network: () => flags.network,
             ha: () => flags.ha,
             audio: () => flags.audio,
-            usbHost: () => flags.usbHost,
+            usbPlayback: () => flags.usbPlayback,
         },
     })
     return {model, posts, monitor}
 }
 
 test('a loss banners after the first sample and a recovery does not', () => {
-    const flags = {network: true, ha: true, audio: true, usbHost: false}
+    const flags = {network: true, ha: true, audio: true, usbPlayback: false}
     const {model, posts, monitor} = makeMonitor(flags)
 
     monitor.sample()
@@ -42,7 +42,7 @@ test('a loss banners after the first sample and a recovery does not', () => {
 })
 
 test('a subsystem already down at boot shows without a banner burst', () => {
-    const flags = {network: true, ha: false, audio: false, usbHost: false}
+    const flags = {network: true, ha: false, audio: false, usbPlayback: false}
     const {model, posts, monitor} = makeMonitor(flags)
 
     monitor.sample()
@@ -51,14 +51,14 @@ test('a subsystem already down at boot shows without a banner burst', () => {
     assert.equal(posts.length, 0)
 })
 
-test('usb host attachment moves state without a banner', () => {
-    const flags = {network: true, ha: true, audio: true, usbHost: false}
+test('usb playback starting moves state without a banner', () => {
+    const flags = {network: true, ha: true, audio: true, usbPlayback: false}
     const {model, posts, monitor} = makeMonitor(flags)
 
     monitor.sample()
-    flags.usbHost = true
+    flags.usbPlayback = true
     monitor.sample()
-    assert.equal(model.state.health.usbHost, true)
+    assert.equal(model.state.health.usbPlayback, true)
     assert.equal(posts.length, 0)
 })
 

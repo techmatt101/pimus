@@ -127,8 +127,10 @@ def find_loaded_module(
 
 def usb_host_attached(base: Path = Path("/sys/class/udc")) -> bool:
     # The UDC state file reads "configured" once a USB host has enumerated the
-    # gadget, and "not attached" when the port carries only power or nothing.
-    # The controller shows this on the strip as the "computer connected" icon.
+    # gadget. It is not a reliable disconnect signal: with the recommended
+    # VBUS-blocking adapter the port never sees the session drop, so the file
+    # stays "configured" after an unplug. Kept for the status file only; the
+    # route gate and the controller's icon follow usb_gadget_streaming().
     try:
         for state_file in base.glob("*/state"):
             if state_file.read_text(encoding="utf-8").strip() == "configured":
@@ -140,6 +142,32 @@ def usb_host_attached(base: Path = Path("/sys/class/udc")) -> bool:
 
 def usb_gadget_card_present(base: Path = Path("/proc/asound")) -> bool:
     return (base / USB_GADGET_CARD).exists()
+
+
+def usb_gadget_streaming() -> bool:
+    """True while the USB host is actively streaming audio into the gadget.
+
+    The kernel's UAC2 function reports the host's playback stream through the
+    gadget card's read-only "Capture Rate" control: the negotiated rate while
+    the host holds the stream open, 0 once it closes it or the bus suspends.
+    An unplug reads 0 through the suspend path too, which makes this the only
+    signal that survives the VBUS-blocked port never reporting a disconnect.
+    """
+    try:
+        result = run(
+            "amixer",
+            "-c",
+            USB_GADGET_CARD,
+            "cget",
+            "iface=PCM,name=Capture Rate",
+            check=False,
+        )
+    except OSError:
+        return False
+    if result.returncode != 0:
+        return False
+    match = re.search(r": values=(\d+)", result.stdout)
+    return match is not None and int(match.group(1)) > 0
 
 
 def read_gadget_mixer() -> tuple[int, bool] | None:
@@ -185,9 +213,11 @@ def default_sources(config: dict[str, Any]) -> dict[str, bool]:
 # into one reconcile scheduled this far ahead of the first event.
 EVENT_DEBOUNCE_SECONDS = 0.3
 
-# Plugging or unplugging the USB-C gadget cable changes only a sysfs file, not
-# the PipeWire graph, so pactl subscribe never reports it. Poll the UDC state
-# this often to gate the USB route and refresh the controller's status icon.
+# Plugging or unplugging the USB-C gadget cable, or the host opening or
+# closing its playback stream, changes no PipeWire state, so pactl subscribe
+# never reports it. The gadget's mixer monitor usually announces a stream
+# open/close instantly; this poll is the fallback that also catches events
+# raced while that monitor was restarting.
 USB_HOST_POLL_SECONDS = 2.0
 
 # How long a mute_when_off route takes to fade between silent and full when
@@ -252,6 +282,8 @@ class AudioManager:
     # a resting state rather than an AttributeError.
     startup_volume_pending = False
     usb_host = False
+    usb_playback = False
+    usb_playback_broadcast = False
     # The last (gadget, sink) volume states the two sides agreed on, each
     # remembered as read from its own side so quantisation differences between
     # them cannot register as a fresh change.
@@ -297,6 +329,7 @@ class AudioManager:
         self.next_resync = 0.0
         self.next_usb_poll = 0.0
         self.usb_host = usb_host_attached()
+        self.usb_playback = self.usb_host and usb_gadget_streaming()
         self.startup_volume_pending = "startup_volume_percent" in self.config
 
     def stop(self, *_args: object) -> None:
@@ -704,16 +737,19 @@ class AudioManager:
             self.unload("_aec")
 
         self.usb_host = usb_host_attached()
+        self.usb_playback = self.usb_host and usb_gadget_streaming()
         sink_inputs: list[dict[str, Any]] | None = None
         for name, source_config in self.config["sources"].items():
             node = find_node(sources, source_config["match"])
             enabled = self.sources.get(name, False)
-            # The gadget's capture clock only ticks while a computer is
-            # enumerated and streaming; bridging it with no host attached
-            # stalls the whole PipeWire driver group, silencing every output.
-            # Keep the route's enabled flag but only build the loopback while
-            # a host is actually there.
-            attached = not source_config.get("requires_usb_host", False) or self.usb_host
+            # The gadget's capture clock only ticks while the computer holds
+            # its playback stream open; bridging a dead clock stalls the whole
+            # PipeWire driver group, silencing every output. A host that is
+            # enumerated but playing elsewhere leaves the clock just as dead
+            # as an unplugged cable, so the gate is the streaming state, not
+            # the UDC file. Keep the route's enabled flag but only build the
+            # loopback while audio is actually arriving.
+            attached = not source_config.get("requires_usb_host", False) or self.usb_playback
             # Connecting an analogue route's stream pops: any DC offset on the
             # input lands as a step on the speakers, at full amp gain because
             # only PipeWire volume sits in the path. A mute_when_off route
@@ -785,6 +821,7 @@ class AudioManager:
             self.route_unmuted[name] = enabled
 
         status["usb_host"] = self.usb_host
+        status["usb_playback"] = self.usb_playback
         atomic_json(self.status_path, status)
         LOG.debug("reconciled: %s", json.dumps(status))
 
@@ -793,7 +830,7 @@ class AudioManager:
             "event": "state",
             "sources": dict(self.sources),
             "ducked": self.desired_ducking(),
-            "usb_host": usb_host_attached(),
+            "usb_playback": self.usb_playback,
         }
 
     def apply_command(
@@ -892,6 +929,7 @@ class AudioManager:
             self.drop_client(connection)
 
     def broadcast_state(self) -> None:
+        self.usb_playback_broadcast = self.usb_playback
         for connection in list(self.clients):
             self.send_to(connection, self.state_event())
 
@@ -982,9 +1020,11 @@ class AudioManager:
             ):
                 self.pending_reconcile = time.monotonic() + EVENT_DEBOUNCE_SECONDS
 
-    # The USB host's volume writes change only ALSA controls on the gadget
-    # card, which pactl subscribe cannot see; alsactl monitor is the ALSA
-    # equivalent, one line per control event.
+    # The USB host's volume writes and its stream opens and closes change only
+    # ALSA controls on the gadget card, which pactl subscribe cannot see;
+    # alsactl monitor is the ALSA equivalent, one line per control event. The
+    # kernel notifies "Capture Rate" as the host starts or stops streaming,
+    # which is what makes the USB route react faster than the fallback poll.
     def start_mixer_monitor(self) -> None:
         try:
             self.mixer_process = subprocess.Popen(
@@ -1035,7 +1075,7 @@ class AudioManager:
         self.mixer_buffer += data
         while b"\n" in self.mixer_buffer:
             line, _, self.mixer_buffer = self.mixer_buffer.partition(b"\n")
-            if self.pending_reconcile is None and b"PCM Capture" in line:
+            if self.pending_reconcile is None and b"Capture" in line:
                 self.pending_reconcile = time.monotonic() + EVENT_DEBOUNCE_SECONDS
 
     def safe_reconcile(self) -> None:
@@ -1091,21 +1131,27 @@ class AudioManager:
             now = time.monotonic()
             if now >= self.next_usb_poll:
                 self.next_usb_poll = now + USB_HOST_POLL_SECONDS
-                if usb_host_attached() != self.usb_host:
+                attached = usb_host_attached()
+                playing = attached and usb_gadget_streaming()
+                if (attached, playing) != (self.usb_host, self.usb_playback):
                     LOG.info(
-                        "USB host %s",
-                        "detached" if self.usb_host else "attached",
+                        "USB host %s, playback %s",
+                        "attached" if attached else "detached",
+                        "streaming" if playing else "stopped",
                     )
                     # Reconcile builds or tears down the gated USB route and
-                    # records the new state; broadcast so the controller's
-                    # status icon updates without waiting for a command.
+                    # records the new state.
                     self.safe_reconcile()
-                    self.broadcast_state()
             now = time.monotonic()
             if now >= self.next_resync or (
                 self.pending_reconcile is not None and now >= self.pending_reconcile
             ):
                 self.safe_reconcile()
+            # Every reconcile refreshes the playback state, whichever signal
+            # scheduled it; broadcast a change so the controller's status icon
+            # updates without waiting for a command.
+            if self.usb_playback != self.usb_playback_broadcast:
+                self.broadcast_state()
         self.stop_subscribe()
         for connection in list(self.clients):
             self.drop_client(connection)

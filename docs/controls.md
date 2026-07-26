@@ -193,8 +193,8 @@ Toggles a named route through the audio manager's control socket. `source` must
 be a route the audio manager owns, currently `aux` or `usb`; it rejects names it
 does not know. Aux toggles are a short fade of a permanently loaded bridge
 rather than a stream connect, so they are pop-free; the USB route connects and
-disconnects for real, and only while a computer is enumerated on the gadget
-port.
+disconnects for real, and only while the computer is actively streaming audio
+to the gadget port.
 
 | Command  | Effect                                |
 |----------|---------------------------------------|
@@ -385,8 +385,11 @@ turning is no feedback — and the notification comes back when the hold expires
 
 The idle clock carries a row of system-health icons at its left edge: network
 (wifi), Home Assistant (home), the microphone (mic), and the audio manager
-(volume). A cyan usb icon joins the row only while a computer is enumerated on
-the USB-C gadget port, and disappears when it unplugs. Healthy icons sit dim. A failed subsystem turns its icon red
+(volume). A cyan usb icon joins the row only while a computer is actively
+streaming audio to the USB-C gadget port, and disappears when playback stops
+or the cable is pulled. It cannot mean merely "plugged in": the VBUS-blocked
+port never reports an unplug, so an idle connection and a missing one are
+indistinguishable. Healthy icons sit dim. A failed subsystem turns its icon red
 and pulses it, and the loss also posts a strip banner ("HOME ASSISTANT LOST");
 recovery is silent, the icon simply stops flashing. A mute is red too but
 steady, since it is deliberate rather than a failure: the mic and volume icons

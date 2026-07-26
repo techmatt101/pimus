@@ -9,7 +9,7 @@ interface ManagerEvent {
     event?: string
     error?: string
     sources?: unknown
-    usb_host?: unknown
+    usb_playback?: unknown
 }
 
 export interface AudioManagerClientOptions {
@@ -157,7 +157,7 @@ export class AudioManagerClient {
                 && message.sources !== null && !Array.isArray(message.sources)) {
                 this.state = {
                     sources: {...(message.sources as AudioState['sources'])},
-                    usbHost: message.usb_host === true,
+                    usbPlayback: message.usb_playback === true,
                 }
                 this.#synced = true
                 this.#onStateChange()
