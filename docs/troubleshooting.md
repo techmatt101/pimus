@@ -96,20 +96,28 @@ computer's other ports.
 
 A Mac connected directly with a C-to-C cable may settle into a pure power relationship — it supplies 5V (visible as
 `EXT5V_V` in `vcgencmd pmic_read_adc`) but never takes the USB host role, so the state stays `not attached` with any
-cable. Connecting the Pi through a USB-C dock or hub forces the Mac into host mode and it enumerates immediately.
+cable. The likely cause is the Pi's VBUS backfeed described below, so try a charge-blocking adapter first; failing
+that, connecting the Pi through a USB-C dock or hub forces the Mac into host mode and it enumerates immediately.
 Setting `PSU_MAX_CURRENT` in the bootloader EEPROM does not change this — it was tested and the Mac still refused the
-direct connection; the dock is the fix.
+direct connection.
 
 If the state reads `configured` but no sound arrives, check the `smartamp-audio-manager` journal: its reconcile status
 should show the `usb` source with `"available": true` and a node name. The manager activates the gadget card's
 pro-audio profile itself when the card is parked off; an older deployment without that logic needs
 `pactl set-card-profile alsa_card.platform-1000480000.usb pro-audio` once.
 
-Because the Pi is powered through GPIO, its 5V rail also appears on the USB-C connector, so a connected laptop may
-report that it is charging (slowly) from the Pi. That is a property of the Pi 5's power design, not a fault in the
-gadget; if it bothers the laptop, use a cable or adapter that blocks VBUS while passing data. The USB-C port cannot
-simultaneously be the normal dedicated PSU connection in gadget mode; the HiFiBerry/AAmp60 stack powers the Pi through
-GPIO.
+Because the Pi is powered through GPIO, its 5V rail sits directly on the USB-C VBUS pin — there is no switch firmware
+could open — so the Pi backfeeds power into whatever it is plugged into. A connected laptop may report it is charging
+(slowly) from the Pi, an unpowered dock boots up from the Pi alone, and a host port seeing unexpected VBUS can decide
+the Pi is a charger rather than a device (the likely reason a directly attached Mac refuses the data-host role). The
+backfeed also makes dock connections order-sensitive: a dock plugged into the Pi first latches the Pi as its power
+source and never routes the port when the computer arrives later, so connect dock to computer first and the Pi last.
+
+A USB-C charge/VBUS-blocking adapter on the Pi's cable fixes the backfeed properly (confirmed working): data passes,
+no power crosses in either direction, and the Pi does not need incoming VBUS because its gadget controller has no
+VBUS sensing. With the blocker in place the dock no longer powers on from the Pi and plug order stops mattering. The
+USB-C port cannot simultaneously be the normal dedicated PSU connection in gadget mode; the HiFiBerry/AAmp60 stack
+powers the Pi through GPIO.
 
 ## USB audio plays but sounds like an old radio
 
