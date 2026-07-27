@@ -42,6 +42,7 @@ const ICONS = {
     previous: 'ArrowLeft01Icon',
     volume: 'VolumeHighIcon',
     volumeMute: 'VolumeMute02Icon',
+    voice: 'AiVoiceIcon',
     usb: 'UsbIcon',
     note: 'MusicNote01Icon',
     playlist: 'Playlist01Icon',

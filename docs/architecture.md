@@ -20,7 +20,7 @@ DAC2 ADC Pro aux --PipeWire loopback------------------------+
 Computer --USB-C UAC2--+                                    |
                        +--> duckable background bus --------+--> HiFiBerry DAC --> AAmp60 --> speakers
 Sendspin / MA ---------+                                    |
-Linux Voice Assistant TTS/media ----------------------------+
+Linux Voice Assistant TTS/media --> voice bus --------------+
 ```
 
 ## Audio ownership
@@ -47,6 +47,23 @@ wake/listen/think/TTS, announcement, and timer events by sending `set-duck` over
 manager holds the request against that connection, so background audio cannot remain quiet indefinitely: if the
 controller stops unexpectedly the socket closes and the duck is released at once.
 
+Linux Voice Assistant playback (TTS, timer chimes, announcements) feeds a second bus of the same shape, the voice sink,
+selected by `--audio-output-device pipewire/<sink>` in its unit — LVA plays through libmpv, whose native PipeWire
+output outranks pulse on mpv ≥ 0.36 and ignores `PULSE_SINK` (Sendspin, by contrast, plays through the ALSA-pulse
+path, which is why the background bus can be selected by environment).
+
+Loudness is two independent gains on those bridges, not the sink volume: the manager pins the output sink at 100% and
+holds the music level on the background bridge (with aux and any direct route following it, and ducking dipping to a
+share of it) and the voice level on the voice bridge. Music at 5% with voice at 50% plays voice at 50%; music at 80%
+with voice at 30% plays voice at 30%. `set-music-volume` and `set-voice-volume` on the control socket move them; the
+sink itself carries only mute, so muting silences everything at once. Because the gains sit on the persistent bridges
+rather than on clients' short-lived streams, a fresh TTS stream cannot play a syllable at the wrong level, and any
+stray client that plays straight at the pinned sink is snapped to the music level on the next reconcile. Its bridge stream carries the voice volume, set over the control socket with
+`set-voice-volume` and held as an absolute level: the manager divides the target by the output sink's volume on every
+reconcile, so voice speaks at the same loudness whether the music is loud or quiet (it can never exceed the master).
+Because the gain sits on the persistent bridge rather than on LVA's short-lived playback streams, a fresh TTS stream
+cannot play a syllable at the wrong level. The bus is never ducked — it is the thing everything else ducks for.
+
 It also mirrors the HiFiBerry output monitor into the XVF3800 USB playback endpoint. Nothing is connected to the
 ReSpeaker speaker jack; the stream exists to give the XMOS DSP the far-end reference required for acoustic echo
 cancellation.
@@ -58,8 +75,8 @@ hardware output level. Both are adjustable in the Ansible variables.
 
 - `smartamp-hifiberry`: applies hardware mixer settings after ALSA detects the HAT.
 - `smartamp-usb-audio-gadget`: creates the stereo UAC2 peripheral on the Pi 5 USB-C controller.
-- `smartamp-audio-manager`: maintains PipeWire defaults, switchable routes, the background bus, and its ducking gain,
-  driven by `pactl subscribe` events and a Unix control socket.
+- `smartamp-audio-manager`: maintains PipeWire defaults, switchable routes, the background bus and its ducking gain,
+  and the voice bus and its volume, driven by `pactl subscribe` events and a Unix control socket.
 - `smartamp-sendspin`: runs the Sendspin player that Music Assistant discovers and streams to.
 - `smartamp-voice-assistant`: pinned OHF Linux Voice Assistant checkout and Python virtual environment.
 - `smartamp-controller`: maps Assist events to background ducking and XVF3800 effects, and renders/handles Stream Deck+

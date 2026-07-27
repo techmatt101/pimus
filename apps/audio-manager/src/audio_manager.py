@@ -280,10 +280,15 @@ def atomic_json(path: Path, value: dict[str, Any]) -> None:
 class AudioManager:
     # Class-level defaults so tests building a bare instance with __new__ read
     # a resting state rather than an AttributeError.
-    startup_volume_pending = False
     usb_host = False
     usb_playback = False
     usb_playback_broadcast = False
+    music_volume = 100
+    music_volume_broadcast = 100
+    background_gain_applied: int | None = None
+    voice_volume = 100
+    voice_stream_index: int | None = None
+    voice_gain_applied: int | None = None
     # The last (gadget, sink) volume states the two sides agreed on, each
     # remembered as read from its own side so quantisation differences between
     # them cannot register as a fresh change.
@@ -306,6 +311,21 @@ class AudioManager:
         self.route_unmuted: dict[str, bool] = {}
         self.background_stream_index: int | None = None
         self.background_ducked: bool | None = None
+        self.background_gain_applied = None
+        # The output sink stays pinned at full scale; loudness lives on the two
+        # bus gains instead, so music and voice are truly independent. Both
+        # levels are seeded from configuration each daemon start; the controller
+        # owns them through the control socket and re-asserts its own cached
+        # values after either process restarts, like the routes above.
+        self.music_volume = max(
+            0, min(100, int(self.config.get("startup_volume_percent", 100)))
+        )
+        self.music_volume_broadcast = self.music_volume
+        self.voice_volume = max(
+            0, min(100, int(self.config.get("voice_bus", {}).get("volume_percent", 100)))
+        )
+        self.voice_stream_index = None
+        self.voice_gain_applied = None
         self.running = True
         # Desired route state lives in memory; the controller owns it through
         # the control socket and re-asserts it after either process restarts.
@@ -330,7 +350,6 @@ class AudioManager:
         self.next_usb_poll = 0.0
         self.usb_host = usb_host_attached()
         self.usb_playback = self.usb_host and usb_gadget_streaming()
-        self.startup_volume_pending = "startup_volume_percent" in self.config
 
     def stop(self, *_args: object) -> None:
         self.running = False
@@ -349,6 +368,10 @@ class AudioManager:
         if source_name == "_background_bridge":
             self.background_stream_index = None
             self.background_ducked = None
+            self.background_gain_applied = None
+        if source_name == "_voice_bridge":
+            self.voice_stream_index = None
+            self.voice_gain_applied = None
         if module_id is not None:
             run("pactl", "unload-module", str(module_id), check=False)
 
@@ -382,6 +405,10 @@ class AudioManager:
             if name == "_background_bridge":
                 self.background_stream_index = None
                 self.background_ducked = None
+                self.background_gain_applied = None
+            if name == "_voice_bridge":
+                self.voice_stream_index = None
+                self.voice_gain_applied = None
             LOG.info("PipeWire removed %s; it will be recreated", name)
 
     def load_module(self, name: str, module: str, *arguments: str) -> int:
@@ -517,24 +544,40 @@ class AudioManager:
             if delay and step < steps:
                 time.sleep(delay)
 
-    def set_background_ducking(self, ducked: bool) -> None:
-        if self.background_stream_index is None or self.background_ducked == ducked:
-            return
+    def background_target(self, ducked: bool) -> int:
+        """The bridge gain for the music level, dipped by the duck share."""
+        if not ducked:
+            return self.music_volume
         background_config = self.config.get("background", {})
         duck_volume = max(
             0, min(100, int(background_config.get("duck_volume_percent", 15)))
         )
-        target_volume = duck_volume if ducked else 100
-        if self.background_ducked is None:
-            start_volume = target_volume
-        else:
-            start_volume = duck_volume if self.background_ducked else 100
-        fade_ms = max(0, int(background_config.get("fade_ms", 250)))
-        self.fade_sink_input(
-            self.background_stream_index, start_volume, target_volume, fade_ms
+        return round(self.music_volume * duck_volume / 100)
+
+    def set_background_ducking(self, ducked: bool) -> None:
+        if self.background_stream_index is None:
+            return
+        target = self.background_target(ducked)
+        if self.background_ducked == ducked and self.background_gain_applied == target:
+            return
+        # A duck transition fades; the music level moving just snaps the gain,
+        # tracking the detent that moved it.
+        changed_duck = self.background_ducked != ducked
+        fade_ms = (
+            max(0, int(self.config.get("background", {}).get("fade_ms", 250)))
+            if changed_duck and self.background_ducked is not None
+            else 0
         )
+        start = (
+            self.background_gain_applied
+            if self.background_gain_applied is not None
+            else target
+        )
+        self.fade_sink_input(self.background_stream_index, start, target, fade_ms)
         self.background_ducked = ducked
-        LOG.info("%s background audio", "Ducked" if ducked else "Restored")
+        self.background_gain_applied = target
+        if changed_duck:
+            LOG.info("%s background audio", "Ducked" if ducked else "Restored")
 
     def reconcile_ducking(self) -> bool:
         ducked = self.desired_ducking()
@@ -548,6 +591,80 @@ class AudioManager:
         except (subprocess.SubprocessError, json.JSONDecodeError, RuntimeError) as error:
             LOG.warning("Audio ducking failed: %s", error)
 
+    def ensure_bus(
+        self,
+        prefix: str,
+        sink_name: str,
+        description: str,
+        latency_ms: int,
+        sinks: list[dict[str, Any]],
+        sources: list[dict[str, Any]],
+        output: dict[str, Any] | None,
+    ) -> tuple[
+        dict[str, Any] | None,
+        list[dict[str, Any]],
+        list[dict[str, Any]],
+        int | None,
+    ]:
+        """Keep a named null sink bridged into the output.
+
+        A bus exists so a whole class of playback (background music, voice)
+        lands on one persistent loopback stream whose volume this daemon owns;
+        clients are pointed at the null sink by their unit's PULSE_SINK.
+        Returns the bus sink, refreshed listings, and the bridge stream index.
+        """
+        sink_module = f"_{prefix}_sink"
+        bridge_module = f"_{prefix}_bridge"
+        bus_sink = next(
+            (candidate for candidate in sinks if candidate.get("name") == sink_name),
+            None,
+        )
+        if bus_sink is None and sink_module not in self.modules:
+            self.load_module(
+                sink_module,
+                "module-null-sink",
+                f"sink_name={sink_name}",
+                # priority.session=1 keeps WirePlumber from ever electing the
+                # bus as its own default sink.
+                f"sink_properties=device.description={description} priority.session=1",
+            )
+            LOG.info("Created %s audio sink", prefix)
+        if bus_sink is None:
+            sinks = pactl_json("sinks")
+            sources = pactl_json("sources")
+            bus_sink = next(
+                (candidate for candidate in sinks if candidate.get("name") == sink_name),
+                None,
+            )
+        elif sink_module not in self.modules:
+            owner_module = bus_sink.get("owner_module")
+            if owner_module is not None:
+                self.modules[sink_module] = int(owner_module)
+
+        monitor_name = f"{sink_name}.monitor"
+        monitor = next(
+            (candidate for candidate in sources if candidate.get("name") == monitor_name),
+            None,
+        )
+        if not (output and monitor):
+            self.unload(bridge_module)
+            return bus_sink, sinks, sources, None
+        created = self.ensure_loopback(
+            bridge_module,
+            monitor_name,
+            output["name"],
+            latency_ms,
+        )
+        if created:
+            LOG.info("Connected %s audio to the output", prefix)
+        bridge = find_owned_stream(
+            pactl_json("sink-inputs"),
+            self.modules.get(bridge_module),
+            f"SmartAmp.{prefix}_bridge",
+        )
+        stream_index = int(bridge["index"]) if bridge is not None else None
+        return bus_sink, sinks, sources, stream_index
+
     def ensure_background(
         self,
         sinks: list[dict[str, Any]],
@@ -559,89 +676,139 @@ class AudioManager:
             self.unload("_background_bridge")
             self.unload("_background_sink")
             return None, sinks, sources
-
-        sink_name = str(background_config.get("sink_name", "smartamp_background"))
-        background_sink = next(
-            (candidate for candidate in sinks if candidate.get("name") == sink_name),
-            None,
+        background_sink, sinks, sources, stream_index = self.ensure_bus(
+            "background",
+            str(background_config.get("sink_name", "smartamp_background")),
+            "SmartAmp_Background_Audio",
+            int(background_config["latency_ms"]),
+            sinks,
+            sources,
+            output,
         )
-        if background_sink is None and "_background_sink" not in self.modules:
-            self.load_module(
-                "_background_sink",
-                "module-null-sink",
-                f"sink_name={sink_name}",
-                (
-                    "sink_properties="
-                    "device.description=SmartAmp_Background_Audio priority.session=1"
-                ),
-            )
-            LOG.info("Created background audio sink")
-        if background_sink is None:
-            sinks = pactl_json("sinks")
-            sources = pactl_json("sources")
-            background_sink = next(
-                (candidate for candidate in sinks if candidate.get("name") == sink_name),
-                None,
-            )
-        elif "_background_sink" not in self.modules:
-            owner_module = background_sink.get("owner_module")
-            if owner_module is not None:
-                self.modules["_background_sink"] = int(owner_module)
-
-        monitor_name = f"{sink_name}.monitor"
-        monitor = next(
-            (candidate for candidate in sources if candidate.get("name") == monitor_name),
-            None,
-        )
-        if output and monitor:
-            created = self.ensure_loopback(
-                "_background_bridge",
-                monitor_name,
-                output["name"],
-                int(background_config["latency_ms"]),
-            )
-            if created:
-                self.background_ducked = None
-                LOG.info("Connected background audio to HiFiBerry output")
-            sink_inputs = pactl_json("sink-inputs")
-            bridge = find_owned_stream(
-                sink_inputs,
-                self.modules.get("_background_bridge"),
-                "SmartAmp.background_bridge",
-            )
-            stream_index = (
-                int(bridge["index"]) if bridge is not None else None
-            )
-            if stream_index != self.background_stream_index:
-                self.background_ducked = None
-            self.background_stream_index = stream_index
-        else:
-            self.unload("_background_bridge")
-
+        # A recreated bridge stream starts at full volume, so forget the
+        # applied duck level and let reconcile_ducking snap it back.
+        if stream_index != self.background_stream_index:
+            self.background_ducked = None
+        self.background_stream_index = stream_index
         return background_sink, sinks, sources
 
-    # WirePlumber restores whatever volume the output sink last had, which
-    # after a crash, reimage, or interrupted session can be anything from
-    # silent to full. The first reconcile that sees the sink pins it to the
-    # configured startup level, once per daemon start; the volume dial owns it
-    # from then on.
+    def ensure_voice_bus(
+        self,
+        sinks: list[dict[str, Any]],
+        sources: list[dict[str, Any]],
+        output: dict[str, Any] | None,
+    ) -> tuple[dict[str, Any] | None, list[dict[str, Any]], list[dict[str, Any]]]:
+        """Give voice playback its own bus so it has its own volume.
+
+        The voice assistant plays TTS, timers, and announcements straight to
+        the default sink, which is also where loud music has the master volume
+        pinned; putting its playback on a bus of its own is what lets a voice
+        level be held independently. The gain lives on the persistent bridge
+        stream, so a fresh TTS stream can never play a syllable before its
+        volume applies.
+        """
+        voice_config = self.config.get("voice_bus", {})
+        if not voice_config.get("enabled", False):
+            self.unload("_voice_bridge")
+            self.unload("_voice_sink")
+            return None, sinks, sources
+        voice_sink, sinks, sources, stream_index = self.ensure_bus(
+            "voice",
+            str(voice_config.get("sink_name", "smartamp_voice")),
+            "SmartAmp_Voice_Audio",
+            int(voice_config["latency_ms"]),
+            sinks,
+            sources,
+            output,
+        )
+        # A recreated bridge stream starts at full volume; forgetting the
+        # applied gain makes the next apply_voice_gain snap it into place.
+        if stream_index != self.voice_stream_index:
+            self.voice_gain_applied = None
+        self.voice_stream_index = stream_index
+        return voice_sink, sinks, sources
+
+    def apply_voice_gain(self) -> None:
+        # The output sink is pinned at full scale, so the bridge gain is the
+        # voice level itself: voice loudness never follows the music.
+        if self.voice_stream_index is None:
+            return
+        if self.voice_volume == self.voice_gain_applied:
+            return
+        run(
+            "pactl",
+            "set-sink-input-volume",
+            str(self.voice_stream_index),
+            f"{self.voice_volume}%",
+            check=False,
+        )
+        self.voice_gain_applied = self.voice_volume
+
+    def safe_apply_voice_gain(self) -> None:
+        """Apply the voice level, logging rather than dying on a pactl failure."""
+        try:
+            self.apply_voice_gain()
+        except (subprocess.SubprocessError, json.JSONDecodeError, RuntimeError) as error:
+            LOG.warning("Voice volume failed: %s", error)
+
+    def safe_apply_music_gain(self) -> None:
+        """Apply the music level to every stream it owns without a full reconcile."""
+        try:
+            self.reconcile_ducking()
+            sink_inputs = pactl_json("sink-inputs")
+            for name, source_config in self.config.get("sources", {}).items():
+                # Background-target routes play into the bus, which already
+                # carries the music gain.
+                if source_config.get("target") == "background":
+                    continue
+                stream = find_owned_stream(
+                    sink_inputs, self.modules.get(name), f"SmartAmp.{name.strip('_')}"
+                )
+                if stream is None:
+                    continue
+                if source_config.get("mute_when_off", False) and not self.route_unmuted.get(name, False):
+                    continue
+                run(
+                    "pactl",
+                    "set-sink-input-volume",
+                    str(int(stream["index"])),
+                    f"{self.music_volume}%",
+                    check=False,
+                )
+        except (subprocess.SubprocessError, json.JSONDecodeError, RuntimeError) as error:
+            LOG.warning("Music volume failed: %s", error)
+
+    def pin_output_volume(self, sink: dict[str, Any] | None) -> None:
+        # The output sink is not the volume control any more: music and voice
+        # each carry their own bridge gain, so the sink stays pinned at full
+        # scale (WirePlumber restores whatever it last had) and the HiFiBerry
+        # hardware ceiling is the only cap above the bus gains.
+        if sink is None:
+            return
+        sink_state = sink_volume_state(sink)
+        if sink_state is None or sink_state[0] == 100:
+            return
+        run("pactl", "set-sink-volume", sink["name"], "100%", check=False)
+        LOG.info("Pinned the output sink to 100%%")
+
     def sync_usb_volume(self, sink: dict[str, Any] | None) -> None:
-        """Keep the USB host's volume slider and the amp volume converged.
+        """Keep the USB host's volume slider and the music level converged.
 
         The host writes volume and mute to the gadget card's mixer; the amp's
-        is the default sink's. Whichever side moved since the last agreement
-        wins, the host on a tie, and at first sight the amp seeds the gadget
-        so a computer plugging in reads the real volume.
+        side is the music level (the sink itself stays pinned) plus the sink
+        mute. Whichever side moved since the last agreement wins, the host on
+        a tie, and at first sight the amp seeds the gadget so a computer
+        plugging in reads the real level.
         """
         if sink is None or not usb_gadget_card_present():
             return
         gadget = read_gadget_mixer()
-        sink_state = sink_volume_state(sink)
-        if gadget is None or sink_state is None:
+        amp_state = (self.music_volume, bool(sink.get("mute", False)))
+        if gadget is None:
             return
         last = self.usb_volume_synced
         if last is not None and not volumes_match(gadget, last[0]):
-            run("pactl", "set-sink-volume", sink["name"], f"{gadget[0]}%", check=False)
+            self.music_volume = max(0, min(100, gadget[0]))
             run(
                 "pactl",
                 "set-sink-mute",
@@ -649,11 +816,11 @@ class AudioManager:
                 "1" if gadget[1] else "0",
                 check=False,
             )
-            self.usb_volume_synced = (gadget, gadget)
+            self.usb_volume_synced = (gadget, (self.music_volume, gadget[1]))
             LOG.info(
                 "USB host set volume %d%%%s", gadget[0], " muted" if gadget[1] else ""
             )
-        elif last is None or not volumes_match(sink_state, last[1]):
+        elif last is None or not volumes_match(amp_state, last[1]):
             run(
                 "amixer",
                 "-c",
@@ -661,26 +828,24 @@ class AudioManager:
                 "-M",
                 "sset",
                 "PCM",
-                f"{sink_state[0]}%",
-                "nocap" if sink_state[1] else "cap",
+                f"{amp_state[0]}%",
+                "nocap" if amp_state[1] else "cap",
                 check=False,
             )
-            self.usb_volume_synced = (read_gadget_mixer() or sink_state, sink_state)
-
-    def apply_startup_volume(self, sink: dict[str, Any] | None) -> None:
-        if not self.startup_volume_pending or sink is None:
-            return
-        self.startup_volume_pending = False
-        percent = max(0, min(100, int(self.config["startup_volume_percent"])))
-        run("pactl", "set-sink-volume", sink["name"], f"{percent}%", check=False)
-        LOG.info("Set startup output volume to %d%%", percent)
+            self.usb_volume_synced = (read_gadget_mixer() or amp_state, amp_state)
 
     def reconcile(self) -> None:
         self.refresh_modules()
         sinks = pactl_json("sinks")
         sources = pactl_json("sources")
         sink = find_node(sinks, self.config["output_match"])
+        self.pin_output_volume(sink)
+        # A host volume change may move the music level, so sync before the
+        # bus and route gains below are applied against it.
+        self.sync_usb_volume(sink)
         background_sink, sinks, sources = self.ensure_background(sinks, sources, sink)
+        voice_sink, sinks, sources = self.ensure_voice_bus(sinks, sources, sink)
+        self.apply_voice_gain()
         # The remap source's properties name its master device, so it would
         # match voice_input_match itself; exclude it or it becomes its own
         # master on the next reconcile.
@@ -692,6 +857,7 @@ class AudioManager:
         ducked = self.reconcile_ducking()
         status: dict[str, Any] = {
             "sink": sink.get("name") if sink else None,
+            "music_volume": self.music_volume,
             "voice_input": voice_device.get("name") if voice_device else None,
             "voice_capture": voice_capture,
             "background": {
@@ -700,6 +866,12 @@ class AudioManager:
                 ),
                 "sink": background_sink.get("name") if background_sink else None,
                 "ducked": ducked,
+            },
+            "voice_bus": {
+                "enabled": bool(self.config.get("voice_bus", {}).get("enabled", False)),
+                "available": bool(voice_sink and self.voice_stream_index is not None),
+                "sink": voice_sink.get("name") if voice_sink else None,
+                "volume_percent": self.voice_volume,
             },
             "sources": {},
         }
@@ -711,8 +883,6 @@ class AudioManager:
             run("pactl", "set-default-sink", sink["name"], check=False)
         if voice and run("pactl", "get-default-source", check=False).stdout.strip() != voice["name"]:
             run("pactl", "set-default-source", voice["name"], check=False)
-        self.apply_startup_volume(sink)
-        self.sync_usb_volume(sink)
 
         aec_config = self.config.get("aec_reference", {})
         aec_sink = find_node(sinks, aec_config.get("sink_match", "a^"))
@@ -782,9 +952,12 @@ class AudioManager:
                 target["name"],
                 int(source_config["latency_ms"]),
             )
-            if not mute_when_off:
-                if created:
-                    LOG.info("Enabled %s input monitor", name)
+            if created and not mute_when_off:
+                LOG.info("Enabled %s input monitor", name)
+            # A route bridging into the background bus is scaled by the bus
+            # bridge; a route straight to the pinned output sink carries the
+            # music level on its own stream instead.
+            if source_config.get("target") == "background":
                 continue
             if sink_inputs is None:
                 sink_inputs = pactl_json("sink-inputs")
@@ -794,8 +967,32 @@ class AudioManager:
             if stream is None:
                 continue
             stream_index = int(stream["index"])
+            level = self.music_volume
+            if not mute_when_off:
+                stream_state = sink_volume_state(stream)
+                if stream_state is not None and stream_state[0] != level:
+                    run(
+                        "pactl",
+                        "set-sink-input-volume",
+                        str(stream_index),
+                        f"{level}%",
+                        check=False,
+                    )
+                continue
             was_enabled = self.route_unmuted.get(name)
             if was_enabled == enabled:
+                # The toggle is settled; keep an unmuted stream tracking the
+                # music level as the dial moves.
+                if enabled:
+                    stream_state = sink_volume_state(stream)
+                    if stream_state is not None and stream_state[0] != level:
+                        run(
+                            "pactl",
+                            "set-sink-input-volume",
+                            str(stream_index),
+                            f"{level}%",
+                            check=False,
+                        )
                 continue
             if was_enabled is None:
                 # A new stream starts at full volume; snap it to the toggle
@@ -804,7 +1001,7 @@ class AudioManager:
                     "pactl",
                     "set-sink-input-volume",
                     str(stream_index),
-                    f"{100 if enabled else 0}%",
+                    f"{level if enabled else 0}%",
                     check=False,
                 )
                 LOG.info(
@@ -813,12 +1010,38 @@ class AudioManager:
             else:
                 self.fade_sink_input(
                     stream_index,
-                    100 if was_enabled else 0,
-                    100 if enabled else 0,
+                    level if was_enabled else 0,
+                    level if enabled else 0,
                     ROUTE_FADE_MS,
                 )
                 LOG.info("%s %s input monitor", "Enabled" if enabled else "Muted", name)
             self.route_unmuted[name] = enabled
+
+        # With the sink pinned, a client that plays straight at the output
+        # would land at full amplifier level; hold anything that is not one of
+        # our bridges at the music level instead.
+        if sink is not None and sink.get("index") is not None:
+            if sink_inputs is None:
+                sink_inputs = pactl_json("sink-inputs")
+            for stream in sink_inputs:
+                if str(stream.get("sink")) != str(sink.get("index")):
+                    continue
+                media = str((stream.get("properties") or {}).get("media.name", ""))
+                if media.startswith("SmartAmp."):
+                    continue
+                stream_state = sink_volume_state(stream)
+                if stream_state is not None and stream_state[0] == self.music_volume:
+                    continue
+                run(
+                    "pactl",
+                    "set-sink-input-volume",
+                    str(int(stream["index"])),
+                    f"{self.music_volume}%",
+                    check=False,
+                )
+                LOG.info(
+                    "Holding stray stream %s at the music level", stream.get("index")
+                )
 
         status["usb_host"] = self.usb_host
         status["usb_playback"] = self.usb_playback
@@ -831,6 +1054,8 @@ class AudioManager:
             "sources": dict(self.sources),
             "ducked": self.desired_ducking(),
             "usb_playback": self.usb_playback,
+            "music_volume": self.music_volume,
+            "voice_volume": self.voice_volume,
         }
 
     def apply_command(
@@ -852,6 +1077,30 @@ class AudioManager:
             # Ducking only touches the background stream volume, so apply it
             # directly instead of asking for a full graph reconcile.
             self.safe_reconcile_ducking()
+            return self.state_event(), False
+        if command == "set-voice-volume":
+            percent = message.get("percent")
+            if isinstance(percent, bool) or not isinstance(percent, (int, float)) or not 0 <= percent <= 100:
+                return {
+                    "event": "error",
+                    "error": "set-voice-volume needs a percent between 0 and 100",
+                }, False
+            self.voice_volume = round(percent)
+            # Like ducking, this only touches one stream volume: apply it
+            # directly instead of asking for a full graph reconcile.
+            self.safe_apply_voice_gain()
+            return self.state_event(), False
+        if command == "set-music-volume":
+            percent = message.get("percent")
+            if isinstance(percent, bool) or not isinstance(percent, (int, float)) or not 0 <= percent <= 100:
+                return {
+                    "event": "error",
+                    "error": "set-music-volume needs a percent between 0 and 100",
+                }, False
+            self.music_volume = round(percent)
+            # Stream volumes only - the background bus and the direct routes -
+            # so apply them directly instead of asking for a full reconcile.
+            self.safe_apply_music_gain()
             return self.state_event(), False
         if command == "get-state":
             return self.state_event(), False
@@ -930,6 +1179,7 @@ class AudioManager:
 
     def broadcast_state(self) -> None:
         self.usb_playback_broadcast = self.usb_playback
+        self.music_volume_broadcast = self.music_volume
         for connection in list(self.clients):
             self.send_to(connection, self.state_event())
 
@@ -1147,10 +1397,14 @@ class AudioManager:
                 self.pending_reconcile is not None and now >= self.pending_reconcile
             ):
                 self.safe_reconcile()
-            # Every reconcile refreshes the playback state, whichever signal
-            # scheduled it; broadcast a change so the controller's status icon
-            # updates without waiting for a command.
-            if self.usb_playback != self.usb_playback_broadcast:
+            # Every reconcile refreshes the playback state, and a USB host can
+            # move the music level, whichever signal scheduled it; broadcast a
+            # change so the controller's icon and readout update without
+            # waiting for a command.
+            if (self.usb_playback, self.music_volume) != (
+                self.usb_playback_broadcast,
+                self.music_volume_broadcast,
+            ):
                 self.broadcast_state()
         self.stop_subscribe()
         for connection in list(self.clients):

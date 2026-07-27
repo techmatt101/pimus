@@ -7,9 +7,15 @@ All supported settings live in `ansible/inventory/group_vars/all.yml`. Re-run `m
 `hifiberry_aux_gain_db` is the analogue ADC input gain. Start at `0`; line-level sources can clip if this is raised too
 far. `hifiberry_output_volume_percent` is the DAC's hardware output ceiling, not the playing loudness — its percent
 scale is logarithmic (about −1 dB per point below 100), so values much below 90 attenuate to silence; leave it at 100
-and control loudness in PipeWire. `smartamp_startup_volume_percent` is that PipeWire volume applied once at each boot,
-so the device always starts at a predictable level. Normal volume control remains available through Home Assistant and
-the Stream Deck.
+and control loudness in PipeWire.
+
+Loudness itself is two independent levels held by the audio manager: the **music level** (Sendspin, USB computer audio,
+and aux) and the **voice level** (everything the assistant plays). The output sink is pinned at 100% and each level is
+a gain on that class's own bridge stream, so voice speaks at its set loudness whether the music is at 5% or 80%. The
+volume dial and Home Assistant move the music level; `smartamp_startup_volume_percent` is where it starts each boot so
+the device always wakes at a predictable loudness. Because the sink is pinned, the manager also holds any stream that
+plays straight at the output — something not routed through a bus — at the music level rather than letting it play at
+full amplifier gain.
 
 Device match expressions search every PipeWire/Pulse node property. Use `pactl list sinks` and `pactl list sources` on
 the Pi if your firmware exposes different names.
@@ -51,7 +57,7 @@ at `2` (16-bit) — the Pi 5's dwc2 gadget controller corrupts 3-byte (24-bit) s
 which plays as loud static with the audio faintly underneath.
 
 The gadget advertises a UAC2 mute/volume control, and the connected computer's writes to it land on the gadget card's
-`PCM Capture` ALSA controls. The audio manager keeps those and the default sink's volume and mute converged in both
+`PCM Capture` ALSA controls. The audio manager keeps those and the music level plus output mute converged in both
 directions (an `alsactl monitor` stream wakes it on host changes; sink changes it already sees): change the volume on
 the computer and the amp follows, turn the amp's dial and the computer's slider follows. Whichever side moved since
 they last agreed wins, and when a computer first plugs in the amp's current volume seeds its slider.
@@ -70,6 +76,14 @@ ducking over the audio manager's control socket, which releases the request auto
 
 Aux is deliberately not on the duckable bus. It continues at its selected level during voice interactions. Set the
 generated source target to `background` as a code-level extension if aux should follow the same policy.
+
+Voice playback has a bus of its own, `smartamp_voice_sink_name`, so how loud the assistant speaks is fully independent
+of the music level: TTS, timer chimes, and announcements play at `smartamp_voice_startup_volume_percent` whether the
+music sits at 5% or 80%. From boot onwards the level belongs to the deck: the VOICE VOL key on the INFO page sets it,
+and the volume dial adjusts it live whenever Assist is listening, thinking, speaking, or ringing a timer. Like the
+route toggles both levels survive an audio manager restart (the controller re-asserts them) but return to the
+inventory defaults on reboot. Mute is the exception to the independence: it lands on the output sink itself, silencing
+music and voice alike.
 
 ## SD-card endurance
 

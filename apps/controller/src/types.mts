@@ -123,6 +123,8 @@ export interface AudioControls {
     setVolume(command: string): unknown
 
     setSource(name: string, command: string): unknown
+
+    setVoiceVolume(percent: number): unknown
 }
 
 export interface HealthState {
@@ -147,6 +149,10 @@ export interface ControlState {
 export interface AudioState {
     sources: Record<string, boolean | undefined>
     usbPlayback?: boolean
+    /** The music level in percent; unknown until the manager's first state event. */
+    musicVolume?: number
+    /** The voice bus level in percent; unknown until the manager's first state event. */
+    voiceVolume?: number
 }
 
 export interface UsbControlDevice {

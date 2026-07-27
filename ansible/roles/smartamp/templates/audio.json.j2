@@ -16,6 +16,12 @@
     "duck_volume_percent": {{ smartamp_voice_duck_volume_percent | int }},
     "fade_ms": {{ smartamp_voice_duck_fade_ms | int }}
   },
+  "voice_bus": {
+    "enabled": {{ voice_assistant_enabled | bool | to_json }},
+    "sink_name": {{ smartamp_voice_sink_name | to_json }},
+    "latency_ms": {{ smartamp_loopback_latency_ms | int }},
+    "volume_percent": {{ smartamp_voice_startup_volume_percent | int }}
+  },
   "resync_seconds": 900,
   "sources": {
     "aux": {

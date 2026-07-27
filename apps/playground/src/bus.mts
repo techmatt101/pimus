@@ -38,6 +38,10 @@ export interface PlaygroundSnapshot {
     muted: boolean
     volume: number
     outputMuted: boolean
+    /** The fake manager's music level, undefined until the controller syncs. */
+    musicVolume: number | undefined
+    /** The fake manager's voice bus level, undefined until the controller syncs. */
+    voiceVolume: number | undefined
     media: boolean
     sources: Record<string, boolean | undefined>
     ducked: boolean

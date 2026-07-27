@@ -76,6 +76,7 @@ central dispatcher:
 | `MediaTile`        | Play/pause. Draws the play or pause glyph from the playback state, and the glyph breathes while playing.                                                                                                                                                                                                                                                       |
 | `VoiceTile`        | Start Assist, or cancel the pipeline already running. Expanding rings while one is live.                                                                                                                                                                                                                                                                       |
 | `BrightnessTile`   | Steps the Stream Deck panel's own brightness through a few levels. Press to arm, turn the dynamic dial to pick a level, press again to apply; shows the picked percentage while armed, the panel's actual percentage at rest. Mutates display state on the model; the renderer re-lights the panel.                                                               |
+| `VoiceVolumeTile`  | Sets the voice level — how loud Assist speaks, rings, and announces, independent of the music level. Press to arm, turn the dynamic dial to pick a level, press again to apply; shows the audio manager's reported level at rest, `?` while the manager is unreachable. The volume dial adjusts the same level live whenever Assist is speaking.                                |
 | `PlaylistTile`     | Picks and plays one of a short list of playlists. Press to arm (the key glows and claims the dynamic dial), turn the dynamic dial to choose, press again — the key or the knob — to confirm. A single playlist is just press-then-confirm. The armed state releases itself after 15s, or when any other dial or key is touched — that first touch only cancels the arm and does nothing else.        |
 | `SceneTile`        | Picks one of a short list of scenes. Press to arm, turn to choose, press again — key or knob — to apply. Scenes have no state to read back, so it stays dim until the first apply, then shows the one last applied.                                                                                                                                              |
 | `EntityToggleTile` | The general Home Assistant on/off key — lights, fan, blinds, PC. Its service comes from the entity's own domain, plus an icon and an optional `spin` (the fan turns while it runs) and `level` (how far the blinds are down), so the four are one class configured four ways. Its caption reads its own state rather than repeating the key's name: the icon says which device it is, so the room keys drop the label and show just `ON`/`OFF`, `OPEN`/`CLOSED`, or a percentage when part-way (fan speed, light brightness, blind position); `?` when unreachable. Given the dynamic dial, the first press arms it — glow, strip readout, 15s timeout — turning adjusts the level live and a second press toggles, so a double-press turns it on; a plain switch like PC has nothing to adjust and just toggles at once. |
@@ -162,18 +163,21 @@ Any other command is forwarded to LVA unchanged, so upstream features work
 without a controller change. Forwarded commands get no local state tracking and
 no key feedback; add them to the catalog when they need either.
 
-## Master volume — `type: audio` with no `source`
+## Music volume — `type: audio` with no `source`
 
-Drives the PipeWire default sink through `wpctl`. While a computer is on the
-USB-C gadget port, the audio manager keeps this volume and the computer's
+Drives the audio manager's music level — the gain every non-voice path (music,
+USB computer audio, aux) plays at; the output sink itself stays pinned at 100%
+and voice keeps its own level. `mute` is the exception: it toggles the sink
+through `wpctl`, silencing music and voice alike. While a computer is on the
+USB-C gadget port, the audio manager keeps the music level and the computer's
 volume control for the device converged in both directions: the computer's
 volume keys move the amp, and the dial moves the computer's slider.
 
-| Command | Effect                                        |
-|---------|-----------------------------------------------|
-| `up`    | Raise the default sink by 5%, capped at 100%. |
-| `down`  | Lower the default sink by 5%.                 |
-| `mute`  | Toggle mute on the default sink.              |
+| Command | Effect                                                     |
+|---------|------------------------------------------------------------|
+| `up`    | Raise the music level by 5%, capped at 100%.               |
+| `down`  | Lower the music level by 5%.                               |
+| `mute`  | Toggle mute on the output, silencing music and voice alike.|
 
 ```ts
 {
@@ -290,7 +294,7 @@ the content of that face:
 | Dial          | What it is                                                                                                                                           |
 |---------------|------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `ActionDial`  | The default: a fixed name, up to three bindings, and a readout it is told. Also how a knob is held open — bound to nothing and saying so.            |
-| `VolumeDial`  | Master output volume, read from the controller's own state so it is right with nothing else reachable. `MUTED` is its own reading, and an empty bar. |
+| `VolumeDial`  | The music level, read from the audio manager's reported state (`?` while it is unreachable). `MUTED` is its own reading, and an empty bar. While Assist is live (wake through TTS, or a ringing timer) it relabels to `VOICE` and steers the voice level instead, so a shout can be turned down as it happens without touching the music. |
 | `MediaDial`   | Transport through the Music Assistant player: skip with a turn, play or pause with a press, and read `PLAYING` / `PAUSED` from the player.           |
 | `PageDial`    | Pages the key grid — turn to move between pages — and reads out the page you land on. Takes over the job the bottom-corner keys used to do.          |
 | `DynamicDial` | The shared knob. A playlist key hands it a `Dial` to delegate to; a room key hands it the `Dial` its entity's domain builds (`entityDial`).           |
@@ -302,7 +306,7 @@ The four dials as shipped:
 
 | Dial      | Turn left / right                           | Press              |
 |-----------|---------------------------------------------|--------------------|
-| `VOLUME`  | Master volume down / up                     | Mute               |
+| `VOLUME`  | Music level down / up; the voice level while Assist is live | Mute               |
 | `MEDIA`   | Previous / next track                       | Play/pause         |
 | `PAGE`    | Previous / next page of keys                | —                  |
 | *dynamic* | Whatever the last room key you pressed does | Toggle that entity |

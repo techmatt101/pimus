@@ -35,6 +35,10 @@ export const ASSIST_ACTIVE = ['WAKE_WORD_DETECTED', 'LISTENING', 'THINKING', 'TT
 
 export const isAssistRunning = (state: ControlState): boolean => ASSIST_ACTIVE.includes(state.assist)
 
+/** The moments voice playback is audible or imminent, when the volume dial steers the voice bus. */
+export const isVoiceActive = (state: ControlState): boolean =>
+    isAssistRunning(state) || state.assist === 'TIMER_RINGING'
+
 export const VOICE_ACTIONS = {
     start_listening: {
         summary: 'Start a voice pipeline, the same as speaking the wake word.',
@@ -97,15 +101,15 @@ export type VoiceActionName = keyof typeof VOICE_ACTIONS
 
 export const VOLUME_ACTIONS = {
     up: {
-        summary: 'Raise the default sink by 5%, capped at 100%.',
+        summary: 'Raise the music level by 5%, capped at 100%. Voice keeps its own level.',
         example: '{ type: audio, command: up }',
     },
     down: {
-        summary: 'Lower the default sink by 5%.',
+        summary: 'Lower the music level by 5%. Voice keeps its own level.',
         example: '{ type: audio, command: down }',
     },
     mute: {
-        summary: 'Toggle mute on the default sink.',
+        summary: 'Toggle mute on the output, silencing music and voice alike.',
         example: '{ type: audio, command: mute }',
     },
 } as const satisfies Record<string, ActionSpec>

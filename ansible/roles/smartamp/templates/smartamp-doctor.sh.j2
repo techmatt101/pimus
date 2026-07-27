@@ -50,6 +50,9 @@ if [ -r "$STATUS_FILE" ] && jq -e 'type == "object"' "$STATUS_FILE" >/dev/null 2
     jq -e '.voice_input | type == "string" and length > 0' "$STATUS_FILE" >/dev/null 2>&1 \
         && pass 'ReSpeaker is selected as the voice input' \
         || fail 'Audio status has no selected voice input'
+    jq -e '.voice_bus.available == true and (.voice_bus.sink | type == "string" and length > 0)' "$STATUS_FILE" >/dev/null 2>&1 \
+        && pass 'Voice playback bus is available' \
+        || fail 'Voice playback bus is unavailable'
 {% endif %}
 {% if voice_assistant_enabled and smartamp_voice_ducking_enabled %}
     jq -e '.background.available == true and (.background.sink | type == "string" and length > 0)' "$STATUS_FILE" >/dev/null 2>&1 \

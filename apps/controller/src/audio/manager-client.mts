@@ -10,6 +10,8 @@ interface ManagerEvent {
     error?: string
     sources?: unknown
     usb_playback?: unknown
+    music_volume?: unknown
+    voice_volume?: unknown
 }
 
 export interface AudioManagerClientOptions {
@@ -68,9 +70,17 @@ export class AudioManagerClient {
             this.#lastErrorMessage = null
             // A manager restart resets its routes to configured defaults, so
             // re-assert the cache; with no cache yet, adopt what the manager has.
-            this.#write(this.#synced
-                ? {command: 'set-sources', sources: this.state.sources}
-                : {command: 'get-state'})
+            if (this.#synced) {
+                this.#write({command: 'set-sources', sources: this.state.sources})
+                if (this.state.voiceVolume !== undefined) {
+                    this.#write({command: 'set-voice-volume', percent: this.state.voiceVolume})
+                }
+                if (this.state.musicVolume !== undefined) {
+                    this.#write({command: 'set-music-volume', percent: this.state.musicVolume})
+                }
+            } else {
+                this.#write({command: 'get-state'})
+            }
             // The manager ties a duck request to the connection that made it, so
             // a reconnect during a conversation has to ask again.
             if (this.#duckActive) this.#write({command: 'set-duck', active: true})
@@ -112,10 +122,28 @@ export class AudioManagerClient {
         }
         const enabled = command === 'toggle' ? !this.state.sources[name] : command === 'on'
         if (this.state.sources[name] !== enabled) {
-            this.state = {sources: {...this.state.sources, [name]: enabled}}
+            this.state = {...this.state, sources: {...this.state.sources, [name]: enabled}}
             this.#onStateChange()
         }
         this.#write({command: 'set-source', name, state: enabled ? 'on' : 'off'})
+    }
+
+    setVoiceVolume(percent: number): void {
+        const level = Math.round(Math.max(0, Math.min(100, percent)))
+        if (this.state.voiceVolume !== level) {
+            this.state = {...this.state, voiceVolume: level}
+            this.#onStateChange()
+        }
+        this.#write({command: 'set-voice-volume', percent: level})
+    }
+
+    setMusicVolume(percent: number): void {
+        const level = Math.round(Math.max(0, Math.min(100, percent)))
+        if (this.state.musicVolume !== level) {
+            this.state = {...this.state, musicVolume: level}
+            this.#onStateChange()
+        }
+        this.#write({command: 'set-music-volume', percent: level})
     }
 
     /**
@@ -158,6 +186,12 @@ export class AudioManagerClient {
                 this.state = {
                     sources: {...(message.sources as AudioState['sources'])},
                     usbPlayback: message.usb_playback === true,
+                    ...(typeof message.music_volume === 'number'
+                        ? {musicVolume: message.music_volume}
+                        : {}),
+                    ...(typeof message.voice_volume === 'number'
+                        ? {voiceVolume: message.voice_volume}
+                        : {}),
                 }
                 this.#synced = true
                 this.#onStateChange()

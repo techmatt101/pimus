@@ -24,15 +24,18 @@ hifiberry_card_name: sndrpihifiberry
 # The DAC's hardware output ceiling. The ALSA percent scale is logarithmic
 # across -103.5..0 dB, about -1 dB per point below 100: 90 is a -10 dB
 # ceiling, but 30 is -72.5 dB — inaudible on any speaker. Day-to-day loudness
-# comes from the volume dial (PipeWire), not this.
+# comes from the audio manager's music and voice levels (PipeWire), not this;
+# with the output sink pinned at 100% this ceiling is the one hard cap above
+# those levels.
 hifiberry_output_volume_percent: 100
 hifiberry_aux_gain_db: 0
 hifiberry_aux_input_left: "VINL1[SE]"
 hifiberry_aux_input_right: "VINR1[SE]"
 
-# The PipeWire output volume applied once per boot, so every start has the
-# same predictable loudness (WirePlumber otherwise restores whatever level the
-# sink last had). The volume dial takes over from there.
+# The music level each boot starts at, so every start has the same predictable
+# loudness. The output sink itself stays pinned at 100%: this and the voice
+# level below are gains the audio manager holds on its bridge streams, and the
+# volume dial takes over from here.
 smartamp_startup_volume_percent: 20
 
 # PipeWire device matching. These are regular expressions, matched against
@@ -76,17 +79,28 @@ smartamp_aec_reference_enabled: true
 # computer input share this background path; LVA voice playback bypasses it.
 smartamp_voice_ducking_enabled: true
 smartamp_background_sink_name: smartamp_background
-# The level background audio plays AT while ducked - reduced TO this share of
-# its normal level, not BY it. 15 drops the music to 15% (a strong dip; Pulse
-# percentages are perceptual, so 50 sounds roughly half as loud). 100 leaves
-# it untouched, 0 silences it. It scales only the background bridge stream,
-# so the master volume and what plays after the dip are unaffected.
+# The share of the music level background audio plays AT while ducked -
+# reduced TO this share, not BY it. 15 drops music at 60% to 9% (a strong dip;
+# Pulse percentages are perceptual, so 50 sounds roughly half as loud). 100
+# leaves it untouched, 0 silences it. It scales only the background bridge
+# stream, so the music level itself and what plays after the dip are
+# unaffected.
 smartamp_voice_duck_volume_percent: 15
 # The duration of each fade, applied in both directions: the music takes this
 # long to ramp down when Assist starts and this long again to ramp back up
 # when it finishes. It is not a delay before or after the dip - ducking always
 # starts immediately, in up to ten volume steps spread over this time.
 smartamp_voice_duck_fade_ms: 250
+
+# Voice playback (Assist responses, timer chimes, announcements) has its own
+# bus and its own volume, fully independent of the music level: LVA plays into
+# this sink and the bridge carries the voice gain, so voice speaks at the
+# startup percent below whether the music sits at 5% or 80%. Applied once per
+# audio manager start; the deck's VOICE VOL tile and the volume dial while
+# Assist is live own it from then on. Only mute crosses the two - it lands on
+# the output sink and silences music and voice alike.
+smartamp_voice_sink_name: smartamp_voice
+smartamp_voice_startup_volume_percent: 50
 
 # Make the Pi appear as a 48 kHz 16-bit stereo USB sound card to a computer
 # connected to the Pi 5 USB-C port. The AAmp60/DAC stack must power the Pi

@@ -216,11 +216,21 @@ const layout = createLayout({
         setSource: (name, command) => {
             audio.setSource(name, command)
         },
-        setVolume: (command) => runVolumeCommand(command, {
-            onExit: () => model.notify(),
-            spawnProcess: wpctl.spawnProcess,
-            logger: busLogger(bus, 'wpctl'),
-        }),
+        setVolume: (command) => {
+            if (command === 'mute') {
+                return runVolumeCommand(command, {
+                    onExit: () => model.notify(),
+                    spawnProcess: wpctl.spawnProcess,
+                    logger: busLogger(bus, 'wpctl'),
+                })
+            }
+            const current = audio.state.musicVolume
+            if (current === undefined) return
+            return audio.setMusicVolume(current + (command === 'up' ? 5 : -5))
+        },
+        setVoiceVolume: (percent) => {
+            audio.setVoiceVolume(percent)
+        },
     },
     // The real client speaks the WebSocket API and has its own tests; what the
     // playground is for is watching the keys, so this replaces the whole service.
@@ -298,6 +308,8 @@ const snapshotTimer = setInterval(() => {
         muted: state.muted,
         volume: state.volume,
         outputMuted: state.outputMuted,
+        musicVolume: audio.state.musicVolume,
+        voiceVolume: audio.state.voiceVolume,
         media: state.media,
         sources: audio.state.sources,
         ducked: audioManager.ducked,

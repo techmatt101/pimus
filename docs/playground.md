@@ -23,7 +23,7 @@ own code, imported straight from `apps/controller/src/`:
 |----------------------------|-------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------|
 | Stream Deck+ over USB HID  | a canvas in the browser                         | the deck loop, reconnects, dispatch queue, paging, tiles and their `mount`/`unmount`, the renderer and the faces it paints |
 | LVA peripheral WebSocket   | a loopback WebSocket server                     | `LvaClient`, its reconnect, the action catalog, voice-state handling                                                       |
-| Audio manager Unix socket  | a Unix socket server speaking the same protocol | `AudioManagerClient`'s optimistic route cache, its re-assert on reconnect, ducking                                         |
+| Audio manager Unix socket  | a Unix socket server speaking the same protocol | `AudioManagerClient`'s optimistic route cache, its re-assert on reconnect, ducking, the voice bus level                    |
 | `wpctl`                    | a number standing in for the sink               | `runVolumeCommand`'s argument vectors and the output monitor poll                                                          |
 | ReSpeaker XVF3800 USB LEDs | a ring drawn in the state panel                 | `ReSpeakerController`'s state-to-appearance mapping and write de-duplication                                               |
 | Home Assistant             | a house that responds to service calls          | every tile's entity watch and `mount`/`unmount`, the catalog's service composition, the unknown-state faces                |

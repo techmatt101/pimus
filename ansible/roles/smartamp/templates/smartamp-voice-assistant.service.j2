@@ -23,6 +23,10 @@ ExecStartPre={{ smartamp_app_dir }}/wait-audio-ready.sh /run/user/{{ smartamp_ui
 # forwards a second channel to Home Assistant advertised as a far-end echo
 # reference for server-side AEC, and the XVF3800's channel 1 carries the ASR
 # voice itself, so HA would be told to cancel the speech against itself.
+# Playback (TTS, timers, announcements, sounds) all goes through libmpv, which
+# on mpv >= 0.36 prefers its native PipeWire output and ignores PULSE_SINK;
+# --audio-output-device with the explicit mpv device name is what lands it on
+# the audio manager's voice bus, whose bridge stream carries the voice volume.
 ExecStart={{ smartamp_app_dir }}/linux-voice-assistant/.venv/bin/python {{ smartamp_app_dir }}/smartamp_lva.py \
   --name {{ voice_assistant_name | quote }} \
   --preferences-file {{ smartamp_state_dir }}/lva/configuration/preferences.json \
@@ -37,6 +41,7 @@ ExecStart={{ smartamp_app_dir }}/linux-voice-assistant/.venv/bin/python {{ smart
   --peripheral-host 127.0.0.1 \
   --peripheral-port {{ voice_assistant_peripheral_port }} \
   --peripheral-volume-step 0.05 \
+  --audio-output-device pipewire/{{ smartamp_voice_sink_name }} \
 {% if voice_assistant_debug | bool %}
   --debug \
 {% endif %}

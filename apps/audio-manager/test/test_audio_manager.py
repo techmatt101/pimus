@@ -55,7 +55,7 @@ class AudioManagerTests(unittest.TestCase):
         )
         self.assertEqual(
             reply,
-            {"event": "state", "sources": {"aux": True, "usb": True}, "ducked": False, "usb_playback": False},
+            {"event": "state", "sources": {"aux": True, "usb": True}, "ducked": False, "usb_playback": False, "music_volume": 100, "voice_volume": 100},
         )
         self.assertTrue(reconcile)
 
@@ -84,7 +84,7 @@ class AudioManagerTests(unittest.TestCase):
         # Unknown routes and non-boolean values are ignored, not coerced.
         self.assertEqual(
             reply,
-            {"event": "state", "sources": {"aux": False, "usb": False}, "ducked": False, "usb_playback": False},
+            {"event": "state", "sources": {"aux": False, "usb": False}, "ducked": False, "usb_playback": False, "music_volume": 100, "voice_volume": 100},
         )
         self.assertTrue(reconcile)
 
@@ -113,7 +113,7 @@ class AudioManagerTests(unittest.TestCase):
 
         self.assertEqual(
             json.loads(right.recv(4096)),
-            {"event": "state", "sources": {"aux": True}, "ducked": False, "usb_playback": False},
+            {"event": "state", "sources": {"aux": True}, "ducked": False, "usb_playback": False, "music_volume": 100, "voice_volume": 100},
         )
         manager.safe_reconcile.assert_called_once()
 
@@ -268,6 +268,7 @@ class AudioManagerTests(unittest.TestCase):
                     "monitor_of_sink": 4294967295,
                 }
             ],
+            "sink-inputs": [],
             "cards": [],
         }
         commands: list[tuple[str, ...]] = []
@@ -342,6 +343,7 @@ class AudioManagerTests(unittest.TestCase):
     def test_usb_volume_sync_follows_whichever_side_moved(self) -> None:
         manager = self._reconciling_manager()
         manager.config["aec_reference"] = {"enabled": False}
+        manager.music_volume = 40
         gadget = {"volume": 30, "muted": False}
         sinks = [
             {
@@ -349,8 +351,8 @@ class AudioManagerTests(unittest.TestCase):
                 "description": "HiFiBerry DAC2 ADC Pro",
                 "mute": False,
                 "volume": {
-                    "front-left": {"value_percent": "40%"},
-                    "front-right": {"value_percent": "40%"},
+                    "front-left": {"value_percent": "100%"},
+                    "front-right": {"value_percent": "100%"},
                 },
             }
         ]
@@ -367,11 +369,6 @@ class AudioManagerTests(unittest.TestCase):
             if args[0] == "amixer" and "sset" in args:
                 gadget["volume"] = int(args[6].rstrip("%"))
                 gadget["muted"] = args[7] == "nocap"
-                return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
-            if args[:2] == ("pactl", "set-sink-volume"):
-                sinks[0]["volume"] = {
-                    "mono": {"value_percent": args[3]},
-                }
                 return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
             if args[:2] == ("pactl", "set-sink-mute"):
                 sinks[0]["mute"] = args[3] == "1"
@@ -392,28 +389,30 @@ class AudioManagerTests(unittest.TestCase):
             ), mock.patch.object(audio_manager, "atomic_json"):
                 manager.reconcile()
 
-        # First sight: the amp's volume seeds the gadget, so a computer
+        # First sight: the amp's music level seeds the gadget, so a computer
         # plugging in reads the real level rather than a stale one.
         reconcile()
         self.assertEqual(gadget, {"volume": 40, "muted": False})
 
-        # The computer moves its slider and mutes: the amp follows.
+        # The computer moves its slider and mutes: the music level and the
+        # sink mute follow; the sink volume itself stays pinned.
         gadget.update(volume=55, muted=True)
         reconcile()
-        self.assertIn(("pactl", "set-sink-volume", "hifiberry", "55%"), commands)
+        self.assertEqual(manager.music_volume, 55)
         self.assertIn(("pactl", "set-sink-mute", "hifiberry", "1"), commands)
+        self.assertNotIn(("pactl", "set-sink-volume", "hifiberry", "55%"), commands)
 
         # A settled graph stays quiet: no further writes on the next pass.
         writes = len(commands)
         reconcile()
         self.assertEqual(
-            [c for c in commands[writes:] if "sset" in c or "set-sink-volume" in c],
+            [c for c in commands[writes:] if "sset" in c or "set-sink-mute" in c],
             [],
         )
 
-        # The amp dial moves and unmutes: the gadget follows, so the
-        # computer's slider tracks the amp.
-        sinks[0]["volume"] = {"mono": {"value_percent": "70%"}}
+        # The amp dial moves the music level and unmutes: the gadget follows,
+        # so the computer's slider tracks the amp.
+        manager.music_volume = 70
         sinks[0]["mute"] = False
         reconcile()
         self.assertEqual(gadget, {"volume": 70, "muted": False})
@@ -485,32 +484,48 @@ class AudioManagerTests(unittest.TestCase):
         # A settled toggle fades nothing on the next reconcile.
         self.assertEqual(reconcile(), [])
 
-    def test_startup_volume_applies_once_when_the_sink_appears(self) -> None:
+    def test_output_sink_is_pinned_to_full_scale(self) -> None:
         manager = self._duckable_manager()
-        manager.config["startup_volume_percent"] = 20
-        manager.startup_volume_pending = True
 
         with mock.patch.object(audio_manager, "run") as run:
-            # The sink is not up yet, so the pending level must survive.
-            manager.apply_startup_volume(None)
+            manager.pin_output_volume(None)
             run.assert_not_called()
 
-            manager.apply_startup_volume({"name": "hifi"})
+            # WirePlumber restored an old dial level: pin it back to 100.
+            manager.pin_output_volume(
+                {"name": "hifi", "volume": {"mono": {"value_percent": "20%"}}}
+            )
             run.assert_called_once_with(
-                "pactl", "set-sink-volume", "hifi", "20%", check=False
+                "pactl", "set-sink-volume", "hifi", "100%", check=False
             )
 
-            # A later reconcile must not fight the volume dial.
-            manager.apply_startup_volume({"name": "hifi"})
+            # An already pinned sink writes nothing, so the pin can never echo
+            # itself into another reconcile.
+            manager.pin_output_volume(
+                {"name": "hifi", "volume": {"mono": {"value_percent": "100%"}}}
+            )
             run.assert_called_once()
 
-    def test_startup_volume_stays_untouched_without_the_setting(self) -> None:
-        manager = self._duckable_manager()
-        manager.startup_volume_pending = "startup_volume_percent" in manager.config
+    def test_startup_config_seeds_the_music_and_voice_levels(self) -> None:
+        import tempfile
 
-        with mock.patch.object(audio_manager, "run") as run:
-            manager.apply_startup_volume({"name": "hifi"})
-            run.assert_not_called()
+        with tempfile.TemporaryDirectory() as base:
+            config = Path(base) / "audio.json"
+            config.write_text(
+                json.dumps({
+                    "startup_volume_percent": 20,
+                    "voice_bus": {"enabled": True, "volume_percent": 50},
+                    "sources": {},
+                }),
+                encoding="utf-8",
+            )
+            with mock.patch.object(audio_manager, "usb_host_attached", return_value=False):
+                manager = audio_manager.AudioManager(
+                    config, Path(base) / "control.sock", Path(base) / "status.json"
+                )
+            self.addCleanup(manager.selector.close)
+        self.assertEqual(manager.music_volume, 20)
+        self.assertEqual(manager.voice_volume, 50)
 
     def test_duck_requests_are_held_against_the_requesting_connection(self) -> None:
         manager = self._duckable_manager()
@@ -564,6 +579,7 @@ class AudioManagerTests(unittest.TestCase):
         }
         manager.background_stream_index = 42
         manager.background_ducked = False
+        manager.background_gain_applied = 100
 
         with mock.patch.object(audio_manager, "run") as pactl_run, mock.patch.object(
             audio_manager.time, "sleep"
@@ -574,6 +590,146 @@ class AudioManagerTests(unittest.TestCase):
             [call.args[-1] for call in pactl_run.call_args_list], ["58%", "15%"]
         )
         self.assertTrue(manager.background_ducked)
+
+    def test_voice_volume_command_applies_the_bridge_gain(self) -> None:
+        manager = self._duckable_manager()
+        manager.config = {
+            "background": {"enabled": False},
+            "voice_bus": {"enabled": True},
+        }
+        manager.voice_stream_index = 33
+
+        with mock.patch.object(audio_manager, "run") as pactl_run:
+            reply, reconcile = manager.apply_command(
+                mock.Mock(), {"command": "set-voice-volume", "percent": 40}
+            )
+
+        self.assertEqual(reply["voice_volume"], 40)
+        # One stream volume, like ducking: never a full graph reconcile.
+        self.assertFalse(reconcile)
+        # The sink is pinned, so the bridge gain is the voice level itself,
+        # whatever the music is doing.
+        pactl_run.assert_called_once_with(
+            "pactl", "set-sink-input-volume", "33", "40%", check=False
+        )
+
+    def test_voice_volume_rejects_anything_but_a_percent(self) -> None:
+        manager = self._duckable_manager()
+        for percent in ("50", True, -1, 101, None):
+            reply, reconcile = manager.apply_command(
+                mock.Mock(), {"command": "set-voice-volume", "percent": percent}
+            )
+            self.assertEqual(reply["event"], "error")
+            self.assertFalse(reconcile)
+        self.assertEqual(manager.voice_volume, 100)
+
+    def test_music_volume_command_moves_the_bus_and_direct_routes(self) -> None:
+        manager = self._duckable_manager()
+        manager.config = {
+            "background": {"enabled": True, "duck_volume_percent": 15, "fade_ms": 0},
+            "sources": {"aux": {"match": "ADC Pro", "mute_when_off": True, "latency_ms": 20}},
+        }
+        manager.modules = {"aux": 60}
+        manager.route_unmuted = {"aux": True}
+        manager.background_stream_index = 42
+        manager.background_ducked = False
+        manager.background_gain_applied = 100
+        sink_inputs = [
+            {
+                "index": 61,
+                "owner_module": 60,
+                "volume": {"mono": {"value_percent": "100%"}},
+            }
+        ]
+
+        with mock.patch.object(
+            audio_manager, "pactl_json", return_value=sink_inputs
+        ), mock.patch.object(audio_manager, "run") as pactl_run, mock.patch.object(
+            audio_manager.time, "sleep"
+        ):
+            reply, reconcile = manager.apply_command(
+                mock.Mock(), {"command": "set-music-volume", "percent": 30}
+            )
+
+        self.assertEqual(reply["music_volume"], 30)
+        self.assertFalse(reconcile)
+        writes = [
+            (call.args[2], call.args[3])
+            for call in pactl_run.call_args_list
+            if "set-sink-input-volume" in call.args
+        ]
+        # The background bus snaps to the new level and the unmuted aux bridge
+        # follows it; the voice bridge is left alone.
+        self.assertEqual(writes, [("42", "30%"), ("61", "30%")])
+
+    def test_ducked_music_dips_by_the_duck_share_of_the_music_level(self) -> None:
+        manager = audio_manager.AudioManager.__new__(audio_manager.AudioManager)
+        manager.config = {"background": {"duck_volume_percent": 15}}
+        manager.music_volume = 60
+        self.assertEqual(manager.background_target(False), 60)
+        self.assertEqual(manager.background_target(True), 9)
+
+    def test_voice_bus_is_bridged_and_a_new_stream_is_snapped_to_the_gain(self) -> None:
+        manager = audio_manager.AudioManager.__new__(audio_manager.AudioManager)
+        manager.config = {
+            "voice_bus": {"enabled": True, "sink_name": "smartamp_voice", "latency_ms": 40}
+        }
+        manager.modules = {}
+        manager.bindings = {}
+        manager.voice_volume = 40
+        manager.voice_stream_index = None
+        manager.voice_gain_applied = None
+        output = {
+            "name": "hifiberry",
+            "mute": False,
+            "volume": {"mono": {"value_percent": "80%"}},
+        }
+        voice = {"name": "smartamp_voice", "owner_module": 12}
+        loaded = []
+
+        def load_module(name: str, module: str, *arguments: str) -> int:
+            module_id = 12 if name == "_voice_sink" else 13
+            manager.modules[name] = module_id
+            loaded.append((name, module, arguments))
+            return module_id
+
+        responses = {
+            "sinks": [output, voice],
+            "sources": [{"name": "smartamp_voice.monitor"}],
+            "modules": [],
+            "sink-inputs": [{"index": 27, "owner_module": 13}],
+        }
+        manager.load_module = load_module
+        with mock.patch.object(
+            audio_manager, "pactl_json", side_effect=lambda kind: responses[kind]
+        ), mock.patch.object(
+            audio_manager, "pactl_modules", side_effect=lambda: responses["modules"]
+        ), mock.patch.object(audio_manager, "run") as pactl_run:
+            selected, _, _ = manager.ensure_voice_bus([output], [], output)
+            manager.apply_voice_gain()
+
+        self.assertEqual(selected, voice)
+        self.assertEqual(manager.voice_stream_index, 27)
+        self.assertEqual(loaded[0][0:2], ("_voice_sink", "module-null-sink"))
+        self.assertIn("priority.session=1", loaded[0][2][-1])
+        self.assertEqual(loaded[1][0:2], ("_voice_bridge", "module-loopback"))
+        self.assertIn(
+            "sink_input_properties=media.name=SmartAmp.voice_bridge",
+            loaded[1][2],
+        )
+        pactl_run.assert_called_once_with(
+            "pactl", "set-sink-input-volume", "27", "40%", check=False
+        )
+
+        # A settled bus writes nothing on the next pass.
+        with mock.patch.object(
+            audio_manager, "pactl_json", side_effect=lambda kind: responses[kind]
+        ), mock.patch.object(
+            audio_manager, "pactl_modules", side_effect=lambda: responses["modules"]
+        ), mock.patch.object(audio_manager, "run") as pactl_run:
+            manager.ensure_voice_bus(responses["sinks"], responses["sources"], output)
+            manager.apply_voice_gain()
+        pactl_run.assert_not_called()
 
     def test_background_sink_is_bridged_and_identifiable(self) -> None:
         manager = audio_manager.AudioManager.__new__(audio_manager.AudioManager)

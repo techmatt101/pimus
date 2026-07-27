@@ -92,7 +92,19 @@ const layout = createLayout({
         setSource: (name, command) => {
             audio.setSource(name, command)
         },
-        setVolume: (command) => runVolumeCommand(command, {onExit: () => model.notify()}),
+        // The output sink stays pinned at 100%: loudness lives on the audio
+        // manager's music and voice gains, so only mute still goes to wpctl.
+        setVolume: (command) => {
+            if (command === 'mute') {
+                return runVolumeCommand(command, {onExit: () => model.notify()})
+            }
+            const current = audio.state.musicVolume
+            if (current === undefined) return
+            return audio.setMusicVolume(current + (command === 'up' ? 5 : -5))
+        },
+        setVoiceVolume: (percent) => {
+            audio.setVoiceVolume(percent)
+        },
     },
     ha: homeAssistant,
     notifications,

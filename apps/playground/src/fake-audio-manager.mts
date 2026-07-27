@@ -21,6 +21,8 @@ export interface FakeAudioManagerOptions {
 export class FakeAudioManager {
     readonly socketPath: string
     sources: Record<string, boolean | undefined> = {aux: false, usb: true}
+    musicVolume = 40
+    voiceVolume = 60
 
     private readonly bus: PlaygroundBus
     private readonly server: net.Server
@@ -105,6 +107,24 @@ export class FakeAudioManager {
                 }
             }
             this.broadcastState()
+        } else if (command === 'set-voice-volume') {
+            const percent = message.percent
+            if (typeof percent !== 'number' || percent < 0 || percent > 100) {
+                this.reject(socket, 'set-voice-volume needs a percent between 0 and 100')
+                return
+            }
+            this.voiceVolume = Math.round(percent)
+            this.bus.log('audio', 'note', `voice volume set to ${this.voiceVolume}%`)
+            this.broadcastState()
+        } else if (command === 'set-music-volume') {
+            const percent = message.percent
+            if (typeof percent !== 'number' || percent < 0 || percent > 100) {
+                this.reject(socket, 'set-music-volume needs a percent between 0 and 100')
+                return
+            }
+            this.musicVolume = Math.round(percent)
+            this.bus.log('audio', 'note', `music volume set to ${this.musicVolume}%`)
+            this.broadcastState()
         } else if (command === 'set-duck') {
             const active = Boolean(message.active)
             if (active) this.ducking.add(socket)
@@ -138,7 +158,12 @@ export class FakeAudioManager {
     }
 
     private sendState(socket: net.Socket): void {
-        socket.write(`${JSON.stringify({event: 'state', sources: this.sources})}\n`)
+        socket.write(`${JSON.stringify({
+            event: 'state',
+            sources: this.sources,
+            music_volume: this.musicVolume,
+            voice_volume: this.voiceVolume,
+        })}\n`)
     }
 
     private broadcastState(): void {

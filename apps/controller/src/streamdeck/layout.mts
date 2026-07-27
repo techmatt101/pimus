@@ -21,6 +21,7 @@ import {TemperatureTile} from './tiles/temperature-tile.mjs'
 import {TimerTile} from './tiles/timer-tile.mjs'
 import type {Tile} from './tile.mjs'
 import {VoiceTile} from './tiles/voice-tile.mjs'
+import {VoiceVolumeTile} from './tiles/voice-volume-tile.mjs'
 import type {ControlModel} from '../state.mjs'
 import type {AudioControls, HomeAssistantService, LvaSender, NotificationFeed, RemoteTileFeed} from '../types.mjs'
 
@@ -145,7 +146,7 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
         [
             new TemperatureTile(ha, {label: 'OFFICE', entity: HA.temperature}),
             new BrightnessTile(model, dynamic),
-            null,
+            new VoiceVolumeTile(model, audio, dynamic),
             null
         ],
         [

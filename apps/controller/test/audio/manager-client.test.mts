@@ -114,7 +114,62 @@ test('toggles before the first state sync defer to the manager', () => {
         name: 'aux',
         state: 'off',
     })
-    assert.deepEqual(client.state, {sources: {aux: false}})
+    assert.deepEqual(client.state, {sources: {aux: false}, usbPlayback: false})
+    client.close()
+})
+
+test('voice volume updates optimistically and re-asserts after a reconnect', async () => {
+    const sockets: FakeSocket[] = []
+    const client = new AudioManagerClient({
+        socketPath: '/nowhere/audio.sock',
+        reconnectMilliseconds: 1,
+        connectSocket: () => {
+            const socket = new FakeSocket()
+            sockets.push(socket)
+            return socket as unknown as net.Socket
+        },
+        logger: {
+            log: () => {
+            }, error: () => {
+            }
+        },
+    })
+    client.connect()
+    const first = sockets[0]
+    assert.ok(first)
+    first.emit('connect')
+
+    // Until the manager reports a level the client has nothing to show or send.
+    assert.equal(client.state.voiceVolume, undefined)
+    assert.equal(client.state.musicVolume, undefined)
+    first.emit('data', '{"event":"state","sources":{},"voice_volume":60,"music_volume":25}\n')
+    assert.equal(client.state.voiceVolume, 60)
+    assert.equal(client.state.musicVolume, 25)
+
+    // Sets clamp and round locally, update the cache immediately, and travel
+    // as absolute percentages.
+    client.setVoiceVolume(37.4)
+    assert.equal(client.state.voiceVolume, 37)
+    assert.deepEqual(JSON.parse(first.written.at(-1) ?? ''), {command: 'set-voice-volume', percent: 37})
+    client.setVoiceVolume(140)
+    assert.equal(client.state.voiceVolume, 100)
+
+    client.setMusicVolume(55)
+    assert.equal(client.state.musicVolume, 55)
+    assert.deepEqual(JSON.parse(first.written.at(-1) ?? ''), {command: 'set-music-volume', percent: 55})
+
+    // A manager restart resets its levels to the configured defaults, so the
+    // client re-asserts the cached ones alongside its route toggles.
+    first.emit('close')
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    const second = sockets[1]
+    assert.ok(second)
+    second.emit('connect')
+    assert.deepEqual(second.written.map((line) => JSON.parse(line)), [
+        {command: 'set-sources', sources: {}},
+        {command: 'set-voice-volume', percent: 100},
+        {command: 'set-music-volume', percent: 55},
+    ])
     client.close()
 })
 
