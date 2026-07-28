@@ -5,6 +5,7 @@ import {
     type StreamDeck,
     type StreamDeckDeviceInfo,
 } from '@elgato-stream-deck/node'
+import {SAMP_444} from '@julusian/jpeg-turbo';
 
 import type {Binding} from './bindings.mjs'
 import type {DeckRenderer} from './renderer.mjs'
@@ -15,6 +16,16 @@ const log = componentLogger('deck')
 
 const sleep = (milliseconds: number): Promise<void> =>
     new Promise((resolve) => setTimeout(resolve, milliseconds))
+
+// Elgato's library encodes at quality 95 with 4:2:0 chroma, which is the wrong
+// trade for faces made of coloured text and icons on flat backgrounds: halving
+// the chroma resolution smears their edges far more than the quality number
+// costs. 0 is libjpeg-turbo's TJSAMP_444, full chroma; at 90 it measures
+// cleaner than the library's default and encodes to fewer bytes.
+const JPEG_OPTIONS = {quality: 90, subsampling: SAMP_444}
+
+const openStreamDeckPlus = (path: string): Promise<StreamDeck> =>
+    openStreamDeck(path, {jpegOptions: JPEG_OPTIONS})
 
 export function findStreamDeckPlus(devices: StreamDeckDeviceInfo[]): StreamDeckDeviceInfo | undefined {
     return devices.find((device) => device.model === DeviceModelId.PLUS)
@@ -56,7 +67,7 @@ export async function runDeckLoop({
                                       renderer,
                                       onActivity,
                                       listDevices = listStreamDecks,
-                                      openDevice = openStreamDeck,
+                                      openDevice = openStreamDeckPlus,
                                       retryMilliseconds = 3000,
                                       logger = console,
                                   }: DeckLoopOptions): Promise<never> {

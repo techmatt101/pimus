@@ -56,7 +56,9 @@ Loudness is two independent gains on those bridges, not the sink volume: the man
 holds the music level on the background bridge (with aux and any direct route following it, and ducking dipping to a
 share of it) and the voice level on the voice bridge. Music at 5% with voice at 50% plays voice at 50%; music at 80%
 with voice at 30% plays voice at 30%. `set-music-volume` and `set-voice-volume` on the control socket move them; the
-sink itself carries only mute, so muting silences everything at once. Because the gains sit on the persistent bridges
+sink itself carries only mute, so muting silences everything at once — `set-output-mute` moves it, and the manager
+reads the sink's mute back on every pass, so a mute made by any other client reaches the deck without the controller
+polling for one. Because the gains sit on the persistent bridges
 rather than on clients' short-lived streams, a fresh TTS stream cannot play a syllable at the wrong level, and any
 stray client that plays straight at the pinned sink is snapped to the music level on the next reconcile. Its bridge stream carries the voice volume, set over the control socket with
 `set-voice-volume` and held as an absolute level: the manager divides the target by the output sink's volume on every
@@ -76,7 +78,7 @@ hardware output level. Both are adjustable in the Ansible variables.
 - `smartamp-hifiberry`: applies hardware mixer settings after ALSA detects the HAT.
 - `smartamp-usb-audio-gadget`: creates the stereo UAC2 peripheral on the Pi 5 USB-C controller.
 - `smartamp-audio-manager`: maintains PipeWire defaults, switchable routes, the background bus and its ducking gain,
-  and the voice bus and its volume, driven by `pactl subscribe` events and a Unix control socket.
+  the voice bus and its volume, and the output sink's mute, driven by `pactl subscribe` events and a Unix control socket.
 - `smartamp-sendspin`: runs the Sendspin player that Music Assistant discovers and streams to.
 - `smartamp-voice-assistant`: pinned OHF Linux Voice Assistant checkout and Python virtual environment.
 - `smartamp-controller`: maps Assist events to background ducking and XVF3800 effects, and renders/handles Stream Deck+
@@ -132,9 +134,11 @@ mount and module-loading capabilities.
 
 The controller also holds a second, separate connection to Home Assistant: its
 WebSocket API, authenticated with a long-lived access token, used by the Stream
-Deck keys that read and change house state. It subscribes to `state_changed` and
-caches only the entities a visible key is watching, so a house with hundreds of
-entities costs this daemon a handful of them. Losing the connection clears that
+Deck keys that read and change house state. It subscribes with
+`subscribe_entities` to exactly the entities a visible key is watching — a
+compressed per-entity feed, replaced when a page change moves that set — so a
+house with hundreds of entities costs this daemon neither the traffic nor the
+cache of the ones it never draws. Losing the connection clears that
 cache, and the affected keys draw an unknown state rather than a stale one that
 still looks live. With no token configured the whole thing is replaced by an
 offline stand-in and the keys behave the same way, permanently.

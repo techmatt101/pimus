@@ -19,6 +19,7 @@ interface ManagerEvent {
     usb_playback?: unknown
     music_volume?: unknown
     voice_volume?: unknown
+    output_muted?: unknown
 }
 
 export interface AudioManagerClientOptions {
@@ -147,6 +148,15 @@ export class AudioManagerClient {
         this.#write({command: 'set-voice-volume', percent: level})
     }
 
+    /** Forwards the resolved absolute state, so a replayed message cannot invert a toggle. */
+    setOutputMute(muted: boolean): void {
+        if (this.state.outputMuted !== muted) {
+            this.state = {...this.state, outputMuted: muted}
+            this.#onStateChange()
+        }
+        this.#write({command: 'set-output-mute', muted})
+    }
+
     setMusicVolume(percent: number): void {
         const level = Math.round(Math.max(0, Math.min(100, percent)))
         if (this.state.musicVolume !== level) {
@@ -220,6 +230,9 @@ export class AudioManagerClient {
                     usbPlayback: message.usb_playback === true,
                     ...(music.level !== undefined ? {musicVolume: music.level} : {}),
                     ...(voice.level !== undefined ? {voiceVolume: voice.level} : {}),
+                    ...(typeof message.output_muted === 'boolean'
+                        ? {outputMuted: message.output_muted}
+                        : {}),
                 }
                 this.#synced = true
                 this.#onStateChange()

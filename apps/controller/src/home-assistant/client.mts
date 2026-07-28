@@ -1,20 +1,31 @@
 import WebSocket, {type RawData} from 'ws'
 
+import {decodeAdded, decodeChanged, decodeRemoved} from './compressed.mjs'
 import {EntityStore} from './store.mjs'
 import {logger} from '../log.mjs'
 import type {HomeAssistantEntity, HomeAssistantService} from '../types.mjs'
 
 const log = logger('ha')
 
+interface EntityFeed {
+    a?: unknown
+    c?: unknown
+    r?: unknown
+}
+
 interface HomeAssistantMessage {
     id?: number
     type?: string
     success?: boolean
     result?: unknown
-    event?: {
+    event?: EntityFeed & {
         event_type?: string
         data?: Record<string, unknown> & { entity_id?: string; new_state?: HomeAssistantEntity | null }
     }
+}
+
+function sameIds(wanted: readonly string[], subscribed: ReadonlySet<string>): boolean {
+    return wanted.length === subscribed.size && wanted.every((id) => subscribed.has(id))
 }
 
 export interface HomeAssistantClientOptions {
@@ -48,8 +59,13 @@ export class HomeAssistantClient implements HomeAssistantService {
     readonly #eventListeners = new Map<string, Set<(data: Record<string, unknown>) => void>>()
     // Home Assistant requires strictly increasing ids on an authenticated socket.
     #nextId = 1
-    #statesRequestId = 0
-    #statesQueued = false
+    // The deck watches a handful of entities out of a whole house, so the socket
+    // carries those and nothing else. The subscription's id list is fixed, so a
+    // page that mounts different tiles replaces it rather than amending it.
+    #entitiesSubscriptionId = 0
+    #subscribedIds: ReadonlySet<string> = new Set()
+    #entitiesQueued = false
+    #primed = false
 
     constructor({
                     url,
@@ -78,11 +94,15 @@ export class HomeAssistantClient implements HomeAssistantService {
 
     watch(entityIds: readonly string[], listener: () => void): () => void {
         const unwatch = this.#store.watch(entityIds, listener)
-        // A tile mounted after the snapshot arrived would otherwise draw unknown
-        // state until its entity next changed — minutes for a temperature
-        // sensor, never for a scene.
-        if (entityIds.some((id) => !this.#store.get(id))) this.#queueStates()
-        return unwatch
+        // Re-subscribing hands back the full state of the new set, so a tile
+        // mounted long after the last one still draws immediately rather than
+        // waiting for its entity to change — minutes for a temperature sensor,
+        // never for a scene.
+        this.#queueEntities()
+        return () => {
+            unwatch()
+            this.#queueEntities()
+        }
     }
 
     // Subscribed once per type and re-made after every reconnect; an event fired
@@ -114,8 +134,9 @@ export class HomeAssistantClient implements HomeAssistantService {
     patch(entityId: string, state: string, attributes: Record<string, unknown>): void {
         const current = this.#store.get(entityId)
         if (!current) return
-        this.#store.set({entity_id: entityId, state, attributes: {...current.attributes, ...attributes}})
-        this.#onStateChange()
+        if (this.#store.set({entity_id: entityId, state, attributes: {...current.attributes, ...attributes}})) {
+            this.#onStateChange()
+        }
     }
 
     connect(): void {
@@ -126,6 +147,7 @@ export class HomeAssistantClient implements HomeAssistantService {
             if (this.#socket !== socket) return
             this.#socket = null
             this.#authenticated = false
+            this.#forgetSubscription()
             this.#store.clear()
             this.#onStateChange()
             this.scheduleReconnect()
@@ -157,34 +179,23 @@ export class HomeAssistantClient implements HomeAssistantService {
         if (message.type === 'auth_ok') {
             this.#authenticated = true
             this.#logger.log('connected to Home Assistant')
-            this.#send({type: 'subscribe_events', event_type: 'state_changed'})
             for (const eventType of this.#eventListeners.keys()) this.#subscribeEvent(eventType)
-            this.#requestStates()
+            this.#subscribeEntities()
             this.#onStateChange()
             return
         }
 
-        if (message.type === 'result' && message.id === this.#statesRequestId) {
-            if (Array.isArray(message.result)) this.#store.replace(message.result as HomeAssistantEntity[])
-            this.#onStateChange()
-            return
-        }
         if (message.type === 'result' && message.success === false) {
             this.#logger.error('Home Assistant rejected a request', message.result)
             return
         }
 
         if (message.type === 'event') {
-            const eventType = message.event?.event_type
-            if (eventType === 'state_changed') {
-                const updated = message.event?.data?.new_state
-                // A removed entity reports a null new_state.
-                if (!updated?.entity_id) return
-                if (!this.#store.watched().has(updated.entity_id)) return
-                this.#store.set(updated)
-                this.#onStateChange()
+            if (this.#entitiesSubscriptionId !== 0 && message.id === this.#entitiesSubscriptionId) {
+                this.#applyEntityFeed(message.event ?? {})
                 return
             }
+            const eventType = message.event?.event_type
             const listeners = eventType ? this.#eventListeners.get(eventType) : undefined
             if (!listeners) return
             // Copy first so a listener that unsubscribes mid-notification is safe.
@@ -213,18 +224,62 @@ export class HomeAssistantClient implements HomeAssistantService {
         this.#send({type: 'subscribe_events', event_type: eventType})
     }
 
-    #requestStates(): void {
-        this.#statesQueued = false
-        const id = this.#send({type: 'get_states'})
-        if (id) this.#statesRequestId = id
+    #applyEntityFeed(feed: EntityFeed): void {
+        let changed = false
+        if (feed.a !== undefined) {
+            const added = decodeAdded(feed.a)
+            // The first block of a subscription is the whole set, so it replaces
+            // the cache rather than merging into what the last one left.
+            if (this.#primed) {
+                for (const entity of added) changed = this.#store.set(entity) || changed
+            } else {
+                this.#store.replace(added)
+                this.#primed = true
+                changed = true
+            }
+        }
+        for (const entity of decodeChanged(feed.c, (id) => this.#store.get(id))) {
+            changed = this.#store.set(entity) || changed
+        }
+        for (const entityId of decodeRemoved(feed.r)) changed = this.#store.remove(entityId) || changed
+        // Music Assistant re-reports a playing track constantly; a diff that
+        // moves nothing a key draws must not cost a repaint.
+        if (changed) this.#onStateChange()
     }
 
-    // Coalesces the snapshot requests a page change produces: mounting six
-    // tiles that each watch an unknown entity should ask Home Assistant once.
-    #queueStates(): void {
-        if (this.#statesQueued || !this.#authenticated) return
-        this.#statesQueued = true
-        setTimeout(() => this.#requestStates(), 0).unref()
+    #forgetSubscription(): void {
+        this.#entitiesSubscriptionId = 0
+        this.#subscribedIds = new Set()
+        this.#primed = false
+    }
+
+    #subscribeEntities(): void {
+        this.#entitiesQueued = false
+        if (!this.#authenticated) return
+        const wanted = [...this.#store.watched()].sort()
+        if (sameIds(wanted, this.#subscribedIds)) return
+        if (this.#entitiesSubscriptionId !== 0) {
+            this.#send({type: 'unsubscribe_events', subscription: this.#entitiesSubscriptionId})
+        }
+        this.#forgetSubscription()
+        if (wanted.length === 0) {
+            this.#store.clear()
+            this.#onStateChange()
+            return
+        }
+        const id = this.#send({type: 'subscribe_entities', entity_ids: wanted})
+        if (id === 0) return
+        this.#entitiesSubscriptionId = id
+        this.#subscribedIds = new Set(wanted)
+    }
+
+    // Coalesces the churn a page change produces: unmounting six tiles and
+    // mounting six more should replace the subscription once, with the set the
+    // new page actually settled on.
+    #queueEntities(): void {
+        if (this.#entitiesQueued || !this.#authenticated) return
+        this.#entitiesQueued = true
+        setTimeout(() => this.#subscribeEntities(), 0).unref()
     }
 }
 

@@ -204,6 +204,7 @@ class ControlSocketTests(ManagerTestCase):
                 "usb_playback": False,
                 "music_volume": 100,
                 "voice_volume": 100,
+                "output_muted": False,
             },
         )
         self.assertTrue(reconcile)
@@ -257,6 +258,7 @@ class ControlSocketTests(ManagerTestCase):
                 "usb_playback": False,
                 "music_volume": 100,
                 "voice_volume": 100,
+                "output_muted": False,
             },
         )
         manager.safe_reconcile.assert_called_once()
@@ -933,6 +935,30 @@ class VolumeTests(ManagerTestCase):
                 {"name": "hifi", "volume": {"mono": {"value_percent": "100%"}}}
             )
             run.assert_called_once()
+
+    def test_output_mute_is_commanded_and_read_back_from_the_sink(self) -> None:
+        manager = self.make_manager({"sources": {}})
+        sink = {"name": "hifi", "volume": {"mono": {"value_percent": "100%"}}}
+
+        with mock.patch.object(process, "run") as run, mock.patch.object(
+            manager.graph, "find_sink", return_value=sink
+        ):
+            reply, _ = manager.commands.apply(
+                mock.Mock(), {"command": "set-output-mute", "muted": True}
+            )
+            self.assertTrue(reply["output_muted"])
+            run.assert_called_once_with("pactl", "set-sink-mute", "hifi", "1")
+
+        # A mute made elsewhere arrives on the next pass rather than by polling.
+        self.assertIs(output.mute_state({**sink, "mute": True}), True)
+        self.assertIs(output.mute_state({**sink, "mute": False}), False)
+        # A sink that reports no volume leaves the last known answer alone.
+        self.assertIsNone(output.mute_state({"name": "hifi"}))
+
+        reply, _ = manager.commands.apply(
+            mock.Mock(), {"command": "set-output-mute", "muted": "yes"}
+        )
+        self.assertEqual(reply["event"], "error")
 
     def test_startup_config_seeds_the_music_and_voice_levels(self) -> None:
         with tempfile.TemporaryDirectory() as base:

@@ -39,6 +39,7 @@ class CommandHandler:
             "set-duck": self._set_duck,
             "set-voice-volume": self._set_voice_volume,
             "set-music-volume": self._set_music_volume,
+            "set-output-mute": self._set_output_mute,
             "set-source": self._set_source,
             "set-sources": self._set_sources,
             "get-state": self._get_state,
@@ -94,6 +95,15 @@ class CommandHandler:
         # Stream volumes only - the background bus and the direct routes - so
         # apply them directly instead of asking for a full reconcile.
         self._manager.set_music_volume(percent)
+        return self._state()
+
+    def _set_output_mute(self, _: socket.socket, message: dict[str, Any]) -> Reply:
+        muted = message.get("muted")
+        if not isinstance(muted, bool):
+            return _error("set-output-mute needs a boolean muted")
+        # One property on the sink itself, so it applies directly rather than
+        # asking for a full graph reconcile.
+        self._manager.set_output_mute(muted)
         return self._state()
 
     def _set_source(self, _: socket.socket, message: dict[str, Any]) -> Reply:

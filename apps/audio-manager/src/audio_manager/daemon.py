@@ -61,6 +61,7 @@ class AudioManager:
         self.voice_volume = config.voice_bus.volume_percent
         self.usb_host = False
         self.usb_playback = False
+        self.output_muted = False
 
         self.graph = Graph()
         self.modules = ModuleRegistry(self.graph)
@@ -90,7 +91,7 @@ class AudioManager:
         self.pending_reconcile: float | None = None
         self.next_resync = 0.0
         self.next_usb_poll = 0.0
-        self._last_broadcast = (self.usb_playback, self.music_volume)
+        self._last_broadcast = self._broadcast_signature()
 
     def stop(self, *_args: object) -> None:
         self.running = False
@@ -137,6 +138,7 @@ class AudioManager:
             "usb_playback": self.usb_playback,
             "music_volume": self.music_volume,
             "voice_volume": self.voice_volume,
+            "output_muted": self.output_muted,
         }
 
     def desired_ducking(self) -> bool:
@@ -155,6 +157,10 @@ class AudioManager:
         self._apply_or_retry(
             "Voice volume", lambda: self.voice_bus.apply_gain(self.voice_volume)
         )
+
+    def set_output_mute(self, muted: bool) -> None:
+        self.output_muted = muted
+        self._apply_or_retry("Output mute", self._apply_output_mute)
 
     def set_music_volume(self, percent: float) -> None:
         self.music_volume = volume.clamp(percent)
@@ -182,6 +188,11 @@ class AudioManager:
         self.modules.drop_released()
         sink = self.graph.find_sink(self.config.output_match)
         output.pin_volume(sink)
+        # A mute made by any other client rides in on the same subscribe event
+        # that scheduled this pass, so the controller never has to poll for it.
+        muted = output.mute_state(sink)
+        if muted is not None:
+            self.output_muted = muted
         # A host volume change may move the music level, so sync before the bus
         # and route gains below are applied against it.
         self.music_volume = self.usb_volume.sync(sink, self.music_volume)
@@ -232,13 +243,21 @@ class AudioManager:
             "sources": source_status,
             "usb_host": self.usb_host,
             "usb_playback": self.usb_playback,
+            "output_muted": self.output_muted,
         }
         status.write(self.status_path, published)
         LOG.debug("reconciled: %s", json.dumps(published))
 
     def broadcast_state(self) -> None:
-        self._last_broadcast = (self.usb_playback, self.music_volume)
+        self._last_broadcast = self._broadcast_signature()
         self.control.broadcast(self.state_event())
+
+    def _broadcast_signature(self) -> tuple[object, ...]:
+        return (self.usb_playback, self.music_volume, self.output_muted)
+
+    def _apply_output_mute(self) -> None:
+        self.graph.invalidate()
+        output.set_mute(self.graph.find_sink(self.config.output_match), self.output_muted)
 
     def _apply_music_volume(self) -> None:
         self.graph.invalidate()
@@ -294,7 +313,7 @@ class AudioManager:
             self.safe_reconcile()
 
     def _broadcast_changes(self) -> None:
-        if (self.usb_playback, self.music_volume) != self._last_broadcast:
+        if self._broadcast_signature() != self._last_broadcast:
             self.broadcast_state()
 
     def _reconcile_and_broadcast(self) -> None:

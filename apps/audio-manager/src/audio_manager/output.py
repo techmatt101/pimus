@@ -28,6 +28,27 @@ def pin_volume(sink: Node | None) -> None:
     LOG.info("Pinned the output sink to 100%%")
 
 
+def mute_state(sink: Node | None) -> bool | None:
+    """Whether the output sink is muted, or None when it reports no volume.
+
+    Mute is the one part of output loudness that does not live on a bus gain:
+    silencing the sink silences music and voice together, which is what the
+    controller's mute key means. Reading it here is what lets the controller
+    show a mute made by any other client without polling for it.
+    """
+    if sink is None:
+        return None
+    state = graph.volume_state(sink)
+    return None if state is None else state[1]
+
+
+def set_mute(sink: Node | None, muted: bool) -> None:
+    if sink is None:
+        raise RuntimeError("no output sink to mute")
+    pactl.set_sink_mute(sink["name"], muted)
+    LOG.info("Output sink %s", "muted" if muted else "unmuted")
+
+
 def hold_client_streams(view: Graph, sink: Node | None, level: int) -> None:
     """Hold every stream on the sink that is not one of our bridges at a level.
 

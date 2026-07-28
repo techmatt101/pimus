@@ -18,9 +18,9 @@ are grouped by the boundary they own:
   shared across modules; its config types mirror `controller.json.j2`.
 - `actions/` — `catalog.mts` declares every action a key or dial can be bound
   to, and `handler.mts` runs them. See [docs/controls.md](../docs/controls.md).
-- `audio/` — `manager-client.mts` mirrors route state over the audio manager
-  socket, `volume.mts` runs `wpctl` and polls PipeWire output state, and
-  `ducking.mts` turns voice events into duck requests on that same socket.
+- `audio/` — `manager-client.mts` mirrors route, level, and mute state over the
+  audio manager socket, and `ducking.mts` turns voice events into duck requests
+  on that same socket.
 - `streamdeck/` — `layout.mts` is the editable key/dial layout, `deck.mts` owns
   discovery, reconnects, and input events, and `renderer.mts` and `bitmap.mts`
   draw the keys and LCD strip.
@@ -50,8 +50,8 @@ A local debug environment for the controller, run with `make playground`. It has
 its own `package.json` and compiles `controller/src/` alongside `playground/src/`
 so it drives the real modules, replacing only the outermost boundaries: the
 Stream Deck+ becomes a canvas in the browser, the LVA and audio-manager sockets
-become loopback servers speaking the same protocols, `wpctl` becomes a number,
-and the ReSpeaker LED ring becomes a drawing. `playground/ui/index.html` is the
+become loopback servers speaking the same protocols, and the ReSpeaker LED ring
+becomes a drawing. `playground/ui/index.html` is the
 page. Nothing here ships to the Pi, and `make test` does not build it — see
 [docs/playground.md](../docs/playground.md).
 

@@ -1,6 +1,5 @@
 import {VoiceDucker} from './audio/ducking.mjs'
 import {AudioManagerClient} from './audio/manager-client.mjs'
-import {runVolumeCommand, startOutputMonitor} from './audio/volume.mjs'
 import {loadConfig} from './config.mjs'
 import {defaultRouteExists, HealthMonitor} from './health.mjs'
 import {createOfflineHomeAssistant, HomeAssistantClient} from './home-assistant/client.mjs'
@@ -33,7 +32,10 @@ const state = createState()
 
 const audio = new AudioManagerClient({
     socketPath: config.audio_socket,
-    onStateChange: () => model.notify(),
+    onStateChange: () => {
+        state.outputMuted = audio.state.outputMuted === true
+        model.notify()
+    },
 })
 
 const model = new ControlModel(state, () => audio.state)
@@ -93,10 +95,10 @@ const layout = createLayout({
             audio.setSource(name, command)
         },
         // The output sink stays pinned at 100%: loudness lives on the audio
-        // manager's music and voice gains, so only mute still goes to wpctl.
+        // manager's music and voice gains, and mute lives on the sink itself.
         setVolume: (command) => {
             if (command === 'mute') {
-                return runVolumeCommand(command, {onExit: () => model.notify()})
+                return audio.setOutputMute(audio.state.outputMuted !== true)
             }
             const current = audio.state.musicVolume
             if (current === undefined) return
@@ -142,7 +144,6 @@ if (config.streamdeck?.enabled) {
         graceMilliseconds: SLEEP.graceMilliseconds,
     })
     sleep.start()
-    startOutputMonitor({state, onStateChange: () => model.notify()})
     await runDeckLoop({layout, renderer, onActivity: () => sleep.touch()})
 } else {
     // LED-only deployments: the ReSpeaker watch timer and LVA socket do the

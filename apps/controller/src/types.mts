@@ -153,6 +153,8 @@ export interface AudioState {
     musicVolume?: number
     /** The voice bus level in percent; unknown until the manager's first state event. */
     voiceVolume?: number
+    /** Whether the output sink is muted; unknown until the manager's first state event. */
+    outputMuted?: boolean
 }
 
 export interface UsbControlDevice {

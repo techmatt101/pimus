@@ -36,12 +36,14 @@ export class EntityStore {
 
     // An event carrying the state a tile already drew is dropped: Home Assistant
     // re-reports attributes freely, and a running timer would otherwise repaint
-    // the deck on every unrelated update.
-    set(entity: HomeAssistantEntity): void {
+    // the deck on every unrelated update. Reports whether anything moved, so a
+    // caller does not repaint for an update that changed nothing.
+    set(entity: HomeAssistantEntity): boolean {
         const previous = this.#entities.get(entity.entity_id)
-        if (previous && sameEntity(previous, entity)) return
+        if (previous && sameEntity(previous, entity)) return false
         this.#entities.set(entity.entity_id, entity)
         this.#notify(entity.entity_id)
+        return true
     }
 
     replace(entities: readonly HomeAssistantEntity[]): void {
@@ -51,6 +53,12 @@ export class EntityStore {
             if (watched.has(entity.entity_id)) this.#entities.set(entity.entity_id, entity)
         }
         this.#notifyAll()
+    }
+
+    remove(entityId: string): boolean {
+        if (!this.#entities.delete(entityId)) return false
+        this.#notify(entityId)
+        return true
     }
 
     clear(): void {

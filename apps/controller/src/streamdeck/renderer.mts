@@ -2,6 +2,7 @@ import type {StreamDeck} from '@elgato-stream-deck/node'
 
 import {DynamicDial} from './dials/dynamic-dial.mjs'
 import {PageDial, type PageNavigator} from './dials/page-dial.mjs'
+import {changedRegion, cropRegion} from './frame.mjs'
 import {type StreamDeckLayout, type StreamDeckPage, tileAt,} from './grid.mjs'
 import {STRIP_HEIGHT, STRIP_WIDTH} from './screens/screen.mjs'
 import {Surface} from './surface.mjs'
@@ -35,6 +36,10 @@ export class DeckRenderer implements PageNavigator {
     readonly #now: () => number = Date.now
     readonly #lastKeyDrawAt = new Map<number, number>()
     #lastStripDrawAt = 0
+    // What the panel is already showing. A face that paints to the same pixels
+    // needs no encode and no USB write at all.
+    readonly #lastKeyFrame = new Map<number, Buffer>()
+    #lastStripFrame: Buffer | null = null
     readonly #sharedDial: DynamicDial | null
     readonly #sharedDialIndex: number
 
@@ -57,6 +62,7 @@ export class DeckRenderer implements PageNavigator {
 
     async setDeck(deck: StreamDeck): Promise<void> {
         this.#deck = deck
+        this.#forgetFrames()
         this.#asleep = !this.#model.state.awake
         if (!this.#asleep) this.#mountVisible()
         await this.render()
@@ -69,7 +75,15 @@ export class DeckRenderer implements PageNavigator {
         // A write abandoned by an unplug may never settle; drop the pump so the
         // next connection pumps afresh instead of awaiting it forever.
         this.#pump = null
+        this.#forgetFrames()
         this.#unmountVisible()
+    }
+
+    // Nothing is known about what a freshly opened panel is showing, so the next
+    // pass must paint every face rather than trusting a previous connection's.
+    #forgetFrames(): void {
+        this.#lastKeyFrame.clear()
+        this.#lastStripFrame = null
     }
 
     // The deck retains its last image, so waking must paint before raising the
@@ -298,9 +312,13 @@ export class DeckRenderer implements PageNavigator {
         if (!deck || this.#asleep) return
         const page = this.#currentPage()
         const tile = page ? tileAt(page.grid, index) : undefined
+        const frame = this.#paintTile(tile, this.#keyDelta(index, at))
+        if (this.#lastKeyFrame.get(index)?.equals(frame)) return
         try {
-            await deck.fillKeyBuffer(index, this.#paintTile(tile, this.#keyDelta(index, at)), FORMAT)
+            await deck.fillKeyBuffer(index, frame, FORMAT)
+            this.#lastKeyFrame.set(index, frame)
         } catch (error) {
+            this.#lastKeyFrame.delete(index)
             this.#logger.error('render failed', error)
         }
     }
@@ -308,9 +326,25 @@ export class DeckRenderer implements PageNavigator {
     async #writeStrip(at = this.#now()): Promise<void> {
         const deck = this.#deck
         if (!deck || this.#asleep) return
+        const frame = this.#paintStrip(this.#stripDelta(at))
+        const previous = this.#lastStripFrame
+        if (previous?.equals(frame)) return
+        // A scrolling line or a flashing icon moves a band of the strip, so only
+        // that band is encoded and sent; the panel retains the rest.
+        const region = previous ? changedRegion(previous, frame, STRIP_WIDTH, STRIP_HEIGHT) : null
         try {
-            await deck.fillLcd(0, this.#paintStrip(this.#stripDelta(at)), FORMAT)
+            if (region) {
+                await deck.fillLcdRegion(0, region.x, region.y, cropRegion(frame, STRIP_WIDTH, region), {
+                    ...FORMAT,
+                    width: region.width,
+                    height: region.height,
+                })
+            } else {
+                await deck.fillLcd(0, frame, FORMAT)
+            }
+            this.#lastStripFrame = frame
         } catch (error) {
+            this.#lastStripFrame = null
             this.#logger.error('render failed', error)
         }
     }

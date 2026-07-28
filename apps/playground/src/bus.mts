@@ -12,7 +12,6 @@ export type LogCategory =
     | 'lva'
     | 'voice'
     | 'audio'
-    | 'wpctl'
     | 'led'
     | 'duck'
     | 'home-assistant'

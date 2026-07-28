@@ -169,7 +169,8 @@ no key feedback; add them to the catalog when they need either.
 Drives the audio manager's music level — the gain every non-voice path (music,
 USB computer audio, aux) plays at; the output sink itself stays pinned at 100%
 and voice keeps its own level. `mute` is the exception: it toggles the sink
-through `wpctl`, silencing music and voice alike. While a computer is on the
+itself through the audio manager's `set-output-mute`, silencing music and voice
+alike, and a mute made anywhere else shows on the deck. While a computer is on the
 USB-C gadget port, the audio manager keeps the music level and the computer's
 volume control for the device converged in both directions: the computer's
 volume keys move the amp, and the dial moves the computer's slider.

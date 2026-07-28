@@ -23,6 +23,7 @@ export class FakeAudioManager {
     sources: Record<string, boolean | undefined> = {aux: false, usb: true}
     musicVolume = 40
     voiceVolume = 60
+    outputMuted = false
 
     private readonly bus: PlaygroundBus
     private readonly server: net.Server
@@ -125,6 +126,15 @@ export class FakeAudioManager {
             this.musicVolume = Math.round(percent)
             this.bus.log('audio', 'note', `music volume set to ${this.musicVolume}%`)
             this.broadcastState()
+        } else if (command === 'set-output-mute') {
+            const muted = message.muted
+            if (typeof muted !== 'boolean') {
+                this.reject(socket, 'set-output-mute needs a boolean muted')
+                return
+            }
+            this.outputMuted = muted
+            this.bus.log('audio', 'note', `output sink ${muted ? 'muted' : 'unmuted'}`)
+            this.broadcastState()
         } else if (command === 'set-duck') {
             const active = Boolean(message.active)
             if (active) this.ducking.add(socket)
@@ -163,6 +173,7 @@ export class FakeAudioManager {
             sources: this.sources,
             music_volume: this.musicVolume,
             voice_volume: this.voiceVolume,
+            output_muted: this.outputMuted,
         })}\n`)
     }
 

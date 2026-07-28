@@ -5,7 +5,6 @@
 //   Stream Deck+ USB      -> fake-deck.mts, drawn in the browser
 //   LVA peripheral socket -> fake-lva.mts, a loopback WebSocket server
 //   audio manager socket  -> fake-audio-manager.mts, a real Unix socket server
-//   wpctl                 -> fake-wpctl.mts, a number instead of a sink
 //   ReSpeaker USB LEDs    -> fake-led.mts, drawn as a ring
 //
 // Home Assistant is the one boundary that is NOT faked: the playground runs the
@@ -29,12 +28,10 @@ import {FakeAudioManager} from './fake-audio-manager.mjs'
 import {FakeDeckHardware} from './fake-deck.mjs'
 import {FakeLedRing} from './fake-led.mjs'
 import {FakeLvaServer} from './fake-lva.mjs'
-import {FakeWpctl} from './fake-wpctl.mjs'
 import {type PlaygroundInput, PlaygroundServer} from './server.mjs'
 
 import {VoiceDucker} from '../../controller/src/audio/ducking.mjs'
 import {AudioManagerClient} from '../../controller/src/audio/manager-client.mjs'
-import {runVolumeCommand, startOutputMonitor} from '../../controller/src/audio/volume.mjs'
 import {loadConfig} from '../../controller/src/config.mjs'
 import {HomeAssistantClient} from '../../controller/src/home-assistant/client.mjs'
 import {NotificationCenter} from '../../controller/src/home-assistant/notifications.mjs'
@@ -99,7 +96,6 @@ const configPath = temporary('json')
 
 const audioManager = new FakeAudioManager({bus, socketPath})
 const lvaServer = new FakeLvaServer({bus})
-const wpctl = new FakeWpctl(bus)
 const ledRing = new FakeLedRing(bus)
 const hardware = new FakeDeckHardware(bus)
 
@@ -136,7 +132,10 @@ const state = createState()
 
 const audio = new AudioManagerClient({
     socketPath: config.audio_socket,
-    onStateChange: () => model.notify(),
+    onStateChange: () => {
+        state.outputMuted = audio.state.outputMuted === true
+        model.notify()
+    },
     logger: busLogger(bus, 'audio'),
 })
 
@@ -218,11 +217,7 @@ const layout = createLayout({
         },
         setVolume: (command) => {
             if (command === 'mute') {
-                return runVolumeCommand(command, {
-                    onExit: () => model.notify(),
-                    spawnProcess: wpctl.spawnProcess,
-                    logger: busLogger(bus, 'wpctl'),
-                })
+                return audio.setOutputMute(audio.state.outputMuted !== true)
             }
             const current = audio.state.musicVolume
             if (current === undefined) return
@@ -245,7 +240,6 @@ homeAssistant.connect()
 notifications.start()
 remote?.start()
 lva.connect()
-startOutputMonitor({state, onStateChange: () => model.notify(), execute: wpctl.execute})
 // The real sleep policy, on a grace period short enough to watch: the panel is
 // meant to outstay you by minutes, which is no way to develop against it.
 const sleep = new SleepController({

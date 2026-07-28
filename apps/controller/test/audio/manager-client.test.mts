@@ -118,6 +118,32 @@ test('toggles before the first state sync defer to the manager', () => {
     client.close()
 })
 
+test('output mute travels as an absolute state and follows the manager', () => {
+    const fake = new FakeSocket()
+    const client = new AudioManagerClient({
+        socketPath: '/nowhere/audio.sock',
+        connectSocket: () => fake as unknown as net.Socket,
+        logger: {
+            log: () => {
+            }, error: () => {
+            }
+        },
+    })
+    client.connect()
+    fake.emit('connect')
+    fake.emit('data', '{"event":"state","sources":{},"output_muted":false}\n')
+    assert.equal(client.state.outputMuted, false)
+
+    client.setOutputMute(true)
+    assert.equal(client.state.outputMuted, true)
+    assert.deepEqual(JSON.parse(fake.written.at(-1) ?? ''), {command: 'set-output-mute', muted: true})
+
+    // A mute made anywhere else reaches the deck through the same broadcast.
+    fake.emit('data', '{"event":"state","sources":{},"output_muted":false}\n')
+    assert.equal(client.state.outputMuted, false)
+    client.close()
+})
+
 test('voice volume updates optimistically and re-asserts after a reconnect', async () => {
     const sockets: FakeSocket[] = []
     const client = new AudioManagerClient({
