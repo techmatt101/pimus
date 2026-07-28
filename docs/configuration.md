@@ -190,8 +190,10 @@ error, and `make test` rejects any action the catalog does not understand.
 
 `home_assistant_url` connects the controller to Home
 Assistant's WebSocket API. This is what the keys that *show* house state need —
-the fan, blinds, PC, scenes, timer, temperature, weather, the lights dial, and
-the media transport — because they read entity state as well as change it. The
+the fan, blinds, PC, scenes, temperature, weather, the lights dial, and
+the media transport — because they read entity state as well as change it. It
+also carries the assistant timers the TIMER key starts and cancels, which are
+intents rather than entities (see [controls](controls.md#timers)). The
 same connection carries what the touch strip shows: the playing track's title and
 artist, and the notifications automations push with the `smartamp_notify` event
 (see [controls](controls.md#notifications-from-home-assistant)). Neither needs

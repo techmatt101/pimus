@@ -213,15 +213,20 @@ export const HA_ACTIONS = {
             ha.call('media_player', 'repeat_set', entity, {repeat: nextRepeat(ha, entity)})
         },
     },
-    timer_toggle: {
-        summary: 'Start a Home Assistant timer, or cancel the one already running.',
-        example: "ha('timer_toggle', 'timer.office', { duration: '00:05:00' })",
-        run: ({ha, entity, data}) => {
-            // `timer.start` on a running timer restarts it, so cancel instead.
-            const running = ha.entity(entity)?.state
-            if (running === 'active' || running === 'paused') ha.call('timer', 'cancel', entity)
-            else ha.call('timer', 'start', entity, data)
-        },
+    timer_start: {
+        summary: 'Start an assistant timer on the satellite, the same one a spoken "set a timer" creates.',
+        example: "ha('timer_start', 'assist_satellite.office_amp', { minutes: 5 })",
+        run: ({ha, entity, data}) => ha.intent('HassStartTimer', data ?? {}, entity),
+    },
+    timer_cancel: {
+        summary: 'Cancel the assistant timer running on the satellite.',
+        example: "ha('timer_cancel', 'assist_satellite.office_amp')",
+        run: ({ha, entity}) => ha.intent('HassCancelTimer', {}, entity),
+    },
+    timer_resume: {
+        summary: 'Resume the assistant timer a voice command paused.',
+        example: "ha('timer_resume', 'assist_satellite.office_amp')",
+        run: ({ha, entity}) => ha.intent('HassUnpauseTimer', {}, entity),
     },
 } as const satisfies Record<string, HaActionSpec>
 

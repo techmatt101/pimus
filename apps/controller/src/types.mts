@@ -52,6 +52,13 @@ export interface HomeAssistantService {
     call(domain: string, service: string, entityId: string, data?: Record<string, unknown>): void
 
     /**
+     * Run an intent as the device behind `deviceEntity` — the path to anything
+     * Home Assistant keeps per device rather than as an entity, such as the
+     * assistant timers a satellite owns.
+     */
+    intent(name: string, data: Record<string, unknown>, deviceEntity: string): void
+
+    /**
      * Optimistically overwrite an entity's cached state so the key and strip move
      * the instant a command is issued, before Home Assistant echoes it back.
      * Merges onto the entity's current attributes; a no-op where nothing is cached.
@@ -108,6 +115,14 @@ export interface LvaEventData {
     volume?: number
     ha_connected?: boolean
     status?: string
+    id?: string
+    name?: string
+    total_seconds?: number
+    seconds_left?: number
+    /** Added by the launcher adapter; absent on a stock LVA. */
+    is_active?: boolean
+    /** Seconds since the epoch, added by the launcher adapter. */
+    emitted_at?: number
 }
 
 export interface LvaMessage {
@@ -134,8 +149,25 @@ export interface HealthState {
     usbPlayback: boolean
 }
 
+/**
+ * The assistant timer the amp is running, whether it was set by voice or from
+ * the deck. `endsAt` is absolute so a countdown survives the socket replaying a
+ * reading taken before the controller connected; while paused it stands still
+ * and `secondsLeft` is the reading.
+ */
+export interface TimerState {
+    id: string
+    name: string
+    totalSeconds: number
+    secondsLeft: number
+    endsAt: number
+    active: boolean
+    ringing: boolean
+}
+
 export interface ControlState {
     assist: string
+    timer: TimerState | null
     muted: boolean
     volume: number
     outputMuted: boolean

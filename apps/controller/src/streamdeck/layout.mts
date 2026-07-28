@@ -32,7 +32,7 @@ const HA = {
     fan: 'fan.office_ceiling_fan',
     blinds: 'cover.office_blinds',
     pc: 'device_tracker.techmatt_pc',
-    timer: 'timer.office_timer',
+    satellite: 'assist_satellite.office_amp',
     presence: 'binary_sensor.office_presence',
     temperature: 'sensor.office_temperature',
     weather: 'weather.met_office_stafford',
@@ -49,7 +49,7 @@ const HA = {
     ],
 } as const
 
-const TIMER_DURATION = '00:05:00'
+const TIMER_SECONDS = 5 * 60
 
 const CLOCK_FORMAT: ClockFormat = '12h'
 
@@ -88,7 +88,7 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
                 onColor: '#283593',
                 offColor: '#151a30',
             }),
-            new TimerTile(ha, clock, dynamic, {entity: HA.timer, duration: TIMER_DURATION}),
+            new TimerTile(model, ha, lva, clock, dynamic, {satellite: HA.satellite, duration: TIMER_SECONDS}),
         ],
         [
             new SceneTile(ha, dynamic, {scenes: HA.scenes}),

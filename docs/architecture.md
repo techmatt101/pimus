@@ -160,6 +160,14 @@ cache, and the affected keys draw an unknown state rather than a stale one that
 still looks live. With no token configured the whole thing is replaced by an
 offline stand-in and the keys behave the same way, permanently.
 
+Assistant timers are the one thing that connection cannot carry as an entity:
+Home Assistant keeps them per device, and the satellite only mirrors them to the
+deck over the voice socket. Acting on one is an intent, which has no WebSocket
+command, so the controller posts it to `/api/intent/handle` with the same token
+— naming the device behind the satellite entity, resolved once from the entity
+registry. That is what makes the TIMER key and a spoken "set a timer" the same
+timer rather than two that happen to look alike.
+
 Home Assistant and Music Assistant are not part of this image. The Pi is a client endpoint: the ESPHome protocol
 connects voice to the remote HA instance, the HA WebSocket API connects the control surface to it, and the Sendspin
 protocol connects the local player to the remote Music Assistant.

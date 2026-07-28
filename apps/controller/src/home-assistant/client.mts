@@ -35,17 +35,29 @@ export interface HomeAssistantClientOptions {
     onStateChange?: () => void
     reconnectMilliseconds?: number
     WebSocketImpl?: typeof WebSocket
+    fetchImpl?: typeof fetch
     logger?: Pick<Console, 'log' | 'error'>
 }
 
+function baseUrl(url: string): string {
+    return url.replace(/\/+$/, '').replace(/\/api\/websocket$/, '')
+}
+
 export function websocketUrl(url: string): string {
-    const base = url.replace(/\/+$/, '').replace(/\/api\/websocket$/, '')
-    return `${base.replace(/^http/i, 'ws')}/api/websocket`
+    return `${baseUrl(url).replace(/^http/i, 'ws')}/api/websocket`
+}
+
+interface EntityRegistryEntry {
+    device_id?: string | null
 }
 
 export class HomeAssistantClient implements HomeAssistantService {
     readonly url: string
+    readonly #restUrl: string
     readonly #token: string
+    readonly #fetch: typeof fetch
+    readonly #pending = new Map<number, { resolve: (result: unknown) => void; reject: (error: Error) => void }>()
+    readonly #devices = new Map<string, Promise<string | undefined>>()
     readonly #store = new EntityStore()
     readonly #onStateChange: () => void
     readonly #reconnectMilliseconds: number
@@ -74,10 +86,13 @@ export class HomeAssistantClient implements HomeAssistantService {
                     },
                     reconnectMilliseconds = 5000,
                     WebSocketImpl = WebSocket,
+                    fetchImpl = fetch,
                     logger = console,
                 }: HomeAssistantClientOptions) {
         this.url = websocketUrl(url)
+        this.#restUrl = baseUrl(url)
         this.#token = token
+        this.#fetch = fetchImpl
         this.#onStateChange = onStateChange
         this.#reconnectMilliseconds = reconnectMilliseconds
         this.#WebSocketImpl = WebSocketImpl
@@ -131,6 +146,43 @@ export class HomeAssistantClient implements HomeAssistantService {
         })
     }
 
+    // Intents are the one part of Home Assistant with no WebSocket command:
+    // they are posted to the REST API the same token authenticates.
+    intent(name: string, data: Record<string, unknown>, deviceEntity: string): void {
+        log.debug('intent', name, JSON.stringify(data), deviceEntity)
+        void this.#postIntent(name, data, deviceEntity).catch((error: unknown) => {
+            this.#logger.error(`Home Assistant rejected the ${name} intent`, error)
+        })
+    }
+
+    async #postIntent(name: string, data: Record<string, unknown>, deviceEntity: string): Promise<void> {
+        const deviceId = await this.#deviceIdFor(deviceEntity)
+        if (deviceId === undefined) throw new Error(`no device behind ${deviceEntity}`)
+        const response = await this.#fetch(`${this.#restUrl}/api/intent/handle`, {
+            method: 'POST',
+            headers: {authorization: `Bearer ${this.#token}`, 'content-type': 'application/json'},
+            body: JSON.stringify({name, data, device_id: deviceId}),
+        })
+        if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
+    }
+
+    /**
+     * An assistant timer belongs to a device, not an entity, and only the
+     * registry joins the two. Cached per entity, and a failed lookup is dropped
+     * so the next press tries again rather than inheriting an outage.
+     */
+    #deviceIdFor(entityId: string): Promise<string | undefined> {
+        const known = this.#devices.get(entityId)
+        if (known) return known
+        const lookup = this.#request({type: 'config/entity_registry/get', entity_id: entityId})
+            .then((result) => (result as EntityRegistryEntry | null)?.device_id ?? undefined)
+        this.#devices.set(entityId, lookup)
+        void lookup.then((deviceId) => {
+            if (deviceId === undefined) this.#devices.delete(entityId)
+        }, () => this.#devices.delete(entityId))
+        return lookup
+    }
+
     patch(entityId: string, state: string, attributes: Record<string, unknown>): void {
         const current = this.#store.get(entityId)
         if (!current) return
@@ -148,6 +200,7 @@ export class HomeAssistantClient implements HomeAssistantService {
             this.#socket = null
             this.#authenticated = false
             this.#forgetSubscription()
+            this.#failPending(new Error('the Home Assistant connection closed'))
             this.#store.clear()
             this.#onStateChange()
             this.scheduleReconnect()
@@ -185,8 +238,17 @@ export class HomeAssistantClient implements HomeAssistantService {
             return
         }
 
-        if (message.type === 'result' && message.success === false) {
-            this.#logger.error('Home Assistant rejected a request', message.result)
+        if (message.type === 'result') {
+            const waiting = message.id === undefined ? undefined : this.#pending.get(message.id)
+            if (waiting && message.id !== undefined) {
+                this.#pending.delete(message.id)
+                if (message.success === false) waiting.reject(new Error(JSON.stringify(message.result)))
+                else waiting.resolve(message.result)
+                return
+            }
+            if (message.success === false) {
+                this.#logger.error('Home Assistant rejected a request', message.result)
+            }
             return
         }
 
@@ -209,6 +271,14 @@ export class HomeAssistantClient implements HomeAssistantService {
             this.#reconnectTimer = null
             this.connect()
         }, this.#reconnectMilliseconds)
+    }
+
+    #request(payload: Record<string, unknown>): Promise<unknown> {
+        return new Promise((resolve, reject) => {
+            const id = this.#send(payload)
+            if (id === 0) reject(new Error('not connected to Home Assistant'))
+            else this.#pending.set(id, {resolve, reject})
+        })
     }
 
     #send(payload: Record<string, unknown>): number {
@@ -245,6 +315,12 @@ export class HomeAssistantClient implements HomeAssistantService {
         // Music Assistant re-reports a playing track constantly; a diff that
         // moves nothing a key draws must not cost a repaint.
         if (changed) this.#onStateChange()
+    }
+
+    #failPending(error: Error): void {
+        const waiting = [...this.#pending.values()]
+        this.#pending.clear()
+        for (const request of waiting) request.reject(error)
     }
 
     #forgetSubscription(): void {
@@ -291,6 +367,9 @@ export function createOfflineHomeAssistant(
         entity: () => undefined,
         call: (domain, service, entityId) => {
             logger.log(`no Home Assistant configured; dropped ${domain}.${service} on ${entityId}`)
+        },
+        intent: (name, _data, deviceEntity) => {
+            logger.log(`no Home Assistant configured; dropped ${name} for ${deviceEntity}`)
         },
         patch: () => {
         },

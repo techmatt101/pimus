@@ -69,9 +69,19 @@ export class FakeLvaServer {
     /** Pushes an event to the controller exactly as upstream LVA would. */
     send(event: string, data: LvaEventData = {}, category: LogCategory = 'voice'): void {
         if (event === 'muted') this.muted = Boolean(data.muted)
-        const payload = JSON.stringify({event, data})
+        const payload = JSON.stringify({event, data: this.stamp(data)})
         this.bus.log(category, 'in', `event ${event}`, Object.keys(data).length ? JSON.stringify(data) : undefined)
         for (const client of this.clients) client.send(payload)
+    }
+
+    /**
+     * The launcher adapter on the Pi stamps every timer reading with the instant
+     * it was taken and whether the timer is running; mirror it so the deck's
+     * countdown is exercised the way the real one drives it.
+     */
+    private stamp(data: LvaEventData): LvaEventData {
+        if (data.seconds_left === undefined) return data
+        return {is_active: true, ...data, emitted_at: Date.now() / 1000}
     }
 
     dropConnections(): void {

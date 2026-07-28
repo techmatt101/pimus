@@ -108,3 +108,48 @@ test('the deck subscribes to the entities it watches and follows their diffs', a
     socket.deliver({id: replacement, type: 'event', event: {r: ['scene.evening']}})
     assert.equal(client.entity('scene.evening'), undefined)
 })
+
+test('an intent is posted for the device behind the entity, looked up once', async () => {
+    const posted: {url: string; body: unknown}[] = []
+    const client = new HomeAssistantClient({
+        url: 'http://homeassistant.local:8123/',
+        token: 'token',
+        WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+        fetchImpl: async (url, init) => {
+            posted.push({url: String(url), body: JSON.parse(String(init?.body))})
+            return new Response('{}', {status: 200})
+        },
+        logger: {
+            log: () => {
+            }, error: () => {
+            }
+        },
+    })
+    client.connect()
+    const socket = FakeWebSocket.instances.at(-1)
+    assert.ok(socket)
+    socket.deliver({type: 'auth_ok'})
+
+    client.intent('HassStartTimer', {minutes: 5}, 'assist_satellite.office_amp')
+    const lookup = socket.lastOf('config/entity_registry/get')
+    assert.equal(lookup?.entity_id, 'assist_satellite.office_amp')
+    socket.deliver({id: lookup?.id, type: 'result', success: true, result: {device_id: 'dev-1'}})
+    await settle()
+
+    assert.equal(posted[0]?.url, 'http://homeassistant.local:8123/api/intent/handle')
+    assert.deepEqual(posted[0]?.body, {
+        name: 'HassStartTimer',
+        data: {minutes: 5},
+        device_id: 'dev-1',
+    })
+
+    // The registry answer is kept, so pressing the key again is one request.
+    client.intent('HassCancelTimer', {}, 'assist_satellite.office_amp')
+    await settle()
+    assert.equal(socket.sent.filter((message) => message.type === 'config/entity_registry/get').length, 1)
+    assert.deepEqual(posted[1]?.body, {
+        name: 'HassCancelTimer',
+        data: {},
+        device_id: 'dev-1',
+    })
+})

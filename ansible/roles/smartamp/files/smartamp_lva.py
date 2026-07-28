@@ -10,11 +10,15 @@ runtime adapters until the upstream peripheral protocol supplies them.
 from __future__ import annotations
 
 import json
+import time
 from enum import Enum
 from typing import Any, Callable, Iterable
 
 from aioesphomeapi.api_pb2 import MediaPlayerCommandRequest, VoiceAssistantRequest
-from aioesphomeapi.model import MediaPlayerCommand
+from aioesphomeapi.model import (
+    MediaPlayerCommand,
+    VoiceAssistantTimerEventType,
+)
 
 from linux_voice_assistant import __main__ as lva_main
 from linux_voice_assistant.entity import MediaPlayerEntity
@@ -27,6 +31,12 @@ class SmartampMediaEvent(str, Enum):
 
     PAUSED = "media_player_paused"
     IDLE = "media_player_idle"
+
+
+class SmartampTimerEvent(str, Enum):
+    """A cancelled timer, which upstream reports only as a general idle."""
+
+    CANCELLED = "timer_cancelled"
 
 
 def event_for_command(command: MediaPlayerCommand) -> LVAEvent | SmartampMediaEvent | None:
@@ -165,7 +175,55 @@ def install_pipeline_cancel_adapter() -> None:
     VoiceSatelliteProtocol.stop = stop  # type: ignore[method-assign]
 
 
+def install_timer_detail_adapter() -> None:
+    """Give peripheral timer events the facts needed to draw a countdown.
+
+    Upstream forwards a timer's id, name, total and seconds-left, but drops the
+    `is_active` flag, so a paused timer is indistinguishable from a running one
+    and a control surface counting down locally would keep counting. It also
+    reports a cancelled timer as a plain idle, which is the same event a
+    finished voice pipeline emits, leaving a peripheral unable to tell "your
+    timer is gone" from "I have stopped talking". Emitting the instant of the
+    event alongside keeps a countdown honest across a peripheral reconnect,
+    when LVA replays the state it cached rather than a fresh reading.
+    """
+
+    original_emit = VoiceSatelliteProtocol._emit  # pylint: disable=protected-access
+
+    def emit(
+        self: VoiceSatelliteProtocol,
+        event: LVAEvent | SmartampTimerEvent,
+        data: dict[str, Any] | None = None,
+    ) -> None:
+        if data is not None and "seconds_left" in data:
+            data = {
+                **data,
+                "is_active": getattr(self, "_smartamp_timer_active", True),
+                "emitted_at": time.time(),
+            }
+        original_emit(self, event, data)  # type: ignore[arg-type]
+
+    VoiceSatelliteProtocol._emit = emit  # type: ignore[method-assign]  # pylint: disable=protected-access
+
+    original_handle_timer_event = VoiceSatelliteProtocol.handle_timer_event
+
+    def handle_timer_event(
+        self: VoiceSatelliteProtocol,
+        event_type: VoiceAssistantTimerEventType,
+        msg: Any,
+    ) -> None:
+        self._smartamp_timer_active = msg.is_active  # pylint: disable=protected-access
+        if event_type == VoiceAssistantTimerEventType.VOICE_ASSISTANT_TIMER_CANCELLED:
+            # Ahead of the idle upstream emits for the same event, so a client
+            # applying them in order ends up with no timer either way.
+            self._emit(SmartampTimerEvent.CANCELLED)  # type: ignore[arg-type]  # pylint: disable=protected-access
+        original_handle_timer_event(self, event_type, msg)
+
+    VoiceSatelliteProtocol.handle_timer_event = handle_timer_event  # type: ignore[method-assign]
+
+
 if __name__ == "__main__":
     install_media_event_adapters()
     install_pipeline_cancel_adapter()
+    install_timer_detail_adapter()
     lva_main.run()

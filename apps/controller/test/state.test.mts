@@ -8,6 +8,8 @@ test('LVA snapshots and events update shared display state', () => {
     applyLvaEvent(state, {event: 'snapshot', data: {muted: true, volume: 0.42, ha_connected: true}})
     assert.deepEqual(state, {
         assist: 'IDLE',
+        // A connection that replays no timer is one with no timer running.
+        timer: null,
         muted: true,
         volume: 0.42,
         outputMuted: false,
@@ -42,6 +44,46 @@ test('non-pipeline events leave the assist display state alone', () => {
     state.assist = 'LISTENING'
     applyLvaEvent(state, {event: 'timer_updated'})
     assert.equal(state.assist, 'TIMER_TICKING')
+})
+
+test('an assistant timer survives an unrelated pipeline and ends when it is done', () => {
+    const state = createState({assist: 'IDLE'})
+    const now = 1_000_000
+    const ticking = {
+        event: 'timer_ticking',
+        data: {id: 'a', name: 'pasta', total_seconds: 300, seconds_left: 300, is_active: true, emitted_at: (now - 4000) / 1000},
+    }
+
+    applyLvaEvent(state, ticking, now)
+    // The reading was taken four seconds before it arrived, and the countdown
+    // is measured from then, not from now.
+    assert.deepEqual(state.timer, {
+        id: 'a',
+        name: 'pasta',
+        totalSeconds: 300,
+        secondsLeft: 300,
+        endsAt: now - 4000 + 300_000,
+        active: true,
+        ringing: false,
+    })
+
+    // A voice command run while it ticks ends with an idle of its own.
+    applyLvaEvent(state, {event: 'tts_speaking'}, now)
+    applyLvaEvent(state, {event: 'idle'}, now)
+    assert.equal(state.timer?.id, 'a')
+
+    applyLvaEvent(state, {event: 'timer_updated', data: {...ticking.data, seconds_left: 120, is_active: false}}, now)
+    assert.equal(state.timer?.active, false)
+    assert.equal(state.timer?.secondsLeft, 120)
+
+    applyLvaEvent(state, {event: 'timer_ringing', data: {...ticking.data, seconds_left: 0}}, now)
+    assert.equal(state.timer?.ringing, true)
+    applyLvaEvent(state, {event: 'idle'}, now)
+    assert.equal(state.timer, null)
+
+    applyLvaEvent(state, ticking, now)
+    applyLvaEvent(state, {event: 'timer_cancelled'}, now)
+    assert.equal(state.timer, null)
 })
 
 test('the control model notifies subscribers until they unsubscribe', () => {

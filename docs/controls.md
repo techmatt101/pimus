@@ -80,7 +80,7 @@ central dispatcher:
 | `PlaylistTile`     | Picks and plays one of a short list of playlists. Press to arm (the key glows and claims the dynamic dial), turn the dynamic dial to choose, press again — the key or the knob — to confirm. A single playlist is just press-then-confirm. The armed state releases itself after 15s, or when any other dial or key is touched — that first touch only cancels the arm and does nothing else.        |
 | `SceneTile`        | Picks one of a short list of scenes. Press to arm, turn to choose, press again — key or knob — to apply. Scenes have no state to read back, so it stays dim until the first apply, then shows the one last applied.                                                                                                                                              |
 | `EntityToggleTile` | The general Home Assistant on/off key — lights, fan, blinds, PC. Its service comes from the entity's own domain, plus an icon and an optional `spin` (the fan turns while it runs) and `level` (how far the blinds are down), so the four are one class configured four ways. Its caption reads its own state rather than repeating the key's name: the icon says which device it is, so the room keys drop the label and show just `ON`/`OFF`, `OPEN`/`CLOSED`, or a percentage when part-way (fan speed, light brightness, blind position); `?` when unreachable. Given the dynamic dial, the first press arms it — glow, strip readout, 15s timeout — turning adjusts the level live and a second press toggles, so a double-press turns it on; a plain switch like PC has nothing to adjust and just toggles at once. |
-| `TimerTile`        | A Home Assistant `timer` entity: a draining ring and a countdown. Idle, press to arm the dynamic dial and set the length — it starts fresh at five minutes and the detent scales (a second under ten, five under a minute, then fifteen, thirty, a minute past ten minutes) — press again to start. While it runs the key just cancels it.                       |
+| `TimerTile`        | The amp's assistant timer, whichever way it was set: a draining ring and a countdown, named if the timer is. Idle, press to arm the dynamic dial and set the length — it starts fresh at five minutes and the detent scales (a second under ten, five under a minute, then fifteen, thirty, a minute past ten minutes) — press again to start. While it runs the key cancels it, resumes it if a voice command paused it, and silences it while it rings. |
 | `TemperatureTile`  | A sensor reading, with the background banded by temperature. Read-only.                                                                                                                                                                                                                                                                                        |
 | `PageTile`         | Page navigation from a grid slot, for a page that wants a "next" key of its own in addition to the page dial.                                                                                                                                                                                                                                                  |
 
@@ -168,6 +168,29 @@ response is speaking; the launcher adapter described in
 [architecture](architecture.md) is what makes it abort while the satellite is
 still listening or thinking.
 
+### Timers
+
+There is one kind of timer here. "Set a timer for five minutes" and the TIMER key
+produce the same assistant timer on the same device: say it and the key picks the
+countdown up mid-air, press the key and it announces and rings on the amp exactly
+as a spoken one does.
+
+The reading comes from the voice socket, which reports a timer when it starts,
+changes, or rings rather than ticking — so the key derives the rest against the
+clock and repaints itself twice a second. Starting, cancelling, and resuming go
+the other way, through Home Assistant's timer intents, because Home Assistant
+owns the timer and the satellite only mirrors it. Silencing a ring is the
+exception: that goes straight down the voice socket as `stop_timer_ringing`, so
+the room falls quiet on the press rather than a round trip later.
+
+Three details come from the launcher adapter rather than the pinned upstream:
+whether the timer is running or paused, the instant a reading was taken (so a
+countdown stays honest when the socket replays state to a reconnecting
+controller), and a distinct `timer_cancelled` event — upstream reports a
+cancelled timer as the same plain `idle` that ends any voice pipeline, which
+would wipe a perfectly good countdown off the key every time you asked the
+assistant something.
+
 ## Music volume — `type: audio` with no `source`
 
 Drives the audio manager's music level — the gain every non-voice path (music,
@@ -241,11 +264,21 @@ in the layout.
 | `media_previous`  | Send a media player back to the previous track.                   |
 | `media_shuffle`   | Toggle shuffle, from the shuffle state the player reports.        |
 | `media_repeat`    | Cycle repeat off, all, one, from the mode the player reports.     |
-| `timer_toggle`    | Start a Home Assistant timer, or cancel the one already running.  |
+| `timer_start`     | Start an assistant timer on the satellite, as a spoken "set a timer" does. |
+| `timer_cancel`    | Cancel the assistant timer running on the satellite.              |
+| `timer_resume`    | Resume the assistant timer a voice command paused.                |
 
 ```ts
 key('FAN', '#00695c', ha('toggle', 'fan.office_ceiling'))
 ```
+
+The three timer commands are **intents**, not service calls: an assistant timer
+belongs to a device rather than an entity, so it has no service and no entity to
+aim at. They are posted to `/api/intent/handle` — the one part of Home Assistant
+the controller reaches over REST instead of the WebSocket — naming the device
+behind the entity you pass, which the client resolves once from the entity
+registry and remembers. Pass the satellite (`assist_satellite.office_amp`), not a
+`timer` helper.
 
 A mistyped command is a compile error and a mistyped entity id fails `make test`,
 either from `describeActionProblem` or — for a tile holding several entities,

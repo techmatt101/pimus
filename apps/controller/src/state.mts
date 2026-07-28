@@ -1,4 +1,4 @@
-import type {AudioState, ControlState, LvaMessage} from './types.mjs'
+import type {AudioState, ControlState, LvaEventData, LvaMessage, TimerState} from './types.mjs'
 
 // Pipeline states shown on the assist dial. The LVA socket also carries
 // non-pipeline traffic (light_command, zeroconf, media and volume updates)
@@ -23,6 +23,7 @@ export const DEFAULT_BRIGHTNESS = 40
 export function createState(overrides: Partial<ControlState> = {}): ControlState {
     return {
         assist: 'DISCONNECTED',
+        timer: null,
         muted: false,
         volume: 1,
         outputMuted: false,
@@ -73,8 +74,41 @@ export class ControlModel {
     }
 }
 
-export function applyLvaEvent(state: ControlState, message: LvaMessage): ControlState {
+const TIMER_EVENTS = new Set(['timer_ticking', 'timer_updated', 'timer_ringing'])
+
+function readTimer(data: LvaEventData, now: number, ringing: boolean): TimerState {
+    const secondsLeft = Math.max(0, Number(data.seconds_left ?? 0))
+    // The reading was taken when LVA emitted it, which is not when it arrived:
+    // a reconnecting controller is replayed the state cached mid-timer.
+    const takenAt = data.emitted_at === undefined ? now : data.emitted_at * 1000
+    return {
+        id: String(data.id ?? ''),
+        name: String(data.name ?? ''),
+        totalSeconds: Math.max(0, Number(data.total_seconds ?? 0)),
+        secondsLeft,
+        endsAt: takenAt + secondsLeft * 1000,
+        active: data.is_active ?? true,
+        ringing,
+    }
+}
+
+export function applyLvaEvent(state: ControlState, message: LvaMessage, now = Date.now()): ControlState {
     const data = message.data || {}
+    if (message.event && TIMER_EVENTS.has(message.event)) {
+        state.timer = readTimer(data, now, message.event === 'timer_ringing')
+    } else if (
+        message.event === 'timer_cancelled'
+        || message.event === 'disconnected'
+        // A live timer is replayed straight after the snapshot, so starting a
+        // connection with none is what says the last one is gone.
+        || message.event === 'snapshot'
+        // A ticking timer outlives the idle that ends an unrelated voice
+        // pipeline; only the one that was ringing is finished with.
+        || (message.event === 'idle' && state.timer?.ringing)
+    ) {
+        state.timer = null
+    }
+
     if (message.event === 'snapshot') {
         state.muted = Boolean(data.muted)
         state.volume = Number(data.volume ?? 1)

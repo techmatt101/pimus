@@ -29,44 +29,6 @@ export function numericAttribute(
     return Number.isFinite(value) ? value : undefined
 }
 
-// Timers report `H:MM:SS` strings, and some integrations report plain seconds.
-export function durationSeconds(value: unknown): number | undefined {
-    if (typeof value === 'number') return Number.isFinite(value) ? value : undefined
-    if (typeof value !== 'string') return undefined
-    const parts = value.split(':').map(Number)
-    if (parts.length === 0 || parts.length > 3 || parts.some((part) => !Number.isFinite(part))) {
-        return undefined
-    }
-    return parts.reduce((total, part) => total * 60 + part, 0)
-}
-
-/** `HH:MM:SS`, the shape Home Assistant's `timer.start` wants a duration in. */
-export function secondsToHms(seconds: number): string {
-    const whole = Math.max(0, Math.round(seconds))
-    const hours = Math.floor(whole / 3600)
-    const minutes = Math.floor((whole % 3600) / 60)
-    const secs = whole % 60
-    return [hours, minutes, secs].map((part) => String(part).padStart(2, '0')).join(':')
-}
-
-// A running timer only re-reports `remaining` when paused or reset, so the
-// countdown comes from `finishes_at`; the `remaining` fallback is what makes a
-// paused timer hold its reading.
-export function timerRemainingSeconds(
-    entity: HomeAssistantEntity | undefined,
-    now: number,
-): number | undefined {
-    if (!entity) return undefined
-    if (entity.state === 'active') {
-        const finishesAt = entity.attributes.finishes_at
-        if (typeof finishesAt === 'string') {
-            const end = Date.parse(finishesAt)
-            if (Number.isFinite(end)) return Math.max(0, (end - now) / 1000)
-        }
-    }
-    return durationSeconds(entity.attributes.remaining) ?? durationSeconds(entity.attributes.duration)
-}
-
 // A media player reports `media_position` once, with the instant it was
 // measured, so a moving progress bar is derived from that against `now`.
 export function mediaElapsedSeconds(
