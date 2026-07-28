@@ -24,7 +24,7 @@ own code, imported straight from `apps/controller/src/`:
 | Stream Deck+ over USB HID  | a canvas in the browser                         | the deck loop, reconnects, dispatch queue, paging, tiles and their `mount`/`unmount`, the renderer and the faces it paints |
 | LVA peripheral WebSocket   | a loopback WebSocket server                     | `LvaClient`, its reconnect, the action catalog, voice-state handling                                                       |
 | Audio manager Unix socket  | a Unix socket server speaking the same protocol | `AudioManagerClient`'s optimistic route cache, its re-assert on reconnect, ducking, the voice bus level, the sink mute     |
-| ReSpeaker XVF3800 USB LEDs | a ring drawn in the state panel                 | `ReSpeakerController`'s state-to-appearance mapping and write de-duplication                                               |
+| ReSpeaker XVF3800 USB LEDs | a ring drawn in the browser, one dot per LED    | `ReSpeakerController`'s state-to-face mapping, every animation's own drawing, and write de-duplication                     |
 | XVF3800 DSP microphone readouts | a speaker circling the array, talking in phrases | `MicSensor`'s levelling and direction hold, and the ripples `listenWave` paints from them                              |
 | Home Assistant             | a house that responds to service calls          | every tile's entity watch and `mount`/`unmount`, the catalog's service composition, the unknown-state faces                |
 
@@ -79,11 +79,14 @@ The controller configuration is written out and then read back through the real
   **toggle Home Assistant** under fault injection drops the connection, which is
   how to see the unknown-state faces.
 - **State** — the shared control state, the audio manager's routes, whether
-  background audio is ducked, the LED appearance the ReSpeaker would show, and
-  every Home Assistant entity the keys read. The ring's two audio-driven states
-  animate here: playing the scripted pipeline shows the listening ripples
-  tracking a faked speaker around the array, and the speaking pulse riding a
-  synthesised envelope the fake audio manager sends over the real socket.
+  background audio is ducked, and every Home Assistant entity the keys read.
+- **ReSpeaker ring** — every frame the controller writes, streamed as it is
+  written rather than sampled with the panel above, with the measured frame rate
+  beside it. That is what makes an animation debuggable: a 25-frame-a-second
+  face is only worth watching if all 25 arrive. Playing the scripted pipeline
+  shows the listening ripples tracking a faked speaker around the array, and the
+  speaking pulse riding a synthesised envelope the fake audio manager sends over
+  the real socket.
 
 Options: `--port=<n>` to move the web server, `--no-open` to skip launching a
 browser. Pass them through pnpm, e.g.

@@ -212,8 +212,10 @@ export type UsbDeviceFinder = (vendorId: number, productId: number) => UsbContro
 
 /**
  * XVF3800 firmware LED effect codes, dictated by the XMOS firmware behind the
- * 2886:001a vendor-control protocol. `Doa` is the firmware's
- * direction-of-arrival mode: it lights the LEDs facing the detected voice.
+ * 2886:001a vendor-control protocol. The full set is recorded because it is the
+ * device's, but the controller drives only `Ring` and `Off`: every face is drawn
+ * here a frame at a time, which the firmware's own effects cannot express and
+ * cannot be driven from live audio.
  */
 export enum LedEffect {
     Off = 0,
@@ -229,12 +231,8 @@ export const LED_COUNT = 12
 export interface LedFrame {
     effect: LedEffect
     brightness: number
-    speed: number
-    /** Packed 0xRRGGBB. */
-    color: number
     /** One colour per LED, exactly LED_COUNT entries, for the Ring effect. */
     ring?: readonly number[]
-    direction?: { base: number; highlight: number }
 }
 
 export interface LedDevice {

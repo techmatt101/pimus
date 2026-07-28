@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import {Leds} from '../../src/voice/led-appearance.mjs'
+import {Dark} from '../../src/voice/leds/dark.mjs'
+import {Pulse} from '../../src/voice/leds/pulse.mjs'
+import {Spin} from '../../src/voice/leds/spin.mjs'
 import {ReSpeakerController} from '../../src/voice/respeaker.mjs'
 import type {LedFrame, ReSpeakerConfig, VoiceSensing} from '../../src/types.mjs'
 import {LED_COUNT, LedEffect} from '../../src/types.mjs'
@@ -47,12 +49,11 @@ test('ReSpeaker LEDs follow voice and mute state and ignore media playback', asy
     assert.equal(rendered.at(-1)?.effect, LedEffect.Ring)
 
     await controller.handleEvent({event: 'idle'})
-    assert.deepEqual(rendered.at(-1),
-        {effect: LedEffect.Off, brightness: 64, speed: 2, color: 0})
+    assert.deepEqual(rendered.at(-1), {effect: LedEffect.Off, brightness: 64})
 
     // Mute overrides whatever voice state is active until it is lifted.
     await controller.handleEvent({event: 'muted', data: {muted: true}})
-    assert.equal(rendered.at(-1)?.color, 0xd50000)
+    assert.deepEqual(rendered.at(-1)?.ring, Array(LED_COUNT).fill(0xd50000))
     await controller.handleEvent({event: 'muted', data: {muted: false}})
     assert.equal(rendered.at(-1)?.effect, LedEffect.Off)
 })
@@ -129,16 +130,16 @@ test('the ring shows boot until the voice socket answers, then reports a real lo
 
     // The controller now paints long before the voice assistant finishes its own
     // wait, so a first connection that has not happened is a wait, not a loss.
-    assert.deepEqual(controller.desired(), Leds.spin('#ffd500'))
+    assert.deepEqual(controller.desired(), new Spin('#ffd500'))
     controller.start()
     await controller.setDisconnected()
-    assert.deepEqual(controller.desired(), Leds.spin('#ffd500'))
+    assert.deepEqual(controller.desired(), new Spin('#ffd500'))
 
     // Once the socket has spoken, boot is over and a drop is a genuine warning.
     await controller.handleEvent({event: 'snapshot', data: {ha_connected: true, muted: false}})
-    assert.deepEqual(controller.desired(), Leds.off())
+    assert.deepEqual(controller.desired(), new Dark())
     await controller.setDisconnected()
-    assert.deepEqual(controller.desired(), Leds.pulse('#d50000'))
+    assert.deepEqual(controller.desired(), new Pulse('#d50000'))
 
     // Stopping darkens the ring rather than leaving a state showing.
     await controller.release()
@@ -155,7 +156,7 @@ test('LED-only mode does not force a disconnected warning', () => {
         },
     })
 
-    assert.deepEqual(controller.desired(), Leds.off())
+    assert.deepEqual(controller.desired(), new Dark())
 })
 
 test('ReSpeaker USB failures are retried without flooding the journal', async () => {

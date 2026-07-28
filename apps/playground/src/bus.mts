@@ -44,9 +44,20 @@ export interface PlaygroundSnapshot {
     media: boolean
     sources: Record<string, boolean | undefined>
     ducked: boolean
-    led: { effect?: string; color?: string; accent?: string; colors?: string[]; brightness?: number } | null
     /** Whether the real Home Assistant WebSocket is connected and authenticated. */
     homeAssistant: boolean
+}
+
+/**
+ * One frame written to the ring. These are streamed as the controller produces
+ * them rather than sampled with the panel: an animation asking for 25 frames a
+ * second is only debuggable if the browser sees all of them.
+ */
+export interface LedSnapshot {
+    effect: string
+    /** One `#rrggbb` per LED, or null for the dark face. */
+    colors: string[] | null
+    brightness: number
 }
 
 export type Message =
@@ -57,6 +68,7 @@ export type Message =
     | { type: 'log'; entry: LogEntry }
     | { type: 'keys'; keys: Record<string, string>; lcd?: string }
     | { type: 'state'; state: PlaygroundSnapshot }
+    | { type: 'led'; led: LedSnapshot }
 
 const LOG_HISTORY = 300
 
@@ -100,6 +112,7 @@ export class PlaygroundBus extends EventEmitter {
     private readonly keyImages = new Map<number, string>()
     private lcdImage: string | undefined
     private snapshot: PlaygroundSnapshot | null = null
+    private led: LedSnapshot | null = null
 
     log(category: LogCategory, direction: LogEntry['direction'], message: string, detail?: string): void {
         const entry: LogEntry = {time: Date.now(), category, direction, message, ...(detail ? {detail} : {})}
@@ -122,10 +135,16 @@ export class PlaygroundBus extends EventEmitter {
         this.publish({type: 'state', state: snapshot})
     }
 
+    ledFrame(led: LedSnapshot): void {
+        this.led = led
+        this.publish({type: 'led', led})
+    }
+
     /** Everything a newly connected page needs to catch up, in display order. */
     replay(): Message[] {
         const messages: Message[] = []
         if (this.snapshot) messages.push({type: 'state', state: this.snapshot})
+        if (this.led) messages.push({type: 'led', led: this.led})
         const keys = Object.fromEntries([...this.keyImages].map(([index, image]) => [String(index), image]))
         if (Object.keys(keys).length || this.lcdImage) {
             messages.push({type: 'keys', keys, ...(this.lcdImage ? {lcd: this.lcdImage} : {})})

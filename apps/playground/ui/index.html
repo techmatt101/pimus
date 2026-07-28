@@ -485,6 +485,10 @@
         <section>
             <h2>State</h2>
             <div class="state" id="state"></div>
+            <!-- Outside the state grid because the ring streams every frame the
+                 controller writes, and rebuilding the whole panel at that rate
+                 would be both wasteful and a sampled, inaccurate picture. -->
+            <div class="state" id="ledstate" style="margin-top:10px"></div>
         </section>
     </div>
 
@@ -524,10 +528,9 @@
     const LED_COUNT = 12
 
     /**
-     * The respeaker ring as twelve dots around a circle. The Ring effect carries a
-     * colour per LED; every other effect resolves on the device to a single colour
-     * the firmware paints across the whole ring, so each LED shows that. A
-     * direction readout lights its front (top) LED in the highlight colour.
+     * The respeaker ring as twelve dots around a circle. The controller draws
+     * every face itself, so a lit ring always arrives as a colour per LED; only
+     * the dark face carries none.
      */
     function ledRingHtml(led) {
         const colors = led.colors && led.colors.length ? led.colors : null
@@ -535,15 +538,38 @@
             const angle = (i / LED_COUNT) * 2 * Math.PI - Math.PI / 2
             const left = 50 + 44 * Math.cos(angle)
             const top = 50 + 44 * Math.sin(angle)
-            const color = colors ? (colors[i] || '#000000')
-                : !led.effect || led.effect === 'off' ? '#000000'
-                    : (i === 0 && led.accent ? led.accent : (led.color || '#000000'))
+            const color = colors ? (colors[i] || '#000000') : '#000000'
             const lit = color !== '#000000'
             const paint = lit ? `color:${color};background:${color};` : ''
             return `<span class="led${lit ? ' on' : ''}" style="left:${left}%;top:${top}%;${paint}"></span>`
         }).join('')
         const dim = Math.max(0.4, (led.brightness ?? 255) / 255)
         return `<span class="ledring" style="opacity:${dim.toFixed(2)}">${dots}</span>`
+    }
+
+    // Every frame the controller writes arrives here, at whatever rate the
+    // animation asks for, so the ring is watched rather than sampled.
+    const ledStateEl = document.getElementById('ledstate')
+    let ledFrames = 0
+    let ledFramesAt = 0
+    let ledRate = 0
+
+    function renderLed(led) {
+        const now = performance.now()
+        ledFrames += 1
+        if (now - ledFramesAt >= 1000) {
+            ledRate = Math.round((ledFrames * 1000) / (now - ledFramesAt))
+            ledFrames = 0
+            ledFramesAt = now
+        }
+        ledStateEl.innerHTML = `
+    <div class="cell" style="grid-column: span 2">
+      <div class="k">respeaker ring</div>
+      <div class="ring">
+        ${ledRingHtml(led)}
+        <span class="v">${led.effect || 'off'}<br><span style="font-size:11px;color:var(--dim)">${ledRate} fps</span></span>
+      </div>
+    </div>`
     }
 
     const post = (body) => fetch('/input', {method: 'POST', body: JSON.stringify(body)})
@@ -712,7 +738,6 @@
         for (const [id, live] of [['deck', state.deckAttached], ['lva', state.lvaConnected], ['audio', state.audioConnected]]) {
             document.getElementById(`pill-${id}`).classList.toggle('on', Boolean(live))
         }
-        const led = state.led || {}
         const sources = Object.entries(state.sources || {})
             .map(([name, on]) => `<div class="cell"><div class="k">route ${name}</div>${flag(on)}</div>`).join('')
         stateEl.innerHTML = `
@@ -723,14 +748,7 @@
     <div class="cell"><div class="k">media</div>${flag(state.media)}</div>
     <div class="cell"><div class="k">ducked</div>${flag(state.ducked)}</div>
     <div class="cell"><div class="k">home assistant</div>${flag(state.homeAssistant)}</div>
-    ${sources}
-    <div class="cell" style="grid-column: span 2">
-      <div class="k">respeaker ring</div>
-      <div class="ring">
-        ${ledRingHtml(led)}
-        <span class="v">${led.effect || 'off'}<br><span style="font-size:11px;color:var(--dim)">${led.color || ''}</span></span>
-      </div>
-    </div>`
+    ${sources}`
     }
 
     // --- log ---------------------------------------------------------------------
@@ -793,6 +811,7 @@
         } else if (payload.type === 'reload') location.reload()
         else if (payload.type === 'log') appendLog(payload.entry)
         else if (payload.type === 'state') renderState(payload.state)
+        else if (payload.type === 'led') renderLed(payload.led)
         else if (payload.type === 'keys') {
             for (const [index, image] of Object.entries(payload.keys || {})) {
                 const context = keyContexts[Number(index)]

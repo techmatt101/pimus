@@ -227,14 +227,28 @@ runtime validation, and relevant documentation together.
 - Keep hardware access injectable so tests run without a Stream Deck or
   ReSpeaker attached.
 - Keep `voice/xvf3800-device.mts` limited to the vendor protocol and USB
-  transport; which appearance a voice state should show belongs in
-  `voice/respeaker.mts`. The state-to-appearance map itself is compiled in at
-  `voice/led-states.mts` (built with the `Leds` helpers from
-  `voice/led-appearance.mts`), exactly as the deck layout is; only the
+  transport; which face a voice state should show belongs in
+  `voice/respeaker.mts`. The state-to-face map itself is compiled in at
+  `voice/led-states.mts`, exactly as the deck layout is; only the
   `respeaker_led_enabled` flag and `respeaker_led_brightness` live in
   inventory. Do not reintroduce LED styling as deployed configuration.
+- Each ring face is an `LedAnimation` — an interface in
+  `voice/leds/animation.mts`, with one implementing class per file in
+  `voice/leds/`, exactly as tiles and dials are arranged. A face draws itself:
+  `ring(nowMs, signals)` answers with the colour of every LED, derived from the
+  clock and the live levels rather than retained state, so a missed tick cannot
+  drift an animation and a test can pin the clock. It declares `framePeriodMs`
+  when it needs redrawing and `demand` when it paints from live audio, which is
+  what keeps the microphone array unread and the voice bus unmetered for a face
+  that is not showing. Do not add a description-of-a-face layer between the
+  class and the frame; a new effect is a new class and a line in the state map.
+- The controller draws every face itself and asks the firmware only for `Ring`
+  and `Off`. Do not reintroduce the firmware's breath, rainbow, solid, or
+  direction-of-arrival effects: they cannot be driven from live audio, and they
+  would put a second way of saying what the ring looks like beside the frames.
 - Preserve the XVF3800 vendor-control protocol and the `2886:001a` device match
-  when changing LED behavior.
+  when changing LED behavior. `types.mts` and `xvf3800-device.mts` record the
+  device's full effect and command set even though only part of it is driven.
 
 ### Python apps
 

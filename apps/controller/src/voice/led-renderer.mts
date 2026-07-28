@@ -1,34 +1,34 @@
-import type {LedAppearance} from './led-appearance.mjs'
-import {framePeriodMs, Leds, resolveFrame, silentSignals} from './led-appearance.mjs'
-import type {LedDevice, LedSignals} from '../types.mjs'
+import type {LedAnimation} from './leds/animation.mjs'
+import {silentSignals} from './leds/animation.mjs'
+import {Dark} from './leds/dark.mjs'
+import type {LedDevice, LedFrame, LedSignals} from '../types.mjs'
+import {LedEffect} from '../types.mjs'
 
 export interface LedRendererOptions {
     device: LedDevice
     brightness: number
-    speed: number
     signals?: LedSignals
     now?: () => number
     warningIntervalMilliseconds?: number
     logger?: Pick<Console, 'warn'>
 }
 
-/** How often a static appearance is re-checked so USB failures retry. */
+/** How often a static face is re-checked so USB failures retry. */
 const RETRY_MILLISECONDS = 500
 
 /**
- * Streams LED frames to a device. Static appearances are written once and
- * re-verified on a slow watchdog tick so an unplugged ReSpeaker recovers;
- * animated appearances tick at their own rate with the phase derived from
- * the clock.
+ * Streams LED frames to a device. A face that never changes is written once and
+ * re-verified on a slow watchdog tick so an unplugged ReSpeaker recovers; an
+ * animated one ticks at the rate it asks for, drawing itself from the clock.
  */
 export class LedRenderer {
     readonly device: LedDevice
-    readonly #defaults: { brightness: number; speed: number }
+    readonly #brightness: number
     readonly #signals: LedSignals
     readonly #now: () => number
     readonly #warningIntervalMilliseconds: number
     readonly #logger: Pick<Console, 'warn'>
-    #appearance: LedAppearance = Leds.off()
+    #animation: LedAnimation = new Dark()
     #renderQueue: Promise<void> = Promise.resolve()
     #timer: NodeJS.Timeout | null = null
     #running = false
@@ -39,22 +39,21 @@ export class LedRenderer {
     constructor({
                     device,
                     brightness,
-                    speed,
                     signals = silentSignals,
                     now = Date.now,
                     warningIntervalMilliseconds = 30_000,
                     logger = console,
                 }: LedRendererOptions) {
         this.device = device
-        this.#defaults = {brightness, speed}
+        this.#brightness = brightness
         this.#signals = signals
         this.#now = now
         this.#warningIntervalMilliseconds = warningIntervalMilliseconds
         this.#logger = logger
     }
 
-    show(appearance: LedAppearance): Promise<void> {
-        this.#appearance = appearance
+    show(animation: LedAnimation): Promise<void> {
+        this.#animation = animation
         this.#schedule()
         return this.render()
     }
@@ -73,7 +72,7 @@ export class LedRenderer {
 
     render(): Promise<void> {
         this.#renderQueue = this.#renderQueue.then(async () => {
-            const frame = resolveFrame(this.#appearance, this.#now(), this.#defaults, this.#signals)
+            const frame = this.#frame()
             const signature = JSON.stringify(frame)
             if (signature === this.#lastSignature) return
             try {
@@ -98,11 +97,17 @@ export class LedRenderer {
         return this.#renderQueue
     }
 
+    #frame(): LedFrame {
+        const ring = this.#animation.ring(this.#now(), this.#signals)
+        if (!ring) return {effect: LedEffect.Off, brightness: this.#brightness}
+        return {effect: LedEffect.Ring, brightness: this.#brightness, ring}
+    }
+
     #schedule(): void {
         if (this.#timer) clearInterval(this.#timer)
         this.#timer = null
         if (!this.#running) return
-        const interval = framePeriodMs(this.#appearance) ?? RETRY_MILLISECONDS
+        const interval = this.#animation.framePeriodMs ?? RETRY_MILLISECONDS
         this.#timer = setInterval(() => void this.render(), interval)
     }
 }

@@ -156,15 +156,33 @@ reference.
 ## ReSpeaker effects
 
 Inventory carries only `respeaker_led_enabled` and `respeaker_led_brightness`.
-Which appearance each voice state shows is compiled into the controller and
-edited in `apps/controller/src/voice/led-states.mts`, exactly as the deck
-layout is: one line per state, built with the `Leds` helpers, so restyling the
-ring is an edit and a redeploy rather than an inventory change.
+Which face each voice state shows is compiled into the controller and edited in
+`apps/controller/src/voice/led-states.mts`, exactly as the deck layout is: one
+line per state, so restyling the ring is an edit and a redeploy rather than an
+inventory change.
 
 ```ts
-thinking: Leds.spin('#7c4dff'),
-listening: Leds.listenWave('#001018', '#00e5ff'),
+thinking: new Spin('#7c4dff'),
+listening: new ListenWave('#001018', '#00e5ff'),
 ```
+
+Each face is a class in `apps/controller/src/voice/leds/`, one per file, exactly
+as a tile or a dial is. It draws itself: given the moment and the live levels,
+it answers with the colour of every LED. Nothing maps a description of a face
+onto a frame in between, so a new effect is a new class and a new line in the
+state map, with nothing else to touch.
+
+```ts
+export class Spin implements LedAnimation {
+    get framePeriodMs(): number { return this.periodMs / LED_COUNT }
+
+    ring(nowMs: number): readonly number[] { … }
+}
+```
+
+An animation declares `framePeriodMs` when it needs redrawing, and `demand` when
+it paints from live audio, which is what stops the microphone array being read
+or the voice bus being metered for a face that is not showing.
 
 The ring is also the quickest sign that the Pi is still booting: it lights well
 before the Stream Deck is painted, and long before the voice assistant finishes
@@ -175,25 +193,23 @@ first. Stopping the controller darkens the ring and resets the deck to its
 firmware logo, so neither surface can leave a state showing for a daemon that is
 no longer running.
 
-| Helper                            | What the ring shows                                                                                                                 |
-|-----------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|
-| `Leds.off()`                      | Every LED dark.                                                                                                                     |
-| `Leds.solid(color)`               | One steady colour.                                                                                                                  |
-| `Leds.pulse(color)`               | The colour swelling and fading (firmware breathing).                                                                                |
-| `Leds.rainbow()`                  | The firmware rainbow cycle.                                                                                                         |
-| `Leds.colors([…])`                | A fixed colour per LED — the list repeats around the ring, so an explicit rainbow (`rainbowColors()`) or a gradient is just a list. |
-| `Leds.spin(color \| [...])`       | The colours rotating like a loading spinner; a single colour gets a comet tail. `periodMs` sets the rotation time.                  |
-| `Leds.blink(color)`               | The whole ring flashing on and off.                                                                                                 |
-| `Leds.progress(fraction, color)`  | A fraction of the ring lit, for readouts.                                                                                           |
-| `Leds.direction(base, highlight)` | The LEDs facing the detected voice light in the highlight colour (the XVF3800's direction-of-arrival tracking).                     |
-| `Leds.listenWave(base, hi)`       | Ripples running outwards from whoever is speaking, riding the level the microphone array reports.                                   |
-| `Leds.speechPulse(color)`         | The whole ring swelling with the assistant's own speech, metered off the voice bus.                                                 |
+| Face                          | What the ring shows                                                                                     |
+|-------------------------------|---------------------------------------------------------------------------------------------------------|
+| `Dark`                        | Every LED off.                                                                                          |
+| `Solid(color)`                | One steady colour.                                                                                      |
+| `Pulse(color)`                | The colour breathing, swelling and fading without ever reaching black.                                  |
+| `Spin(color)`                 | Two LEDs facing each other, travelling round the ring behind fading tails. `periodMs` sets one turn.    |
+| `Blink(color)`                | The whole ring flashing on and off.                                                                     |
+| `ListenWave(base, highlight)` | Ripples running outwards from whoever is speaking, riding the level the microphone array reports.       |
+| `SpeechPulse(color)`          | The whole ring swelling with the assistant's own speech, metered off the voice bus.                     |
 
-Every helper accepts a `brightness` override; `spin`, `blink`, `listenWave`,
-and `speechPulse` are animated by the controller, which streams per-LED frames
-over USB, while the other effects run inside the XVF3800 firmware.
+The firmware's own effects — breathing, rainbow, solid, and direction of arrival
+— are no longer used. They cannot be driven from live audio, and mixing them with
+frames drawn here meant two ways of saying what the ring should look like. The
+controller now streams per-LED frames for every face, and asks the firmware for
+nothing but `Ring` and `Off`.
 
-`listenWave` and `speechPulse` are the two that follow live audio. The first
+`ListenWave` and `SpeechPulse` are the two that follow live audio. The first
 reads the XVF3800's own DSP over the same USB control protocol the LEDs use, so
 it needs nothing but the array. The second needs a level the device cannot
 report, so the controller asks the audio manager to meter the voice bus for as

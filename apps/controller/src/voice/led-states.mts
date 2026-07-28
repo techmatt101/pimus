@@ -2,21 +2,27 @@
 // starting, muted, and disconnected states; respeaker.mts treats any event with
 // an entry here as a state to show, so adding a row is all a new event needs.
 
-import type {LedAppearance} from './led-appearance.mjs'
-import {Leds} from './led-appearance.mjs'
+import type {LedAnimation} from './leds/animation.mjs'
+import {Blink} from './leds/blink.mjs'
+import {Dark} from './leds/dark.mjs'
+import {ListenWave} from './leds/listen-wave.mjs'
+import {Pulse} from './leds/pulse.mjs'
+import {SpeechPulse} from './leds/speech-pulse.mjs'
+import {Spin} from './leds/spin.mjs'
+import {Solid} from './leds/solid.mjs'
 
-export const VOICE_LED_STATES: ReadonlyMap<string, LedAppearance> = new Map(Object.entries({
-    idle: Leds.off(),
+export const VOICE_LED_STATES: ReadonlyMap<string, LedAnimation> = new Map(Object.entries({
+    idle: new Dark(),
     // The ring lights long before the rest of the stack is up, so boot gets its
     // own amber spinner rather than borrowing the red "disconnected" warning.
-    starting: Leds.spin('#ffd500'),
-    wake_word_detected: Leds.pulse('#00bcd4'),
-    listening: Leds.listenWave('#001018', '#00e5ff'),
-    thinking: Leds.spin('#7c4dff'),
-    tts_speaking: Leds.speechPulse('#ffffff'),
-    timer_ticking: Leds.solid('#ffab00'),
-    timer_ringing: Leds.blink('#ff6d00'),
-    muted: Leds.solid('#d50000'),
-    disconnected: Leds.pulse('#d50000'),
-    pipeline_error: Leds.blink('#ff1744'),
+    starting: new Spin('#ffd500'),
+    wake_word_detected: new Pulse('#00bcd4'),
+    listening: new ListenWave('#001018', '#00e5ff'),
+    thinking: new Spin('#7c4dff'),
+    tts_speaking: new SpeechPulse('#ffffff'),
+    timer_ticking: new Solid('#ffab00'),
+    timer_ringing: new Blink('#ff6d00'),
+    muted: new Solid('#d50000'),
+    disconnected: new Pulse('#d50000'),
+    pipeline_error: new Blink('#ff1744'),
 }))

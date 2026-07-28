@@ -1,5 +1,6 @@
-import type {LedAppearance} from './led-appearance.mjs'
-import {Leds, signalDemand} from './led-appearance.mjs'
+import type {LedAnimation} from './leds/animation.mjs'
+import {NO_SIGNALS} from './leds/animation.mjs'
+import {Dark} from './leds/dark.mjs'
 import {LedRenderer} from './led-renderer.mjs'
 import {VOICE_LED_STATES} from './led-states.mjs'
 import {MicSensor, silentSensor} from './mic-sensor.mjs'
@@ -27,7 +28,7 @@ export interface ReSpeakerControllerOptions {
 
 export class ReSpeakerController {
     readonly config: ReSpeakerConfig
-    readonly #states: ReadonlyMap<string, LedAppearance> = VOICE_LED_STATES
+    readonly #states: ReadonlyMap<string, LedAnimation> = VOICE_LED_STATES
     readonly #renderer: LedRenderer
     readonly #mic: MicSensor
     readonly #onSpeechMeter: (active: boolean) => void
@@ -71,9 +72,6 @@ export class ReSpeakerController {
         this.#renderer = new LedRenderer({
             device: device ?? hardware,
             brightness: config.brightness ?? 64,
-            // Firmware speed for breath and rainbow; a state needing its own
-            // pace sets it on the appearance in led-states.mts.
-            speed: 2,
             signals,
             now,
             warningIntervalMilliseconds,
@@ -84,15 +82,15 @@ export class ReSpeakerController {
         if (!voiceEnabled) this.#assistState = 'idle'
     }
 
-    desired(): LedAppearance {
+    desired(): LedAnimation {
         const current = this.#muted ? 'muted' : this.#assistState
-        return this.#states.get(current) ?? this.#states.get('idle') ?? Leds.off()
+        return this.#states.get(current) ?? this.#states.get('idle') ?? new Dark()
     }
 
     render(): Promise<void> {
-        const appearance = this.desired()
-        this.#demand(signalDemand(appearance))
-        return this.#renderer.show(appearance)
+        const animation = this.desired()
+        this.#demand(animation.demand ?? NO_SIGNALS)
+        return this.#renderer.show(animation)
     }
 
     start(): void {
@@ -117,7 +115,7 @@ export class ReSpeakerController {
     async release(): Promise<void> {
         this.#clearBootTimer()
         this.#demand({mic: false, speech: false})
-        await this.#renderer.show(Leds.off())
+        await this.#renderer.show(new Dark())
         this.#renderer.stop()
     }
 

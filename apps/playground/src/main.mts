@@ -311,16 +311,13 @@ const snapshotTimer = setInterval(() => {
         media: state.media,
         sources: audio.state.sources,
         ducked: audioManager.ducked,
-        led: ledRing.appearance,
         homeAssistant: homeAssistant.connected,
     }
     const serialized = JSON.stringify(snapshot)
     if (serialized === lastSnapshot) return
     lastSnapshot = serialized
     bus.state(snapshot)
-    // Fast enough to follow the ring's audio-driven effects, which redraw every
-    // 40ms; the panel it also carries has nothing focusable to disturb.
-}, 50)
+}, 200)
 snapshotTimer.unref()
 
 bus.log('system', 'note', `playground ready at ${url}`)

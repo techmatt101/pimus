@@ -19,6 +19,9 @@ export type CommandName =
     | 'LED_DOA_COLOR'
     | 'LED_RING_COLOR'
 
+// The whole LED command set is recorded because it is the device's protocol;
+// only brightness, the ring colours, and the effect are written, because the
+// rest configure firmware effects this controller no longer asks for.
 /** XVF3800 vendor controls as [resourceId, command, payload type]. */
 export const COMMANDS: Readonly<Record<CommandName, readonly [number, number, DataType]>> =
     Object.freeze({
@@ -180,11 +183,6 @@ export class Xvf3800Device implements LedDevice, VoiceSensor {
 
     async #applyFrame(frame: LedFrame): Promise<void> {
         await this.#writeChanged('LED_BRIGHTNESS', [clampByte(frame.brightness)])
-        await this.#writeChanged('LED_SPEED', [clampByte(frame.speed)])
-        await this.#writeChanged('LED_COLOR', [frame.color])
-        if (frame.direction) {
-            await this.#writeChanged('LED_DOA_COLOR', [frame.direction.base, frame.direction.highlight])
-        }
         if (frame.ring) await this.#writeChanged('LED_RING_COLOR', frame.ring)
         // The effect goes last so the firmware never briefly runs a new effect
         // with the previous frame's colours.
