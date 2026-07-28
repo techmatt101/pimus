@@ -200,7 +200,7 @@ no longer running.
 | `Pulse(color)`                | The colour breathing, swelling and fading without ever reaching black.                                  |
 | `Spin(color)`                 | Two LEDs facing each other, travelling round the ring behind fading tails. `periodMs` sets one turn.    |
 | `Blink(color)`                | The whole ring flashing on and off.                                                                     |
-| `ListenWave(base, highlight)` | Ripples running outwards from whoever is speaking, riding the level the microphone array reports.       |
+| `ListenWave(base, highlight)` | One steady LED on whoever is speaking, with faded ripples running outwards from it at the level the microphone array reports. |
 | `SpeechPulse(color)`          | The whole ring swelling with the assistant's own speech, metered off the voice bus.                     |
 | `Flash(color, startedAt)`     | The whole ring lit once and faded out, from the instant it was asked for.                               |
 
@@ -212,7 +212,11 @@ nothing but `Ring` and `Off`.
 
 `ListenWave` and `SpeechPulse` are the two that follow live audio. The first
 reads the XVF3800's own DSP over the same USB control protocol the LEDs use, so
-it needs nothing but the array. The second needs a level the device cannot
+it needs nothing but the array. It answers the direction of arrival with a
+single LED held at full colour and keeps its ripples well below that, because a
+travelling crest as bright as the marker is read as the direction itself; with
+nobody placed there is no origin to travel from, so the whole ring answers the
+level instead. The second needs a level the device cannot
 report, so the controller asks the audio manager to meter the voice bus for as
 long as that state is showing; with the manager unreachable the ring still
 paints, holding a dim steady face instead of a pulse.
