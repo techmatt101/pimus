@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {Dark} from '../../src/voice/leds/dark.mjs'
+import {Flash} from '../../src/voice/leds/flash.mjs'
+import {ListenWave} from '../../src/voice/leds/listen-wave.mjs'
 import {Pulse} from '../../src/voice/leds/pulse.mjs'
 import {Spin} from '../../src/voice/leds/spin.mjs'
 import {ReSpeakerController} from '../../src/voice/respeaker.mjs'
@@ -115,6 +117,37 @@ test('the ring rides the microphone array while listening and the assistant whil
 
     await controller.handleEvent({event: 'tts_finished'})
     assert.deepEqual(metering, [true, false])
+})
+
+test('the ring blips green when a conversation ends, but not between its turns', async () => {
+    let now = 0
+    const controller = new ReSpeakerController({
+        config: CONFIG,
+        now: () => now,
+        device: {
+            apply: async () => {
+            },
+        },
+    })
+
+    await controller.handleEvent({event: 'snapshot', data: {ha_connected: true, muted: false}})
+    await controller.handleEvent({event: 'tts_speaking'})
+
+    // LVA answers a reply it means to follow up with listening and never sends
+    // idle, so a continued conversation must not be signed off.
+    await controller.handleEvent({event: 'listening'})
+    assert.deepEqual(controller.desired(), new ListenWave('#001018', '#00e5ff'))
+
+    await controller.handleEvent({event: 'tts_speaking'})
+    await controller.handleEvent({event: 'idle'})
+    const face = controller.desired()
+    assert.ok(face instanceof Flash, 'the end of a conversation is signed off')
+    assert.deepEqual(face.ring(now + 100), Array(LED_COUNT).fill(0x00c853))
+
+    // The blip is a moment: the ring is dark again once it has run.
+    now = 1000
+    await new Promise((resolve) => setTimeout(resolve, face.durationMs + 20))
+    assert.deepEqual(controller.desired(), new Dark())
 })
 
 test('the ring shows boot until the voice socket answers, then reports a real loss', async () => {

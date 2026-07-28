@@ -1,8 +1,9 @@
 import type {LedAnimation} from './leds/animation.mjs'
 import {NO_SIGNALS} from './leds/animation.mjs'
 import {Dark} from './leds/dark.mjs'
+import type {Flash} from './leds/flash.mjs'
 import {LedRenderer} from './led-renderer.mjs'
-import {VOICE_LED_STATES} from './led-states.mjs'
+import {conversationEndedFace, VOICE_LED_STATES} from './led-states.mjs'
 import {MicSensor, silentSensor} from './mic-sensor.mjs'
 import {Xvf3800Device} from './xvf3800-device.mjs'
 import type {LedDevice, LedSignals, LvaMessage, ReSpeakerConfig, VoiceSensor} from '../types.mjs'
@@ -32,10 +33,13 @@ export class ReSpeakerController {
     readonly #renderer: LedRenderer
     readonly #mic: MicSensor
     readonly #onSpeechMeter: (active: boolean) => void
+    readonly #now: () => number
     #assistState = 'starting'
     #muted = false
     #speechMetered = false
     #bootTimer: NodeJS.Timeout | null = null
+    #flash: Flash | null = null
+    #flashTimer: NodeJS.Timeout | null = null
 
     constructor({
                     config,
@@ -51,6 +55,7 @@ export class ReSpeakerController {
                 }: ReSpeakerControllerOptions) {
         this.config = config
         this.#onSpeechMeter = onSpeechMeter
+        this.#now = now ?? Date.now
         // Constructing the device opens nothing: it finds its handle on the
         // first transfer, so an injected LED surface or sensor still stands in.
         const hardware = new Xvf3800Device({
@@ -83,8 +88,12 @@ export class ReSpeakerController {
     }
 
     desired(): LedAnimation {
-        const current = this.#muted ? 'muted' : this.#assistState
-        return this.#states.get(current) ?? this.#states.get('idle') ?? new Dark()
+        if (this.#muted) return this.#face('muted')
+        return this.#flash ?? this.#face(this.#assistState)
+    }
+
+    #face(state: string): LedAnimation {
+        return this.#states.get(state) ?? this.#states.get('idle') ?? new Dark()
     }
 
     render(): Promise<void> {
@@ -107,6 +116,7 @@ export class ReSpeakerController {
 
     stop(): void {
         this.#clearBootTimer()
+        this.#endFlash()
         this.#demand({mic: false, speech: false})
         this.#renderer.stop()
     }
@@ -114,6 +124,7 @@ export class ReSpeakerController {
     /** Darkens the ring so a stopped controller does not leave a state showing. */
     async release(): Promise<void> {
         this.#clearBootTimer()
+        this.#endFlash()
         this.#demand({mic: false, speech: false})
         await this.#renderer.show(new Dark())
         this.#renderer.stop()
@@ -137,11 +148,30 @@ export class ReSpeakerController {
         this.#bootTimer = null
     }
 
+    #startFlash(): void {
+        const flash = conversationEndedFace(this.#now())
+        this.#flash = flash
+        this.#flashTimer = setTimeout(() => {
+            this.#flashTimer = null
+            this.#flash = null
+            void this.render()
+        }, flash.durationMs)
+        this.#flashTimer.unref()
+    }
+
+    #endFlash(): void {
+        if (this.#flashTimer) clearTimeout(this.#flashTimer)
+        this.#flashTimer = null
+        this.#flash = null
+    }
+
     async handleEvent(message: LvaMessage | undefined): Promise<void> {
         // Any event at all proves the socket came up, so boot is over.
         this.#clearBootTimer()
         const event = message?.event
         const data = message?.data || {}
+        const wasSpeaking = this.#assistState === 'tts_speaking'
+        this.#endFlash()
         if (event === 'snapshot') {
             this.#muted = Boolean(data.muted)
             this.#assistState = data.ha_connected ? 'idle' : 'disconnected'
@@ -157,6 +187,9 @@ export class ReSpeakerController {
         } else if (event === 'timer_updated') {
             this.#assistState = 'timer_ticking'
         }
+        // A conversation LVA means to follow up answers with listening instead,
+        // so reaching idle from a reply is what says it is over.
+        if (wasSpeaking && this.#assistState === 'idle') this.#startFlash()
         await this.render()
     }
 }

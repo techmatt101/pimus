@@ -242,6 +242,11 @@ runtime validation, and relevant documentation together.
   what keeps the microphone array unread and the voice bus unmetered for a face
   that is not showing. Do not add a description-of-a-face layer between the
   class and the frame; a new effect is a new class and a line in the state map.
+  A face shown for a moment rather than for a state — the green blip that signs
+  off a finished conversation — is still a class in `voice/leds/`, but is built
+  with the instant it began by a factory beside the map (`conversationEndedFace`)
+  and shown by `respeaker.mts` over whatever state is current. Keep its colour
+  there with the rest; a moment is not an occasion to style a face elsewhere.
 - The controller draws every face itself and asks the firmware only for `Ring`
   and `Off`. Do not reintroduce the firmware's breath, rainbow, solid, or
   direction-of-arrival effects: they cannot be driven from live audio, and they

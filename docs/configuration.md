@@ -202,6 +202,7 @@ no longer running.
 | `Blink(color)`                | The whole ring flashing on and off.                                                                     |
 | `ListenWave(base, highlight)` | Ripples running outwards from whoever is speaking, riding the level the microphone array reports.       |
 | `SpeechPulse(color)`          | The whole ring swelling with the assistant's own speech, metered off the voice bus.                     |
+| `Flash(color, startedAt)`     | The whole ring lit once and faded out, from the instant it was asked for.                               |
 
 The firmware's own effects — breathing, rainbow, solid, and direction of arrival
 — are no longer used. They cannot be driven from live audio, and mixing them with
@@ -215,6 +216,14 @@ it needs nothing but the array. The second needs a level the device cannot
 report, so the controller asks the audio manager to meter the voice bus for as
 long as that state is showing; with the manager unreachable the ring still
 paints, holding a dim steady face instead of a pulse.
+
+One face is shown for a moment rather than for a state: the ring blips green as
+a conversation ends. Linux Voice Assistant answers a reply it means to follow up
+with `listening` and one it is finished with with `idle`, so reaching idle from a
+reply is what says the exchange is over — a continued conversation is never
+signed off. Being a moment, it is asked for with the instant it began
+(`conversationEndedFace` in `led-states.mts`) rather than sitting in the state
+map, and any event arriving mid-blip ends it.
 
 The ring is purely reactive: it renders the configured appearance for the
 current voice, media, timer, mute, or error state and nothing else. There is

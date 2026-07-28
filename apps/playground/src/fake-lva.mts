@@ -17,7 +17,10 @@ const PIPELINE: ReadonlyArray<readonly [delay: number, event: string]> = [
     [400, 'listening'],
     [2200, 'thinking'],
     [3600, 'tts_speaking'],
+    // Upstream emits both in one breath, and it is the idle that says the
+    // conversation is over: a reply it means to follow up sends listening here.
     [6000, 'tts_finished'],
+    [6000, 'idle'],
 ]
 
 /** Commands whose only effect is an immediate event echoed back. */
