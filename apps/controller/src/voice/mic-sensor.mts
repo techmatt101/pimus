@@ -24,6 +24,14 @@ const RELEASE = 0.12
 // the ring's zero mark between words looks like a fault rather than listening.
 const DIRECTION_HOLD_MILLISECONDS = 2500
 
+// The DSP counts azimuth from the USB socket, which the ring mounts half a turn
+// from LED 0, so a direction handed straight to a face points at the opposite
+// side of the room. Measured on this device: a speaker at the socket reads 0deg
+// and a quarter turn round the ring reads 98deg, so the two run the same way and
+// the mounting is the whole of the difference.
+const RING_OFFSET_RADIANS = Math.PI
+const TAU = Math.PI * 2
+
 const WARNING_INTERVAL_MILLISECONDS = 30_000
 
 /** A ring with no array behind it: never any speech, never a direction. */
@@ -65,10 +73,11 @@ export class MicSensor {
         return this.#level
     }
 
+    /** Where the speaker is as an angle round the ring, not as the DSP counts it. */
     direction(): number | null {
         if (this.#direction === null) return null
         if (this.#now() - this.#directionAt > DIRECTION_HOLD_MILLISECONDS) return null
-        return this.#direction
+        return (this.#direction + RING_OFFSET_RADIANS) % TAU
     }
 
     start(): void {

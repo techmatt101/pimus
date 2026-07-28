@@ -85,10 +85,12 @@ test('the ring rides the microphone array while listening and the assistant whil
     await settle()
     await controller.render()
 
+    // The DSP counts azimuth from the USB socket, which the ring mounts half a
+    // turn from LED 0, so its own zero lights the LED opposite that one.
     const facing = rendered.at(-1)?.ring
     assert.ok(facing, 'listening paints a ring')
-    assert.ok(lightness(facing, 0) > lightness(facing, LED_COUNT / 2),
-        'the wave leaves the LEDs facing the speaker brighter than those behind the array')
+    assert.ok(lightness(facing, LED_COUNT / 2) > lightness(facing, 0),
+        'a speaker at the array zero lights the LED mounted there, not the one opposite')
 
     // Nobody is speaking to it, so listening asks for no voice metering.
     assert.deepEqual(metering, [])
@@ -98,8 +100,8 @@ test('the ring rides the microphone array while listening and the assistant whil
     await controller.render()
     const turned = rendered.at(-1)?.ring
     assert.ok(turned, 'the ring is still painted')
-    assert.ok(lightness(turned, LED_COUNT / 2) > lightness(turned, 0),
-        'the wave follows the speaker to the far side of the ring')
+    assert.ok(lightness(turned, 0) > lightness(turned, LED_COUNT / 2),
+        'the wave follows the speaker round to the other side of the ring')
 
     // Speaking is metered by the audio manager, and only while it is showing.
     speech = 1
