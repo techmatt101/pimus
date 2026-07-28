@@ -173,6 +173,49 @@ test('voice volume updates optimistically and re-asserts after a reconnect', asy
     client.close()
 })
 
+test('volume echoes racing newer sets do not walk the readout backwards', () => {
+    let now = 0
+    const fake = new FakeSocket()
+    const client = new AudioManagerClient({
+        socketPath: '/nowhere/audio.sock',
+        connectSocket: () => fake as unknown as net.Socket,
+        clock: () => now,
+        logger: {
+            log: () => {
+            }, error: () => {
+            }
+        },
+    })
+    client.connect()
+    fake.emit('connect')
+    fake.emit('data', '{"event":"state","sources":{"aux":true},"music_volume":80,"voice_volume":40}\n')
+    assert.equal(client.state.musicVolume, 80)
+
+    client.setMusicVolume(75)
+    client.setMusicVolume(70)
+    assert.equal(client.state.musicVolume, 70)
+
+    // The manager's reply to the first set lands after the second was sent;
+    // adopting it would show 75 after 70.
+    fake.emit('data', '{"event":"state","sources":{"aux":false},"music_volume":75,"voice_volume":40}\n')
+    assert.equal(client.state.musicVolume, 70)
+    // The rest of the event still applies while the level is held.
+    assert.equal(client.state.sources.aux, false)
+    assert.equal(client.state.voiceVolume, 40)
+
+    // The echo of the newest set settles the hold.
+    fake.emit('data', '{"event":"state","sources":{"aux":false},"music_volume":70,"voice_volume":40}\n')
+    assert.equal(client.state.musicVolume, 70)
+
+    // An unconfirmed set stops shielding the cache once the hold lapses, so a
+    // genuine move on the manager's side (the USB host's slider) still wins.
+    client.setMusicVolume(65)
+    now += 5000
+    fake.emit('data', '{"event":"state","sources":{"aux":false},"music_volume":55,"voice_volume":40}\n')
+    assert.equal(client.state.musicVolume, 55)
+    client.close()
+})
+
 test('duck requests are deduplicated and re-asserted after a reconnect', async () => {
     const sockets: FakeSocket[] = []
     const client = new AudioManagerClient({

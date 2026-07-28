@@ -117,24 +117,20 @@ export class DeckRenderer implements PageNavigator {
     // Returns true when the touch was spent cancelling an active claim: reaching
     // for a different knob abandons the shared dial's claim, and that turn or
     // press does nothing else. The strip stays put so the escape reads as one.
-    showDial(index: number): boolean {
+    consumeClaimEscape(index: number): boolean {
         if (this.#sharedDial?.pinned() && index !== this.#sharedDialIndex) {
             this.#sharedDial.autoRelease()
             return true
         }
-        this.layout.strip.showDial(index)
         return false
+    }
+
+    showDial(index: number): void {
+        this.layout.strip.showDial(index)
     }
 
     stripPressAt(x: number): (() => unknown) | undefined {
         return this.layout.strip.pressAt(x)
-    }
-
-    // Repaint the strip now, reading each dial's live readout. The deck queues
-    // this after a turn's steps so the readout tracks the detent rather than
-    // trailing it, since `showDial` paints before the step runs.
-    refreshStrip(): void {
-        this.#invalidateStrip()
     }
 
     #currentPage(): StreamDeckPage | undefined {
@@ -270,26 +266,31 @@ export class DeckRenderer implements PageNavigator {
             await this.#writeAll()
             return
         }
+        if (this.#stripDirty) {
+            this.#stripDirty = false
+            await this.#writeStrip()
+            return
+        }
         const next = this.#dirtyKeys.values().next()
         if (!next.done) {
             this.#dirtyKeys.delete(next.value)
             await this.#writeKey(next.value)
-            return
         }
-        this.#stripDirty = false
-        await this.#writeStrip()
     }
 
     async #writeAll(): Promise<void> {
         const at = this.#now()
+        const page = this.#pageIndex
+        // The strip goes first: it is what the user is watching mid-turn, and
+        // writing it last would trail it behind eight key writes.
+        await this.#writeStrip(at)
         // The deck retains its last image, so blank slots must be painted too.
         for (let index = 0; index < 8; index += 1) {
-            // A page switch mid-pass re-marks everything; restart rather than
+            // A page switch mid-pass re-marks everything; stop rather than
             // finish painting a mix of the two pages.
-            if (this.#allDirty) return
+            if (this.#pageIndex !== page) return
             await this.#writeKey(index, at)
         }
-        if (!this.#allDirty) await this.#writeStrip(at)
     }
 
     async #writeKey(index: number, at = this.#now()): Promise<void> {

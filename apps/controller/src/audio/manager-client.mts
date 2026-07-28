@@ -5,6 +5,13 @@ import type {AudioState} from '../types.mjs'
 
 const log = logger('audio')
 
+const ECHO_HOLD_MILLISECONDS = 2000
+
+interface PendingLevel {
+    level: number
+    until: number
+}
+
 interface ManagerEvent {
     event?: string
     error?: string
@@ -19,6 +26,7 @@ export interface AudioManagerClientOptions {
     onStateChange?: () => void
     reconnectMilliseconds?: number
     connectSocket?: (path: string) => net.Socket
+    clock?: () => number
     logger?: Pick<Console, 'log' | 'error'>
 }
 
@@ -39,10 +47,13 @@ export class AudioManagerClient {
     #socket: net.Socket | null = null
     #closed = false
     #reconnectTimer: NodeJS.Timeout | null = null
+    #pendingMusic: PendingLevel | null = null
+    #pendingVoice: PendingLevel | null = null
     readonly #socketPath: string
     readonly #onStateChange: () => void
     readonly #reconnectMilliseconds: number
     readonly #connectSocket: (path: string) => net.Socket
+    readonly #clock: () => number
     readonly #logger: Pick<Console, 'log' | 'error'>
 
     constructor({
@@ -51,12 +62,14 @@ export class AudioManagerClient {
                     },
                     reconnectMilliseconds = 1000,
                     connectSocket = (path) => net.createConnection(path),
+                    clock = Date.now,
                     logger = console,
                 }: AudioManagerClientOptions) {
         this.#socketPath = socketPath
         this.#onStateChange = onStateChange
         this.#reconnectMilliseconds = reconnectMilliseconds
         this.#connectSocket = connectSocket
+        this.#clock = clock
         this.#logger = logger
     }
 
@@ -72,12 +85,8 @@ export class AudioManagerClient {
             // re-assert the cache; with no cache yet, adopt what the manager has.
             if (this.#synced) {
                 this.#write({command: 'set-sources', sources: this.state.sources})
-                if (this.state.voiceVolume !== undefined) {
-                    this.#write({command: 'set-voice-volume', percent: this.state.voiceVolume})
-                }
-                if (this.state.musicVolume !== undefined) {
-                    this.#write({command: 'set-music-volume', percent: this.state.musicVolume})
-                }
+                if (this.state.voiceVolume !== undefined) this.setVoiceVolume(this.state.voiceVolume)
+                if (this.state.musicVolume !== undefined) this.setMusicVolume(this.state.musicVolume)
             } else {
                 this.#write({command: 'get-state'})
             }
@@ -134,6 +143,7 @@ export class AudioManagerClient {
             this.state = {...this.state, voiceVolume: level}
             this.#onStateChange()
         }
+        this.#pendingVoice = {level, until: this.#clock() + ECHO_HOLD_MILLISECONDS}
         this.#write({command: 'set-voice-volume', percent: level})
     }
 
@@ -143,6 +153,7 @@ export class AudioManagerClient {
             this.state = {...this.state, musicVolume: level}
             this.#onStateChange()
         }
+        this.#pendingMusic = {level, until: this.#clock() + ECHO_HOLD_MILLISECONDS}
         this.#write({command: 'set-music-volume', percent: level})
     }
 
@@ -161,6 +172,23 @@ export class AudioManagerClient {
         if (this.#reconnectTimer) clearTimeout(this.#reconnectTimer)
         this.#reconnectTimer = null
         this.#socket?.destroy()
+    }
+
+    // The manager's own reconciles broadcast state while later volume commands
+    // are still in flight, so a reported level walking the readout backwards is
+    // ignored until it matches the pending target or the hold lapses; a real
+    // host-slider move still wins once the hold has passed.
+    #settleLevel(
+        pending: PendingLevel | null,
+        reported: unknown,
+        cached: number | undefined,
+    ): {level: number | undefined, pending: PendingLevel | null} {
+        if (typeof reported !== 'number') return {level: cached, pending}
+        if (pending && this.#clock() < pending.until) {
+            if (reported === pending.level) return {level: reported, pending: null}
+            return {level: cached, pending}
+        }
+        return {level: reported, pending: null}
     }
 
     #write(message: Record<string, unknown>): void {
@@ -183,15 +211,15 @@ export class AudioManagerClient {
             }
             if (message.event === 'state' && typeof message.sources === 'object'
                 && message.sources !== null && !Array.isArray(message.sources)) {
+                const music = this.#settleLevel(this.#pendingMusic, message.music_volume, this.state.musicVolume)
+                const voice = this.#settleLevel(this.#pendingVoice, message.voice_volume, this.state.voiceVolume)
+                this.#pendingMusic = music.pending
+                this.#pendingVoice = voice.pending
                 this.state = {
                     sources: {...(message.sources as AudioState['sources'])},
                     usbPlayback: message.usb_playback === true,
-                    ...(typeof message.music_volume === 'number'
-                        ? {musicVolume: message.music_volume}
-                        : {}),
-                    ...(typeof message.voice_volume === 'number'
-                        ? {voiceVolume: message.voice_volume}
-                        : {}),
+                    ...(music.level !== undefined ? {musicVolume: music.level} : {}),
+                    ...(voice.level !== undefined ? {voiceVolume: voice.level} : {}),
                 }
                 this.#synced = true
                 this.#onStateChange()

@@ -93,20 +93,22 @@ export async function runDeckLoop({
                     void dispatch(renderer.pressAt(controlDefinition.index))
                 } else if (controlDefinition.type === 'encoder') {
                     // A press that cancelled an active claim on another knob does nothing else.
-                    if (renderer.showDial(controlDefinition.index)) return
+                    if (renderer.consumeClaimEscape(controlDefinition.index)) return
                     pressBinding(layout.dials[controlDefinition.index]?.press)
+                    // Queued after the press, so the dial face reads the value it left.
+                    void dispatch(() => renderer.showDial(controlDefinition.index))
                 }
             })
             deck.on('rotate', (controlDefinition, amount) => {
                 log.debug('rotate', controlDefinition.index, amount)
                 if (consumedByWake()) return
                 // A turn that cancelled an active claim on another knob does not also step.
-                if (renderer.showDial(controlDefinition.index)) return
+                if (renderer.consumeClaimEscape(controlDefinition.index)) return
                 const dial = layout.dials[controlDefinition.index]
                 const selected = amount < 0 ? dial?.left : dial?.right
                 for (let count = 0; count < Math.min(10, Math.abs(amount)); count += 1) pressBinding(selected)
-                // Queued after the steps, so the strip reads the value they left.
-                void dispatch(() => renderer.refreshStrip())
+                // Queued after the steps, so the dial face reads the value they left.
+                void dispatch(() => renderer.showDial(controlDefinition.index))
             })
             deck.on('lcdShortPress', (_controlDefinition, position) => {
                 log.debug('strip tap', position.x)

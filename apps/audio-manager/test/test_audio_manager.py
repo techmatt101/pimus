@@ -7,6 +7,7 @@ import socket
 import subprocess
 import unittest
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 
@@ -416,6 +417,67 @@ class AudioManagerTests(unittest.TestCase):
         sinks[0]["mute"] = False
         reconcile()
         self.assertEqual(gadget, {"volume": 70, "muted": False})
+
+    def test_commanded_music_volume_survives_a_stale_gadget_reading(self) -> None:
+        manager = self._reconciling_manager()
+        manager.config["aec_reference"] = {"enabled": False}
+        manager.music_volume = 80
+        gadget = {"volume": 80, "muted": False}
+        sinks = [
+            {
+                "name": "hifiberry",
+                "description": "HiFiBerry DAC2 ADC Pro",
+                "mute": False,
+                "volume": {
+                    "front-left": {"value_percent": "100%"},
+                    "front-right": {"value_percent": "100%"},
+                },
+            }
+        ]
+        responses = {"modules": [], "sinks": sinks, "sources": [], "sink-inputs": []}
+
+        def fake_run(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+            if args[0] == "amixer" and "sget" in args:
+                state = f"[{gadget['volume']}%] [{'off' if gadget['muted'] else 'on'}]"
+                return subprocess.CompletedProcess(
+                    args, 0, stdout=f"  Mono: Capture 123 {state}\n", stderr=""
+                )
+            if args[0] == "amixer" and "sset" in args:
+                gadget["volume"] = int(args[6].rstrip("%"))
+                gadget["muted"] = args[7] == "nocap"
+                return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+            return self._fake_run(*args, check=check)
+
+        def patched(action: Any) -> None:
+            with mock.patch.object(
+                audio_manager, "pactl_json", side_effect=lambda kind: responses[kind]
+            ), mock.patch.object(
+                audio_manager, "pactl_modules", side_effect=lambda: responses["modules"]
+            ), mock.patch.object(
+                audio_manager, "run", side_effect=fake_run
+            ), mock.patch.object(
+                audio_manager, "usb_gadget_card_present", return_value=True
+            ), mock.patch.object(
+                audio_manager, "usb_host_attached", return_value=True
+            ), mock.patch.object(audio_manager, "atomic_json"):
+                action()
+
+        # Both sides agree at 80.
+        patched(manager.reconcile)
+        self.assertEqual(gadget["volume"], 80)
+
+        # A dial step commands 60 while the host has re-quantised the gadget to
+        # 75. The command must forget the old agreement so the next reconcile
+        # seeds the gadget with 60 rather than clawing the level back to 75.
+        patched(
+            lambda: manager.apply_command(
+                mock.Mock(), {"command": "set-music-volume", "percent": 60}
+            )
+        )
+        gadget["volume"] = 75
+        patched(manager.reconcile)
+        self.assertEqual(manager.music_volume, 60)
+        self.assertEqual(gadget, {"volume": 60, "muted": False})
 
     def test_muted_route_keeps_its_bridge_and_toggles_by_fading(self) -> None:
         manager = self._reconciling_manager()

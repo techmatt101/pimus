@@ -1098,6 +1098,10 @@ class AudioManager:
                     "error": "set-music-volume needs a percent between 0 and 100",
                 }, False
             self.music_volume = round(percent)
+            # Forget the last USB agreement so the next reconcile seeds the
+            # gadget with this commanded level; otherwise the gadget's stale
+            # reading would win sync_usb_volume and claw the volume back.
+            self.usb_volume_synced = None
             # Stream volumes only - the background bus and the direct routes -
             # so apply them directly instead of asking for a full reconcile.
             self.safe_apply_music_gain()
