@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from typing import Any
 
 from . import process
 
 
 def server_ready() -> bool:
-    return process.run("pactl", "info", check=False).returncode == 0
+    try:
+        return process.run("pactl", "info", check=False).returncode == 0
+    except (subprocess.SubprocessError, OSError):
+        return False
 
 
 def list_json(kind: str) -> list[dict[str, Any]]:
@@ -45,21 +49,19 @@ def load_module(module: str, *arguments: str) -> int:
 
 
 def unload_module(module_id: int) -> None:
-    process.run("pactl", "unload-module", str(module_id), check=False)
+    process.run("pactl", "unload-module", str(module_id))
 
 
 def set_sink_volume(sink_name: str, percent: int) -> None:
-    process.run("pactl", "set-sink-volume", sink_name, f"{percent}%", check=False)
+    process.run("pactl", "set-sink-volume", sink_name, f"{percent}%")
 
 
 def set_sink_mute(sink_name: str, muted: bool) -> None:
-    process.run("pactl", "set-sink-mute", sink_name, "1" if muted else "0", check=False)
+    process.run("pactl", "set-sink-mute", sink_name, "1" if muted else "0")
 
 
 def set_sink_input_volume(stream_index: int, percent: int) -> None:
-    process.run(
-        "pactl", "set-sink-input-volume", str(stream_index), f"{percent}%", check=False
-    )
+    process.run("pactl", "set-sink-input-volume", str(stream_index), f"{percent}%")
 
 
 def default_sink() -> str:
@@ -71,12 +73,12 @@ def default_source() -> str:
 
 
 def set_default_sink(sink_name: str) -> None:
-    process.run("pactl", "set-default-sink", sink_name, check=False)
+    process.run("pactl", "set-default-sink", sink_name)
 
 
 def set_default_source(source_name: str) -> None:
-    process.run("pactl", "set-default-source", source_name, check=False)
+    process.run("pactl", "set-default-source", source_name)
 
 
 def set_card_profile(card_name: str, profile: str) -> None:
-    process.run("pactl", "set-card-profile", card_name, profile, check=False)
+    process.run("pactl", "set-card-profile", card_name, profile)

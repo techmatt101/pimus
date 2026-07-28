@@ -61,11 +61,16 @@ class ModuleRegistry:
             self._bindings[role] = binding
 
     def unload(self, role: str) -> None:
-        module_id = self._ids.pop(role, None)
+        module_id = self._ids.get(role)
+        if module_id is not None:
+            # Keep the role tracked until PipeWire confirms the unload. If the
+            # graph races us, the next reconcile can retry or drop it from the
+            # fresh module listing.
+            pactl.unload_module(module_id)
+            del self._ids[role]
         self._bindings.pop(role, None)
         self._announce(role)
         if module_id is not None:
-            pactl.unload_module(module_id)
             self._graph.invalidate()
 
     def drop_released(self) -> None:

@@ -157,6 +157,29 @@ class GraphMatchingTests(unittest.TestCase):
         self.assertEqual(selected["index"], 536870912)
 
 
+class ProcessTests(unittest.TestCase):
+    def test_short_commands_have_a_timeout(self) -> None:
+        result = completed("pactl")
+        with mock.patch.object(subprocess, "run", return_value=result) as run:
+            self.assertIs(process.run("pactl", "info"), result)
+
+        run.assert_called_once_with(
+            ("pactl", "info"),
+            check=True,
+            text=True,
+            capture_output=True,
+            timeout=process.COMMAND_TIMEOUT_SECONDS,
+        )
+
+    def test_server_readiness_treats_a_timeout_as_not_ready(self) -> None:
+        with mock.patch.object(
+            process,
+            "run",
+            side_effect=subprocess.TimeoutExpired(("pactl", "info"), 5),
+        ):
+            self.assertFalse(pactl.server_ready())
+
+
 class ControlSocketTests(ManagerTestCase):
     def test_route_state_defaults_follow_config(self) -> None:
         manager = self.make_manager(
@@ -351,6 +374,36 @@ class UsbGadgetTests(unittest.TestCase):
 
 
 class ReconcileTests(ManagerTestCase):
+    def test_failed_module_unload_remains_tracked_for_retry(self) -> None:
+        manager = self.make_manager({})
+        manager.modules.adopt("aux", 60)
+
+        with mock.patch.object(
+            pactl,
+            "unload_module",
+            side_effect=subprocess.CalledProcessError(1, ("pactl",)),
+        ), self.assertRaises(subprocess.CalledProcessError):
+            manager.modules.unload("aux")
+
+        self.assertIn("aux", manager.modules)
+
+    def test_failed_reconcile_retries_after_one_second(self) -> None:
+        manager = self.make_manager({"resync_seconds": 900})
+        manager.pending_reconcile = 50.0
+
+        with mock.patch.object(
+            manager, "reconcile", side_effect=RuntimeError("graph moved")
+        ), mock.patch(
+            "audio_manager.daemon.time.monotonic", return_value=100.0
+        ), self.assertLogs(
+            "audio_manager.daemon", level="WARNING"
+        ):
+            succeeded = manager.safe_reconcile()
+
+        self.assertFalse(succeeded)
+        self.assertIsNone(manager.pending_reconcile)
+        self.assertEqual(manager.next_resync, 101.0)
+
     def test_usb_route_bridges_only_while_the_host_is_streaming(self) -> None:
         manager = self.make_manager(
             {
@@ -599,8 +652,15 @@ class ReconcileTests(ManagerTestCase):
             loaded.append(module)
             return 60
 
+        def run(*args: str, check: bool = True) -> Any:
+            if "set-sink-input-volume" in args:
+                listings["sink-inputs"][0]["volume"] = {
+                    "mono": {"value_percent": args[-1]}
+                }
+            return fake_run(*args, check=check)
+
         def reconcile() -> list[str]:
-            with self._patched_graph(listings, fake_run) as run, mock.patch.object(
+            with self._patched_graph(listings, run) as run_mock, mock.patch.object(
                 pactl, "load_module", side_effect=load_module
             ), mock.patch("audio_manager.volume.time.sleep"), mock.patch(
                 "audio_manager.status.write"
@@ -608,7 +668,7 @@ class ReconcileTests(ManagerTestCase):
                 manager.reconcile()
             return [
                 call.args[-1]
-                for call in run.call_args_list
+                for call in run_mock.call_args_list
                 if "set-sink-input-volume" in call.args
             ]
 
@@ -630,6 +690,20 @@ class ReconcileTests(ManagerTestCase):
 
         # A settled toggle fades nothing on the next reconcile.
         self.assertEqual(reconcile(), [])
+
+        # Live drift is repaired even when the desired toggle did not change.
+        listings["sink-inputs"][0]["volume"] = {
+            "mono": {"value_percent": "25%"}
+        }
+        self.assertEqual(reconcile(), ["0%"])
+
+        # PipeWire can recreate the stream without recreating its module. The
+        # replacement must be recognised and snapped silent too.
+        listings["sink-inputs"][0].update(
+            index=62, volume={"mono": {"value_percent": "100%"}}
+        )
+        self.assertEqual(reconcile(), ["0%"])
+        self.assertEqual(manager.routes.stream_indices["aux"], 62)
 
     def test_aec_reference_bridges_output_monitor_into_the_xvf3800(self) -> None:
         manager = self.make_manager(
@@ -851,9 +925,7 @@ class VolumeTests(ManagerTestCase):
             output.pin_volume(
                 {"name": "hifi", "volume": {"mono": {"value_percent": "20%"}}}
             )
-            run.assert_called_once_with(
-                "pactl", "set-sink-volume", "hifi", "100%", check=False
-            )
+            run.assert_called_once_with("pactl", "set-sink-volume", "hifi", "100%")
 
             # An already pinned sink writes nothing, so the pin can never echo
             # itself into another reconcile.
@@ -922,9 +994,27 @@ class VolumeTests(ManagerTestCase):
         self.assertFalse(reconcile)
         # The sink is pinned, so the bridge gain is the voice level itself,
         # whatever the music is doing.
-        run.assert_called_once_with(
-            "pactl", "set-sink-input-volume", "33", "40%", check=False
-        )
+        run.assert_called_once_with("pactl", "set-sink-input-volume", "33", "40%")
+
+    def test_failed_voice_gain_is_not_cached_and_schedules_a_retry(self) -> None:
+        manager = self.make_manager({"voice_bus": {"enabled": True}})
+        manager.voice_bus.stream_index = 33
+
+        with mock.patch.object(
+            process,
+            "run",
+            side_effect=subprocess.CalledProcessError(1, ("pactl",)),
+        ), self.assertLogs("audio_manager.daemon", level="WARNING"):
+            manager.set_voice_volume(40)
+
+        self.assertIsNone(manager.voice_bus.gain_applied)
+        self.assertIsNotNone(manager.pending_reconcile)
+
+        with mock.patch.object(process, "run") as run:
+            manager.voice_bus.apply_gain(40)
+
+        run.assert_called_once()
+        self.assertEqual(manager.voice_bus.gain_applied, 40)
 
     def test_voice_volume_rejects_anything_but_a_percent(self) -> None:
         manager = self.make_manager({"voice_bus": {"enabled": True}})
@@ -950,7 +1040,9 @@ class VolumeTests(ManagerTestCase):
             }
         )
         manager.modules.adopt("aux", 60)
+        manager.routes.enabled["aux"] = True
         manager.routes.unmuted = {"aux": True}
+        manager.routes.stream_indices = {"aux": 61}
         manager.background.stream_index = 42
         manager.background.ducked = False
         manager.background.gain_applied = 100
@@ -1088,7 +1180,13 @@ class BusTests(ManagerTestCase):
         listings = {
             "sinks": [output_sink, voice],
             "sources": [{"name": "smartamp_voice.monitor"}],
-            "sink-inputs": [{"index": 27, "owner_module": 13}],
+            "sink-inputs": [
+                {
+                    "index": 27,
+                    "owner_module": 13,
+                    "volume": {"mono": {"value_percent": "100%"}},
+                }
+            ],
             "cards": [],
         }
         loaded: list[tuple[str, tuple[str, ...]]] = []
@@ -1113,9 +1211,10 @@ class BusTests(ManagerTestCase):
         self.assertIn(
             "sink_input_properties=media.name=SmartAmp.voice_bridge", loaded[0][1]
         )
-        run.assert_called_once_with(
-            "pactl", "set-sink-input-volume", "27", "40%", check=False
-        )
+        run.assert_called_once_with("pactl", "set-sink-input-volume", "27", "40%")
+        listings["sink-inputs"][0]["volume"] = {
+            "mono": {"value_percent": "40%"}
+        }
 
         # A settled bus writes nothing on the next pass.
         with mock.patch.object(
@@ -1126,6 +1225,21 @@ class BusTests(ManagerTestCase):
             manager.voice_bus.reconcile(output_sink)
             manager.voice_bus.apply_gain(manager.voice_volume)
         run.assert_not_called()
+
+        # A live change on the same stream is reconciled back to the owned gain.
+        listings["sink-inputs"][0]["volume"] = {
+            "mono": {"value_percent": "75%"}
+        }
+        with mock.patch.object(
+            pactl, "list_json", side_effect=lambda kind: listings.get(kind, [])
+        ), mock.patch.object(pactl, "list_modules", return_value=[]), mock.patch.object(
+            process, "run"
+        ) as run:
+            manager.voice_bus.reconcile(output_sink)
+            manager.voice_bus.apply_gain(manager.voice_volume)
+        run.assert_called_once_with(
+            "pactl", "set-sink-input-volume", "27", "40%"
+        )
 
     def test_background_sink_is_created_and_its_bridge_is_identifiable(self) -> None:
         manager = self.make_manager(

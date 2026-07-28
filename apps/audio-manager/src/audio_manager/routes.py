@@ -61,10 +61,11 @@ class SourceRoutes:
         self._graph = view
         self._modules = registry
         self.enabled = {name: source.enabled for name, source in sources.items()}
-        # The applied toggle state of each mute_when_off route's stream, so a
-        # reconcile only fades on a change and a recreated stream (absent here)
-        # is snapped to the toggle before it can play at full volume.
+        # The applied toggle state and stream identity of each mute_when_off
+        # route. A new stream is snapped to the toggle before it can play at its
+        # default full volume; an existing stream only fades on a state change.
         self.unmuted: dict[str, bool] = {}
+        self.stream_indices: dict[str, int] = {}
         registry.on_released(self._role_released)
 
     def knows(self, name: str) -> bool:
@@ -106,10 +107,12 @@ class SourceRoutes:
             stream = self._stream_of(name)
             if stream is None:
                 continue
-            if source.mute_when_off and not self.unmuted.get(name, False):
-                continue
-            pactl.set_sink_input_volume(
-                int(stream["index"]), volume.scale(music_volume, source.volume_percent)
+            self._apply_stream_level(
+                name,
+                source,
+                stream,
+                self.enabled.get(name, False),
+                music_volume,
             )
 
     def _reconcile_source(
@@ -180,12 +183,16 @@ class SourceRoutes:
         if not source.mute_when_off:
             self._track_level(stream, level)
             return
+        if self.stream_indices.get(name) != stream_index:
+            # PipeWire can recreate a stream while its loopback module survives.
+            # Treat that stream as unsettled so an off route cannot start at
+            # full volume.
+            self.stream_indices[name] = stream_index
+            self.unmuted.pop(name, None)
         was_enabled = self.unmuted.get(name)
         if was_enabled == enabled:
-            # The toggle is settled; keep an unmuted stream tracking the music
-            # level as the dial moves.
-            if enabled:
-                self._track_level(stream, level)
+            # Verify both sides of a settled toggle against the live graph.
+            self._track_level(stream, level if enabled else 0)
             return
         if was_enabled is None:
             # A new stream starts at full volume; snap it to the toggle before
@@ -204,13 +211,14 @@ class SourceRoutes:
 
     def _track_level(self, stream: Node, level: int) -> None:
         state = graph.volume_state(stream)
-        if state is not None and state[0] != level:
+        if state is None or state[0] != level:
             pactl.set_sink_input_volume(int(stream["index"]), level)
 
     def _role_released(self, role: str) -> None:
         # A rebuilt bridge is a fresh stream at full volume, so the next
         # reconcile must snap it to the toggle rather than assume it settled.
         self.unmuted.pop(role, None)
+        self.stream_indices.pop(role, None)
 
     def _stream_of(self, name: str) -> Node | None:
         return graph.find_owned_stream(

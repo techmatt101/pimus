@@ -36,6 +36,10 @@ EVENT_DEBOUNCE_SECONDS = 0.3
 # that monitor was restarting.
 USB_HOST_POLL_SECONDS = 2.0
 
+# A transient graph race should heal promptly rather than waiting for the
+# normal fifteen-minute safety resync.
+RECONCILE_RETRY_SECONDS = 1.0
+
 # Failures that mean the graph moved under us or a helper is missing: log them
 # and try again on the next pass rather than terminating the daemon.
 GRAPH_ERRORS = (subprocess.SubprocessError, json.JSONDecodeError, RuntimeError, OSError)
@@ -112,7 +116,10 @@ class AudioManager:
         self.control.close()
         self.selector.close()
         for role in reversed(self.modules.roles()):
-            self.modules.unload(role)
+            self._guard(
+                f"Releasing {role}",
+                lambda role=role: self.modules.unload(role),
+            )
         return 0
 
     def wait_for_pulse(self) -> None:
@@ -141,11 +148,11 @@ class AudioManager:
         return ducked
 
     def safe_apply_ducking(self) -> None:
-        self._guard("Audio ducking", self.apply_ducking)
+        self._apply_or_retry("Audio ducking", self.apply_ducking)
 
     def set_voice_volume(self, percent: float) -> None:
         self.voice_volume = volume.clamp(percent)
-        self._guard(
+        self._apply_or_retry(
             "Voice volume", lambda: self.voice_bus.apply_gain(self.voice_volume)
         )
 
@@ -155,16 +162,20 @@ class AudioManager:
         # with this commanded level; otherwise the gadget's stale reading would
         # win the sync and claw the volume back.
         self.usb_volume.forget()
-        self._guard("Music volume", self._apply_music_volume)
+        self._apply_or_retry("Music volume", self._apply_music_volume)
 
     def schedule_reconcile(self, delay: float = EVENT_DEBOUNCE_SECONDS) -> None:
         if self.pending_reconcile is None:
             self.pending_reconcile = time.monotonic() + delay
 
-    def safe_reconcile(self) -> None:
-        self._guard("Audio reconciliation", self.reconcile)
+    def safe_reconcile(self) -> bool:
+        succeeded = self._guard("Audio reconciliation", self.reconcile)
         self.pending_reconcile = None
-        self.next_resync = time.monotonic() + self.config.resync_seconds
+        delay = (
+            self.config.resync_seconds if succeeded else RECONCILE_RETRY_SECONDS
+        )
+        self.next_resync = time.monotonic() + delay
+        return succeeded
 
     def reconcile(self) -> None:
         self.graph.invalidate()
@@ -295,8 +306,16 @@ class AudioManager:
         # Graph events may have been missed while the stream was down.
         self.schedule_reconcile(0.0)
 
-    def _guard(self, description: str, action: Callable[[], object]) -> None:
+    def _apply_or_retry(
+        self, description: str, action: Callable[[], object]
+    ) -> None:
+        if not self._guard(description, action):
+            self.schedule_reconcile(RECONCILE_RETRY_SECONDS)
+
+    def _guard(self, description: str, action: Callable[[], object]) -> bool:
         try:
             action()
         except GRAPH_ERRORS as error:
             LOG.warning("%s failed: %s", description, error)
+            return False
+        return True

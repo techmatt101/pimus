@@ -70,6 +70,10 @@ class AudioBus:
             stream_media_name(self.bridge_role),
         )
         self._track_stream(int(bridge["index"]) if bridge is not None else None)
+        # Reconcile against the graph, not only our last successful write. A
+        # stream can be recreated or changed underneath the module that owns it.
+        live_gain = graph.volume_state(bridge) if bridge is not None else None
+        self.gain_applied = live_gain[0] if live_gain is not None else None
         return self.sink
 
     def release(self) -> None:

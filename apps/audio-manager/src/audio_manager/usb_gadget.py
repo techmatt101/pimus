@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
 from . import process
@@ -51,7 +52,7 @@ def streaming() -> bool:
             "iface=PCM,name=Capture Rate",
             check=False,
         )
-    except OSError:
+    except (subprocess.SubprocessError, OSError):
         return False
     if result.returncode != 0:
         return False
@@ -81,7 +82,6 @@ def write_mixer(percent: int, muted: bool) -> None:
         "PCM",
         f"{percent}%",
         "nocap" if muted else "cap",
-        check=False,
     )
 
 
