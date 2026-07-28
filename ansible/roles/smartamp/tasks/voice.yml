@@ -102,7 +102,8 @@
   when: voice_assistant_needs_setup | bool
 
 # This wrapper leaves the pinned checkout clean while adding the pause/idle
-# peripheral events needed for a reliable physical play/pause control.
+# peripheral events needed for a reliable physical play/pause control, and the
+# pipeline abort the upstream stop_pipeline command only half performs.
 - name: Install Smart Amp voice media event adapter
   ansible.builtin.copy:
     src: smartamp_lva.py

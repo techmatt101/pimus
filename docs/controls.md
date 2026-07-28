@@ -74,7 +74,7 @@ central dispatcher:
 | Tile               | What it is                                                                                                                                                                                                                                                                                                                                                     |
 |--------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `MediaTile`        | Play/pause. Draws the play or pause glyph from the playback state, and the glyph breathes while playing.                                                                                                                                                                                                                                                       |
-| `VoiceTile`        | Start Assist, or cancel the pipeline already running. Expanding rings while one is live.                                                                                                                                                                                                                                                                       |
+| `VoiceTile`        | Start Assist, or cancel whatever it is doing: a running pipeline or a ringing timer. Expanding rings while either is live.                                                                                                                                                                                                                                                                       |
 | `BrightnessTile`   | Adjusts the Stream Deck panel's own brightness. Press to arm, turn the dynamic dial to step it live in 5% notches — clamped at 0 and 100, never wrapping — press again to finish. Mutates display state on the model; the renderer re-lights the panel as the knob turns.                                                               |
 | `VoiceVolumeTile`  | Adjusts the voice level — how loud Assist speaks, rings, and announces, independent of the music level. Press to arm, turn the dynamic dial to step it live in 5% notches — clamped at 0 and 100, never wrapping — press again to finish. Shows the audio manager's reported level, `?` while the manager is unreachable. The volume dial adjusts the same level whenever Assist is speaking.                                |
 | `PlaylistTile`     | Picks and plays one of a short list of playlists. Press to arm (the key glows and claims the dynamic dial), turn the dynamic dial to choose, press again — the key or the knob — to confirm. A single playlist is just press-then-confirm. The armed state releases itself after 15s, or when any other dial or key is touched — that first touch only cancels the arm and does nothing else.        |
@@ -148,13 +148,12 @@ timer and subscription must be dropped in `unmount`.
 
 Sent to the Linux Voice Assistant peripheral socket.
 
-| Command              | Effect                                                                    |
-|----------------------|---------------------------------------------------------------------------|
-| `start_listening`    | Start a voice pipeline, the same as speaking the wake word.               |
-| `mute_toggle`        | Toggle the microphone mute. Tracks the mute state reported by LVA.        |
-| `stop`               | Stop everything at once: timer ringing, the pipeline, and media playback. |
-| `listen_toggle`      | Start a voice pipeline, or cancel the one already running.                |
-| `stop_timer_ringing` | Silence a ringing timer, leaving media playback alone.                    |
+| Command              | Effect                                                                                        |
+|----------------------|-----------------------------------------------------------------------------------------------|
+| `start_listening`    | Start a voice pipeline, the same as speaking the wake word.                                   |
+| `mute_toggle`        | Toggle the microphone mute. Tracks the mute state reported by LVA.                            |
+| `listen_toggle`      | Start a voice pipeline, or cancel whatever voice is doing: a running pipeline or a ringing timer. |
+| `stop_timer_ringing` | Silence a ringing timer, leaving media playback alone.                                        |
 
 ```ts
 key('VOICE', '#006064', voice('start_listening'))
@@ -163,6 +162,11 @@ key('VOICE', '#006064', voice('start_listening'))
 Any other command is forwarded to LVA unchanged, so upstream features work
 without a controller change. Forwarded commands get no local state tracking and
 no key feedback; add them to the catalog when they need either.
+
+Cancelling is `stop_pipeline`, which the pinned upstream only honours once a
+response is speaking; the launcher adapter described in
+[architecture](architecture.md) is what makes it abort while the satellite is
+still listening or thinking.
 
 ## Music volume — `type: audio` with no `source`
 
@@ -270,7 +274,7 @@ configuration. Everything else keeps the label and colour you configured.
 |-------------------------------------|------------------------------------------------------------------------|
 | `lva` / `mute_toggle`               | Label becomes `MIC OFF`, background red.                               |
 | `lva` / `start_listening`           | Background cyan while the pipeline is running.                         |
-| `lva` / `listen_toggle`             | Label becomes `CANCEL`, background cyan while the pipeline is running. |
+| `lva` / `listen_toggle`             | Label becomes `CANCEL`, background cyan while a pipeline is running or a timer is ringing. |
 | `audio` route (`on`/`off`/`toggle`) | Label gains ` ON` or ` OFF`, background green when on.                 |
 
 ## Dials

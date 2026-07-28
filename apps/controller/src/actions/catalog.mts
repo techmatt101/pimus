@@ -24,7 +24,6 @@ export interface ActionSpec {
 export interface VoiceContext {
     state: ControlState
     lva: LvaSender
-    onStateChange: () => void
 }
 
 interface VoiceActionSpec extends ActionSpec {
@@ -52,15 +51,15 @@ export const VOICE_ACTIONS = {
         },
     },
     listen_toggle: {
-        summary: 'Start a voice pipeline, or cancel the one already running.',
+        summary: 'Start a voice pipeline, or cancel whatever voice is doing: a running pipeline or a ringing timer.',
         example: '{ type: lva, command: listen_toggle }',
         indicator: {
-            isActive: ({state}) => isAssistRunning(state),
+            isActive: ({state}) => isVoiceActive(state),
             activeColor: '#00b8d4',
             label: (configured, active) => (active ? 'CANCEL' : configured),
         },
         run: ({state, lva}) => {
-            lva.send(isAssistRunning(state) ? 'stop_pipeline' : 'start_listening')
+            lva.send(isVoiceActive(state) ? 'stop_pipeline' : 'start_listening')
         },
     },
     mute_toggle: {
@@ -75,17 +74,6 @@ export const VOICE_ACTIONS = {
             // LVA has no toggle command; the resulting `muted` event is what
             // updates our state.
             lva.send(state.muted ? 'unmute_mic' : 'mute_mic')
-        },
-    },
-    stop: {
-        summary: 'Stop everything at once: timer ringing, the pipeline, and media playback.',
-        example: '{ type: lva, command: stop }',
-        run: ({state, lva, onStateChange}) => {
-            lva.send('stop_timer_ringing')
-            lva.send('stop_pipeline')
-            lva.send('stop_media_player')
-            state.media = false
-            onStateChange()
         },
     },
     stop_timer_ringing: {

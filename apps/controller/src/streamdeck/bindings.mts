@@ -34,11 +34,7 @@ export function haBinding(
 export function voiceBinding(lva: LvaSender, model: ControlModel, command: string): Binding {
     return {
         action: {type: 'lva', command},
-        run: () => runVoiceCommand(command, {
-            state: model.state,
-            lva,
-            onStateChange: () => model.notify(),
-        }),
+        run: () => runVoiceCommand(command, {state: model.state, lva}),
     }
 }
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Run pinned LVA with complete media-state peripheral events.
+"""Run pinned LVA with complete media-state peripheral events and a real cancel.
 
 LVA 1.1.13 emits a playing event but not pause, stop, or natural-completion
-events. Keep the immutable upstream checkout untouched and install these small
+events, and its `stop_pipeline` command only cancels a pipeline that has reached
+speaking. Keep the immutable upstream checkout untouched and install these small
 runtime adapters until the upstream peripheral protocol supplies them.
 """
 
@@ -12,7 +13,7 @@ import json
 from enum import Enum
 from typing import Any, Callable, Iterable
 
-from aioesphomeapi.api_pb2 import MediaPlayerCommandRequest
+from aioesphomeapi.api_pb2 import MediaPlayerCommandRequest, VoiceAssistantRequest
 from aioesphomeapi.model import MediaPlayerCommand
 
 from linux_voice_assistant import __main__ as lva_main
@@ -116,6 +117,55 @@ def install_media_event_adapters() -> None:
     MediaPlayerEntity.play = play  # type: ignore[method-assign]
 
 
+def install_pipeline_cancel_adapter() -> None:
+    """Make `stop_pipeline` abort the pipeline at every phase.
+
+    LVA 1.1.13's `satellite.stop()` only really cancels a ringing timer or a TTS
+    response that is still playing. Pressed while the satellite is listening or
+    waiting on Home Assistant it leaves the microphone streaming, never withdraws
+    the request from HA, and emits no idle event, so the control surface goes on
+    showing a live pipeline. Worse, stopping the player during the wake chime
+    fires that chime's done callback, which is what starts the stream.
+    """
+
+    original_stop = VoiceSatelliteProtocol.stop
+
+    def stop(self: VoiceSatelliteProtocol) -> None:
+        player = self.state.tts_player
+        ringing = self._timer_finished  # pylint: disable=protected-access
+        active = self._pipeline_active  # pylint: disable=protected-access
+        # A bound method compares equal to, never identical with, another
+        # reference to itself.
+        finishing_tts = player._done_callback == self._tts_finished  # pylint: disable=protected-access
+
+        if not finishing_tts:
+            # A pending chime callback starts audio streaming the moment the
+            # player is stopped, restarting the pipeline this call cancels.
+            player._done_callback = None  # pylint: disable=protected-access
+        # Home Assistant can ask for the conversation to continue; a cancel must
+        # not reopen the microphone.
+        self._continue_conversation = False  # pylint: disable=protected-access
+        self._is_streaming_audio = False  # pylint: disable=protected-access
+
+        original_stop(self)
+
+        if active and not ringing:
+            # HA runs the pipeline until the satellite withdraws its request;
+            # start=False is the abort.
+            self.send_messages([VoiceAssistantRequest(start=False)])
+
+        if not ringing and not finishing_tts:
+            # Nothing was playing, so upstream's stop() emitted nothing and both
+            # the ducking and the peripheral state would be left as they were.
+            self._tts_url = None  # pylint: disable=protected-access
+            self._tts_played = False  # pylint: disable=protected-access
+            self.unduck()
+            self._emit(LVAEvent.IDLE)  # pylint: disable=protected-access
+
+    VoiceSatelliteProtocol.stop = stop  # type: ignore[method-assign]
+
+
 if __name__ == "__main__":
     install_media_event_adapters()
+    install_pipeline_cancel_adapter()
     lva_main.run()

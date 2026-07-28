@@ -2,9 +2,45 @@ import assert from 'node:assert/strict'
 import {EventEmitter} from 'node:events'
 import test from 'node:test'
 
-import {createState} from '../../src/state.mjs'
+import {runVoiceCommand} from '../../src/actions/catalog.mjs'
+import {applyLvaEvent, createState} from '../../src/state.mjs'
 import {LvaClient} from '../../src/voice/lva-client.mjs'
 import type WebSocket from 'ws'
+
+test('the voice key starts a pipeline and cancels whatever voice is doing', () => {
+    const sent: string[] = []
+    const lva = {
+        send: (command: string) => {
+            sent.push(command)
+            return true
+        },
+    }
+    const state = createState({assist: 'IDLE'})
+    const toggle = (): void => runVoiceCommand('listen_toggle', {state, lva})
+    const move = (event: string): void => {
+        applyLvaEvent(state, {event})
+    }
+
+    toggle()
+    for (const event of ['wake_word_detected', 'listening', 'thinking', 'tts_speaking']) {
+        move(event)
+        toggle()
+    }
+    move('timer_ringing')
+    toggle()
+    move('idle')
+    toggle()
+
+    assert.deepEqual(sent, [
+        'start_listening',
+        'stop_pipeline',
+        'stop_pipeline',
+        'stop_pipeline',
+        'stop_pipeline',
+        'stop_pipeline',
+        'start_listening',
+    ])
+})
 
 test('LVA client sends commands, applies events, and reconnects after close', async () => {
     class FakeWebSocket extends EventEmitter {

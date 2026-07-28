@@ -134,7 +134,13 @@ built from, so a doorbell or a finished washing machine needs no entity and no i
 A small local LVA launcher adapter supplies pause, idle, and natural media
 completion events missing from the pinned upstream peripheral protocol. This
 keeps the Stream Deck play/pause state accurate without modifying the verified
-upstream checkout.
+upstream checkout. The same adapter completes `stop_pipeline`: upstream only
+cancels a response that has reached speaking, so pressing cancel while the
+satellite is listening or thinking left the microphone streaming, Home Assistant
+still running the pipeline, and no idle event for the deck to follow. The
+adapter withdraws the request from Home Assistant, drops the wake chime's
+callback — which would otherwise start the very stream being cancelled — and
+emits the idle the control surface waits on.
 
 The service units use a compact isolation baseline: core system configuration is
 read-only, home directories are hidden, temporary directories are private, and

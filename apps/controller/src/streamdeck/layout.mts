@@ -151,7 +151,7 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
             null
         ],
         [
-            key('STOP', '#b71c1c', voice('stop')),
+            null,
             key('AUX', '#4a148c', route('aux', 'toggle')),
             key('USB', '#0d47a1', route('usb', 'toggle')),
             key('MUTE', '#7f0000', voice('mute_toggle')),

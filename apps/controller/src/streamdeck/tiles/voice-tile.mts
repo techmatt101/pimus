@@ -1,4 +1,4 @@
-import {isAssistRunning} from '../../actions/catalog.mjs'
+import {isVoiceActive} from '../../actions/catalog.mjs'
 import {type Binding, voiceBinding} from '../bindings.mjs'
 import {drawIcon, type Surface, withAlpha} from '../surface.mjs'
 import {drawBackground, drawCaption, FACE_CENTER, type Tile, type TileHost} from '../tile.mjs'
@@ -32,8 +32,8 @@ export class VoiceTile implements Tile {
 
     mount(host: TileHost): void {
         this.#host = host
-        this.#unsubscribe = this.#model.subscribe(() => this.#followAssist())
-        this.#followAssist()
+        this.#unsubscribe = this.#model.subscribe(() => this.#followVoice())
+        this.#followVoice()
     }
 
     unmount(): void {
@@ -43,8 +43,8 @@ export class VoiceTile implements Tile {
         this.#host = null
     }
 
-    #followAssist(): void {
-        if (isAssistRunning(this.#model.state)) this.#startRipple()
+    #followVoice(): void {
+        if (isVoiceActive(this.#model.state)) this.#startRipple()
         else this.#stopRipple()
     }
 
@@ -61,7 +61,7 @@ export class VoiceTile implements Tile {
     }
 
     draw(surface: Surface, deltaTime: number): void {
-        const running = isAssistRunning(this.#model.state)
+        const running = isVoiceActive(this.#model.state)
         drawBackground(surface, running ? '#006064' : '#00272b')
         const x = surface.width / 2
 
