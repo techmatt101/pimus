@@ -14,10 +14,13 @@ Environment=PULSE_SERVER=/run/user/{{ smartamp_uid }}/pulse/native
 # silently disable event-driven reconciliation.
 Environment=LC_ALL=C
 Environment=SMARTAMP_LOG_LEVEL={{ 'debug' if smartamp_debug_logging | bool else 'info' }}
+# The manager is a Python package deployed as a module tree; its parent
+# directory is what makes "python3 -m audio_manager" resolvable.
+Environment=PYTHONPATH={{ smartamp_app_dir }}/audio-manager
 # Remove the previous process's readiness file before starting. Consumers must
 # wait for a fresh hardware scan instead of trusting stale device names.
 ExecStartPre=/usr/bin/rm -f /run/user/{{ smartamp_uid }}/smartamp-audio-status.json
-ExecStart={{ smartamp_app_dir }}/audio_manager.py --config {{ smartamp_config_dir }}/audio.json --socket /run/user/{{ smartamp_uid }}/smartamp-audio.sock --status /run/user/{{ smartamp_uid }}/smartamp-audio-status.json
+ExecStart=/usr/bin/python3 -m audio_manager --config {{ smartamp_config_dir }}/audio.json --socket /run/user/{{ smartamp_uid }}/smartamp-audio.sock --status /run/user/{{ smartamp_uid }}/smartamp-audio-status.json
 Restart=always
 RestartSec=3
 # Apply a small, predictable isolation baseline without restricting the local

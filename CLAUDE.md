@@ -52,7 +52,7 @@ apps/
     package.json
     tsconfig.json
   audio-manager/
-    src/                 PipeWire reconciliation daemon
+    src/audio_manager/   PipeWire reconciliation daemon, run as a package
     test/                Python unit tests
   playground/            Development-only debug environment; never deployed
     src/                 Fake deck, LVA, audio manager, wpctl, LEDs, web server
@@ -236,6 +236,17 @@ runtime validation, and relevant documentation together.
   graph-owned routes. Voice-event policy stays in the Node controller.
 - Prefer the Python standard library unless a dependency has a clear runtime
   benefit and is provisioned explicitly by Ansible.
+- The audio manager is the `audio_manager` package, run as `python3 -m
+  audio_manager` with its parent directory on `PYTHONPATH`. `daemon.py` owns
+  the reconcile order and nothing else; each concern it drives (a bus, the
+  routes, voice capture, the AEC reference, the USB volume agreement, the
+  control socket) lives in its own module and holds its own state. Reach the
+  outside world through `process.run`, `pactl`, and `usb_gadget`, and read the
+  graph through the cached `Graph`, so tests patch one seam. Anything that
+  mutates the graph goes through `ModuleRegistry`, which invalidates that
+  cache. Adding a module means adding it to the deployed list in
+  `roles/smartamp/tasks/audio.yml` automatically — it globs `*.py` — but a new
+  top-level package would need its own task.
 
 ### Ansible
 

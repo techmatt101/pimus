@@ -24,14 +24,73 @@
   notify: Restart audio manager
 
 # This process makes HiFiBerry the default sink, selects the ReSpeaker mic, and
-# maintains independently switchable aux and USB loopbacks in PipeWire.
-- name: Install Smart Amp audio manager
-  ansible.builtin.copy:
-    src: "{{ smartamp_source_dir }}/audio-manager/src/audio_manager.py"
-    dest: "{{ smartamp_app_dir }}/audio_manager.py"
+# maintains independently switchable aux and USB loopbacks in PipeWire. It is a
+# Python package, so the whole module tree is deployed and its unit puts the
+# parent directory on PYTHONPATH.
+- name: Create Smart Amp audio manager directory
+  ansible.builtin.file:
+    path: "{{ smartamp_app_dir }}/audio-manager/audio_manager"
+    state: directory
     owner: root
     group: root
     mode: "0755"
+
+- name: Find Smart Amp audio manager modules
+  ansible.builtin.find:
+    paths: "{{ smartamp_source_dir }}/audio-manager/src/audio_manager"
+    patterns: "*.py"
+    file_type: file
+  delegate_to: localhost
+  become: false
+  register: audio_manager_sources
+
+- name: Record Smart Amp audio manager modules
+  ansible.builtin.set_fact:
+    smartamp_audio_manager_modules: >-
+      {{ audio_manager_sources.files | map(attribute='path') | map('basename') | list }}
+
+- name: Require a complete Smart Amp audio manager
+  ansible.builtin.assert:
+    that:
+      - "'__main__.py' in smartamp_audio_manager_modules"
+    fail_msg: >-
+      The audio manager entrypoint is missing from
+      apps/audio-manager/src/audio_manager.
+
+# A module deleted upstream must not keep running here: Python would happily
+# import whatever an older layout left behind.
+- name: Find deployed Smart Amp audio manager modules
+  ansible.builtin.find:
+    paths: "{{ smartamp_app_dir }}/audio-manager/audio_manager"
+    patterns: "*.py"
+    file_type: file
+  register: deployed_audio_manager_modules
+
+- name: Remove obsolete Smart Amp audio manager modules
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ deployed_audio_manager_modules.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: item.path | basename not in smartamp_audio_manager_modules
+  notify: Restart audio manager
+
+- name: Install Smart Amp audio manager modules
+  ansible.builtin.copy:
+    src: "{{ smartamp_source_dir }}/audio-manager/src/audio_manager/{{ item }}"
+    dest: "{{ smartamp_app_dir }}/audio-manager/audio_manager/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ smartamp_audio_manager_modules }}"
+  notify: Restart audio manager
+
+# The daemon used to be a single script deployed beside the shell helpers.
+- name: Remove the superseded single-file audio manager
+  ansible.builtin.file:
+    path: "{{ smartamp_app_dir }}/audio_manager.py"
+    state: absent
   notify: Restart audio manager
 
 # ALSA mixer defaults are not guaranteed after a clean image. Apply the chosen

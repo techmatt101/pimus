@@ -57,7 +57,17 @@ page. Nothing here ships to the Pi, and `make test` does not build it — see
 
 ## `audio-manager`
 
-The long-running Python daemon in `audio-manager/src/` makes HiFiBerry the
-default output, selects the XVF3800 microphone, and maintains aux, USB audio,
-the Sendspin/USB background bus, ducking gain, and acoustic-echo-reference
-PipeWire routes. Its unit tests are colocated in `audio-manager/test/`.
+The long-running Python daemon in `audio-manager/src/audio_manager/` makes
+HiFiBerry the default output, selects the XVF3800 microphone, and maintains
+aux, USB audio, the Sendspin/USB background bus, ducking gain, and
+acoustic-echo-reference PipeWire routes. Its unit tests are colocated in
+`audio-manager/test/`.
+
+`daemon.py` holds the reconcile loop and owns one object per concern:
+`buses.py` (the background and voice null sinks and their bridge gains),
+`routes.py` (the switchable inputs), `voice_capture.py`, `aec.py`, `output.py`
+(the pinned output sink), `usb_volume.py`, and `modules.py` (every PipeWire
+module the daemon loaded). `pactl.py`, `usb_gadget.py`, and `process.py` are
+the command boundary, `graph.py` the cached view of the graph they read, and
+`control_server.py` plus `commands.py` the Unix control socket the controller
+speaks to. It runs as `python3 -m audio_manager`.
