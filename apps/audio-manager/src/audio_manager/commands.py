@@ -35,8 +35,10 @@ class CommandHandler:
     def __init__(self, manager: AudioManager) -> None:
         self._manager = manager
         self._duck_requests: set[socket.socket] = set()
+        self._meter_requests: set[socket.socket] = set()
         self._handlers: dict[str, Callable[[socket.socket, dict[str, Any]], Reply]] = {
             "set-duck": self._set_duck,
+            "set-voice-meter": self._set_voice_meter,
             "set-voice-volume": self._set_voice_volume,
             "set-music-volume": self._set_music_volume,
             "set-output-mute": self._set_output_mute,
@@ -50,6 +52,11 @@ class CommandHandler:
     def duck_requested(self) -> bool:
         return bool(self._duck_requests)
 
+    @property
+    def meter_listeners(self) -> frozenset[socket.socket]:
+        """The connections that asked for voice levels, and get them addressed."""
+        return frozenset(self._meter_requests)
+
     def apply(self, connection: socket.socket, message: Any) -> Reply:
         if not isinstance(message, dict):
             return _error("message must be a JSON object")
@@ -60,6 +67,9 @@ class CommandHandler:
         return handler(connection, message)
 
     def client_gone(self, connection: socket.socket) -> None:
+        if connection in self._meter_requests:
+            self._meter_requests.discard(connection)
+            self._manager.request_voice_meter(bool(self._meter_requests))
         if connection not in self._duck_requests:
             return
         self._duck_requests.discard(connection)
@@ -77,6 +87,21 @@ class CommandHandler:
         # Ducking only touches the background stream volume, so apply it
         # directly instead of asking for a full graph reconcile.
         self._manager.safe_apply_ducking()
+        return self._state()
+
+    def _set_voice_meter(
+        self, connection: socket.socket, message: dict[str, Any]
+    ) -> Reply:
+        active = message.get("active")
+        if not isinstance(active, bool):
+            return _error("set-voice-meter needs a boolean active")
+        if active:
+            self._meter_requests.add(connection)
+        else:
+            self._meter_requests.discard(connection)
+        # Metering only starts or stops a capture of the voice monitor; it
+        # changes nothing about the graph the daemon reconciles.
+        self._manager.request_voice_meter(bool(self._meter_requests))
         return self._state()
 
     def _set_voice_volume(self, _: socket.socket, message: dict[str, Any]) -> Reply:

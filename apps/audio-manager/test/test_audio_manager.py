@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import array
 import contextlib
 import json
+import os
 import selectors
 import socket
 import subprocess
@@ -18,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 from audio_manager import (  # noqa: E402
     control_server,
     graph,
+    levels,
     monitors,
     output,
     pactl,
@@ -330,6 +333,96 @@ class ControlSocketTests(ManagerTestCase):
 
     def _duckable_manager(self) -> AudioManager:
         return self.make_manager({"background": {"enabled": True}})
+
+
+class VoiceLevelTests(ManagerTestCase):
+    def test_block_level_rises_with_amplitude_and_floors_at_silence(self) -> None:
+        def block(amplitude: int) -> bytes:
+            samples = array.array(
+                "h", [amplitude if index % 2 else -amplitude for index in range(160)]
+            )
+            return samples.tobytes()
+
+        self.assertEqual(levels.block_level(block(0)), 0.0)
+        loud = levels.block_level(block(30000))
+        quiet = levels.block_level(block(600))
+        self.assertGreater(loud, quiet)
+        self.assertLessEqual(loud, 1.0)
+        self.assertGreaterEqual(quiet, 0.0)
+        # Anything under the floor is a pause between words, not quiet speech.
+        self.assertEqual(levels.block_level(block(20)), 0.0)
+
+    def test_metering_is_held_against_the_requesting_connection(self) -> None:
+        manager = self.make_manager({})
+        connection = mock.Mock()
+        manager.control.clients[connection] = b""
+
+        manager.commands.apply(
+            connection, {"command": "set-voice-meter", "active": True}
+        )
+        self.assertEqual(manager.commands.meter_listeners, frozenset({connection}))
+
+        # Losing the socket releases the capture, exactly as it releases a duck.
+        manager.control.drop(connection)
+        self.assertEqual(manager.commands.meter_listeners, frozenset())
+
+    def test_set_voice_meter_rejects_a_non_boolean_request(self) -> None:
+        manager = self.make_manager({})
+        reply, reconcile = manager.commands.apply(
+            mock.Mock(), {"command": "set-voice-meter", "active": "yes"}
+        )
+        self.assertEqual(reply["event"], "error")
+        self.assertFalse(reconcile)
+        self.assertEqual(manager.commands.meter_listeners, frozenset())
+
+    def test_levels_reach_only_the_connections_that_asked_for_them(self) -> None:
+        manager = self.make_manager({})
+        listening, quiet = mock.Mock(), mock.Mock()
+        manager.control.clients[listening] = b""
+        manager.control.clients[quiet] = b""
+        manager.commands.apply(listening, {"command": "set-voice-meter", "active": True})
+
+        with mock.patch.object(manager.control, "send") as send:
+            manager._publish_voice_level(0.5)
+
+        self.assertEqual(
+            [call.args[0] for call in send.call_args_list], [listening]
+        )
+        self.assertEqual(send.call_args.args[1]["event"], "voice_level")
+
+    def test_the_capture_starts_only_once_its_monitor_exists(self) -> None:
+        clock = 1000.0
+        spawned: list[list[str]] = []
+
+        def spawn(command: list[str]) -> Any:
+            spawned.append(command)
+            read_fd, write_fd = os.pipe()
+            self.addCleanup(os.close, write_fd)
+            capture = mock.Mock(stdout=open(read_fd, "rb", buffering=0))
+            capture.poll.return_value = None
+            return capture
+
+        selector = selectors.DefaultSelector()
+        self.addCleanup(selector.close)
+        meter = levels.VoiceLevelMeter(
+            selector, lambda _level: None, spawn=spawn, clock=lambda: clock
+        )
+        self.addCleanup(meter.close)
+
+        meter.request(True)
+        meter.tick()
+        self.assertEqual(spawned, [])
+
+        meter.set_source("smartamp_voice.monitor")
+        meter.tick()
+        self.assertEqual(len(spawned), 1)
+        self.assertIn("--device=smartamp_voice.monitor", spawned[0])
+
+        # Releasing holds the capture briefly, so the next reply in the same
+        # conversation is not metered from a cold start.
+        meter.request(False)
+        meter.tick()
+        self.assertEqual(meter.deadline(), 1000.0 + levels.LINGER_SECONDS)
 
 
 class SubscribeEventTests(unittest.TestCase):

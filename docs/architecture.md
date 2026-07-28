@@ -119,6 +119,23 @@ The Stream Deck driver uses `@elgato-stream-deck/node`, which supports the Plus 
 encoders, and 800×100 touch strip. The ReSpeaker module uses USB vendor-control transfers for XVF3800 LED effects.
 Everything runs headlessly.
 
+Two of the ring's states are drawn from live audio rather than handed to the
+firmware. While the satellite is listening, the controller reads the XVF3800's
+own DSP over the same vendor-control transport — a processed direction of
+arrival and a speech energy per beam — and paints ripples running outwards from
+whoever is talking, which is why that state no longer uses the firmware's
+direction effect. Those reads answer with a status byte ahead of the payload and
+must be paced and retried, so every transfer to the device is serialised through
+one queue; a frame written mid-read would come back as the read's answer.
+
+The device reports nothing about its far end, so the speaking pulse is metered
+in the audio manager instead. The voice bus is a null sink of its own, meaning
+its monitor carries the assistant's speech and no music; the manager captures
+that monitor, reduces it to one level per 40 ms block, and sends the levels to
+whichever control-socket connections asked for them. The request is held against
+the connection exactly as a duck request is, and the controller only asks while
+a state that paints from it is showing, so nothing is captured between replies.
+
 The panel switches itself off when the room is empty. `streamdeck/sleep.mts` follows a Home Assistant presence sensor
 over that same connection and writes one field of shared state; the renderer reacts to it exactly as it reacts to the
 deck being unplugged, dropping the mounted tiles so their animation timers and entity watches stop with the light.

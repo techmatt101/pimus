@@ -163,7 +163,7 @@ ring is an edit and a redeploy rather than an inventory change.
 
 ```ts
 thinking: Leds.spin('#7c4dff'),
-listening: Leds.direction('#001018', '#00e5ff'),
+listening: Leds.listenWave('#001018', '#00e5ff'),
 ```
 
 The ring is also the quickest sign that the Pi is still booting: it lights well
@@ -186,10 +186,19 @@ no longer running.
 | `Leds.blink(color)`               | The whole ring flashing on and off.                                                                                                 |
 | `Leds.progress(fraction, color)`  | A fraction of the ring lit, for readouts.                                                                                           |
 | `Leds.direction(base, highlight)` | The LEDs facing the detected voice light in the highlight colour (the XVF3800's direction-of-arrival tracking).                     |
+| `Leds.listenWave(base, hi)`       | Ripples running outwards from whoever is speaking, riding the level the microphone array reports.                                   |
+| `Leds.speechPulse(color)`         | The whole ring swelling with the assistant's own speech, metered off the voice bus.                                                 |
 
-Every helper accepts a `brightness` override; `spin` and `blink` are animated
-by the controller, which streams per-LED frames over USB, while the other
-effects run inside the XVF3800 firmware.
+Every helper accepts a `brightness` override; `spin`, `blink`, `listenWave`,
+and `speechPulse` are animated by the controller, which streams per-LED frames
+over USB, while the other effects run inside the XVF3800 firmware.
+
+`listenWave` and `speechPulse` are the two that follow live audio. The first
+reads the XVF3800's own DSP over the same USB control protocol the LEDs use, so
+it needs nothing but the array. The second needs a level the device cannot
+report, so the controller asks the audio manager to meter the voice bus for as
+long as that state is showing; with the manager unreachable the ring still
+paints, holding a dim steady face instead of a pulse.
 
 The ring is purely reactive: it renders the configured appearance for the
 current voice, media, timer, mute, or error state and nothing else. There is

@@ -29,6 +29,8 @@ export class FakeAudioManager {
     private readonly server: net.Server
     private readonly connections = new Set<net.Socket>()
     private readonly ducking = new Set<net.Socket>()
+    private readonly metering = new Set<net.Socket>()
+    private meterTimer: NodeJS.Timeout | null = null
 
     constructor({bus, socketPath}: FakeAudioManagerOptions) {
         this.bus = bus
@@ -57,6 +59,7 @@ export class FakeAudioManager {
 
     /** Synchronous so it can finish inside a signal handler before exit. */
     close(): void {
+        this.stopMetering()
         for (const socket of this.connections) socket.destroy()
         this.server.close()
         fs.rmSync(this.socketPath, {force: true})
@@ -81,6 +84,7 @@ export class FakeAudioManager {
             // The manager ties a duck request to its connection; closing the socket
             // is what restores background audio after a controller crash.
             if (this.ducking.delete(socket)) this.bus.log('duck', 'note', 'duck released with the socket')
+            if (this.metering.delete(socket) && this.metering.size === 0) this.stopMetering()
             this.bus.log('audio', 'note', 'controller disconnected from the audio manager')
         })
     }
@@ -140,6 +144,17 @@ export class FakeAudioManager {
             if (active) this.ducking.add(socket)
             else this.ducking.delete(socket)
             this.bus.log('duck', 'note', active ? 'background audio ducked' : 'background audio restored')
+        } else if (command === 'set-voice-meter') {
+            const active = message.active
+            if (typeof active !== 'boolean') {
+                this.reject(socket, 'set-voice-meter needs a boolean active')
+                return
+            }
+            if (active) this.metering.add(socket)
+            else this.metering.delete(socket)
+            this.bus.log('audio', 'note', `voice metering ${active ? 'started' : 'stopped'}`)
+            if (this.metering.size > 0) this.startMetering()
+            else this.stopMetering()
         } else {
             this.reject(socket, `unknown command "${command}"`)
         }
@@ -165,6 +180,28 @@ export class FakeAudioManager {
 
     private reject(socket: net.Socket, error: string): void {
         socket.write(`${JSON.stringify({event: 'error', error})}\n`)
+    }
+
+    // The real manager measures the voice bus monitor; here the envelope is
+    // synthesised at the same rate, so the ring's speaking effect is driven by
+    // exactly the message stream the Pi sends.
+    private startMetering(): void {
+        if (this.meterTimer) return
+        const started = Date.now()
+        this.meterTimer = setInterval(() => {
+            const seconds = (Date.now() - started) / 1000
+            const syllables = (Math.sin(seconds * Math.PI * 2 * 3.2) + 1) / 2
+            const phrase = Math.max(0, Math.sin(seconds * Math.PI * 2 * 0.28))
+            const level = Math.min(1, syllables ** 1.6 * (0.35 + 0.75 * phrase))
+            const event = `${JSON.stringify({event: 'voice_level', level: Number(level.toFixed(3))})}\n`
+            for (const socket of this.metering) socket.write(event)
+        }, 40)
+        this.meterTimer.unref()
+    }
+
+    private stopMetering(): void {
+        if (this.meterTimer) clearInterval(this.meterTimer)
+        this.meterTimer = null
     }
 
     private sendState(socket: net.Socket): void {

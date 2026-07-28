@@ -45,6 +45,11 @@ class AudioBus:
     def available(self) -> bool:
         return self.sink is not None and self.stream_index is not None
 
+    @property
+    def monitor_name(self) -> str:
+        """The source carrying exactly what this bus is playing."""
+        return graph.monitor_name(self.config.sink_name)
+
     def reconcile(self, output: Node | None) -> Node | None:
         """Keep the null sink and its bridge into the output in place."""
         if not self.config.enabled:

@@ -1,11 +1,12 @@
 import type {LedAppearance} from './led-appearance.mjs'
-import {framePeriodMs, Leds, resolveFrame} from './led-appearance.mjs'
-import type {LedDevice} from '../types.mjs'
+import {framePeriodMs, Leds, resolveFrame, silentSignals} from './led-appearance.mjs'
+import type {LedDevice, LedSignals} from '../types.mjs'
 
 export interface LedRendererOptions {
     device: LedDevice
     brightness: number
     speed: number
+    signals?: LedSignals
     now?: () => number
     warningIntervalMilliseconds?: number
     logger?: Pick<Console, 'warn'>
@@ -23,6 +24,7 @@ const RETRY_MILLISECONDS = 500
 export class LedRenderer {
     readonly device: LedDevice
     readonly #defaults: { brightness: number; speed: number }
+    readonly #signals: LedSignals
     readonly #now: () => number
     readonly #warningIntervalMilliseconds: number
     readonly #logger: Pick<Console, 'warn'>
@@ -38,12 +40,14 @@ export class LedRenderer {
                     device,
                     brightness,
                     speed,
+                    signals = silentSignals,
                     now = Date.now,
                     warningIntervalMilliseconds = 30_000,
                     logger = console,
                 }: LedRendererOptions) {
         this.device = device
         this.#defaults = {brightness, speed}
+        this.#signals = signals
         this.#now = now
         this.#warningIntervalMilliseconds = warningIntervalMilliseconds
         this.#logger = logger
@@ -69,7 +73,7 @@ export class LedRenderer {
 
     render(): Promise<void> {
         this.#renderQueue = this.#renderQueue.then(async () => {
-            const frame = resolveFrame(this.#appearance, this.#now(), this.#defaults)
+            const frame = resolveFrame(this.#appearance, this.#now(), this.#defaults, this.#signals)
             const signature = JSON.stringify(frame)
             if (signature === this.#lastSignature) return
             try {

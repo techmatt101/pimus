@@ -25,6 +25,7 @@ own code, imported straight from `apps/controller/src/`:
 | LVA peripheral WebSocket   | a loopback WebSocket server                     | `LvaClient`, its reconnect, the action catalog, voice-state handling                                                       |
 | Audio manager Unix socket  | a Unix socket server speaking the same protocol | `AudioManagerClient`'s optimistic route cache, its re-assert on reconnect, ducking, the voice bus level, the sink mute     |
 | ReSpeaker XVF3800 USB LEDs | a ring drawn in the state panel                 | `ReSpeakerController`'s state-to-appearance mapping and write de-duplication                                               |
+| XVF3800 DSP microphone readouts | a speaker circling the array, talking in phrases | `MicSensor`'s levelling and direction hold, and the ripples `listenWave` paints from them                              |
 | Home Assistant             | a house that responds to service calls          | every tile's entity watch and `mount`/`unmount`, the catalog's service composition, the unknown-state faces                |
 
 One boundary is not faked at all: the remote-tile server is real code with no
@@ -79,7 +80,10 @@ The controller configuration is written out and then read back through the real
   how to see the unknown-state faces.
 - **State** — the shared control state, the audio manager's routes, whether
   background audio is ducked, the LED appearance the ReSpeaker would show, and
-  every Home Assistant entity the keys read.
+  every Home Assistant entity the keys read. The ring's two audio-driven states
+  animate here: playing the scripted pipeline shows the listening ripples
+  tracking a faked speaker around the array, and the speaking pulse riding a
+  synthesised envelope the fake audio manager sends over the real socket.
 
 Options: `--port=<n>` to move the web server, `--no-open` to skip launching a
 browser. Pass them through pnpm, e.g.

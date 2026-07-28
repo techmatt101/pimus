@@ -11,9 +11,9 @@ export const VOICE_LED_STATES: ReadonlyMap<string, LedAppearance> = new Map(Obje
     // own amber spinner rather than borrowing the red "disconnected" warning.
     starting: Leds.spin('#ffd500'),
     wake_word_detected: Leds.pulse('#00bcd4'),
-    listening: Leds.direction('#001018', '#00e5ff'),
+    listening: Leds.listenWave('#001018', '#00e5ff'),
     thinking: Leds.spin('#7c4dff'),
-    tts_speaking: Leds.pulse('#ffffff'),
+    tts_speaking: Leds.speechPulse('#ffffff'),
     timer_ticking: Leds.solid('#ffab00'),
     timer_ringing: Leds.blink('#ff6d00'),
     muted: Leds.solid('#d50000'),

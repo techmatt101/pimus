@@ -20,6 +20,7 @@ interface ManagerEvent {
     music_volume?: unknown
     voice_volume?: unknown
     output_muted?: unknown
+    level?: unknown
 }
 
 export interface AudioManagerClientOptions {
@@ -40,8 +41,11 @@ export interface AudioManagerClientOptions {
 export class AudioManagerClient {
     state: AudioState = {sources: {}}
     connected = false
+    /** The metered voice-playback level, 0..1, and zero unless metering is on. */
+    voiceLevel = 0
 
     #duckActive = false
+    #voiceMeterActive = false
     #synced = false
     #buffer = ''
     #lastErrorMessage: string | null = null
@@ -91,9 +95,11 @@ export class AudioManagerClient {
             } else {
                 this.#write({command: 'get-state'})
             }
-            // The manager ties a duck request to the connection that made it, so
-            // a reconnect during a conversation has to ask again.
+            // The manager ties a duck request, and a meter request, to the
+            // connection that made it, so a reconnect during a conversation has
+            // to ask again.
             if (this.#duckActive) this.#write({command: 'set-duck', active: true})
+            if (this.#voiceMeterActive) this.#write({command: 'set-voice-meter', active: true})
             this.#onStateChange()
         })
         socket.on('data', (chunk) => this.#receive(String(chunk)))
@@ -110,6 +116,7 @@ export class AudioManagerClient {
             this.#socket = null
             const wasConnected = this.connected
             this.connected = false
+            this.voiceLevel = 0
             if (wasConnected) this.#onStateChange()
             if (this.#closed) return
             this.#reconnectTimer = setTimeout(() => {
@@ -177,6 +184,19 @@ export class AudioManagerClient {
         this.#write({command: 'set-duck', active})
     }
 
+    /**
+     * Asks the manager to meter voice playback. It is held against this socket
+     * exactly as a duck request is, so a crash cannot leave the capture running.
+     */
+    setVoiceMeter(active: boolean): void {
+        if (this.#voiceMeterActive === active) return
+        this.#voiceMeterActive = active
+        // A level left standing would freeze the ring at whatever the last
+        // syllable measured.
+        if (!active) this.voiceLevel = 0
+        this.#write({command: 'set-voice-meter', active})
+    }
+
     close(): void {
         this.#closed = true
         if (this.#reconnectTimer) clearTimeout(this.#reconnectTimer)
@@ -236,6 +256,8 @@ export class AudioManagerClient {
                 }
                 this.#synced = true
                 this.#onStateChange()
+            } else if (message.event === 'voice_level' && typeof message.level === 'number') {
+                this.voiceLevel = Math.max(0, Math.min(1, message.level))
             } else if (message.event === 'error') {
                 this.#logger.error(`audio manager rejected a command: ${message.error ?? 'unknown error'}`)
             }

@@ -47,7 +47,12 @@ const ducker = config.ducking?.enabled
     : null
 
 const respeaker = config.respeaker?.enabled
-    ? new ReSpeakerController({config: config.respeaker, voiceEnabled: config.voice_enabled})
+    ? new ReSpeakerController({
+        config: config.respeaker,
+        voiceEnabled: config.voice_enabled,
+        speechLevel: () => audio.voiceLevel,
+        onSpeechMeter: (active) => audio.setVoiceMeter(active),
+    })
     : null
 
 const homeAssistant = config.home_assistant?.enabled

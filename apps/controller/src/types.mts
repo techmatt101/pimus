@@ -201,7 +201,9 @@ export interface UsbControlDevice {
         bRequest: number,
         wValue: number,
         wIndex: number,
-        data: Buffer,
+        // An IN transfer passes the byte count to read where an OUT passes its
+        // payload, and answers with the buffer libusb filled.
+        data: Buffer | number,
         callback: (error: unknown, buffer?: Buffer | number) => void,
     ): unknown
 }
@@ -237,4 +239,35 @@ export interface LedFrame {
 
 export interface LedDevice {
     apply(frame: LedFrame): Promise<void>
+}
+
+/** What the XVF3800's own DSP reports about the voice reaching the array. */
+export interface VoiceSensing {
+    /**
+     * Where the speaker is, in radians clockwise from the array's zero mark, or
+     * null when the DSP reports no speech to place.
+     */
+    direction: number | null
+    /** Speech energy as the DSP reports it: unbounded, and zero for silence. */
+    energy: number
+}
+
+export interface VoiceSensor {
+    sense(): Promise<VoiceSensing>
+}
+
+/**
+ * The live levels an LED appearance may paint from, each already scaled to
+ * 0..1. They are read at draw time rather than passed through the appearance so
+ * the state map stays plain data.
+ */
+export interface LedSignals {
+    /** How loudly the microphone array is hearing speech. */
+    micLevel(): number
+
+    /** Radians clockwise from the array's zero mark, or null with no speaker placed. */
+    micDirection(): number | null
+
+    /** How loudly the assistant is currently speaking. */
+    speechLevel(): number
 }

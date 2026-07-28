@@ -28,6 +28,7 @@ import {FakeAudioManager} from './fake-audio-manager.mjs'
 import {FakeDeckHardware} from './fake-deck.mjs'
 import {FakeLedRing} from './fake-led.mjs'
 import {FakeLvaServer} from './fake-lva.mjs'
+import {FakeVoiceSensor} from './fake-voice-sensor.mjs'
 import {type PlaygroundInput, PlaygroundServer} from './server.mjs'
 
 import {VoiceDucker} from '../../controller/src/audio/ducking.mjs'
@@ -161,6 +162,9 @@ const respeaker = config.respeaker?.enabled
         config: config.respeaker,
         voiceEnabled: config.voice_enabled,
         device: ledRing,
+        sensor: new FakeVoiceSensor(),
+        speechLevel: () => audio.voiceLevel,
+        onSpeechMeter: (active) => audio.setVoiceMeter(active),
         logger: busLogger(bus, 'led'),
     })
     : null
@@ -314,7 +318,9 @@ const snapshotTimer = setInterval(() => {
     if (serialized === lastSnapshot) return
     lastSnapshot = serialized
     bus.state(snapshot)
-}, 200)
+    // Fast enough to follow the ring's audio-driven effects, which redraw every
+    // 40ms; the panel it also carries has nothing focusable to disturb.
+}, 50)
 snapshotTimer.unref()
 
 bus.log('system', 'note', `playground ready at ${url}`)

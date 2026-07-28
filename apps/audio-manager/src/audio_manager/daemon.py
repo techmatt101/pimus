@@ -17,6 +17,7 @@ from .commands import CommandHandler
 from .config import AudioConfig
 from .control_server import ControlServer
 from .graph import Graph, Node
+from .levels import VoiceLevelMeter
 from .modules import ModuleRegistry
 from .routes import SourceRoutes
 from .usb_volume import UsbVolumeSync
@@ -78,6 +79,7 @@ class AudioManager:
 
         self.selector = selectors.DefaultSelector()
         self.commands = CommandHandler(self)
+        self.voice_meter = VoiceLevelMeter(self.selector, self._publish_voice_level)
         self.control = ControlServer(
             socket_path, self.selector, self.commands, self._reconcile_and_broadcast
         )
@@ -107,6 +109,9 @@ class AudioManager:
             self.mixer_events.tick()
             self._poll_usb_host()
             self._reconcile_when_due()
+            # After the reconcile, so a pass that just published the voice
+            # monitor can start metering it without waiting for the next wake.
+            self.voice_meter.tick()
             # Every reconcile refreshes the playback state, and a USB host can
             # move the music level, whichever signal scheduled it; broadcast a
             # change so the controller's icon and readout update without
@@ -114,6 +119,7 @@ class AudioManager:
             self._broadcast_changes()
         self.graph_events.stop()
         self.mixer_events.stop()
+        self.voice_meter.close()
         self.control.close()
         self.selector.close()
         for role in reversed(self.modules.roles()):
@@ -151,6 +157,10 @@ class AudioManager:
 
     def safe_apply_ducking(self) -> None:
         self._apply_or_retry("Audio ducking", self.apply_ducking)
+
+    def request_voice_meter(self, wanted: bool) -> None:
+        self.voice_meter.request(wanted)
+        self.voice_meter.tick()
 
     def set_voice_volume(self, percent: float) -> None:
         self.voice_volume = volume.clamp(percent)
@@ -199,6 +209,9 @@ class AudioManager:
         background_sink = self.background.reconcile(sink)
         voice_sink = self.voice_bus.reconcile(sink)
         self.voice_bus.apply_gain(self.voice_volume)
+        self.voice_meter.set_source(
+            self.voice_bus.monitor_name if self.voice_bus.available else None
+        )
         # The remap source's properties name its master device, so it would
         # match voice_input_match itself; exclude it or it becomes its own
         # master on the next reconcile.
@@ -252,6 +265,14 @@ class AudioManager:
         self._last_broadcast = self._broadcast_signature()
         self.control.broadcast(self.state_event())
 
+    # Levels arrive many times a second and interest only whoever asked for
+    # them, so they are addressed to the requesting connections rather than
+    # broadcast to every client.
+    def _publish_voice_level(self, level: float) -> None:
+        event = {"event": "voice_level", "level": round(level, 3)}
+        for connection in self.commands.meter_listeners:
+            self.control.send(connection, event)
+
     def _broadcast_signature(self) -> tuple[object, ...]:
         return (self.usb_playback, self.music_volume, self.output_muted)
 
@@ -277,13 +298,16 @@ class AudioManager:
         # Ducking is applied when a set-duck arrives, when a client holding a
         # request disconnects, and at the end of every reconcile, so the loop
         # needs no poll interval to notice a duck request.
-        deadline = min(
-            self.next_resync,
-            self.next_usb_poll,
-            self.pending_reconcile
-            if self.pending_reconcile is not None
-            else self.next_resync,
-        )
+        deadlines = [self.next_resync, self.next_usb_poll]
+        if self.pending_reconcile is not None:
+            deadlines.append(self.pending_reconcile)
+        # The meter has to be started once its monitor appears, and stopped once
+        # its hold past the last utterance lapses; neither is an event the
+        # selector would otherwise wake for.
+        meter_deadline = self.voice_meter.deadline()
+        if meter_deadline is not None:
+            deadlines.append(meter_deadline)
+        deadline = min(deadlines)
         for key, _ in self.selector.select(max(0.0, deadline - time.monotonic())):
             key.data()
 

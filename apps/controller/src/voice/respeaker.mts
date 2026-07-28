@@ -1,9 +1,10 @@
 import type {LedAppearance} from './led-appearance.mjs'
-import {Leds} from './led-appearance.mjs'
+import {Leds, signalDemand} from './led-appearance.mjs'
 import {LedRenderer} from './led-renderer.mjs'
 import {VOICE_LED_STATES} from './led-states.mjs'
+import {MicSensor, silentSensor} from './mic-sensor.mjs'
 import {Xvf3800Device} from './xvf3800-device.mjs'
-import type {LedDevice, LvaMessage, ReSpeakerConfig} from '../types.mjs'
+import type {LedDevice, LedSignals, LvaMessage, ReSpeakerConfig, VoiceSensor} from '../types.mjs'
 
 // The controller now starts well before Linux Voice Assistant finishes waiting
 // for the audio graph, so a first connection that has not happened yet is a wait
@@ -13,7 +14,12 @@ const BOOT_GRACE_MILLISECONDS = 90_000
 export interface ReSpeakerControllerOptions {
     config: ReSpeakerConfig
     device?: LedDevice
+    sensor?: VoiceSensor
     voiceEnabled?: boolean
+    /** How loudly the assistant is speaking, 0..1, metered by the audio manager. */
+    speechLevel?: () => number
+    /** Asked for that metering only while a state is painting from it. */
+    onSpeechMeter?: (active: boolean) => void
     now?: () => number
     warningIntervalMilliseconds?: number
     logger?: Pick<Console, 'warn'>
@@ -23,28 +29,52 @@ export class ReSpeakerController {
     readonly config: ReSpeakerConfig
     readonly #states: ReadonlyMap<string, LedAppearance> = VOICE_LED_STATES
     readonly #renderer: LedRenderer
+    readonly #mic: MicSensor
+    readonly #onSpeechMeter: (active: boolean) => void
     #assistState = 'starting'
     #muted = false
+    #speechMetered = false
     #bootTimer: NodeJS.Timeout | null = null
 
     constructor({
                     config,
                     device,
+                    sensor,
                     voiceEnabled = true,
+                    speechLevel = () => 0,
+                    onSpeechMeter = () => {
+                    },
                     now,
                     warningIntervalMilliseconds,
                     logger,
                 }: ReSpeakerControllerOptions) {
         this.config = config
+        this.#onSpeechMeter = onSpeechMeter
+        // Constructing the device opens nothing: it finds its handle on the
+        // first transfer, so an injected LED surface or sensor still stands in.
+        const hardware = new Xvf3800Device({
+            vendorId: Number(config.vendor_id),
+            productId: Number(config.product_id),
+        })
+        // The array and the ring are one device: a caller that replaced the ring
+        // has replaced the hardware, and must be given no sensing it did not.
+        this.#mic = new MicSensor({
+            sensor: sensor ?? (device ? silentSensor : hardware),
+            now,
+            logger,
+        })
+        const signals: LedSignals = {
+            micLevel: () => this.#mic.level(),
+            micDirection: () => this.#mic.direction(),
+            speechLevel: () => speechLevel(),
+        }
         this.#renderer = new LedRenderer({
-            device: device ?? new Xvf3800Device({
-                vendorId: Number(config.vendor_id),
-                productId: Number(config.product_id),
-            }),
+            device: device ?? hardware,
             brightness: config.brightness ?? 64,
             // Firmware speed for breath and rainbow; a state needing its own
             // pace sets it on the appearance in led-states.mts.
             speed: 2,
+            signals,
             now,
             warningIntervalMilliseconds,
             logger,
@@ -60,7 +90,9 @@ export class ReSpeakerController {
     }
 
     render(): Promise<void> {
-        return this.#renderer.show(this.desired())
+        const appearance = this.desired()
+        this.#demand(signalDemand(appearance))
+        return this.#renderer.show(appearance)
     }
 
     start(): void {
@@ -77,14 +109,24 @@ export class ReSpeakerController {
 
     stop(): void {
         this.#clearBootTimer()
+        this.#demand({mic: false, speech: false})
         this.#renderer.stop()
     }
 
     /** Darkens the ring so a stopped controller does not leave a state showing. */
     async release(): Promise<void> {
         this.#clearBootTimer()
+        this.#demand({mic: false, speech: false})
         await this.#renderer.show(Leds.off())
         this.#renderer.stop()
+    }
+
+    #demand({mic, speech}: { mic: boolean; speech: boolean }): void {
+        if (mic) this.#mic.start()
+        else this.#mic.stop()
+        if (speech === this.#speechMetered) return
+        this.#speechMetered = speech
+        this.#onSpeechMeter(speech)
     }
 
     setDisconnected(): Promise<void> {
