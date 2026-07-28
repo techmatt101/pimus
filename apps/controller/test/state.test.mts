@@ -15,7 +15,7 @@ test('LVA snapshots and events update shared display state', () => {
         outputMuted: false,
         media: false,
         // A voice event says nothing about whether anybody is in the room.
-        awake: true,
+        panel: 'lit',
         // Nor about the panel brightness, which the deck owns.
         brightness: 40,
         // Nor about subsystem health, which the health monitor owns.

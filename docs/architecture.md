@@ -146,9 +146,10 @@ whichever control-socket connections asked for them. The request is held against
 the connection exactly as a duck request is, and the controller only asks while
 a state that paints from it is showing, so nothing is captured between replies.
 
-The panel switches itself off when the room is empty. `streamdeck/sleep.mts` follows a Home Assistant presence sensor
-over that same connection and writes one field of shared state; the renderer reacts to it exactly as it reacts to the
-deck being unplugged, dropping the mounted tiles so their animation timers and entity watches stop with the light.
+The panel dims and then switches itself off when the room is empty. `streamdeck/sleep.mts` follows a Home Assistant
+presence sensor over that same connection and writes one field of shared state — `lit`, then `dim` as a five-second
+warning, then `off`. The renderer reacts to it exactly as it reacts to the deck being unplugged, dropping the mounted
+tiles so their animation timers and entity watches stop with the light.
 Nothing else sleeps: the wake word, the ReSpeaker ring, and background playback are untouched. It fails towards a lit
 panel — an unreachable Home Assistant, a sensor reporting `unavailable`, or a hand on a deck the sensor thinks nobody is
 near all keep it awake, and the first press on a dark panel wakes it without also running the key.

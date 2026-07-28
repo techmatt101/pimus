@@ -159,6 +159,7 @@ if (config.streamdeck?.enabled) {
         ha: homeAssistant,
         presenceEntity: SLEEP.presence,
         graceMilliseconds: SLEEP.graceMilliseconds,
+        dimMilliseconds: SLEEP.dimMilliseconds,
     })
     sleep.start()
     await runDeckLoop({layout, renderer, onActivity: () => sleep.touch()})

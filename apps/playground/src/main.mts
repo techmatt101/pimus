@@ -251,6 +251,7 @@ const sleep = new SleepController({
     ha: homeAssistant,
     presenceEntity: SLEEP.presence,
     graceMilliseconds: 5000,
+    dimMilliseconds: SLEEP.dimMilliseconds,
 })
 sleep.start()
 

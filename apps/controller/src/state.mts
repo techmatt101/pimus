@@ -43,7 +43,7 @@ export function createState(overrides: Partial<ControlState> = {}): ControlState
         volume: 1,
         outputMuted: false,
         media: false,
-        awake: true,
+        panel: 'lit',
         brightness: DEFAULT_BRIGHTNESS,
         // Optimistic until the health monitor's first sample, so boot does not
         // open with every icon red and a burst of "lost" banners.

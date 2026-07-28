@@ -56,6 +56,7 @@ const CLOCK_FORMAT: ClockFormat = '12h'
 export const SLEEP = {
     presence: HA.presence,
     graceMilliseconds: 2 * 60_000,
+    dimMilliseconds: 5_000,
 } as const
 
 export interface ControllerServices {

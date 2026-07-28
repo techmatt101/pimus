@@ -165,6 +165,9 @@ export interface TimerState {
     ringing: boolean
 }
 
+/** Lit, dimmed as a warning that the room reads as empty, then dark. */
+export type PanelState = 'lit' | 'dim' | 'off'
+
 export interface ControlState {
     assist: string
     timer: TimerState | null
@@ -173,7 +176,7 @@ export interface ControlState {
     outputMuted: boolean
     media: boolean
     /** Only the panel sleeps: the wake word, LED ring, and playback keep running. */
-    awake: boolean
+    panel: PanelState
     brightness: number
     health: HealthState
 }

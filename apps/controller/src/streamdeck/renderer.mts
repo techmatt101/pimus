@@ -11,6 +11,10 @@ import type {ControlModel} from '../state.mjs'
 
 const FORMAT = {format: 'rgba'} as const
 
+// A dimmed panel is a warning that the room reads as empty, so it has to stay
+// readable rather than fade to something indistinguishable from off.
+const DIM_FRACTION = 0.25
+
 export interface DeckRendererOptions {
     layout: StreamDeckLayout
     model: ControlModel
@@ -47,7 +51,7 @@ export class DeckRenderer implements PageNavigator {
         this.layout = layout
         this.#model = model
         this.#logger = logger
-        this.#asleep = !model.state.awake
+        this.#asleep = model.state.panel === 'off'
         for (const dial of layout.dials) if (dial instanceof PageDial) dial.connect(this)
         this.#sharedDialIndex = layout.dials.findIndex((dial) => dial instanceof DynamicDial)
         const shared = layout.dials[this.#sharedDialIndex]
@@ -63,7 +67,7 @@ export class DeckRenderer implements PageNavigator {
     async setDeck(deck: StreamDeck): Promise<void> {
         this.#deck = deck
         this.#forgetFrames()
-        this.#asleep = !this.#model.state.awake
+        this.#asleep = this.#model.state.panel === 'off'
         if (!this.#asleep) this.#mountVisible()
         await this.render()
         await this.#applyBrightness()
@@ -103,7 +107,7 @@ export class DeckRenderer implements PageNavigator {
     // The deck retains its last image, so waking must paint before raising the
     // brightness, and going dark must cut the brightness before dropping tiles.
     async #applyAwake(): Promise<void> {
-        const asleep = !this.#model.state.awake
+        const asleep = this.#model.state.panel === 'off'
         if (asleep === this.#asleep) return
         this.#asleep = asleep
         if (!this.#deck) return
@@ -130,7 +134,7 @@ export class DeckRenderer implements PageNavigator {
     async #applyBrightness(): Promise<void> {
         const deck = this.#deck
         if (!deck) return
-        const target = this.#asleep ? 0 : this.#model.state.brightness
+        const target = this.#brightnessTarget()
         if (target === this.#lastBrightness) return
         this.#lastBrightness = target
         try {
@@ -140,6 +144,13 @@ export class DeckRenderer implements PageNavigator {
             this.#lastBrightness = null
             this.#logger.error('brightness failed', error)
         }
+    }
+
+    #brightnessTarget(): number {
+        const {panel, brightness} = this.#model.state
+        if (panel === 'off') return 0
+        if (panel === 'dim') return Math.max(1, Math.round(brightness * DIM_FRACTION))
+        return brightness
     }
 
     // Returns true when the touch was spent cancelling an active claim: reaching
