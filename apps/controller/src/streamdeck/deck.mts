@@ -5,7 +5,10 @@ import {
     type StreamDeck,
     type StreamDeckDeviceInfo,
 } from '@elgato-stream-deck/node'
-import {SAMP_444} from '@julusian/jpeg-turbo';
+// @julusian/jpeg-turbo is a native CommonJS addon whose exports Node cannot
+// detect statically, so a named import of SAMP_444 type-checks and then throws
+// at load time. Take the whole module and read the constant off it.
+import jpegTurbo from '@julusian/jpeg-turbo'
 
 import type {Binding} from './bindings.mjs'
 import type {DeckRenderer} from './renderer.mjs'
@@ -22,7 +25,7 @@ const sleep = (milliseconds: number): Promise<void> =>
 // the chroma resolution smears their edges far more than the quality number
 // costs. 0 is libjpeg-turbo's TJSAMP_444, full chroma; at 90 it measures
 // cleaner than the library's default and encodes to fewer bytes.
-const JPEG_OPTIONS = {quality: 90, subsampling: SAMP_444}
+const JPEG_OPTIONS = {quality: 90, subsampling: jpegTurbo.SAMP_444}
 
 // The deck retains its last image, so a controller that stops without saying so
 // leaves a lit, fully drawn face on a panel nothing is driving. The firmware
