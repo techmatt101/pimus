@@ -19,10 +19,11 @@ const CREST_SHARPNESS = 1.5
 const FOCUS = 1.8
 const FOCUS_WEIGHT = 0.25
 
-// The LED facing the speaker is held at full cyan as a marker, so the ripples
-// running away from it are kept well below it; at equal brightness the crest
-// travelling round the ring is mistaken for the direction.
-const RIPPLE_CEILING = 0.45
+// The LED facing the speaker never falls back to the ring's own floor, so the
+// array keeps pointing at whoever last spoke through the gaps between their
+// words. Speech brightens it the rest of the way, and the ripples are that
+// brightening running away round the ring.
+const MARKER_FLOOR = 0.3
 
 // With nobody placed there is no origin to travel from, so the ring answers the
 // level as a whole rather than faking a direction.
@@ -68,9 +69,10 @@ export class ListenWave implements LedAnimation {
             return Array<number>(LED_COUNT).fill(swell)
         }
         const marker = nearestLed(direction)
-        return Array.from({length: LED_COUNT}, (_, index) => index === marker
-            ? this.highlight
-            : mixColor(this.base, this.highlight, this.#ripple(index, direction, nowMs, level)))
+        return Array.from({length: LED_COUNT}, (_, index) => mixColor(this.base, this.highlight,
+            index === marker
+                ? MARKER_FLOOR + (1 - MARKER_FLOOR) * level
+                : this.#ripple(index, direction, nowMs, level)))
     }
 
     #ripple(index: number, direction: number, nowMs: number, level: number): number {
@@ -79,7 +81,6 @@ export class ListenWave implements LedAnimation {
         const crest = Math.max(0, Math.cos(phase * TAU)) ** CREST_SHARPNESS
         const travelled = (1 - distance / Math.PI) ** TRAVEL_FADE
         const focus = (1 - distance / Math.PI) ** FOCUS
-        const wave = level * Math.max(crest * travelled, focus * FOCUS_WEIGHT)
-        return FLOOR + wave * RIPPLE_CEILING
+        return FLOOR + level * Math.max(crest * travelled, focus * FOCUS_WEIGHT)
     }
 }
