@@ -7,7 +7,7 @@ import {applyLvaEvent, createState} from '../../src/state.mjs'
 import {LvaClient} from '../../src/voice/lva-client.mjs'
 import type WebSocket from 'ws'
 
-test('the voice key starts a pipeline and cancels whatever voice is doing', () => {
+test('the voice key starts a pipeline and cancels one at any phase', () => {
     const sent: string[] = []
     const lva = {
         send: (command: string) => {
@@ -26,6 +26,7 @@ test('the voice key starts a pipeline and cancels whatever voice is doing', () =
         move(event)
         toggle()
     }
+    // A ringing timer belongs to the timer key, so this one still just listens.
     move('timer_ringing')
     toggle()
     move('idle')
@@ -37,7 +38,7 @@ test('the voice key starts a pipeline and cancels whatever voice is doing', () =
         'stop_pipeline',
         'stop_pipeline',
         'stop_pipeline',
-        'stop_pipeline',
+        'start_listening',
         'start_listening',
     ])
 })

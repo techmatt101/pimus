@@ -51,15 +51,15 @@ export const VOICE_ACTIONS = {
         },
     },
     listen_toggle: {
-        summary: 'Start a voice pipeline, or cancel whatever voice is doing: a running pipeline or a ringing timer.',
+        summary: 'Start a voice pipeline, or cancel the one already running.',
         example: '{ type: lva, command: listen_toggle }',
         indicator: {
-            isActive: ({state}) => isVoiceActive(state),
+            isActive: ({state}) => isAssistRunning(state),
             activeColor: '#00b8d4',
             label: (configured, active) => (active ? 'CANCEL' : configured),
         },
         run: ({state, lva}) => {
-            lva.send(isVoiceActive(state) ? 'stop_pipeline' : 'start_listening')
+            lva.send(isAssistRunning(state) ? 'stop_pipeline' : 'start_listening')
         },
     },
     mute_toggle: {
