@@ -195,7 +195,12 @@ class AudioManager:
             music_volume=self.music_volume,
             usb_playback=self.usb_playback,
         )
-        output.hold_stray_streams(self.graph, sink, self.music_volume)
+        output.hold_client_streams(self.graph, sink, self.music_volume)
+        # Sendspin plays into the bus as an ordinary Pulse client; the bridge
+        # carries the music level, so its stream holds only the input's trim.
+        output.hold_client_streams(
+            self.graph, background_sink, self.config.background.client_volume_percent
+        )
         published = {
             "sink": sink.get("name") if sink else None,
             "music_volume": self.music_volume,

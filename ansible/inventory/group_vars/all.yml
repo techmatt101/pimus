@@ -63,6 +63,15 @@ smartamp_aux_enabled: false
 # host the gadget's capture clock never ticks and would stall the whole output
 # graph.
 smartamp_usb_enabled: false
+# Each music input's own level, as the share of the music volume it plays at:
+# 100 leaves it at the music level, 80 plays that input at 80% of wherever the
+# dial sits. Use these to balance the inputs against each other - USB
+# computers tend to play hotter than Sendspin. The Sendspin trim is held on
+# its stream into the background bus, so it applies only while
+# smartamp_voice_ducking_enabled is on; the aux and USB trims always apply.
+smartamp_sendspin_volume_percent: 100
+smartamp_usb_volume_percent: 100
+smartamp_aux_volume_percent: 100
 # Target buffer depth for every PipeWire loopback bridge the audio manager
 # builds (aux, USB, ducking bus, and the AEC reference). Lower tightens sync but
 # risks dropouts. PipeWire's stock quantum on the Pi is ~21 ms (48 kHz / 1024),

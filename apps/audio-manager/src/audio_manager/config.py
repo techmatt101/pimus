@@ -31,6 +31,9 @@ class BusConfig:
 class BackgroundConfig(BusConfig):
     duck_volume_percent: int
     fade_ms: int
+    # The trim held on client streams playing into the bus (Sendspin), as a
+    # percent of the music level the bridge already carries.
+    client_volume_percent: int
 
 
 @dataclass(frozen=True)
@@ -53,6 +56,8 @@ class SourceConfig:
     mute_when_off: bool
     requires_usb_host: bool
     target: str
+    # This input's own trim, as a percent of the music level.
+    volume_percent: int
 
     @property
     def bridges_into_background(self) -> bool:
@@ -102,6 +107,9 @@ class AudioConfig:
                     background.get("duck_volume_percent", 15)
                 ),
                 fade_ms=max(0, int(background.get("fade_ms", 250))),
+                client_volume_percent=volume.clamp(
+                    background.get("client_volume_percent", 100)
+                ),
             ),
             voice_bus=VoiceBusConfig(
                 enabled=bool(voice_bus.get("enabled", False)),
@@ -117,6 +125,7 @@ class AudioConfig:
                     mute_when_off=bool(source.get("mute_when_off", False)),
                     requires_usb_host=bool(source.get("requires_usb_host", False)),
                     target=str(source.get("target", "output")),
+                    volume_percent=volume.clamp(source.get("volume_percent", 100)),
                 )
                 for name, source in _section(raw, "sources").items()
             },

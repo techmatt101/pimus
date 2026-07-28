@@ -108,7 +108,9 @@ class SourceRoutes:
                 continue
             if source.mute_when_off and not self.unmuted.get(name, False):
                 continue
-            pactl.set_sink_input_volume(int(stream["index"]), music_volume)
+            pactl.set_sink_input_volume(
+                int(stream["index"]), volume.scale(music_volume, source.volume_percent)
+            )
 
     def _reconcile_source(
         self,
@@ -152,13 +154,16 @@ class SourceRoutes:
         )
         if created and not source.mute_when_off:
             LOG.info("Enabled %s input monitor", name)
-        # A route bridging into the background bus is scaled by the bus bridge;
-        # a route straight to the pinned output sink carries the music level on
-        # its own stream instead.
-        if source.bridges_into_background:
-            return status
         stream = self._stream_of(name)
-        if stream is not None:
+        if stream is None:
+            return status
+        # A route bridging into the background bus already gets the music level
+        # from the bus bridge, so its stream carries only the input's own trim;
+        # a route straight to the pinned output sink carries the trimmed music
+        # level on its own stream instead.
+        if source.bridges_into_background:
+            self._track_level(stream, source.volume_percent)
+        else:
             self._apply_stream_level(name, source, stream, enabled, music_volume)
         return status
 
@@ -171,26 +176,27 @@ class SourceRoutes:
         music_volume: int,
     ) -> None:
         stream_index = int(stream["index"])
+        level = volume.scale(music_volume, source.volume_percent)
         if not source.mute_when_off:
-            self._track_level(stream, music_volume)
+            self._track_level(stream, level)
             return
         was_enabled = self.unmuted.get(name)
         if was_enabled == enabled:
             # The toggle is settled; keep an unmuted stream tracking the music
             # level as the dial moves.
             if enabled:
-                self._track_level(stream, music_volume)
+                self._track_level(stream, level)
             return
         if was_enabled is None:
             # A new stream starts at full volume; snap it to the toggle before
             # it is audible so a boot with the route off is silent.
-            pactl.set_sink_input_volume(stream_index, music_volume if enabled else 0)
+            pactl.set_sink_input_volume(stream_index, level if enabled else 0)
             LOG.info("Bridged %s input %s", name, "unmuted" if enabled else "muted")
         else:
             volume.fade_stream(
                 stream_index,
-                music_volume if was_enabled else 0,
-                music_volume if enabled else 0,
+                level if was_enabled else 0,
+                level if enabled else 0,
                 ROUTE_FADE_MS,
             )
             LOG.info("%s %s input monitor", "Enabled" if enabled else "Muted", name)

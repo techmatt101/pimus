@@ -12,6 +12,11 @@ def clamp(percent: Any) -> int:
     return max(0, min(100, round(float(percent))))
 
 
+def scale(level: int, percent: int) -> int:
+    """The share of a level a percent selects: scale(60, 50) is 30."""
+    return round(level * percent / 100)
+
+
 def is_percent(value: Any) -> bool:
     return (
         not isinstance(value, bool)

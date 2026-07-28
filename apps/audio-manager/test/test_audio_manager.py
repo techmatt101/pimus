@@ -62,6 +62,17 @@ class ManagerTestCase(unittest.TestCase):
         self.addCleanup(manager.selector.close)
         return manager
 
+    @staticmethod
+    @contextlib.contextmanager
+    def _patched_graph(listings: dict[str, Any], run: Any) -> Any:
+        """Answer every graph listing from a dict, and every command from run."""
+        with mock.patch.object(
+            pactl, "list_json", side_effect=lambda kind: listings.get(kind, [])
+        ), mock.patch.object(
+            pactl, "list_modules", side_effect=lambda: listings.get("modules", [])
+        ), mock.patch.object(process, "run", side_effect=run) as run_mock:
+            yield run_mock
+
 
 class GraphMatchingTests(unittest.TestCase):
     def test_device_match_ignores_sink_monitor(self) -> None:
@@ -829,17 +840,6 @@ class ReconcileTests(ManagerTestCase):
 
         return load_module
 
-    @staticmethod
-    @contextlib.contextmanager
-    def _patched_graph(listings: dict[str, Any], run: Any) -> Any:
-        """Answer every graph listing from a dict, and every command from run."""
-        with mock.patch.object(
-            pactl, "list_json", side_effect=lambda kind: listings.get(kind, [])
-        ), mock.patch.object(
-            pactl, "list_modules", side_effect=lambda: listings.get("modules", [])
-        ), mock.patch.object(process, "run", side_effect=run) as run_mock:
-            yield run_mock
-
 
 class VolumeTests(ManagerTestCase):
     def test_output_sink_is_pinned_to_full_scale(self) -> None:
@@ -976,6 +976,88 @@ class VolumeTests(ManagerTestCase):
         # The background bus snaps to the new level and the unmuted aux bridge
         # follows it; the voice bridge is left alone.
         self.assertEqual(volume_writes(run), [("42", "30%"), ("61", "30%")])
+
+    def test_each_music_input_carries_its_own_trim(self) -> None:
+        manager = self.make_manager(
+            {
+                "background": {
+                    "enabled": True,
+                    "sink_name": "background",
+                    "client_volume_percent": 70,
+                },
+                "sources": {
+                    "aux": {
+                        "match": "ADC Pro",
+                        "mute_when_off": True,
+                        "volume_percent": 50,
+                    },
+                    "usb": {
+                        "match": "UAC2Gadget",
+                        "target": "background",
+                        "volume_percent": 80,
+                    },
+                },
+            }
+        )
+        manager.routes.enabled = {"aux": True, "usb": True}
+        manager.routes.unmuted = {"aux": True}
+        manager.modules.adopt("aux", 60)
+        manager.modules.adopt("usb", 50)
+        output_sink = {"name": "hifiberry", "index": 1}
+        background_sink = {"name": "background", "index": 2}
+        full = {"mono": {"value_percent": "100%"}}
+        listings = {
+            "sinks": [output_sink, background_sink],
+            "sources": [
+                {
+                    "name": "hifiberry_adc",
+                    "description": "ADC Pro",
+                    "monitor_of_sink": 4294967295,
+                },
+                {
+                    "name": "uac2_capture",
+                    "description": "UAC2Gadget",
+                    "monitor_of_sink": 4294967295,
+                },
+            ],
+            "sink-inputs": [
+                {"index": 61, "owner_module": 60, "sink": 1, "volume": full},
+                {
+                    "index": 71,
+                    "owner_module": 50,
+                    "sink": 2,
+                    "properties": {"media.name": "SmartAmp.usb"},
+                    "volume": full,
+                },
+                # Sendspin's own client stream into the bus.
+                {
+                    "index": 81,
+                    "sink": 2,
+                    "properties": {"media.name": "ALSA Playback"},
+                    "volume": full,
+                },
+            ],
+        }
+
+        with self._patched_graph(listings, fake_run) as run:
+            manager.routes.reconcile(
+                output=output_sink,
+                background_sink=background_sink,
+                music_volume=60,
+                usb_playback=True,
+            )
+            output.hold_client_streams(
+                manager.graph,
+                background_sink,
+                manager.config.background.client_volume_percent,
+            )
+
+        # The unmuted aux route plays at half the music level; the USB and
+        # Sendspin streams carry only their trims, because their shared bus
+        # bridge already carries the music level.
+        self.assertEqual(
+            volume_writes(run), [("61", "30%"), ("71", "80%"), ("81", "70%")]
+        )
 
     def test_percent_validation_rejects_booleans_and_out_of_range(self) -> None:
         self.assertTrue(volume.is_percent(0))

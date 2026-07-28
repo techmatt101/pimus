@@ -28,11 +28,12 @@ def pin_volume(sink: Node | None) -> None:
     LOG.info("Pinned the output sink to 100%%")
 
 
-def hold_stray_streams(view: Graph, sink: Node | None, music_volume: int) -> None:
-    """Hold anything that is not one of our bridges at the music level.
+def hold_client_streams(view: Graph, sink: Node | None, level: int) -> None:
+    """Hold every stream on the sink that is not one of our bridges at a level.
 
-    With the sink pinned, a client that plays straight at the output would
-    otherwise land at full amplifier level.
+    On the pinned output sink this stops a client that plays straight at the
+    output landing at full amplifier level; on the background bus it holds the
+    Sendspin player's stream at its configured trim.
     """
     if sink is None or sink.get("index") is None:
         return
@@ -43,7 +44,7 @@ def hold_stray_streams(view: Graph, sink: Node | None, music_volume: int) -> Non
         if media.startswith(STREAM_PREFIX):
             continue
         state = graph.volume_state(stream)
-        if state is not None and state[0] == music_volume:
+        if state is not None and state[0] == level:
             continue
-        pactl.set_sink_input_volume(int(stream["index"]), music_volume)
-        LOG.info("Holding stray stream %s at the music level", stream.get("index"))
+        pactl.set_sink_input_volume(int(stream["index"]), level)
+        LOG.info("Holding client stream %s at %s%%", stream.get("index"), level)

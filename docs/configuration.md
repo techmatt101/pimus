@@ -17,6 +17,12 @@ the device always wakes at a predictable loudness. Because the sink is pinned, t
 plays straight at the output — something not routed through a bus — at the music level rather than letting it play at
 full amplifier gain.
 
+Each music input also carries a trim of its own — `smartamp_sendspin_volume_percent`, `smartamp_usb_volume_percent`,
+and `smartamp_aux_volume_percent` — the share of the music level that input plays at, for bringing inputs in line with
+each other (USB computers tend to play hotter than Sendspin). All three default to 100, meaning the music level
+untouched. The Sendspin trim is held on its stream into the background bus, so it applies only while voice ducking is
+enabled; the aux and USB trims always apply.
+
 Device match expressions search every PipeWire/Pulse node property. Use `pactl list sinks` and `pactl list sources` on
 the Pi if your firmware exposes different names.
 

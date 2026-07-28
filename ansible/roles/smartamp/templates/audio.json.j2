@@ -14,7 +14,8 @@
     "sink_name": {{ smartamp_background_sink_name | to_json }},
     "latency_ms": {{ smartamp_loopback_latency_ms | int }},
     "duck_volume_percent": {{ smartamp_voice_duck_volume_percent | int }},
-    "fade_ms": {{ smartamp_voice_duck_fade_ms | int }}
+    "fade_ms": {{ smartamp_voice_duck_fade_ms | int }},
+    "client_volume_percent": {{ smartamp_sendspin_volume_percent | int }}
   },
   "voice_bus": {
     "enabled": {{ voice_assistant_enabled | bool | to_json }},
@@ -28,14 +29,16 @@
       "match": {{ smartamp_aux_match | to_json }},
       "enabled": {{ smartamp_aux_enabled | bool | to_json }},
       "mute_when_off": true,
-      "latency_ms": {{ smartamp_aux_latency_ms | int }}
+      "latency_ms": {{ smartamp_aux_latency_ms | int }},
+      "volume_percent": {{ smartamp_aux_volume_percent | int }}
     },
     "usb": {
       "match": {{ smartamp_usb_gadget_match | to_json }},
       "enabled": {{ ((usb_audio_gadget_enabled | bool) and (smartamp_usb_enabled | bool)) | to_json }},
       "requires_usb_host": true,
       "target": {{ ('background' if voice_ducking_enabled else 'output') | to_json }},
-      "latency_ms": {{ smartamp_loopback_latency_ms | int }}
+      "latency_ms": {{ smartamp_loopback_latency_ms | int }},
+      "volume_percent": {{ smartamp_usb_volume_percent | int }}
     }
   }
 }

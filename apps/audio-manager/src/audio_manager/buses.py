@@ -144,7 +144,7 @@ class BackgroundBus(AudioBus):
         """The bridge gain for the music level, dipped by the duck share."""
         if not ducked:
             return music_volume
-        return round(music_volume * self.config.duck_volume_percent / 100)
+        return volume.scale(music_volume, self.config.duck_volume_percent)
 
     def apply_ducking(self, music_volume: int, ducked: bool) -> None:
         if self.stream_index is None:
