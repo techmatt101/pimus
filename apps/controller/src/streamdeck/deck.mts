@@ -24,8 +24,11 @@ const sleep = (milliseconds: number): Promise<void> =>
 // cleaner than the library's default and encodes to fewer bytes.
 const JPEG_OPTIONS = {quality: 90, subsampling: SAMP_444}
 
+// The deck retains its last image, so a controller that stops without saying so
+// leaves a lit, fully drawn face on a panel nothing is driving. The firmware
+// logo is the one image that cannot be mistaken for a live layout.
 const openStreamDeckPlus = (path: string): Promise<StreamDeck> =>
-    openStreamDeck(path, {jpegOptions: JPEG_OPTIONS})
+    openStreamDeck(path, {jpegOptions: JPEG_OPTIONS, resetToLogoOnClose: true})
 
 export function findStreamDeckPlus(devices: StreamDeckDeviceInfo[]): StreamDeckDeviceInfo | undefined {
     return devices.find((device) => device.model === DeviceModelId.PLUS)

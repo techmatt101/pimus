@@ -381,6 +381,7 @@ in this order:
 |--------------|----------------------------------------------------|---------------------------------------------------------------------|
 | Dial readout | For 2.5 s after a dial was last turned or pressed, or the whole time a key is mid-pick on the shared dial | The dial's name, its readout, and a bar for a dial with a level     |
 | Notification | While a message pushed from Home Assistant is live | Its heading and message on its own colour, with a draining time bar |
+| Starting up  | During boot, until the network, audio manager, and Home Assistant have all connected (90 s at most) | "STARTING UP" over a row of the three subsystems: teal once connected, amber and breathing while still pending |
 | Now playing  | A track is playing or paused                       | A play/pause button at the left edge, the track title and credit (scrolling only when too long, tap to reveal shuffle/repeat/back), a clock at the right edge, and a position bar |
 | Idle clock   | The player is stopped (nothing playing)            | The time centred, with the current outdoor conditions beside it |
 
@@ -407,9 +408,14 @@ that icon healthy rather than flagging an integration that was never set up.
 Each screen is a class in `streamdeck/screens/`, the strip's equivalent of a
 tile: it paints the whole 800×100 face and may run the same `mount`/`unmount`
 lifecycle, watching an entity and asking for animation frames. The resting face
-is two screens rather than one — `NowPlayingScreen` while a track is playing or
-paused, `IdleScreen` (the clock) once the player is stopped. The strip is handed
-both and shows the first whose `applies()` returns true; both stay mounted, so
+is three screens rather than one — `StartingScreen` while the stack is still
+coming up, `NowPlayingScreen` while a track is playing or paused, and
+`IdleScreen` (the clock) once the player is stopped. The controller now starts
+well before the audio manager and voice assistant are ready, so without the
+first of those the panel's opening face would be a row of red fault icons,
+which reads as broken rather than busy; it latches off for good once everything
+has connected once, so a later outage is reported as the fault it is. The strip
+is handed all three and shows the first whose `applies()` returns true; all stay mounted, so
 the one not showing keeps watching its entity and swaps the strip over the moment
 a track starts or stops. `NowPlayingScreen` watches the media player entity
 itself, so the strip keeps working on pages where no key happens to watch it. Its

@@ -91,6 +91,17 @@ surfaces consume the same voice, mute, media, and audio-route state.
 The audio manager remains a separate Python daemon because it continuously
 reconciles the PipeWire graph and owns its gain nodes.
 
+The controller's unit is ordered after nothing but the service account's session,
+which is what creates the runtime directory its sandbox mounts. Its companions
+are wanted rather than required: the audio manager spends its own startup waiting
+for PipeWire and the voice assistant blocks for up to a minute waiting for the
+audio graph, so waiting on either would leave the panel dark for the whole boot,
+and requiring either would take the deck down during an outage the deck exists to
+report. It polls both sockets instead, keeps driving Home Assistant and the LED
+ring throughout, and says where it has got to: an amber ring and a "STARTING UP"
+strip while it is still connecting, then a red icon and a banner once a
+subsystem is genuinely late rather than merely slow.
+
 The controller switches routes and requests ducking by sending commands over
 the audio manager's Unix control socket in the runtime directory, and mirrors
 the state events it receives back onto the Stream Deck. The manager reconciles

@@ -9,6 +9,7 @@ import {VolumeDial} from './dials/volume-dial.mjs'
 import type {PageGrid, StreamDeckLayout, StreamDeckPage} from './grid.mjs'
 import {IdleScreen} from './screens/idle-screen.mjs'
 import {NowPlayingScreen} from './screens/now-playing-screen.mjs'
+import {StartingScreen} from './screens/starting-screen.mjs'
 import type {ClockFormat} from './screens/screen.mjs'
 import {TouchStrip} from './strip.mjs'
 import {ActionTile} from './tiles/action-tile.mjs'
@@ -187,11 +188,12 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
         dynamic,
     ]
 
+    const starting = new StartingScreen(model, clock)
     const nowPlaying = new NowPlayingScreen(ha, model, clock, {player: HA.player, clockFormat: CLOCK_FORMAT})
     const idle = new IdleScreen(ha, model, clock, {player: HA.player, weatherEntityId: HA.weather, clockFormat: CLOCK_FORMAT})
 
     const strip = new TouchStrip({
-        resting: [nowPlaying, idle],
+        resting: [starting, nowPlaying, idle],
         dials,
         clock,
         ...(notifications ? {notifications} : {}),

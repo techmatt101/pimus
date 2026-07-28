@@ -115,6 +115,18 @@ const layout = createLayout({
 
 const renderer = new DeckRenderer({layout, model})
 
+// A bare SIGTERM would kill the process with our last face still lit and the
+// ring still coloured, which reads as a controller that is running. Hand both
+// surfaces back, but never let a stuck USB write hold up the stop.
+const shutdown = (): void => {
+    void Promise.race([
+        Promise.all([renderer.releasePanel(), respeaker?.release()]),
+        new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(() => process.exit(0))
+}
+process.once('SIGTERM', shutdown)
+process.once('SIGINT', shutdown)
+
 const health = new HealthMonitor({
     model,
     notifications,

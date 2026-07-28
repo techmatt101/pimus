@@ -50,6 +50,35 @@ test('ReSpeaker LEDs follow voice, media, and mute state', async () => {
     assert.equal(rendered.at(-1)?.effect, LedEffect.Off)
 })
 
+test('the ring shows boot until the voice socket answers, then reports a real loss', async () => {
+    const rendered: LedFrame[] = []
+    const controller = new ReSpeakerController({
+        config: CONFIG,
+        device: {
+            apply: async (frame) => {
+                rendered.push(frame)
+            },
+        },
+    })
+
+    // The controller now paints long before the voice assistant finishes its own
+    // wait, so a first connection that has not happened is a wait, not a loss.
+    assert.deepEqual(controller.desired(), Leds.spin('#ffab00'))
+    controller.start()
+    await controller.setDisconnected()
+    assert.deepEqual(controller.desired(), Leds.spin('#ffab00'))
+
+    // Once the socket has spoken, boot is over and a drop is a genuine warning.
+    await controller.handleEvent({event: 'snapshot', data: {ha_connected: true, muted: false}})
+    assert.deepEqual(controller.desired(), Leds.off())
+    await controller.setDisconnected()
+    assert.deepEqual(controller.desired(), Leds.pulse('#d50000'))
+
+    // Stopping darkens the ring rather than leaving a state showing.
+    await controller.release()
+    assert.equal(rendered.at(-1)?.effect, LedEffect.Off)
+})
+
 test('LED-only mode does not force a disconnected warning', () => {
     const controller = new ReSpeakerController({
         voiceEnabled: false,

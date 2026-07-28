@@ -79,6 +79,20 @@ export class DeckRenderer implements PageNavigator {
         this.#unmountVisible()
     }
 
+    // Hands the panel back on shutdown. Dropping the deck first stops a queued
+    // repaint racing the reset and re-lighting a face nothing is driving.
+    async releasePanel(): Promise<void> {
+        const deck = this.#deck
+        if (!deck) return
+        this.#deck = null
+        this.#forgetFrames()
+        try {
+            await deck.resetToLogo()
+        } catch (error) {
+            this.#logger.error('panel release failed', error)
+        }
+    }
+
     // Nothing is known about what a freshly opened panel is showing, so the next
     // pass must paint every face rather than trusting a previous connection's.
     #forgetFrames(): void {

@@ -139,6 +139,15 @@ thinking: Leds.spin('#7c4dff'),
 listening: Leds.direction('#001018', '#00e5ff'),
 ```
 
+The ring is also the quickest sign that the Pi is still booting: it lights well
+before the Stream Deck is painted, and long before the voice assistant finishes
+waiting for the audio graph. So a voice socket that has never connected shows
+`starting` — an amber spinner — rather than the red `disconnected` pulse, which
+is held back for 90 seconds or until the socket first answers, whichever comes
+first. Stopping the controller darkens the ring and resets the deck to its
+firmware logo, so neither surface can leave a state showing for a daemon that is
+no longer running.
+
 | Helper                            | What the ring shows                                                                                                                 |
 |-----------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|
 | `Leds.off()`                      | Every LED dark.                                                                                                                     |

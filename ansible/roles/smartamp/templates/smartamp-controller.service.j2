@@ -1,11 +1,23 @@
 [Unit]
 Description=Smart Amp voice policy and hardware controller
-After=smartamp-audio-manager.service
+# The only ordering this unit genuinely needs. /run/user/<uid> comes with the
+# service account's session and BindPaths= below mounts it back into the
+# sandbox, so starting before it exists fails the namespace setup rather than
+# the app.
+After=user@{{ smartamp_uid }}.service
+Requires=user@{{ smartamp_uid }}.service
+# Its companions are wanted, never required, and deliberately not ordered after.
+# The audio manager waits for PipeWire before it creates its control socket and
+# the voice unit blocks its own start for up to a minute waiting for the audio
+# graph, so ordering behind either only delays the panel without making their
+# sockets likelier to be up when it opens. Requiring them would be worse still:
+# an audio outage would take the deck down with it, when the deck is what says
+# the audio is out. The controller polls for both sockets, keeps driving Home
+# Assistant and the LEDs meanwhile, and its ring and strip report the wait.
+Wants=smartamp-audio-manager.service
 {% if voice_assistant_enabled %}
-After=smartamp-voice-assistant.service
 Wants=smartamp-voice-assistant.service
 {% endif %}
-Requires=smartamp-audio-manager.service
 
 [Service]
 Type=simple
@@ -20,17 +32,19 @@ Environment=SMARTAMP_LOG_LEVEL={{ 'debug' if smartamp_debug_logging | bool else 
 # start a controller that cannot authenticate or, worse, an open listener.
 EnvironmentFile={{ smartamp_secrets_file }}
 {% endif %}
+# No PULSE_SERVER: the controller no longer runs a PulseAudio client of any
+# kind. Output mute was its last one, and that now travels over the audio
+# manager's control socket like every other level.
 Environment=XDG_RUNTIME_DIR=/run/user/{{ smartamp_uid }}
-Environment=PULSE_SERVER=/run/user/{{ smartamp_uid }}/pulse/native
 WorkingDirectory={{ smartamp_app_dir }}/controller
 ExecStart=/usr/bin/node {{ smartamp_app_dir }}/controller/src/index.mjs
 Restart=always
 RestartSec=3
 # Apply a small, predictable isolation baseline while leaving the network, USB,
 # and local audio APIs available to the controller's existing features.
-# ProtectHome=true would also hide /run/user, where the audio manager's socket
-# and the PipeWire/PulseAudio sockets live; tmpfs mode allows BindPaths to
-# mount the runtime directory back into the sandbox.
+# ProtectHome=true would also hide /run/user, where the audio manager's control
+# socket lives; tmpfs mode allows BindPaths to mount the runtime directory back
+# into the sandbox.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=tmpfs
