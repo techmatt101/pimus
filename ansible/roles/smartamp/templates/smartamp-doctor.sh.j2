@@ -18,6 +18,21 @@ if command -v vcgencmd >/dev/null 2>&1; then
     [ "$THROTTLED" = 'throttled=0x0' ] && pass 'No under-voltage/throttle flags' || warn "$THROTTLED (check AAmp60 and USB power budget)"
 fi
 
+heading 'Memory'
+free -h
+swapon --show --noheadings || true
+AVAILABLE_MB=$(awk '/^MemAvailable:/ { print int($2 / 1024) }' /proc/meminfo)
+[ "$AVAILABLE_MB" -ge 150 ] && pass "${AVAILABLE_MB}MB available" || warn "Only ${AVAILABLE_MB}MB available; expect reclaim pressure"
+{% if smartamp_zram_enabled %}
+swapon --show=NAME --noheadings 2>/dev/null | grep -q '^/dev/zram0' \
+    && pass 'Compressed RAM swap is active' \
+    || fail 'zram is enabled but /dev/zram0 is not swapped on'
+{% elif not smartamp_swapfile_enabled %}
+swapon --show=NAME --noheadings 2>/dev/null | grep -q . \
+    && warn 'Swap is active but none is configured' \
+    || pass 'No swap configured and none active'
+{% endif %}
+
 heading 'ALSA hardware'
 aplay -l || true
 arecord -l || true

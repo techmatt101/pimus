@@ -58,3 +58,87 @@
     state: started
   failed_when: false
   when: smartamp_swapfile_enabled | bool
+
+# zram is a compressed block device in RAM used as the swap device itself, so
+# an evicted page is compressed and kept in memory instead of written to the
+# card. systemd-zram-generator builds the device and its swap unit from the
+# stanza below at boot; there is no init script or daemon to supervise.
+- name: Install the zram generator
+  ansible.builtin.apt:
+    name: systemd-zram-generator
+    state: present
+  when: smartamp_zram_enabled | bool
+
+# zram-size is an expression evaluated in MB with "ram" bound to total memory.
+# zstd rather than lz4 because the Pi 5 has CPU headroom to spare and the
+# better ratio is the whole point of the exercise. The priority keeps zram
+# ahead of the SD swapfile whenever that is also enabled, so the card is only
+# touched once compressed RAM is exhausted.
+- name: Configure compressed RAM swap
+  ansible.builtin.copy:
+    dest: /etc/systemd/zram-generator.conf
+    content: |
+      [zram0]
+      zram-size = ram * {{ smartamp_zram_percent }} / 100
+      compression-algorithm = zstd
+      swap-priority = 100
+      fs-type = swap
+    owner: root
+    group: root
+    mode: "0644"
+  when: smartamp_zram_enabled | bool
+  notify: Restart zram
+
+# Both defaults are tuned for disk swap and are wrong once swap is RAM. A high
+# swappiness is correct here: reclaiming an anonymous page costs a decompress
+# rather than a card read, so the kernel should prefer that over evicting page
+# cache it would have to re-read from the card. page-cluster 0 stops every
+# fault reading eight pages ahead, which only pays for itself on a device with
+# seek costs and otherwise just adds decompression to the fault path — which
+# matters on a box doing real-time audio.
+- name: Tune the kernel for compressed RAM swap
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/60-smartamp-zram.conf
+    content: |
+      vm.swappiness = 150
+      vm.page-cluster = 0
+    owner: root
+    group: root
+    mode: "0644"
+  when: smartamp_zram_enabled | bool
+  notify: Reload sysctl
+
+- name: Stop compressed RAM swap when disabled
+  ansible.builtin.systemd_service:
+    name: systemd-zram-setup@zram0.service
+    state: stopped
+  failed_when: false
+  when: not (smartamp_zram_enabled | bool)
+
+- name: Remove zram configuration when disabled
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/zram-generator.conf
+    - /etc/sysctl.d/60-smartamp-zram.conf
+  when: not (smartamp_zram_enabled | bool)
+
+# The package ships its own default configuration, so deleting only this
+# role's stanza could still leave a differently sized zram device appearing at
+# the next boot. Removing the package is what actually makes the flag off.
+- name: Remove the zram generator when disabled
+  ansible.builtin.apt:
+    name: systemd-zram-generator
+    state: absent
+    purge: true
+  when: not (smartamp_zram_enabled | bool)
+
+# Deleting the sysctl file does not undo values the kernel is already holding,
+# and "sysctl --system" only applies files that exist, so the stock defaults
+# have to go back explicitly. Without this, a disabled flag would leave the
+# tuning live until the next reboot.
+- name: Restore default swap tuning when zram is disabled
+  ansible.builtin.command: sysctl -q -w vm.swappiness=60 vm.page-cluster=3
+  changed_when: false
+  when: not (smartamp_zram_enabled | bool)

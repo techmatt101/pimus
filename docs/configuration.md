@@ -104,6 +104,30 @@ over a Unix socket in the runtime directory; the audio status file lives under
 `/run`, which is RAM-backed. Routine operation therefore never writes to the
 card, and route toggles reset to inventory defaults at boot.
 
+`smartamp_zram_enabled: true` buys headroom back without giving up any of that.
+zram is a compressed block device in RAM used as the swap device itself, sized
+by `smartamp_zram_percent` (default 50, a percentage of total RAM). An evicted
+page is compressed and kept in memory, so nothing reaches the card. Because
+there is no backing store, a genuinely full zram still ends in an OOM kill and
+a systemd restart, exactly as with no swap at all.
+
+This is deliberately not zswap. zswap is a compressed cache *in front of* a
+real swap device: it needs a swapfile or partition to exist, and it writes back
+to that device once its pool fills. On a Pi with disk swap removed it does
+nothing, and enabling one to feed it would put the card back in the path.
+
+Two kernel defaults are tuned alongside it in
+`/etc/sysctl.d/60-smartamp-zram.conf`: `vm.swappiness` goes up to 150, because
+reclaiming an anonymous page now costs a decompress instead of a card read and
+is cheaper than evicting page cache that would have to be re-read; and
+`vm.page-cluster` goes to 0, so a fault stops reading eight pages ahead — pure
+added latency when the swap device has no seek cost. Turning the flag off
+removes the generator, its configuration, and this file, and puts both sysctls
+back to their stock values.
+
+`smartamp-doctor` reports available memory and whether zram is actually swapped
+on, which is the number to watch when moving to a board with less RAM.
+
 ## Voice
 
 `voice_assistant_version` pins the upstream release tag that is checked out,

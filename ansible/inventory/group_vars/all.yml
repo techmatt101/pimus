@@ -18,6 +18,21 @@ smartamp_debug_logging: true
 # restarts a service instead of wearing the card. Set to true to restore it.
 smartamp_swapfile_enabled: false
 
+# Compressed swap held in RAM (zram), which buys headroom without ever writing
+# to the card. This is deliberately not zswap: zswap is a cache in front of a
+# real swap device and spills to that device when its pool fills, so it cannot
+# give headroom on a Pi with no disk swap. zram has no backing store, so when
+# it fills the kernel still OOM-kills and systemd still restarts the service —
+# the endurance stance above survives intact. If the swapfile is also enabled,
+# the priority below keeps zram preferred and the card used only after it.
+smartamp_zram_enabled: true
+# Size of the zram device as a percentage of total RAM. This is the
+# uncompressed capacity it advertises; the RAM it actually consumes is that
+# divided by the compression ratio, roughly 2.5-3x on the controller's and
+# audio manager's heaps. Going far above 100 risks the pool itself exhausting
+# memory faster than swapping relieves it.
+smartamp_zram_percent: 50
+
 # HiFiBerry DAC2 ADC Pro + AAmp60
 hifiberry_overlay: hifiberry-dacplusadcpro
 hifiberry_card_name: sndrpihifiberry

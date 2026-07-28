@@ -16,6 +16,22 @@
     name: systemd-journald.service
     state: restarted
 
+- name: Reload sysctl
+  ansible.builtin.command: sysctl --system -q
+  changed_when: true
+
+# The generator materialises the zram device from its configuration at boot, so
+# a changed size or algorithm needs the units regenerated before the setup unit
+# is restarted. Restarting swaps off first, which the kernel can refuse while
+# there is no room to bring those pages back; that is not worth failing a
+# provision run over, because the next reboot applies the new size regardless.
+- name: Restart zram
+  ansible.builtin.systemd_service:
+    name: systemd-zram-setup@zram0.service
+    state: restarted
+    daemon_reload: true
+  failed_when: false
+
 # Re-run the one-shot mixer setup whenever its script or unit changes. This
 # applies new ADC routing and amplifier gain immediately instead of waiting for
 # the next reboot.
