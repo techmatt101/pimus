@@ -51,7 +51,7 @@ hifiberry_aux_input_right: "VINR1[SE]"
 # loudness. The output sink itself stays pinned at 100%: this and the voice
 # level below are gains the audio manager holds on its bridge streams, and the
 # volume dial takes over from here.
-smartamp_startup_volume_percent: 20
+smartamp_startup_volume_percent: 30
 
 # PipeWire device matching. These are regular expressions, matched against
 # the Pulse/PipeWire node name, description and properties.
@@ -124,7 +124,7 @@ smartamp_voice_duck_fade_ms: 250
 # Assist is live own it from then on. Only mute crosses the two - it lands on
 # the output sink and silences music and voice alike.
 smartamp_voice_sink_name: smartamp_voice
-smartamp_voice_startup_volume_percent: 50
+smartamp_voice_startup_volume_percent: 30
 
 # Make the Pi appear as a 48 kHz 16-bit stereo USB sound card to a computer
 # connected to the Pi 5 USB-C port. The AAmp60/DAC stack must power the Pi
