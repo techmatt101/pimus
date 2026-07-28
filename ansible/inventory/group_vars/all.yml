@@ -143,10 +143,10 @@ sendspin_extra_args: ""
 voice_assistant_enabled: true
 # Upstream linux-voice-assistant release tag checked out into the satellite's
 # virtual environment, matching how sendspin_version pins its client.
-voice_assistant_version: "1.1.13"
+voice_assistant_version: "1.1.14"
 voice_assistant_name: "Office Amp Voice"
 # Wake and stop words are microWakeWord models bundled with the pinned release.
-# v1.1.13 ships: okay_nabu, okay_computer, hey_jarvis, hey_mycroft, hey_luna,
+# v1.1.14 ships: okay_nabu, okay_computer, hey_jarvis, hey_mycroft, hey_luna,
 # hey_morgan, hey_home_assistant, choo_choo_homie, alexa, and stop. Custom
 # OpenWakeWord models dropped in /var/lib/smartamp/lva/wakewords work by name.
 voice_assistant_wake_model: okay_nabu

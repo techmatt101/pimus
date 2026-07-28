@@ -721,7 +721,14 @@ class ReconcileTests(ManagerTestCase):
         listings = {
             "sinks": [
                 {"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"},
-                {"name": "xvf_playback", "description": "reSpeaker XVF3800"},
+                {
+                    "name": "xvf_playback",
+                    "description": "reSpeaker XVF3800",
+                    # WirePlumber restored a quiet, muted state that would make
+                    # the DSP under-subtract; reconcile must repair it.
+                    "volume": {"mono": {"value_percent": "40%"}},
+                    "mute": True,
+                },
             ],
             "sources": [
                 {"name": "hifiberry.monitor", "monitor_of_sink": 0},
@@ -731,11 +738,19 @@ class ReconcileTests(ManagerTestCase):
                     "monitor_of_sink": 4294967295,
                 },
             ],
-            "sink-inputs": [],
+            "sink-inputs": [
+                # A reference stream left behind at a stale level, as after a
+                # PipeWire restart recreated it.
+                {
+                    "index": 55,
+                    "properties": {"media.name": "SmartAmp.aec"},
+                    "volume": {"mono": {"value_percent": "40%"}},
+                }
+            ],
             "cards": [],
         }
 
-        with self._patched_graph(listings, fake_run), mock.patch.object(
+        with self._patched_graph(listings, fake_run) as run, mock.patch.object(
             pactl, "load_module", side_effect=self._recording_loader(loaded)
         ), mock.patch("audio_manager.status.write") as status_write:
             manager.reconcile()
@@ -763,6 +778,13 @@ class ReconcileTests(ManagerTestCase):
             status["aec_reference"],
             {"enabled": True, "available": True, "sink": "xvf_playback"},
         )
+
+        # The reference must reach the DSP at the level the room hears: the
+        # sink and the bridge stream are snapped back to unity, unmuted.
+        commands = [call.args for call in run.call_args_list]
+        self.assertIn(("pactl", "set-sink-volume", "xvf_playback", "100%"), commands)
+        self.assertIn(("pactl", "set-sink-mute", "xvf_playback", "0"), commands)
+        self.assertIn(("pactl", "set-sink-input-volume", "55", "100%"), commands)
 
     def test_aec_reference_is_released_when_the_xvf3800_disappears(self) -> None:
         manager = self.make_manager(

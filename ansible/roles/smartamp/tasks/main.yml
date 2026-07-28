@@ -121,6 +121,8 @@
     - "{{ smartamp_app_dir }}/linux-voice-assistant"
     - "{{ smartamp_app_dir }}/smartamp_lva.py"
     - "{{ smartamp_app_dir }}/wait-audio-ready.sh"
+    - "{{ smartamp_app_dir }}/xvf3800-host-control"
+    - /usr/local/bin/xvf_host
   notify: Reload systemd
   when: not (voice_assistant_enabled | bool)
 

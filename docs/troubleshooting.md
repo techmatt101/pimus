@@ -57,13 +57,37 @@ Confirm `/boot/firmware/config.txt` contains `force_eeprom_read=0`, `dtparam=aud
 `dtoverlay=hifiberry-dacplusadcpro`. The Pi 5 needs the kernel overlay rather than the older overlay embedded in the HAT
 EEPROM. Check `dmesg | grep -i hifiberry` after reboot.
 
-## Voice hears the speaker output
+## Voice hears the speaker output, or cannot hear over music
 
 The XVF3800's acoustic echo cancellation requires the far-end playback reference. The audio manager mirrors the
-HiFiBerry output monitor into the XVF3800 USB playback endpoint for this purpose. Check the `aec_reference` section in
-`/run/user/*/smartamp-audio-status.json`. If it is available but cancellation is poor, tune the XVF3800 system delay and
-far-end gain using Seeed's `xvf_host.py`. Do not enable LVA's software gain/noise processing until the hardware DSP path
-is confirmed.
+HiFiBerry output monitor into the XVF3800 USB playback endpoint for this purpose, and pins that whole path — the
+XVF3800 playback sink and the reference bridge stream — at 100% and unmuted on every reconcile, so the DSP receives the
+reference at the level the room hears. Check the `aec_reference` section in `/run/user/*/smartamp-audio-status.json`.
+
+To hear the reference itself, plug headphones into the ReSpeaker's speaker jack: it plays exactly the reference
+stream, so it should carry the music and follow the volume dial. To inspect it properly, record the reference and the
+mic at the same time while music plays and the wake word is spoken (run as the audio user with
+`sudo -u smartamp XDG_RUNTIME_DIR=/run/user/$(id -u smartamp) parecord ...`), using the XVF3800 sink's `.monitor` for
+the reference and the XVF3800 source for the mic, then compare them: if the music is about as loud in the mic capture
+as in the reference, cancellation is doing nothing.
+
+If the reference path is healthy but cancellation is still poor, the usual cause is timing: the reference crosses a
+PipeWire loopback (`smartamp_loopback_latency_ms`) and USB before reaching the DSP, while the sound reaches the mics
+almost immediately, so the reference can arrive after the echo it is meant to predict. Tune the DSP with the `xvf_host`
+tool, installed with the voice assistant and on the PATH:
+
+```sh
+sudo xvf_host VERSION                    # confirms the device responds
+sudo xvf_host AUDIO_MGR_SYS_DELAY        # read the current system delay
+sudo xvf_host AUDIO_MGR_SYS_DELAY 30     # try a larger delay, then test the wake word over music
+sudo xvf_host AUDIO_MGR_REF_GAIN         # far-end reference gain
+```
+
+Values set this way are volatile and revert at the next power cycle, which makes experimenting safe. Do **not** run
+`save_configuration` to persist them: on this firmware it can stop the device enumerating over USB outside safe mode
+([upstream issue #8](https://github.com/respeaker/reSpeaker_XVF3800_USB_4MIC_ARRAY/issues/8)).
+
+Do not enable LVA's software gain/noise processing until the hardware DSP path is confirmed.
 
 ## Background audio does not duck or restore
 

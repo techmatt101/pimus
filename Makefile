@@ -3,7 +3,7 @@
 ANSIBLE_CONFIG := $(CURDIR)/ansible/ansible.cfg
 export ANSIBLE_CONFIG
 
-.PHONY: help install build icons playground dev provision deploy-controller check test verify doctor
+.PHONY: help install build icons update-versions playground dev provision deploy-controller check test verify doctor
 
 help:
 	@awk 'BEGIN {FS = ":.*## "; printf "Usage: make <target>\n\n"} /^[a-zA-Z_-]+:.*## / {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -25,6 +25,13 @@ build: ## Compile the TypeScript controller to apps/controller/dist
 icons: ## Regenerate the Stream Deck icon set from Hugeicons
 	[ -d node_modules/@hugeicons/core-free-icons ] || pnpm install --frozen-lockfile
 	node tools/generate-icons.mjs
+
+# Every upstream is pinned: release versions in the inventory, and a commit
+# plus checksums (generated into the role's vars/main.yml) for xvf_host, whose
+# upstream publishes no releases. This refreshes them all to the latest;
+# review the diff, run `make test`, then provision to roll the Pi forward.
+update-versions: ## Refresh every upstream version pin and checksum to the latest
+	node tools/update-versions.mjs
 
 # Development only. Runs the real controller against fake hardware and fake
 # services, with the Stream Deck drawn in a browser; it never contacts the Pi.

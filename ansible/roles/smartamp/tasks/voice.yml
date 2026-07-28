@@ -125,6 +125,43 @@
     mode: "0755"
   notify: Restart voice assistant
 
+# Seeed's xvf_host tool talks the XVF3800 vendor-control protocol from the
+# command line: reading DSP state and tuning the echo canceller
+# (AUDIO_MGR_SYS_DELAY, AUDIO_MGR_REF_GAIN) when voice struggles over music.
+# The prebuilt rpi_64bit files are fetched individually rather than cloning
+# the repository, which also carries firmware images. Upstream publishes no
+# releases or tags, so the pin is a commit plus per-file checksums, both
+# generated into vars/main.yml by `make update-versions`. The file set is
+# whatever that tool checksummed: xvf_host resolves its companion libraries
+# through /proc/self/exe, so they only need to sit beside the real binary.
+- name: Create XVF3800 host-control directory
+  ansible.builtin.file:
+    path: "{{ smartamp_app_dir }}/xvf3800-host-control"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install XVF3800 host-control tool
+  ansible.builtin.get_url:
+    url: "https://raw.githubusercontent.com/respeaker/reSpeaker_XVF3800_USB_4MIC_ARRAY/{{ respeaker_host_control_commit }}/host_control/rpi_64bit/{{ item.key }}"
+    dest: "{{ smartamp_app_dir }}/xvf3800-host-control/{{ item.key }}"
+    checksum: "sha256:{{ item.value }}"
+    owner: root
+    group: root
+    mode: "{{ '0755' if item.key == 'xvf_host' else '0644' }}"
+  loop: "{{ respeaker_host_control_checksums | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+# A symlink is enough for PATH convenience because the binary locates its
+# libraries from its resolved executable path, not the working directory.
+- name: Link xvf_host onto the PATH
+  ansible.builtin.file:
+    src: "{{ smartamp_app_dir }}/xvf3800-host-control/xvf_host"
+    dest: /usr/local/bin/xvf_host
+    state: link
+
 # The unit runs under the same account as PipeWire so it can use the private
 # audio socket. It exposes an ESPHome voice satellite to HA on the other host.
 - name: Install Home Assistant voice service

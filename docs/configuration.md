@@ -107,8 +107,11 @@ card, and route toggles reset to inventory defaults at boot.
 ## Voice
 
 `voice_assistant_version` pins the upstream release tag that is checked out,
-exactly as `sendspin_version` pins the Sendspin client. Bump the one value to
-upgrade. The upstream setup script installs its declared Python dependencies into
+exactly as `sendspin_version` pins the Sendspin client. `make update-versions`
+refreshes both to the latest release, along with the pinned `xvf_host`
+commit and checksums generated into the role's `vars/main.yml` (that upstream
+publishes no releases); review the diff, run `make test`, then provision to
+roll the Pi forward. The upstream setup script installs its declared Python dependencies into
 `/opt/smartamp/linux-voice-assistant/.venv`; no container runtime is used.
 `voice_assistant_wake_model` defaults to `okay_nabu`. Custom OpenWakeWord model
 files can be placed in `/var/lib/smartamp/lva/wakewords` and selected by name.

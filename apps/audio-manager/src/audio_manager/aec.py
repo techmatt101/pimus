@@ -10,10 +10,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from . import graph
+from . import graph, pactl
 from .config import AecConfig
 from .graph import Graph, Node
-from .modules import ModuleRegistry
+from .modules import ModuleRegistry, stream_media_name
 
 
 LOG = logging.getLogger(__name__)
@@ -38,6 +38,12 @@ class AecReference:
         )
         available = bool(reference_sink and monitor)
         if self.config.enabled and reference_sink and monitor:
+            # The DSP models the echo as this reference at the level the room
+            # hears, so the whole path must be unity gain: WirePlumber restores
+            # whatever the reference sink last had, and nothing else owns it. A
+            # quiet or muted reference makes the XVF3800 under-subtract, which
+            # sounds like a mic that cannot hear over the music.
+            self._pin_sink(reference_sink)
             created = self._modules.ensure_loopback(
                 REFERENCE_ROLE,
                 monitor["name"],
@@ -46,6 +52,7 @@ class AecReference:
             )
             if created:
                 LOG.info("Enabled XVF3800 AEC far-end reference")
+            self._pin_stream()
         else:
             self._modules.unload(REFERENCE_ROLE)
         return {
@@ -53,3 +60,29 @@ class AecReference:
             "available": available,
             "sink": reference_sink.get("name") if reference_sink else None,
         }
+
+    def _pin_sink(self, sink: Node) -> None:
+        state = graph.volume_state(sink)
+        if state is None:
+            return
+        level, muted = state
+        if level != 100:
+            pactl.set_sink_volume(sink["name"], 100)
+            LOG.info("Pinned the AEC reference sink to 100%%")
+        if muted:
+            pactl.set_sink_mute(sink["name"], False)
+            LOG.info("Unmuted the AEC reference sink")
+
+    def _pin_stream(self) -> None:
+        stream = graph.find_owned_stream(
+            self._graph.sink_inputs,
+            self._modules.id_of(REFERENCE_ROLE),
+            stream_media_name(REFERENCE_ROLE),
+        )
+        if stream is None:
+            return
+        state = graph.volume_state(stream)
+        if state is None or state[0] == 100:
+            return
+        pactl.set_sink_input_volume(int(stream["index"]), 100)
+        LOG.info("Pinned the AEC reference stream to 100%%")

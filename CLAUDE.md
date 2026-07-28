@@ -75,6 +75,12 @@ tests inside the app that owns them.
 - User configuration lives in `ansible/inventory/group_vars/all.yml`.
 - Runtime JSON and systemd units are generated from
   `ansible/roles/smartamp/templates/`; do not rely on hand-edited target files.
+- Every upstream is pinned: release versions in the inventory
+  (`voice_assistant_version`, `sendspin_version`), and a commit plus per-file
+  checksums for `xvf_host` (no upstream releases exist), generated into
+  `ansible/roles/smartamp/vars/main.yml`. `make update-versions` refreshes
+  them all and is the only way the generated vars file is written; never
+  hand-edit it, and never point a download at a moving branch.
 - Node apps are a pnpm workspace (`pnpm-workspace.yaml`, root `pnpm-lock.yaml`)
   on the control computer only. Every controller dependency is pinned to an
   exact version in `apps/controller/package.json`, because that file is the only
