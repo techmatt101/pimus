@@ -18,6 +18,21 @@ export const LIVE_ASSIST_STATES: ReadonlySet<string> = new Set(
     [...ASSIST_EVENTS].map((event) => event.toUpperCase()),
 )
 
+const PIPELINE_EVENTS: ReadonlySet<string> = new Set([
+    ...ASSIST_EVENTS,
+    'snapshot',
+    'disconnected',
+    'idle',
+    'tts_finished',
+    'timer_ticking',
+    'timer_updated',
+])
+
+/** Whether an event moves the pipeline on, as opposed to the socket's other traffic. */
+export function changesPipeline(event: string | undefined): boolean {
+    return event !== undefined && PIPELINE_EVENTS.has(event)
+}
+
 export const DEFAULT_BRIGHTNESS = 40
 
 export function createState(overrides: Partial<ControlState> = {}): ControlState {

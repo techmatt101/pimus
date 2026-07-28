@@ -110,6 +110,16 @@ safety-net resync in case an event is missed. Route state lives in memory: the
 controller re-asserts its cached toggles when it reconnects after a manager
 restart, and a reboot returns every route to its configured default.
 
+One piece of upstream timing is corrected as events arrive rather than in each
+thing that reacts to them. Linux Voice Assistant answers `tts_finished` as soon
+as mpv reports end-of-file, but mpv buffers 0.8s of output, so the reply is
+still coming out of the voice bus for about 0.6s afterwards (measured on this
+device). Delivered as it arrives, that event ends the speaking ring, the voice
+key, and the duck mid-word, so `voice/lva-client.mts` holds the end of a reply
+back before applying it. A pipeline that has moved on in the meantime abandons
+the held event, and cancelling is exempt because stopping the player discards
+its buffer with it.
+
 A duck request is scoped to the connection that made it, so the socket doubles
 as the liveness check. The controller re-asserts an active duck on reconnect,
 and the manager releases it the moment the connection drops, which is what
