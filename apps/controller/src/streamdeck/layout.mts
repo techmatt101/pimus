@@ -146,15 +146,30 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
     const infoGrid: PageGrid = [
         [
             new TemperatureTile(ha, {label: 'OFFICE', entity: HA.temperature}),
-            new BrightnessTile(model, dynamic),
-            new VoiceVolumeTile(model, audio, dynamic),
+            null,
+            null,
             null
         ],
         [
             null,
+            null,
+            null,
+            null
+        ],
+    ]
+
+    const settingsGrid: PageGrid = [
+        [
+            new BrightnessTile(model, dynamic),
+            new VoiceVolumeTile(model, audio, dynamic),
+            null,
+            null
+        ],
+        [
             key('AUX', '#4a148c', route('aux', 'toggle')),
             key('USB', '#0d47a1', route('usb', 'toggle')),
             key('MUTE', '#7f0000', voice('mute_toggle')),
+            null
         ],
     ]
 
@@ -176,8 +191,9 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
         : null
 
     const pages: StreamDeckPage[] = [
-        {name: 'MAIN', grid: mainGrid},
+        {name: 'HOME', grid: mainGrid},
         {name: 'INFO', grid: infoGrid},
+        {name: 'SETTINGS', grid: settingsGrid},
         ...(remoteGrid ? [{name: 'REMOTE', grid: remoteGrid}] : []),
     ]
 
