@@ -10,7 +10,7 @@ const log = logger('voice')
 // bus for about 0.6s after LVA reports it finished (measured on this device).
 // Applying the event then ends the speaking ring, the voice key, and the duck
 // mid-word, so it is held back to land with the audio instead.
-const PLAYOUT_MILLISECONDS = 700
+const PLAYOUT_MILLISECONDS = 1000
 
 export interface LvaClientOptions {
     uri: string
