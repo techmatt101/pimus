@@ -49,30 +49,38 @@ function nearestLed(direction: number): number {
     return nearest
 }
 
-/** One steady LED on whoever the microphone array is hearing, ripples off it. */
+/**
+ * One LED on whoever the microphone array is hearing, ripples off it. The
+ * marker and the ripples carry their own colours rather than one colour at two
+ * brightnesses, so the direction reads as a different light and not just a
+ * brighter one.
+ */
 export class ListenWave implements LedAnimation {
     readonly base: number
-    readonly highlight: number
+    readonly ripple: number
+    readonly marker: number
     readonly framePeriodMs = FRAME_MILLISECONDS
     readonly demand: SignalDemand = {mic: true, speech: false}
 
-    constructor(base: ColorInput, highlight: ColorInput) {
+    constructor(base: ColorInput, ripple: ColorInput, marker: ColorInput) {
         this.base = rgb(base)
-        this.highlight = rgb(highlight)
+        this.ripple = rgb(ripple)
+        this.marker = rgb(marker)
     }
 
     ring(nowMs: number, signals: LedSignals): readonly number[] {
         const level = Math.max(0, Math.min(1, signals.micLevel()))
         const direction = signals.micDirection()
+        // With nobody placed there is no marker to colour, so the ring answers
+        // the level in the ripples' own colour.
         if (direction === null) {
-            const swell = mixColor(this.base, this.highlight, FLOOR + level * UNPLACED_SWELL)
+            const swell = mixColor(this.base, this.ripple, FLOOR + level * UNPLACED_SWELL)
             return Array<number>(LED_COUNT).fill(swell)
         }
-        const marker = nearestLed(direction)
-        return Array.from({length: LED_COUNT}, (_, index) => mixColor(this.base, this.highlight,
-            index === marker
-                ? MARKER_FLOOR + (1 - MARKER_FLOOR) * level
-                : this.#ripple(index, direction, nowMs, level)))
+        const facing = nearestLed(direction)
+        return Array.from({length: LED_COUNT}, (_, index) => index === facing
+            ? mixColor(this.base, this.marker, MARKER_FLOOR + (1 - MARKER_FLOOR) * level)
+            : mixColor(this.base, this.ripple, this.#ripple(index, direction, nowMs, level)))
     }
 
     #ripple(index: number, direction: number, nowMs: number, level: number): number {

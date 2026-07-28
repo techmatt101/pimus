@@ -138,7 +138,7 @@ test('the ring blips green when a conversation ends, but not between its turns',
     // LVA answers a reply it means to follow up with listening and never sends
     // idle, so a continued conversation must not be signed off.
     await controller.handleEvent({event: 'listening'})
-    assert.deepEqual(controller.desired(), new ListenWave('#001018', '#00e5ff'))
+    assert.deepEqual(controller.desired(), new ListenWave('#001018', '#0066ff', '#9df6ff'))
 
     await controller.handleEvent({event: 'tts_speaking'})
     await controller.handleEvent({event: 'idle'})

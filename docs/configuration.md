@@ -163,7 +163,7 @@ inventory change.
 
 ```ts
 thinking: new Spin('#7c4dff'),
-listening: new ListenWave('#001018', '#00e5ff'),
+listening: new ListenWave('#001018', '#0066ff', '#9df6ff'),
 ```
 
 Each face is a class in `apps/controller/src/voice/leds/`, one per file, exactly
@@ -200,7 +200,7 @@ no longer running.
 | `Pulse(color)`                | The colour breathing, swelling and fading without ever reaching black.                                  |
 | `Spin(color)`                 | Two LEDs facing each other, travelling round the ring behind fading tails. `periodMs` sets one turn.    |
 | `Blink(color)`                | The whole ring flashing on and off.                                                                     |
-| `ListenWave(base, highlight)` | The LED facing whoever is speaking, held dim and brightened by their voice, with ripples running outwards from it. |
+| `ListenWave(base, ripple, marker)` | The LED facing whoever is speaking, held dim in the marker colour and brightened by their voice, with ripples running outwards from it in their own. |
 | `SpeechPulse(color)`          | The whole ring swelling with the assistant's own speech, metered off the voice bus.                     |
 | `Flash(color, startedAt)`     | The whole ring lit once and faded out, from the instant it was asked for.                               |
 
@@ -214,9 +214,11 @@ nothing but `Ring` and `Off`.
 reads the XVF3800's own DSP over the same USB control protocol the LEDs use, so
 it needs nothing but the array. The LED facing the speaker never falls back to
 the ring's own floor, so the array keeps pointing at whoever last spoke through
-the gaps between their words, and their voice brightens it the rest of the way;
-with nobody placed there is no origin to travel from, so the whole ring answers
-the level instead. The second needs a level the device cannot
+the gaps between their words, and their voice brightens it the rest of the way.
+It carries its own colour too, a pale cyan against the ripples' blue, so the
+direction reads as a different light rather than a brighter one; with nobody
+placed there is no origin to travel from, so the whole ring answers the level in
+the ripples' colour instead. The second needs a level the device cannot
 report, so the controller asks the audio manager to meter the voice bus for as
 long as that state is showing; with the manager unreachable the ring still
 paints, holding a dim steady face instead of a pulse.
