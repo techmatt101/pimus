@@ -68,11 +68,22 @@ directions (an `alsactl monitor` stream wakes it on host changes; sink changes i
 the computer and the amp follows, turn the amp's dial and the computer's slider follows. Whichever side moved since
 they last agreed wins, and when a computer first plugs in the amp's current volume seeds its slider.
 
-The aux bridge is loaded once, at boot, whether or not the route is on; the toggle fades the bridge stream between
-silent and full over ~200 ms. Connecting the stream on demand used to land any DC offset on the line input as a step on
-the speakers — at full amplifier gain, since the volume dial only scales PipeWire — so the pop-prone connect now
-happens exactly once, muted, while nothing is playing. Stream Deck route toggles last until the next reboot; every boot
-starts from these inventory defaults.
+The aux bridge is loaded muted whether or not the route is on; the toggle fades the bridge stream between silent and
+full over ~200 ms. Connecting the stream on demand used to land any DC offset on the line input as a step on the
+speakers — at full amplifier gain, since the volume dial only scales PipeWire — so the pop-prone connect always
+happens silent: a fresh bridge stream is snapped to 0% before it is audible and only then faded up if the route is on.
+Stream Deck route toggles last until the next reboot; every boot starts from these inventory defaults.
+
+`smartamp_idle_teardown_seconds` (default 180, 0 to disable) is the power saver: the persistent loopbacks are what
+keep the HiFiBerry DAC/ADC path clocked and the XVF3800 playback endpoint awake even in silence, worth roughly a watt
+at the wall. After that many seconds with nothing playing — no client stream on any sink, no USB host streaming, no
+voice session, no enabled analogue route — the audio manager unloads the background and voice bus bridges, the AEC
+reference, and the muted aux bridge, and the devices suspend. The null sinks stay loaded so Sendspin and LVA keep
+their PULSE_SINK targets, and the wake-word capture path is untouched. Everything rebuilds within about a second of a
+client stream appearing, a voice session opening (the controller's duck/meter request arrives before the first TTS
+audio), the USB host starting to stream, or a route being toggled on; the first moment of music after a long quiet
+spell is lost while the bridge loads. There is no echo to cancel in silence, so the AEC reference being down while
+idle costs the DSP nothing.
 
 Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Sendspin and USB computer audio share the
 `smartamp_background_sink_name` bus and fade down to `smartamp_voice_duck_volume_percent` per cent of their normal level

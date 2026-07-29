@@ -24,6 +24,7 @@
     "volume_percent": {{ smartamp_voice_startup_volume_percent | int }}
   },
   "resync_seconds": 900,
+  "idle_teardown_seconds": {{ smartamp_idle_teardown_seconds | int }},
   "sources": {
     "aux": {
       "match": {{ smartamp_aux_match | to_json }},

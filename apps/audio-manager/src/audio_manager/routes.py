@@ -84,6 +84,7 @@ class SourceRoutes:
         background_sink: Node | None,
         music_volume: int,
         usb_playback: bool,
+        idle: bool = False,
     ) -> dict[str, dict[str, Any]]:
         return {
             name: self._reconcile_source(
@@ -93,9 +94,23 @@ class SourceRoutes:
                 background_sink=background_sink,
                 music_volume=music_volume,
                 usb_playback=usb_playback,
+                idle=idle,
             )
             for name, source in self._sources.items()
         }
+
+    def holds_awake(self) -> bool:
+        """Whether an enabled route needs the graph kept out of idle teardown.
+
+        A USB-gadget route only carries audio while the host streams, which
+        the daemon gates on separately, so its toggle alone holds nothing
+        awake; an enabled analogue route has no stream to watch, so its toggle
+        is the activity signal.
+        """
+        return any(
+            self.enabled.get(name, False) and not source.requires_usb_host
+            for name, source in self._sources.items()
+        )
 
     def apply_music_volume(self, music_volume: int) -> None:
         """Move every stream this owns to the music level, without reconciling."""
@@ -124,6 +139,7 @@ class SourceRoutes:
         background_sink: Node | None,
         music_volume: int,
         usb_playback: bool,
+        idle: bool,
     ) -> dict[str, Any]:
         node = self._graph.find_source(source.match)
         enabled = self.enabled.get(name, False)
@@ -138,9 +154,11 @@ class SourceRoutes:
         # Connecting an analogue route's stream pops: any DC offset on the
         # input lands as a step on the speakers, at full amp gain because only
         # PipeWire volume sits in the path. A mute_when_off route therefore
-        # keeps its bridge loaded from boot and toggles by fading the stream
-        # volume, so the connect happens exactly once.
-        wanted = enabled or source.mute_when_off
+        # keeps its bridge loaded and toggles by fading the stream volume, so
+        # the connect happens muted. An idle teardown drops the muted bridge —
+        # the loopback is what keeps the ADC capture running — and the rebuild
+        # arrives silent through the same snap-then-fade path below.
+        wanted = enabled or (source.mute_when_off and not idle)
         if node is None and wanted:
             activate_parked_card(self._graph, source.match)
         status = {
@@ -195,9 +213,12 @@ class SourceRoutes:
             self._track_level(stream, level if enabled else 0)
             return
         if was_enabled is None:
-            # A new stream starts at full volume; snap it to the toggle before
-            # it is audible so a boot with the route off is silent.
-            pactl.set_sink_input_volume(stream_index, level if enabled else 0)
+            # A new stream starts at full volume; snap it silent before it is
+            # audible so the pop-prone connect never plays, then fade up if the
+            # route is on.
+            pactl.set_sink_input_volume(stream_index, 0)
+            if enabled:
+                volume.fade_stream(stream_index, 0, level, ROUTE_FADE_MS)
             LOG.info("Bridged %s input %s", name, "unmuted" if enabled else "muted")
         else:
             volume.fade_stream(

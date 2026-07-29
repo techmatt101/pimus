@@ -97,6 +97,16 @@ smartamp_aux_volume_percent: 100
 smartamp_loopback_latency_ms: 20
 smartamp_aux_latency_ms: "{{ smartamp_loopback_latency_ms }}"
 smartamp_aec_reference_enabled: true
+# With nothing playing for this many seconds, the audio manager unloads its
+# persistent loopbacks (the bus bridges, the AEC reference, and the muted aux
+# bridge) so the HiFiBerry path and the XVF3800 playback endpoint suspend -
+# roughly a watt of idle draw. The null sinks stay, so Sendspin and LVA keep
+# their PULSE_SINK targets, and the voice capture path is untouched (the wake
+# word keeps hearing). Bridges rebuild within a second of a client stream, a
+# voice session opening, or a route toggle; the first ~half second of music
+# after a long quiet spell is dropped while the bridge loads. 0 keeps every
+# bridge loaded permanently.
+smartamp_idle_teardown_seconds: 180
 
 # Keep background playback audible but quieter while Assist is listening,
 # thinking, speaking, announcing, or ringing a timer. Sendspin and the USB

@@ -50,15 +50,18 @@ class AudioBus:
         """The source carrying exactly what this bus is playing."""
         return graph.monitor_name(self.config.sink_name)
 
-    def reconcile(self, output: Node | None) -> Node | None:
-        """Keep the null sink and its bridge into the output in place."""
+    def reconcile(self, output: Node | None, *, bridged: bool = True) -> Node | None:
+        """Keep the null sink in place, and its bridge into the output while
+        wanted. An unbridged bus still accepts client streams — they just play
+        into the retained null sink — so an idle teardown never breaks the
+        clients pointed at it by PULSE_SINK."""
         if not self.config.enabled:
             self.release()
             self.sink = None
             return None
         self.sink = self._ensure_sink()
         monitor = self._graph.source_named(graph.monitor_name(self.config.sink_name))
-        if not (output and monitor):
+        if not (bridged and output and monitor):
             self._modules.unload(self.bridge_role)
             return self.sink
         created = self._modules.ensure_loopback(

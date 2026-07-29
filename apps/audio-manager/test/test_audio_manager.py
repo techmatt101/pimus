@@ -30,6 +30,7 @@ from audio_manager import (  # noqa: E402
 )
 from audio_manager.config import AudioConfig  # noqa: E402
 from audio_manager.daemon import AudioManager  # noqa: E402
+from audio_manager.idle import IdleTracker  # noqa: E402
 
 
 def completed(*args: str, returncode: int = 0, stdout: str = "") -> Any:
@@ -1032,6 +1033,174 @@ class ReconcileTests(ManagerTestCase):
         return load_module
 
 
+class IdleTeardownTests(ManagerTestCase):
+    def test_a_quiet_graph_releases_its_bridges_and_playback_rebuilds_them(
+        self,
+    ) -> None:
+        manager = self.make_manager(
+            {
+                "idle_teardown_seconds": 60,
+                "aec_reference": {
+                    "enabled": True,
+                    "sink_match": "XVF3800",
+                    "latency_ms": 40,
+                },
+                "background": {
+                    "enabled": True,
+                    "sink_name": "background",
+                    "latency_ms": 40,
+                },
+                "sources": {
+                    "aux": {"match": "ADC Pro", "mute_when_off": True, "latency_ms": 20}
+                },
+            }
+        )
+        clock = {"now": 0.0}
+        manager.idle = IdleTracker(60, clock=lambda: clock["now"])
+        playing = {
+            "index": 500,
+            "properties": {"media.name": "ALSA Playback"},
+            "volume": {"mono": {"value_percent": "100%"}},
+        }
+        listings: dict[str, Any] = {
+            "sinks": [
+                {"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"},
+                {
+                    "name": "xvf_playback",
+                    "description": "reSpeaker XVF3800",
+                    "volume": {"mono": {"value_percent": "100%"}},
+                    "mute": False,
+                },
+            ],
+            "sources": [
+                {"name": "hifiberry.monitor", "monitor_of_sink": 0},
+                {
+                    "name": "hifiberry_adc",
+                    "description": "HiFiBerry DAC2 ADC Pro",
+                    "monitor_of_sink": 4294967295,
+                },
+            ],
+            "sink-inputs": [playing],
+            "cards": [],
+            "modules": [],
+        }
+        next_id = {"value": 9}
+
+        def load_module(module: str, *arguments: str) -> int:
+            next_id["value"] += 1
+            module_id = next_id["value"]
+            listings["modules"].append(
+                {"index": module_id, "name": module, "argument": " ".join(arguments)}
+            )
+            if module == "module-null-sink":
+                listings["sinks"].append(
+                    {"name": "background", "owner_module": module_id}
+                )
+                listings["sources"].append({"name": "background.monitor"})
+            else:
+                media = next(
+                    argument.split("media.name=")[1]
+                    for argument in arguments
+                    if "media.name=" in argument
+                )
+                listings["sink-inputs"].append(
+                    {
+                        "index": 100 + module_id,
+                        "owner_module": module_id,
+                        "properties": {"media.name": media},
+                        "volume": {"mono": {"value_percent": "100%"}},
+                    }
+                )
+            return module_id
+
+        def run(*args: str, check: bool = True) -> Any:
+            if args[:2] == ("pactl", "unload-module"):
+                module_id = int(args[2])
+                listings["modules"] = [
+                    module
+                    for module in listings["modules"]
+                    if module["index"] != module_id
+                ]
+                listings["sink-inputs"] = [
+                    stream
+                    for stream in listings["sink-inputs"]
+                    if stream.get("owner_module") != module_id
+                ]
+                return completed(*args)
+            if args[:2] == ("pactl", "set-sink-input-volume"):
+                for stream in listings["sink-inputs"]:
+                    if str(stream.get("index")) == args[2]:
+                        stream["volume"] = {"mono": {"value_percent": args[3]}}
+                return completed(*args)
+            return fake_run(*args, check=check)
+
+        def reconcile() -> dict[str, Any]:
+            with self._patched_graph(listings, run), mock.patch.object(
+                pactl, "load_module", side_effect=load_module
+            ), mock.patch.object(
+                usb_gadget, "host_attached", return_value=False
+            ), mock.patch(
+                "audio_manager.volume.time.sleep"
+            ), mock.patch(
+                "audio_manager.status.write"
+            ) as status_write:
+                manager.reconcile()
+            return status_write.call_args.args[1]
+
+        # Something is playing: the sink, its bridge, the AEC reference, and
+        # the muted aux bridge all come up.
+        status = reconcile()
+        self.assertFalse(status["idle"])
+        for role in ("_background_sink", "_background_bridge", "_aec", "aux"):
+            self.assertIn(role, manager.modules)
+
+        # The stream ends. Inside the timeout everything stays loaded — the
+        # daemon's own bridge streams must not count as activity.
+        listings["sink-inputs"] = [
+            stream for stream in listings["sink-inputs"] if stream is not playing
+        ]
+        clock["now"] = 30.0
+        status = reconcile()
+        self.assertFalse(status["idle"])
+        self.assertIn("_background_bridge", manager.modules)
+
+        # Past the timeout the bridges are released; the null sink stays so
+        # clients pointed at it by PULSE_SINK keep their target.
+        clock["now"] = 90.0
+        status = reconcile()
+        self.assertTrue(status["idle"])
+        for role in ("_background_bridge", "_aec", "aux"):
+            self.assertNotIn(role, manager.modules)
+        self.assertIn("_background_sink", manager.modules)
+        self.assertIsNone(manager.idle.deadline())
+
+        # A client starts playing again: everything rebuilds on the next pass.
+        listings["sink-inputs"].append(playing)
+        clock["now"] = 100.0
+        status = reconcile()
+        self.assertFalse(status["idle"])
+        for role in ("_background_bridge", "_aec", "aux"):
+            self.assertIn(role, manager.modules)
+
+    def test_a_voice_session_wakes_an_idle_graph_immediately(self) -> None:
+        manager = self.make_manager(
+            {"idle_teardown_seconds": 60, "background": {"enabled": True}}
+        )
+        manager.idle.idle = True
+        self.assertIsNone(manager.pending_reconcile)
+
+        # The duck request arrives seconds before the first TTS stream exists,
+        # so it must start the rebuild rather than wait for audio to appear.
+        manager.commands.apply(mock.Mock(), {"command": "set-duck", "active": True})
+        self.assertIsNotNone(manager.pending_reconcile)
+
+    def test_teardown_stays_off_by_default(self) -> None:
+        manager = self.make_manager({})
+        self.assertFalse(manager.idle.enabled)
+        self.assertFalse(manager.idle.update(False))
+        self.assertIsNone(manager.idle.deadline())
+
+
 class VolumeTests(ManagerTestCase):
     def test_output_sink_is_pinned_to_full_scale(self) -> None:
         with mock.patch.object(process, "run") as run:
@@ -1234,6 +1403,7 @@ class VolumeTests(ManagerTestCase):
         )
         manager.routes.enabled = {"aux": True, "usb": True}
         manager.routes.unmuted = {"aux": True}
+        manager.routes.stream_indices = {"aux": 61}
         manager.modules.adopt("aux", 60)
         manager.modules.adopt("usb", 50)
         output_sink = {"name": "hifiberry", "index": 1}

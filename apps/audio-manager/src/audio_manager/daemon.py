@@ -17,6 +17,7 @@ from .commands import CommandHandler
 from .config import AudioConfig
 from .control_server import ControlServer
 from .graph import Graph, Node
+from .idle import IdleTracker, playing_clients
 from .levels import VoiceLevelMeter
 from .modules import ModuleRegistry
 from .routes import SourceRoutes
@@ -76,6 +77,7 @@ class AudioManager:
         )
         self.routes = SourceRoutes(config.sources, self.graph, self.modules)
         self.usb_volume = UsbVolumeSync()
+        self.idle = IdleTracker(config.idle_teardown_seconds)
 
         self.selector = selectors.DefaultSelector()
         self.commands = CommandHandler(self)
@@ -206,8 +208,13 @@ class AudioManager:
         # A host volume change may move the music level, so sync before the bus
         # and route gains below are applied against it.
         self.music_volume = self.usb_volume.sync(sink, self.music_volume)
-        background_sink = self.background.reconcile(sink)
-        voice_sink = self.voice_bus.reconcile(sink)
+        # USB state is read before the buses so idle can be judged from it;
+        # the routes below gate on the same values.
+        self.usb_host = usb_gadget.host_attached()
+        self.usb_playback = self.usb_host and usb_gadget.streaming()
+        idle = self.idle.update(self._audio_active())
+        background_sink = self.background.reconcile(sink, bridged=not idle)
+        voice_sink = self.voice_bus.reconcile(sink, bridged=not idle)
         self.voice_bus.apply_gain(self.voice_volume)
         self.voice_meter.set_source(
             self.voice_bus.monitor_name if self.voice_bus.available else None
@@ -221,14 +228,13 @@ class AudioManager:
         voice_source, capture_status = self.voice_capture.reconcile(voice_device)
         ducked = self.apply_ducking()
         self._adopt_defaults(sink, voice_source)
-        aec_status = self.aec_reference.reconcile(sink)
-        self.usb_host = usb_gadget.host_attached()
-        self.usb_playback = self.usb_host and usb_gadget.streaming()
+        aec_status = self.aec_reference.reconcile(sink, wanted=not idle)
         source_status = self.routes.reconcile(
             output=sink,
             background_sink=background_sink,
             music_volume=self.music_volume,
             usb_playback=self.usb_playback,
+            idle=idle,
         )
         output.hold_client_streams(self.graph, sink, self.music_volume)
         # Sendspin plays into the bus as an ordinary Pulse client; the bridge
@@ -257,9 +263,29 @@ class AudioManager:
             "usb_host": self.usb_host,
             "usb_playback": self.usb_playback,
             "output_muted": self.output_muted,
+            "idle": idle,
         }
         status.write(self.status_path, published)
         LOG.debug("reconciled: %s", json.dumps(published))
+
+    def _audio_active(self) -> bool:
+        """Anything that means sound is, or is about to be, in flight.
+
+        A duck or meter request marks a voice session well before its first
+        TTS stream exists, an enabled analogue route has no stream to watch,
+        and everything else shows up as a client stream playing somewhere.
+        """
+        if self.usb_playback or self.commands.duck_requested:
+            return True
+        if self.commands.meter_listeners or self.routes.holds_awake():
+            return True
+        owned = {str(self.modules.id_of(role)) for role in self.modules.roles()}
+        return playing_clients(self.graph.sink_inputs, owned)
+
+    def notice_voice_activity(self) -> None:
+        self.idle.touch()
+        if self.idle.idle:
+            self.schedule_reconcile(0.0)
 
     def broadcast_state(self) -> None:
         self._last_broadcast = self._broadcast_signature()
@@ -307,6 +333,11 @@ class AudioManager:
         meter_deadline = self.voice_meter.deadline()
         if meter_deadline is not None:
             deadlines.append(meter_deadline)
+        # The quiet spell that earns an idle teardown ends without any event,
+        # so the loop must wake itself when the bridges fall due for release.
+        idle_deadline = self.idle.deadline()
+        if idle_deadline is not None:
+            deadlines.append(idle_deadline)
         deadline = min(deadlines)
         for key, _ in self.selector.select(max(0.0, deadline - time.monotonic())):
             key.data()
@@ -331,8 +362,11 @@ class AudioManager:
 
     def _reconcile_when_due(self) -> None:
         now = time.monotonic()
-        if now >= self.next_resync or (
-            self.pending_reconcile is not None and now >= self.pending_reconcile
+        idle_deadline = self.idle.deadline()
+        if (
+            now >= self.next_resync
+            or (self.pending_reconcile is not None and now >= self.pending_reconcile)
+            or (idle_deadline is not None and now >= idle_deadline)
         ):
             self.safe_reconcile()
 

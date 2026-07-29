@@ -29,7 +29,10 @@ class AecReference:
         self._graph = view
         self._modules = registry
 
-    def reconcile(self, output: Node | None) -> dict[str, Any]:
+    def reconcile(self, output: Node | None, *, wanted: bool = True) -> dict[str, Any]:
+        # With nothing playing there is no echo to subtract, so an idle
+        # teardown (wanted=False) can release the reference and let the
+        # XVF3800 playback endpoint suspend without costing the DSP anything.
         reference_sink = self._graph.find_sink(self.config.sink_match)
         monitor = (
             self._graph.source_named(graph.monitor_name(output["name"]))
@@ -37,7 +40,7 @@ class AecReference:
             else None
         )
         available = bool(reference_sink and monitor)
-        if self.config.enabled and reference_sink and monitor:
+        if self.config.enabled and wanted and reference_sink and monitor:
             # The DSP models the echo as this reference at the level the room
             # hears, so the whole path must be unity gain: WirePlumber restores
             # whatever the reference sink last had, and nothing else owns it. A

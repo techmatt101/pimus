@@ -70,6 +70,12 @@ It also mirrors the HiFiBerry output monitor into the XVF3800 USB playback endpo
 ReSpeaker speaker jack; the stream exists to give the XMOS DSP the far-end reference required for acoustic echo
 cancellation.
 
+Those persistent loopbacks are also what keep the audio hardware running through silence, so after a configurable
+quiet spell (`smartamp_idle_teardown_seconds`) the manager unloads the bridges, the AEC reference, and the muted aux
+bridge and lets the devices suspend. The null sinks and the voice capture path stay, so clients keep their targets and
+the wake word keeps hearing; the next client stream, voice session, or route toggle rebuilds the graph within about a
+second.
+
 The initialisation service selects the DAC2 ADC Pro unbalanced line inputs, sets ADC gain, and limits the initial
 hardware output level. Both are adjustable in the Ansible variables.
 

@@ -71,6 +71,9 @@ class AudioConfig:
     voice_capture_channel: int | None
     startup_volume_percent: int
     resync_seconds: float
+    # Seconds of silence before the persistent bridges are released so the
+    # audio devices can suspend; 0 keeps every bridge loaded permanently.
+    idle_teardown_seconds: float
     aec_reference: AecConfig
     background: BackgroundConfig
     voice_bus: VoiceBusConfig
@@ -92,6 +95,9 @@ class AudioConfig:
             voice_capture_channel=None if channel is None else int(channel),
             startup_volume_percent=volume.clamp(raw.get("startup_volume_percent", 100)),
             resync_seconds=float(raw.get("resync_seconds", DEFAULT_RESYNC_SECONDS)),
+            idle_teardown_seconds=max(
+                0.0, float(raw.get("idle_teardown_seconds", 0))
+            ),
             aec_reference=AecConfig(
                 enabled=bool(aec.get("enabled", False)),
                 # A pattern that can never match, so a disabled reference also

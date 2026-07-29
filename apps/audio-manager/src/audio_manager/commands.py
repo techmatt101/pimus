@@ -82,6 +82,10 @@ class CommandHandler:
             return _error("set-duck needs a boolean active")
         if active:
             self._duck_requests.add(connection)
+            # A duck request opens a voice session seconds before its first
+            # TTS stream exists — the earliest moment an idle teardown can
+            # start rebuilding, so the reply plays through a ready bridge.
+            self._manager.notice_voice_activity()
         else:
             self._duck_requests.discard(connection)
         # Ducking only touches the background stream volume, so apply it
@@ -97,6 +101,9 @@ class CommandHandler:
             return _error("set-voice-meter needs a boolean active")
         if active:
             self._meter_requests.add(connection)
+            # A meter request marks a live voice session, exactly as a duck
+            # request does.
+            self._manager.notice_voice_activity()
         else:
             self._meter_requests.discard(connection)
         # Metering only starts or stops a capture of the voice monitor; it
