@@ -289,6 +289,51 @@ test('duck requests are deduplicated and re-asserted after a reconnect', async (
     client.close()
 })
 
+test('panel standby is deduplicated and re-asserted after a reconnect', async () => {
+    const sockets: FakeSocket[] = []
+    const client = new AudioManagerClient({
+        socketPath: '/nowhere/audio.sock',
+        reconnectMilliseconds: 1,
+        connectSocket: () => {
+            const socket = new FakeSocket()
+            sockets.push(socket)
+            return socket as unknown as net.Socket
+        },
+        logger: {
+            log: () => {
+            }, error: () => {
+            }
+        },
+    })
+    client.connect()
+    const first = sockets[0]
+    assert.ok(first)
+    first.emit('connect')
+
+    client.setStandby(true)
+    client.setStandby(true)
+    assert.deepEqual(
+        first.written.map((line) => JSON.parse(line)).filter((message) => message.command === 'set-standby'),
+        [{command: 'set-standby', active: true}],
+    )
+
+    // The manager releases standby when this socket closes and rebuilds its
+    // bridges, so a reconnect while the room is still empty has to ask again.
+    first.emit('close')
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    const second = sockets[1]
+    assert.ok(second)
+    second.emit('connect')
+    assert.deepEqual(
+        second.written.map((line) => JSON.parse(line)).filter((message) => message.command === 'set-standby'),
+        [{command: 'set-standby', active: true}],
+    )
+
+    client.setStandby(false)
+    assert.deepEqual(JSON.parse(second.written.at(-1) ?? ''), {command: 'set-standby', active: false})
+    client.close()
+})
+
 test('malformed audio manager events are ignored', () => {
     const fake = new FakeSocket()
     const client = new AudioManagerClient({

@@ -277,6 +277,7 @@ class AudioManager:
             "usb_playback": self.usb_playback,
             "output_muted": self.output_muted,
             "idle": idle,
+            "standby": self.idle.standby,
         }
         status.write(self.status_path, published)
         LOG.debug("reconciled: %s", json.dumps(published))
@@ -299,6 +300,15 @@ class AudioManager:
         self.idle.touch()
         if self.idle.idle:
             self.schedule_reconcile(0.0)
+
+    def sync_standby(self) -> None:
+        if not self.idle.set_standby(self.commands.standby_requested):
+            return
+        # A waking panel means someone is back in the room: rebuild now, so
+        # the first thing they play or say opens on ready bridges.
+        if not self.idle.standby:
+            self.idle.touch()
+        self.schedule_reconcile(0.0)
 
     def broadcast_state(self) -> None:
         self._last_broadcast = self._broadcast_signature()

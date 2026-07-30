@@ -1207,6 +1207,35 @@ class IdleTeardownTests(ManagerTestCase):
         manager.commands.apply(mock.Mock(), {"command": "set-duck", "active": True})
         self.assertIsNotNone(manager.pending_reconcile)
 
+    def test_a_sleeping_panel_skips_the_silence_timeout(self) -> None:
+        manager = self.make_manager(
+            {"idle_teardown_seconds": 60, "background": {"enabled": True}}
+        )
+        connection = mock.Mock()
+        manager.control.clients[connection] = b""
+
+        # The panel going dark means the room is empty: teardown is immediate
+        # rather than waiting out the timeout.
+        manager.commands.apply(connection, {"command": "set-standby", "active": True})
+        self.assertIsNotNone(manager.pending_reconcile)
+        self.assertTrue(manager.idle.update(False))
+
+        # Something still playing keeps the bridges up, empty room or not.
+        self.assertFalse(manager.idle.update(True))
+
+        # The panel waking rebuilds proactively, so the first thing played or
+        # said after walking in opens on ready bridges.
+        manager.idle.update(False)
+        manager.pending_reconcile = None
+        manager.commands.apply(connection, {"command": "set-standby", "active": False})
+        self.assertIsNotNone(manager.pending_reconcile)
+        self.assertFalse(manager.idle.update(False))
+
+        # Losing the socket releases standby, exactly as it releases a duck.
+        manager.commands.apply(connection, {"command": "set-standby", "active": True})
+        manager.control.drop(connection)
+        self.assertFalse(manager.idle.standby)
+
     def test_teardown_stays_off_by_default(self) -> None:
         manager = self.make_manager({})
         self.assertFalse(manager.idle.enabled)

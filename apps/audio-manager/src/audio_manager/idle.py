@@ -48,6 +48,9 @@ class IdleTracker:
     ) -> None:
         self.timeout_seconds = timeout_seconds
         self.idle = False
+        # The control surface reporting its panel asleep: the room is empty,
+        # so silence needs no further proving and the timeout is skipped.
+        self.standby = False
         self._clock = clock
         self._last_active = clock()
 
@@ -55,21 +58,39 @@ class IdleTracker:
     def enabled(self) -> bool:
         return self.timeout_seconds > 0
 
+    def set_standby(self, active: bool) -> bool:
+        """Record the panel state; returns whether it changed."""
+        if self.standby == active:
+            return False
+        self.standby = active
+        return True
+
     def update(self, active: bool) -> bool:
-        """Record this reconcile's activity; returns whether to stay torn down."""
+        """Record this reconcile's activity; returns whether to be torn down.
+
+        Derived, not latched: a touch() moving the activity instant forward is
+        enough to clear an applied idle on the next pass, which is how a
+        waking panel rebuilds before any stream exists.
+        """
         now = self._clock()
         if active:
             self._last_active = now
-        if not self.enabled or active:
-            if self.idle:
-                LOG.info("Audio activity resumed; rebuilding the idle bridges")
-            self.idle = False
-        elif not self.idle and now - self._last_active >= self.timeout_seconds:
-            LOG.info(
-                "No playback for %.0fs; releasing the idle bridges",
-                self.timeout_seconds,
-            )
-            self.idle = True
+        was_idle = self.idle
+        self.idle = (
+            self.enabled
+            and not active
+            and (self.standby or now - self._last_active >= self.timeout_seconds)
+        )
+        if was_idle and not self.idle:
+            LOG.info("Rebuilding the idle bridges")
+        elif self.idle and not was_idle:
+            if self.standby:
+                LOG.info("Panel asleep; releasing the idle bridges")
+            else:
+                LOG.info(
+                    "No playback for %.0fs; releasing the idle bridges",
+                    self.timeout_seconds,
+                )
         return self.idle
 
     def touch(self) -> None:
