@@ -23,9 +23,13 @@ export interface UsbPowerOptions {
     errors?: Pick<Console, 'error'>
 }
 
+const RETRY_MILLISECONDS = 30_000
+
 export class UsbPower {
     #applied: boolean | null = null
     #queue: Promise<void> = Promise.resolve()
+    #lastErrorMessage: string | null = null
+    #failedAt = 0
     readonly #enabled: boolean
     readonly #hubs: string[]
     readonly #exec: Exec
@@ -40,6 +44,7 @@ export class UsbPower {
 
     set(powered: boolean): void {
         if (!this.#enabled || this.#applied === powered) return
+        if (this.#lastErrorMessage !== null && Date.now() - this.#failedAt < RETRY_MILLISECONDS) return
         this.#applied = powered
         // Serialised so an off issued mid-wake cannot overtake its own on.
         this.#queue = this.#queue.then(async () => {
@@ -47,13 +52,20 @@ export class UsbPower {
                 try {
                     await this.#exec('uhubctl', ['-l', hub, '-a', powered ? 'on' : 'off'])
                 } catch (error) {
-                    // Forgotten so the next transition retries rather than
-                    // trusting a state that never took.
+                    // Forgotten so a later pass retries rather than trusting a
+                    // state that never took; every model change would retry, so
+                    // the attempts are spaced and only a changed failure logs.
                     this.#applied = null
-                    this.#errors.error(`usb power ${powered ? 'on' : 'off'} failed on hub ${hub}`, error)
+                    this.#failedAt = Date.now()
+                    const message = error instanceof Error ? error.message : String(error)
+                    if (message !== this.#lastErrorMessage) {
+                        this.#lastErrorMessage = message
+                        this.#errors.error(`usb power ${powered ? 'on' : 'off'} failed on hub ${hub}`, error)
+                    }
                     return
                 }
             }
+            this.#lastErrorMessage = null
             log.info(`USB ports ${powered ? 'powered' : 'unpowered'}`)
         })
     }

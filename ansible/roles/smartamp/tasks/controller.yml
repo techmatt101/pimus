@@ -75,7 +75,7 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Reload udev
+  notify: Apply USB hub permissions
   when:
     - streamdeck_enabled | bool
     - smartamp_sleep_usb_power_off | bool

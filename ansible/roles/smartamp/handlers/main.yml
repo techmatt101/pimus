@@ -11,6 +11,15 @@
   ansible.builtin.command: udevadm control --reload-rules
   changed_when: true
 
+# Root hubs are never unplugged, so a rules reload alone would leave their
+# existing device nodes on the old permissions until a reboot; trigger the
+# add events so the group change applies now.
+- name: Apply USB hub permissions
+  ansible.builtin.shell: >-
+    udevadm control --reload-rules &&
+    udevadm trigger --subsystem-match=usb --attr-match=idVendor=1d6b
+  changed_when: true
+
 - name: Restart logind
   ansible.builtin.systemd_service:
     name: systemd-logind.service
