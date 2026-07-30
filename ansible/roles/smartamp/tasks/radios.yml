@@ -1,0 +1,47 @@
+---
+# The disable-wifi/disable-bt overlays remove the radio devices at boot, which
+# is what actually stops their draw; rfkill or stopped services would leave the
+# silicon powered. One block owns both lines so the flags stay reversible: with
+# both radios enabled the block disappears entirely, and any change only takes
+# effect at the reboot the notify schedules.
+- name: Configure the on-board radios
+  ansible.builtin.blockinfile:
+    path: /boot/firmware/config.txt
+    marker: "# {mark} SMART AMP RADIOS"
+    state: "{{ 'absent' if (smartamp_wifi_enabled | bool and smartamp_bluetooth_enabled | bool) else 'present' }}"
+    block: |
+      {% if not smartamp_wifi_enabled | bool %}
+      dtoverlay=disable-wifi
+      {% endif %}
+      {% if not smartamp_bluetooth_enabled | bool %}
+      dtoverlay=disable-bt
+      {% endif %}
+  notify: Reboot Smart Amp
+
+# The overlay only applies at the next boot; stopping the daemons now keeps the
+# running system honest in the meantime. failed_when tolerates images that ship
+# without bluez or the hciuart unit.
+- name: Stop Bluetooth services when disabled
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+  failed_when: false
+  loop:
+    - bluetooth.service
+    - hciuart.service
+  when: not (smartamp_bluetooth_enabled | bool)
+
+# Re-enabling is the same flag in reverse: the units come back, though the
+# radio itself only reappears at the reboot that drops the overlay, so a start
+# before then may fail and is tolerated.
+- name: Enable Bluetooth services when enabled
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  failed_when: false
+  loop:
+    - bluetooth.service
+    - hciuart.service
+  when: smartamp_bluetooth_enabled | bool

@@ -49,6 +49,18 @@
       bootloader ignores it on a board whose rails stay up through a halt.
   when: smartamp_wait_for_power_button | bool
 
+# Disabling the WiFi radio while this very connection routes over it would
+# strand the Pi at the reboot that applies the overlay. Ethernet first, then
+# the flag.
+- name: Refuse to disable WiFi over a WiFi connection
+  ansible.builtin.assert:
+    that: ansible_default_ipv4.interface | default('') is not match('^wl')
+    fail_msg: >-
+      smartamp_wifi_enabled is off but {{ inventory_hostname }} routes over
+      {{ ansible_default_ipv4.interface | default('an unknown interface') }}.
+      Move the Pi onto Ethernet before disabling the radio.
+  when: not (smartamp_wifi_enabled | bool)
+
 # These values become PipeWire node names and gain levels. Validate them before
 # provisioning can restart any live audio service.
 - name: Validate voice ducking settings

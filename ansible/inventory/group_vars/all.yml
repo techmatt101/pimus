@@ -27,6 +27,16 @@ smartamp_wake_on_gpio: false
 # again. Turning it on means nobody can wake the amp without walking over to it.
 smartamp_wait_for_power_button: false
 
+# The on-board radios. Each flag maps to a boot overlay (disable-wifi /
+# disable-bt), so flipping one schedules the reboot provisioning already
+# coalesces; nothing changes until then. WiFi stays on while the amp connects
+# over it — provisioning refuses to turn it off until the default route is on
+# Ethernet — and is worth roughly 0.2-0.4W once the cable move happens.
+smartamp_wifi_enabled: true
+# Bluetooth is unused by this stack today (~0.05-0.1W plus a bluetoothd the Pi
+# never talks to). Flip it on if the amp ever streams Bluetooth audio.
+smartamp_bluetooth_enabled: false
+
 # SD-card endurance. True keeps systemd logs for the current boot in RAM only;
 # false persists them (capped at 64M) so crashes leave evidence. Currently off
 # while the USB-gadget crash is being investigated.

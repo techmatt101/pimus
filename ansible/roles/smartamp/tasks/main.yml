@@ -18,6 +18,9 @@
 - name: Configure the bootloader EEPROM
   ansible.builtin.import_tasks: eeprom.yml
 
+- name: Configure the on-board radios
+  ansible.builtin.import_tasks: radios.yml
+
 - name: Configure audio hardware and PipeWire
   ansible.builtin.import_tasks: audio.yml
 

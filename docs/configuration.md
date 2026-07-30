@@ -181,6 +181,22 @@ Bootloader settings are applied together in one staged EEPROM update (`ansible/r
 the firmware flashes during the reboot provisioning schedules; `PSU_MAX_CURRENT` is the fourth key this role owns. Keys
 set by hand outside that list are carried through untouched. Check the live values with `sudo rpi-eeprom-config`.
 
+`smartamp_wifi_enabled` and `smartamp_bluetooth_enabled` control the on-board radios through the `disable-wifi` and
+`disable-bt` boot overlays (`ansible/roles/smartamp/tasks/radios.yml`), which remove the devices entirely — that is
+what actually stops their draw, where rfkill or a stopped daemon would leave the silicon powered. Flipping either flag
+schedules the same reboot other boot-configuration changes do. WiFi is the larger of the two, roughly 0.2–0.4W, but it
+stays on while the amp connects over it: preflight refuses to disable the radio while the Pi's default route is on a
+wireless interface, so the sequence for the saving is plug in Ethernet, confirm the connection moved, then turn the
+flag off and provision. Bluetooth is off by default — nothing in this stack uses it, and the flag also stops
+`bluetoothd` on the running system — and turning it back on (say, for Bluetooth audio streaming) restores the services
+and the radio at the next reboot.
+
+HDMI is deliberately not a flag. On a Pi 5 running headless the HDMI PHY is already powered down when no display is
+attached, so forcing it off in boot configuration measures at roughly nothing and would only cost the option of
+plugging in a monitor to debug a dead board. (The old ~25mA `tvservice -o` saving belongs to the Pi 3/4 era.) For
+scale, the remaining floor is the board itself: a Pi 5 idles at about 2.5–3W and the AAmp60 adds its ~2W quiescent
+draw — the idle graph teardown, deck sleep, and the halt behaviour above are the levers for those.
+
 ## Voice
 
 `voice_assistant_version` pins the upstream release tag that is checked out,
