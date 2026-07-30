@@ -145,6 +145,12 @@ export const PANEL_ACTIONS = {
         example: '{ type: panel, command: sleep }',
         run: ({power}) => power.forceSleep(),
     },
+    shutdown: {
+        summary:
+            'Halt the Pi. It draws nothing once down and answers nothing: only its power button or a plug power-cycle starts it again.',
+        example: '{ type: panel, command: shutdown }',
+        run: ({power}) => power.shutdown(),
+    },
 } as const satisfies Record<string, PanelActionSpec>
 
 export type PanelActionName = keyof typeof PANEL_ACTIONS

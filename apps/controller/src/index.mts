@@ -8,6 +8,7 @@ import {logger} from './log.mjs'
 import {PowerButton} from './power-button.mjs'
 import {RemoteTileServer} from './remote/server.mjs'
 import {ControlModel, createState} from './state.mjs'
+import {SystemPower} from './system-power.mjs'
 import {runDeckLoop} from './streamdeck/deck.mjs'
 import {createLayout, SLEEP} from './streamdeck/layout.mjs'
 import {DeckRenderer} from './streamdeck/renderer.mjs'
@@ -101,11 +102,16 @@ const sleep = new SleepController({
     sleepMilliseconds: SLEEP.sleepMilliseconds,
 })
 
+const systemPower = new SystemPower()
+
 const layout = createLayout({
     model,
     clock: Date.now,
     lva,
-    power: {forceSleep: () => sleep.forceSleep()},
+    power: {
+        forceSleep: () => sleep.forceSleep(),
+        shutdown: () => systemPower.shutdown(),
+    },
     audio: {
         setSource: (name, command) => {
             audio.setSource(name, command)

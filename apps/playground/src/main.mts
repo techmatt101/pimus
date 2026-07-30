@@ -223,7 +223,11 @@ const layout = createLayout({
     model,
     clock: Date.now,
     lva,
-    power: {forceSleep: () => sleep.forceSleep()},
+    power: {
+        forceSleep: () => sleep.forceSleep(),
+        // The development machine is not the amp: say it and stay running.
+        shutdown: () => console.log('[power] shutdown requested'),
+    },
     notifications,
     ...(remote ? {remote} : {}),
     audio: {

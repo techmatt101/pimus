@@ -92,6 +92,10 @@
       - pipewire-bin
       # Presents a PulseAudio-compatible socket to Sendspin and LVA.
       - pipewire-pulse
+      # Decides logind's power-off request for the unprivileged controller, which
+      # the deck's SHUTDOWN key needs; the rule granting it is installed with the
+      # controller. Pi OS Lite does not carry polkitd on its own.
+      - polkitd
       # Supplies pactl, which the audio router uses to select devices, create
       # loopbacks, and adjust volume.
       - pulseaudio-utils

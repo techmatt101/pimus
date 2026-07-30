@@ -18,6 +18,7 @@ import {EntityToggleTile} from './tiles/entity-toggle-tile.mjs'
 import {PlaylistTile} from './tiles/playlist-tile.mjs'
 import {RemoteTile} from './tiles/remote-tile.mjs'
 import {SceneTile} from './tiles/scene-tile.mjs'
+import {ShutdownTile} from './tiles/shutdown-tile.mjs'
 import {TemperatureTile} from './tiles/temperature-tile.mjs'
 import {TimerTile} from './tiles/timer-tile.mjs'
 import type {Tile} from './tile.mjs'
@@ -174,7 +175,7 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
             new BrightnessTile(model, dynamic),
             new VoiceVolumeTile(model, audio, dynamic),
             null,
-            null
+            new ShutdownTile(panelBinding(power, 'shutdown'), clock)
         ],
         [
             key('AUX', '#4a148c', route('aux', 'toggle')),

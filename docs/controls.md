@@ -82,6 +82,7 @@ central dispatcher:
 | `EntityToggleTile` | The general Home Assistant on/off key — lights, fan, blinds, PC. Its service comes from the entity's own domain, plus an icon and an optional `spin` (the fan turns while it runs) and `level` (how far the blinds are down), so the four are one class configured four ways. Its caption reads its own state rather than repeating the key's name: the icon says which device it is, so the room keys drop the label and show just `ON`/`OFF`, `OPEN`/`CLOSED`, or a percentage when part-way (fan speed, light brightness, blind position); `?` when unreachable. Given the dynamic dial, the first press arms it — glow, strip readout, 15s timeout — turning adjusts the level live and a second press toggles, so a double-press turns it on; a plain switch like PC has nothing to adjust and just toggles at once. |
 | `TimerTile`        | The amp's assistant timer, whichever way it was set: a draining ring and a countdown, named if the timer is. Idle, press to arm the dynamic dial and set the length — it starts fresh at five minutes and the detent scales (a second under ten, five under a minute, then fifteen, thirty, a minute past ten minutes) — press again to start. While it runs the key cancels it, resumes it if a voice command paused it, and silences it while it rings. |
 | `TemperatureTile`  | A sensor reading, with the background banded by temperature. Read-only.                                                                                                                                                                                                                                                                                        |
+| `ShutdownTile`     | Halts the Pi, in two presses. The first arms the key — it turns red, reads `CONFIRM?`, and a ring drains over five seconds beside the remaining count; the second press within that window halts and the face goes to `HALTING`. Letting the ring empty, or leaving the page, disarms it. Two presses because nothing on the network can start the board again.  |
 | `PageTile`         | Page navigation from a grid slot, for a page that wants a "next" key of its own in addition to the page dial.                                                                                                                                                                                                                                                  |
 
 The arm-then-confirm behaviour those keys share — playlist, scene, brightness,
@@ -242,15 +243,25 @@ key('AUX', '#4a148c', route('aux', 'toggle'))
 ## Panel power — `type: panel`
 
 Drives the sleep policy itself (see
-[Standby and sleep](#standby-and-sleep) below).
+[Standby and sleep](#standby-and-sleep) below), and the one action that ends
+the session rather than pausing it.
 
-| Command | Effect                                                                                                        |
-|---------|---------------------------------------------------------------------------------------------------------------|
-| `sleep` | Force sleep at once: panel off, amp suspended, USB power cut. Presence returning or the Pi power button wakes it. |
+| Command    | Effect                                                                                                        |
+|------------|---------------------------------------------------------------------------------------------------------------|
+| `sleep`    | Force sleep at once: panel off, amp suspended, USB power cut. Presence returning or the Pi power button wakes it. |
+| `shutdown` | Halt the Pi. It draws nothing once down and answers nothing: only its power button or a plug power-cycle starts it again. |
 
 ```ts
 key('SLEEP', '#263238', panelBinding(power, 'sleep'))
+new ShutdownTile(panelBinding(power, 'shutdown'), clock)
 ```
+
+`shutdown` runs `systemctl poweroff`, which asks logind over D-Bus — the
+controller unit sets `NoNewPrivileges`, so it cannot escalate through sudo. A
+polkit rule installed alongside the controller
+(`/etc/polkit-1/rules.d/50-smartamp-poweroff.rules`) grants the service account
+that one action. Sleep and shutdown are not the same state: sleep keeps the Pi
+running and wakes on presence, shutdown does not.
 
 ## Home Assistant — `type: ha`
 

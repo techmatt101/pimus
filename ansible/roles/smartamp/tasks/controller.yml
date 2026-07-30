@@ -92,8 +92,8 @@
 
 # The Pi 5 power button is the amp's sleep/wake toggle, read by the controller
 # from its gpio-keys input device. logind has to be told to ignore the key or
-# every press would also begin a graceful shutdown; shutting the Pi down moves
-# to SSH or the smart plug.
+# every press would also begin a graceful shutdown; halting the Pi is the
+# SHUTDOWN key on the settings page, SSH, or the smart plug instead.
 - name: Create the logind override directory
   ansible.builtin.file:
     path: /etc/systemd/logind.conf.d
@@ -121,6 +121,34 @@
     path: /etc/systemd/logind.conf.d/smartamp-power-button.conf
     state: absent
   notify: Restart logind
+  when: not (streamdeck_enabled | bool)
+
+# The SHUTDOWN key cannot reach a halt through sudo: the controller unit sets
+# NoNewPrivileges, which forbids any setuid escalation. `systemctl poweroff`
+# instead asks logind over D-Bus, where polkit decides, so the service account
+# is granted those two actions and nothing else. The multiple-sessions variant
+# is the one logind checks when somebody else is logged in, an SSH session
+# included. polkitd re-reads this directory by itself, so no reload is needed.
+- name: Allow the service account to halt the board
+  ansible.builtin.copy:
+    dest: /etc/polkit-1/rules.d/50-smartamp-poweroff.rules
+    content: |
+      polkit.addRule(function (action, subject) {
+          if (subject.user === "{{ smartamp_service_user }}" &&
+              (action.id === "org.freedesktop.login1.power-off" ||
+               action.id === "org.freedesktop.login1.power-off-multiple-sessions")) {
+              return polkit.Result.YES;
+          }
+      });
+    owner: root
+    group: root
+    mode: "0644"
+  when: streamdeck_enabled | bool
+
+- name: Remove the halt permission when the deck is disabled
+  ansible.builtin.file:
+    path: /etc/polkit-1/rules.d/50-smartamp-poweroff.rules
+    state: absent
   when: not (streamdeck_enabled | bool)
 
 # Keep the app, its src directory, and node_modules together under /opt rather

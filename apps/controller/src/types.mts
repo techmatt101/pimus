@@ -11,6 +11,8 @@ export interface Action {
 
 export interface PowerControls {
     forceSleep(): void
+
+    shutdown(): void
 }
 
 export interface StreamDeckDeployment {

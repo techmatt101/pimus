@@ -47,6 +47,7 @@ const ICONS = {
     note: 'MusicNote01Icon',
     playlist: 'Playlist01Icon',
     timer: 'Timer01Icon',
+    power: 'ShutDownIcon',
     // System health status
     wifi: 'Wifi01Icon',
     home: 'Home01Icon',
