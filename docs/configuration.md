@@ -119,9 +119,12 @@ longer shuts the Pi down. Which port attributes those are is a property of the b
 internal VL805 hub listed twice, once for its USB2 half and once for its USB3 half, because power only drops when both
 are switched. On both boards the sockets are ganged, so this takes every USB-A device down together. A Pi 4B needs
 VL805 firmware `000137ad` or newer for the switch to do anything, and has no power button, so provisioning leaves stock
-`logind` handling alone there and presence returning becomes the only wake for a slept board. A device re-enumerating after a power cycle can be probed before its
-capture side is ready, so the audio manager also repairs a voice card that comes back with no input profile by
-switching it to the best profile offering a source.
+`logind` handling alone there and presence returning becomes the only wake for a slept board. A Pi Zero 2 W has an
+empty list — its one OTG port takes VBUS straight off the 5V rail with no switch in the path, and its devices hang off
+a self-powered hub, so disabling the root port would drop them off the bus without saving a watt — and preflight
+refuses the flag rather than promise a saving that cannot happen. A device re-enumerating after a power cycle can be
+probed before its capture side is ready, so the audio manager also repairs a voice card that comes back with no input
+profile by switching it to the best profile offering a source.
 
 Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Sendspin and USB computer audio share the
 `smartamp_background_sink_name` bus and fade down to `smartamp_voice_duck_volume_percent` per cent of their normal level
@@ -175,7 +178,9 @@ removes the generator, its configuration, and this file, and puts both sysctls
 back to their stock values.
 
 `smartamp-doctor` reports available memory and whether zram is actually swapped
-on, which is the number to watch when moving to a board with less RAM.
+on, which is the number to watch when moving to a board with less RAM. A Pi
+Zero 2 W's 512MB is the tightest this stack runs in, and the one board where
+turning zram off is likely to end in an OOM kill.
 
 ## Power
 
@@ -210,6 +215,13 @@ the firmware flashes during the reboot provisioning schedules; `PSU_MAX_CURRENT`
 Pi 5. Which keys exist is a property of the board (`ansible/roles/smartamp/vars/boards.yml`): a Pi 4B firmware has
 neither `WAIT_FOR_POWER_BUTTON` nor `PSU_MAX_CURRENT`, so those are neither written nor stripped there. Keys set by
 hand outside the board's list are carried through untouched. Check the live values with `sudo rpi-eeprom-config`.
+
+A Pi Zero 2 W has no bootloader EEPROM to update. A BCM2710 boots `bootcode.bin` from the card, so there is no
+`rpi-eeprom-config` to read and no key to write: the board's list is empty, the whole task is skipped, and every one of
+the three flags above must be false — preflight names whichever is on rather than dropping it silently. Halting there
+leaves the rails energised, so `sudo poweroff` reaches the board's own small idle draw plus the AAmp60's ~2W rather
+than the ~0W a Pi 5 or Pi 4B reaches; cutting the plug is the only way to the floor, and switching it back on is what
+boots it again.
 
 `smartamp_wifi_enabled` and `smartamp_bluetooth_enabled` control the on-board radios through the `disable-wifi` and
 `disable-bt` boot overlays (`ansible/roles/smartamp/tasks/radios.yml`), which remove the devices entirely — that is

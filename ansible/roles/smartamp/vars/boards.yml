@@ -17,11 +17,20 @@ smartamp_boards:
     # device. The controller reads it as the sleep/wake toggle, and logind has
     # to be told to leave the key alone; a board without one gets neither.
     power_button: true
+    # Whether the board can be a USB sound card to a computer while still
+    # hosting the deck and the ReSpeaker. That needs a peripheral-capable port
+    # separate from the host ones; a board with a single OTG port can only be
+    # one or the other, so preflight refuses usb_audio_gadget_enabled there and
+    # audio.json carries no usb route at all.
+    usb_gadget: true
+    # What the doctor tells you to look at when the throttle flags come back
+    # non-zero, since what is worth checking differs by board.
+    power_hint: "check AAmp60 and USB power budget"
     # The per-port disable attributes that cut VBUS to the USB-A sockets, and
     # the answer to whether the board can do it at all: an empty list means it
-    # cannot, and preflight refuses the sleep power-off flag. On both boards the
-    # sockets are ganged into one power group, so a write takes every USB-A
-    # device down together - which is what this feature wants, deck and
+    # cannot, and preflight refuses the sleep power-off flag. On every board
+    # that has them the sockets are ganged into one power group, so a write
+    # takes every USB-A device down together - which is what this wants, deck and
     # ReSpeaker off as one, but it means nothing else may be left plugged in
     # expecting to survive sleep.
     #
@@ -53,6 +62,8 @@ smartamp_boards:
     # whose USB power is cut can only be woken by presence: see the note on
     # smartamp_sleep_usb_power_off in inventory.
     power_button: false
+    usb_gadget: true
+    power_hint: "check AAmp60 and the ~1.2A total USB-A budget; a powered hub may be needed"
     # The VL805 does switch VBUS, but only with firmware 000137ad or newer
     # (sudo rpi-eeprom-update). On older firmware the writes below succeed and
     # nothing goes dark, which is what the doctor's port check is for.
@@ -79,6 +90,29 @@ smartamp_boards:
     eeprom_keys:
       - POWER_OFF_ON_HALT
       - WAKE_ON_GPIO
+  pizero2w:
+    label: "Raspberry Pi Zero 2 W"
+    model_match: "Raspberry Pi Zero 2 W"
+    # No power button and no USB-A sockets at all: one micro-USB OTG port for
+    # data beside the one that only takes power. Everything - the deck, the
+    # ReSpeaker, and any Ethernet adapter - reaches the Pi through a powered hub
+    # on that single port.
+    power_button: false
+    # Host and peripheral are the same port here, so being a USB sound card
+    # would mean unplugging the hub the deck and the ReSpeaker hang off. The
+    # deck's USB key greys itself out on the route list that follows.
+    usb_gadget: false
+    power_hint: "the hub must be self-powered; this board cannot feed the deck and ReSpeaker itself"
+    # Nothing to switch. The OTG port's VBUS comes straight off the 5V rail with
+    # no switch in the path, and the devices are on a self-powered hub anyway -
+    # disabling the root port would drop them off the bus without saving a watt.
+    usb_port_disables: []
+    # A BCM2710 boots bootcode.bin from the SD card: there is no bootloader
+    # EEPROM on this board, and no rpi-eeprom-config to read. An empty list is
+    # what skips that task entirely (tasks/main.yml) and what makes preflight
+    # name any power flag that is on. Halting leaves the board's rails up, so
+    # the ~0W floor POWER_OFF_ON_HALT buys elsewhere is not available here.
+    eeprom_keys: []
 
 # The HiFiBerry board fitted on the header, chosen by hifiberry_board in
 # inventory because a HAT cannot be detected once force_eeprom_read=0 tells the

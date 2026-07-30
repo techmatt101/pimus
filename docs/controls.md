@@ -589,8 +589,8 @@ Waking from sleep, in the order you will meet them:
 | Wakes the amp                        | Notes                                                         |
 |--------------------------------------|---------------------------------------------------------------|
 | The presence sensor turning `on`     | Walking back in; everything is powered before you reach it    |
-| The board's power button (Pi 5)      | Its shutdown meaning is disabled by provisioning; a press wakes a sleeping amp and forces sleep on a waking one. A Pi 4B has none, and keeps stock power-key handling |
-| A key press                          | Only when USB power stays on; **the first press on a dark deck only wakes it**. On a Pi 4B with the USB power cut there is no button either, so presence is the only wake |
+| The board's power button (Pi 5)      | Its shutdown meaning is disabled by provisioning; a press wakes a sleeping amp and forces sleep on a waking one. A Pi 4B and a Pi Zero 2 W have none, and keep stock power-key handling |
+| A key press                          | Only when USB power stays on; **the first press on a dark deck only wakes it**. On a Pi 4B with the USB power cut there is no button either, so presence is the only wake. A Pi Zero 2 W cannot cut USB power at all, so a key press is always a wake there |
 
 A forced sleep holds while you remain in the room; leave and return (or press
 the power button) and it wakes as usual.

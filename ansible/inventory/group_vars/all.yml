@@ -11,6 +11,10 @@ smartamp_service_user: smartamp
 # the power button, an RTC wakealarm, or a plug power-cycle boots it, and at
 # ~0W the brick's capacitors hold the rail long enough that a plug cut has to
 # last at least 60 seconds to count as one.
+#
+# This and the two settings below are bootloader EEPROM keys. A Pi Zero 2 W has
+# no bootloader EEPROM at all - it boots from the card - so all three must be
+# false there; provisioning names whichever is on rather than dropping it.
 smartamp_power_off_on_halt: true
 # Wake a halted board by pulling GPIO3 or GLOBAL_EN to ground (bootloader EEPROM
 # WAKE_ON_GPIO, firmware default 1). Raspberry Pi document this as "not relevant"
@@ -61,6 +65,8 @@ smartamp_swapfile_enabled: false
 # it fills the kernel still OOM-kills and systemd still restarts the service —
 # the endurance stance above survives intact. If the swapfile is also enabled,
 # the priority below keeps zram preferred and the card used only after it.
+# Worth leaving on everywhere and essential on a Pi Zero 2 W, whose 512MB is the
+# tightest this stack runs in; smartamp-doctor reports the headroom left.
 smartamp_zram_enabled: true
 # Size of the zram device as a percentage of total RAM. This is the
 # uncompressed capacity it advertises; the RAM it actually consumes is that
@@ -78,8 +84,8 @@ smartamp_zram_percent: 50
 #               Its ADC is the analogue aux line-in.
 #   amp100      Amp100, an amplifier with its own DAC and no ADC at all, so it
 #               has no aux input: provisioning refuses smartamp_aux_enabled,
-#               nothing carries an aux route, and the AUX key on the deck has
-#               nothing to switch (drop it from streamdeck/layout.mts).
+#               nothing carries an aux route, and the AUX key on the deck greys
+#               itself out - the compiled layout needs no per-unit edit.
 hifiberry_board: dac2adcpro
 # Both boards enumerate under this ALSA card id; ALSA truncates either card
 # name to the same fifteen characters. Override only if a future board differs.
@@ -204,7 +210,9 @@ smartamp_voice_startup_volume_percent: 30
 # to arbitrate. Sample size is bytes per sample: 2 = 16-bit, 3 = 24-bit,
 # 4 = 32-bit. Keep it at 2: the dwc2 gadget controller corrupts 3-byte
 # samples on its isochronous endpoints, which plays as loud static with the
-# audio faintly underneath.
+# audio faintly underneath. A Pi Zero 2 W has one USB data port for both roles,
+# so it cannot be a sound card and still host the deck and the ReSpeaker:
+# provisioning refuses this there, and the deck's USB key greys itself out.
 usb_audio_gadget_enabled: true
 usb_audio_product: "Office Amp USB"
 usb_audio_sample_rate: 48000
@@ -268,12 +276,14 @@ streamdeck_enabled: true
 # seconds. The sleep and standby timings themselves are compiled into the
 # controller beside the layout (the SLEEP block in streamdeck/layout.mts).
 #
-# Both supported boards switch VBUS, ganged across every USB-A socket, so
+# A Pi 5 and a Pi 4B both switch VBUS, ganged across every USB-A socket, so
 # nothing else may be left plugged in expecting to survive sleep. A Pi 4B needs
 # VL805 firmware 000137ad or newer (sudo rpi-eeprom-update) or the write is a
 # silent no-op, and has no power button, so with this on presence returning is
 # the only thing that wakes it - set it to false there to keep a deck touch as
-# a wake source.
+# a wake source. A Pi Zero 2 W has no switchable port at all and its devices
+# hang off a self-powered hub, so this must be false there; the panel still
+# sleeps and a touch still wakes it.
 smartamp_sleep_usb_power_off: true
 
 # Home Assistant, for the Stream Deck keys that show and change house state:

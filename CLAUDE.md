@@ -5,7 +5,8 @@
 Pimus provisions `office-amp`, a Raspberry Pi audio and voice endpoint built
 from a HiFiBerry DAC2 ADC Pro + AAmp60 or a HiFiBerry Amp100, a ReSpeaker
 XVF3800, and an Elgato Stream Deck+. It targets a fresh 64-bit Raspberry Pi OS
-Lite installation on a Pi 5 or a Pi 4 Model B; `office-amp` itself is a Pi 5
+Lite installation on a Pi 5, a Pi 4 Model B, or a Pi Zero 2 W (which reaches its
+USB devices through a self-powered hub); `office-amp` itself is a Pi 5
 with the DAC2 ADC Pro.
 
 Home Assistant and Music Assistant run on another machine. This repository
@@ -386,17 +387,25 @@ Provisioning can reboot the Pi when boot overlays change.
   can no longer be the normal PSU input. The HiFiBerry/AAmp60 stack must then
   power the Pi through GPIO. On a Pi 4B the host cable must have its power line
   cut as well: that board wires USB-C VBUS onto the same 5V rail as the GPIO
-  header, with no PMIC to arbitrate.
+  header, with no PMIC to arbitrate. A Pi Zero 2 W has one USB data port for
+  both roles, so it cannot be a sound card and still host the deck and the
+  ReSpeaker: preflight refuses the flag, and the deck's USB key greys itself out
+  on the route list that follows.
 - The Pi, AAmp60, ReSpeaker, and Stream Deck+ need power-budget validation.
   Preserve under-voltage checks and recommend a powered USB hub if USB devices
   reset or the throttle flags are non-zero. A Pi 5 declares its GPIO supply with
-  `PSU_MAX_CURRENT`; a Pi 4B has no such setting and a fixed ~1.2A USB-A budget.
-- Both boards switch USB VBUS, ganged across every USB-A socket, but only the
-  Pi 5 has a dedicated power button, so the button sleep/wake toggle is a Pi 5
-  behaviour. On a Pi 4B the switch needs VL805 firmware 000137ad or newer, its
+  `PSU_MAX_CURRENT`; a Pi 4B has no such setting and a fixed ~1.2A USB-A budget;
+  a Pi Zero 2 W requires a self-powered hub, so the budget is the hub's.
+- A Pi 5 and a Pi 4B switch USB VBUS, ganged across every USB-A socket, but only
+  the Pi 5 has a dedicated power button, so the button sleep/wake toggle is a Pi
+  5 behaviour. On a Pi 4B the switch needs VL805 firmware 000137ad or newer, its
   ports are the internal hub's, listed for both the USB2 and USB3 halves because
   power only drops when both are switched, and a slept board with dark USB can
-  only be woken by presence.
+  only be woken by presence. A Pi Zero 2 W has no switchable port and its
+  devices are hub-powered, so it sleeps the panel and nothing else.
+- Only a board with a bootloader EEPROM has the halt/wake power flags. A Pi Zero
+  2 W is a BCM2710 and boots from the card, so its key list is empty, `eeprom.yml`
+  is skipped whole, and preflight names any power flag left on.
 - The XVF3800 playback endpoint carries the far-end AEC reference even though
   its physical speaker jack is unused. Do not remove that route as "unused."
 - The XVF3800 USB capture is two DSP outputs, not stereo: channel 0 is the

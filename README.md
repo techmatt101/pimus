@@ -1,6 +1,6 @@
 # Pimus Smart Amp
 
-An idempotent Raspberry Pi build recipe, for a Pi 5 or a Pi 4 Model B, for:
+An idempotent Raspberry Pi build recipe, for a Pi 5, a Pi 4 Model B, or a Pi Zero 2 W, for:
 
 - HiFiBerry DAC2 ADC Pro with the AAmp60 add-on amplifier, or a HiFiBerry Amp100
 - ReSpeaker XMOS XVF3800 USB four-microphone array
@@ -18,15 +18,18 @@ SSH; running it again produces the same configuration and safely applies later c
 The AAmp60 is compatible with the DAC+ ADC Pro family, but its published power guarantee only covers Raspberry Pi models
 through Pi 4. A Pi 5 can expose up to 1.6 A to USB peripherals only with a 5 A supply, and a Pi 4B is fixed at roughly
 1.2 A across all four USB-A ports whatever it is powered from; the amplifier, XVF3800 and Stream Deck+ combination
-therefore needs power validation either way. Use `smartamp-doctor` to check the Pi throttle/under-voltage flags, and
-plan on a powered USB hub if flags appear or USB devices reset. Either amplifier board feeds the Pi from its own DC
-supply through the GPIO header, so size that supply for the whole stack rather than the amplifier alone.
+therefore needs power validation either way. On a Pi Zero 2 W the question does not arise: it has one micro-USB data
+port, so **a self-powered hub is required**, and the deck and the ReSpeaker draw from that rather than from the Pi. Use
+`smartamp-doctor` to check the Pi throttle/under-voltage flags, and plan on a powered USB hub if flags appear or USB
+devices reset. Either amplifier board feeds the Pi from its own DC supply through the GPIO header, so size that supply
+for the whole stack rather than the amplifier alone.
 
 The optional USB audio input changes the USB-C port into a peripheral port. The Pi must then be powered through the
 HiFiBerry GPIO stack. Connect the USB-C port to the source computer; the four USB-A ports remain hosts for the
 ReSpeaker and Stream Deck+. **On a Pi 4B that host cable must have its power line cut**: that board wires USB-C VBUS
 straight onto the same 5 V rail as the GPIO header, so the computer and the AAmp60 would otherwise feed the rail against
-each other. The Pi 5's PMIC arbitrates instead.
+each other. The Pi 5's PMIC arbitrates instead. A Pi Zero 2 W has no second port to spare, so it cannot do this at all —
+provisioning refuses `usb_audio_gadget_enabled` there.
 
 ### Which HiFiBerry board
 
@@ -50,25 +53,35 @@ overlay's other parameters — `leds_off`, `mute_ext_ctl`, `24db_digital_gain`, 
 exposed; `mute_ext_ctl` in particular would add a second, competing way to mute, beside the one the volume dial and
 Home Assistant already drive.
 
-### What differs on a Pi 4B
+### What differs between the Raspberry Pis
 
-Everything the board can do is provisioned; anything it cannot is refused by name before provisioning changes anything,
-so inventory always describes what the device actually does. Two settings are Pi 5 only:
+The board is detected from `/proc/device-tree/model`. Everything it can do is provisioned; anything it cannot is
+refused by name before provisioning changes anything, so inventory always describes what the device actually does.
 
-| Setting | Why |
-| --- | --- |
-| `smartamp_wait_for_power_button` | The bootloader setting exists on flagship models since the Pi 5 only. |
-| `usb_audio_psu_max_current_ma` | `PSU_MAX_CURRENT` is Pi 5 only; the Pi 4B's USB budget is fixed in hardware. The value is simply not written, so it needs no change. |
+| | Pi 5 | Pi 4 Model B | Pi Zero 2 W |
+| --- | --- | --- | --- |
+| Sleep cuts USB power (`smartamp_sleep_usb_power_off`) | yes | yes, with VL805 firmware `000137ad`+ | **no** |
+| USB sound card (`usb_audio_gadget_enabled`) | yes | yes, power-cut cable | **no** |
+| Power button as the sleep/wake toggle | yes | none | none |
+| `smartamp_power_off_on_halt`, `smartamp_wake_on_gpio` | yes | yes | **no bootloader EEPROM** |
+| `smartamp_wait_for_power_button` | yes | no | **no** |
+| `usb_audio_psu_max_current_ma` | yes | fixed ~1.2 A in hardware | n/a |
 
-Sleep still cuts USB power on a Pi 4B — its VL805 hub switches VBUS across all four sockets at once — but it needs
-VL805 firmware `000137ad` or newer (`sudo rpi-eeprom-update`). Older firmware accepts the write and leaves the sockets
-lit; `smartamp-doctor` reports the version and checks the port controls are actually there.
-
-A Pi 4B has no dedicated power button, which the Pi 5 uses as the sleep/wake toggle. Provisioning leaves stock `logind`
-handling alone there, and refuses `smartamp_power_off_on_halt` unless `smartamp_wake_on_gpio` is also on — without a
-button, shorting GPIO3 or `GLOBAL_EN` to ground is the only way to start a halted board short of a plug cycle. The same
+A **Pi 4B** switches VBUS through its VL805 hub, across all four sockets at once, but only on firmware `000137ad` or
+newer (`sudo rpi-eeprom-update`). Older firmware accepts the write and leaves the sockets lit; `smartamp-doctor`
+reports the version and checks the port controls are actually there. It has no dedicated power button, so provisioning
+leaves stock `logind` handling alone and refuses `smartamp_power_off_on_halt` unless `smartamp_wake_on_gpio` is also on
+— shorting GPIO3 or `GLOBAL_EN` to ground is then the only way to start a halted board short of a plug cycle. The same
 gap applies to sleep: with `smartamp_sleep_usb_power_off` on, the deck is dark and there is no button, so **presence
 returning is the only thing that wakes a sleeping Pi 4B**. Turn the flag off to keep a deck touch as a wake source.
+
+A **Pi Zero 2 W** has one micro-USB data port beside its power-only one, so the deck, the ReSpeaker, and any Ethernet
+adapter all arrive through a self-powered hub. That single port is why there is no USB sound card here: being one would
+mean unplugging the hub. It also means nothing to switch off in sleep — the hub feeds the devices, not the Pi — so the
+panel sleeps and a touch wakes it, as with the flag off anywhere else. Being a BCM2710 it boots from the card and has
+no bootloader EEPROM at all, so the three power flags above must be false; `poweroff` leaves the board's rails up and
+the stack at the AAmp60's quiescent draw rather than at ~0 W. Its 512 MB is the tightest RAM this stack runs in: leave
+`smartamp_zram_enabled` on and watch the headroom `smartamp-doctor` reports.
 
 The supported boards and their capabilities live in
 [`ansible/roles/smartamp/vars/boards.yml`](ansible/roles/smartamp/vars/boards.yml).

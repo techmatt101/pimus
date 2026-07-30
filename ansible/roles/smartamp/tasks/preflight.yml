@@ -14,8 +14,9 @@
     raspberry_pi_model: "{{ raspberry_pi_model_raw.content | b64decode | replace('\u0000', '') }}"
 
 # The supported boards differ in ways that change behaviour rather than naming:
-# a power button, switchable USB port power, and which bootloader keys exist.
-# One table answers all of that, so no later task parses the model string again.
+# a power button, switchable USB port power, a spare port to be a USB sound card
+# on, and which bootloader keys exist. One table answers all of that, so no later
+# task parses the model string again.
 - name: Load the supported board capabilities
   ansible.builtin.include_vars:
     file: boards.yml
@@ -91,13 +92,48 @@
       touch still wakes it.
   when: smartamp_sleep_usb_power_off | bool
 
-- name: Require bootloader support for waiting on the power button
+# Appearing as a sound card takes a peripheral-capable port that is not already
+# hosting the deck and the ReSpeaker. A board with one OTG port for everything
+# would have to give those up, so the flag is refused rather than turned into a
+# choice made silently at boot.
+- name: Require a spare port for the USB audio gadget
   ansible.builtin.assert:
-    that: "'WAIT_FOR_POWER_BUTTON' in smartamp_board_caps.eeprom_keys"
+    that: smartamp_board_caps.usb_gadget | bool
     fail_msg: >-
-      smartamp_wait_for_power_button is on but the {{ smartamp_board_caps.label }}
-      bootloader has no such setting. Set it to false.
-  when: smartamp_wait_for_power_button | bool
+      usb_audio_gadget_enabled is on but {{ smartamp_board_caps.label }} has one
+      USB port for both roles, so being a sound card would mean unplugging the
+      deck and the ReSpeaker. Set it to false.
+  when: usb_audio_gadget_enabled | bool
+
+# Every bootloader flag is only as real as the key behind it, and a board with no
+# EEPROM at all has none of them. Name the ones that are on rather than let
+# eeprom.yml's key filter drop them and leave inventory promising a halt
+# behaviour the board never had.
+- name: Work out which power settings this board has no bootloader key for
+  ansible.builtin.set_fact:
+    smartamp_unsupported_power_settings: >-
+      {{ (['smartamp_power_off_on_halt']
+          if (smartamp_power_off_on_halt | bool)
+          and 'POWER_OFF_ON_HALT' not in smartamp_board_caps.eeprom_keys else [])
+         + (['smartamp_wake_on_gpio']
+            if (smartamp_wake_on_gpio | bool)
+            and 'WAKE_ON_GPIO' not in smartamp_board_caps.eeprom_keys else [])
+         + (['smartamp_wait_for_power_button']
+            if (smartamp_wait_for_power_button | bool)
+            and 'WAIT_FOR_POWER_BUTTON' not in smartamp_board_caps.eeprom_keys else []) }}
+
+- name: Require bootloader support for the power settings that are on
+  ansible.builtin.assert:
+    that: smartamp_unsupported_power_settings | length == 0
+    fail_msg: >-
+      {{ smartamp_unsupported_power_settings | join(', ') }}
+      {{ 'are' if smartamp_unsupported_power_settings | length > 1 else 'is' }} on,
+      but the {{ smartamp_board_caps.label }}
+      {{ 'has no bootloader EEPROM at all'
+         if smartamp_board_caps.eeprom_keys | length == 0
+         else 'bootloader has no such setting' }}.
+      Set {{ 'them' if smartamp_unsupported_power_settings | length > 1 else 'it' }}
+      to false.
 
 # A board with a power button wakes from halt on that button whatever
 # WAKE_ON_GPIO says. Without one, WAKE_ON_GPIO is the only wake path there is,

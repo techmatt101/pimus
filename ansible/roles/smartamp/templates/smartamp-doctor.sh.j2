@@ -18,10 +18,10 @@ case "$MODEL" in
 esac
 if command -v vcgencmd >/dev/null 2>&1; then
     THROTTLED=$(vcgencmd get_throttled)
-{# A Pi 4B's USB-A budget is fixed at roughly 1.2A total, with no PSU_MAX_CURRENT
-   to raise it, so deck plus ReSpeaker is already near the limit there. #}
-{% set power_hint = 'check AAmp60 and the ~1.2A total USB-A budget; a powered hub may be needed' if smartamp_board == 'pi4b' else 'check AAmp60 and USB power budget' %}
-    [ "$THROTTLED" = 'throttled=0x0' ] && pass 'No under-voltage/throttle flags' || warn "$THROTTLED ({{ power_hint }})"
+{# What is worth checking differs by board - a fixed USB-A budget on a Pi 4B, a
+   mandatory self-powered hub on a Zero 2 W - so the hint comes from the board
+   table rather than from a chain of conditions here. #}
+    [ "$THROTTLED" = 'throttled=0x0' ] && pass 'No under-voltage/throttle flags' || warn "$THROTTLED ({{ smartamp_board_caps.power_hint }})"
 fi
 
 heading 'Memory'

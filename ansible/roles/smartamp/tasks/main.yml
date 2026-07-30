@@ -14,9 +14,13 @@
   ansible.builtin.import_tasks: sdcard.yml
 
 # One place owns the bootloader EEPROM, ahead of the features whose flags it
-# reads, so a single staged update carries every setting into the next boot.
+# reads, so a single staged update carries every setting into the next boot. A
+# board with no keys has no EEPROM to read either - rpi-eeprom-config is not
+# something a BCM2710 answers - so the whole file is skipped rather than made to
+# cope with an empty wanted list.
 - name: Configure the bootloader EEPROM
   ansible.builtin.import_tasks: eeprom.yml
+  when: smartamp_board_caps.eeprom_keys | length > 0
 
 - name: Configure the on-board radios
   ansible.builtin.import_tasks: radios.yml

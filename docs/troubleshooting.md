@@ -110,7 +110,9 @@ controller is connected to the socket in the `smartamp-controller` log, then loo
 
 The cable must be connected to the Pi's USB-C port, not a USB-A port. On a Pi 4B it must also be a cable with the power
 line cut: that board wires USB-C VBUS onto the same 5V rail the AAmp60 feeds through the GPIO header, with no PMIC
-between them. Work down the chain on the Pi:
+between them. A Pi Zero 2 W cannot do this at all — its one data port is already hosting the deck and the ReSpeaker —
+and provisioning refuses `usb_audio_gadget_enabled` there, so the deck's USB key draws greyed. Work down the chain on
+the Pi:
 
 ```sh
 systemctl status smartamp-usb-audio-gadget   # the gadget was assembled and bound
@@ -181,7 +183,9 @@ Deck+ on a quality powered USB hub, ensure the AAmp60 supply and wiring are appr
 cooling.
 
 On a Pi 4B a powered hub is the likelier answer from the start: its four USB-A ports share a fixed budget of roughly
-1.2A whatever the board is powered from, and there is no bootloader setting to raise it.
+1.2A whatever the board is powered from, and there is no bootloader setting to raise it. On a Pi Zero 2 W the hub is
+not optional and must be self-powered — a bus-powered one puts the deck and the ReSpeaker back on the Pi's single
+micro-USB port, which is where this symptom comes from.
 
 On a Pi 5, provisioning sets `PSU_MAX_CURRENT` in the bootloader EEPROM from `usb_audio_psu_max_current_ma` (check with
 `sudo rpi-eeprom-config`). A GPIO-powered Pi has no USB-PD source to negotiate with, so without the setting the
@@ -208,7 +212,9 @@ draws nothing and answers nothing — no ping, no SSH, no wake-on-LAN. Boot it w
 wakealarm, or by power-cycling the plug. On a Pi 5 `WAKE_ON_GPIO` has no bearing on this: from the Pi 5 onwards the
 power button wakes the board from HALT or STANDBY whatever that setting is. A Pi 4B has no power button, so there
 `WAKE_ON_GPIO` is the wake path — shorting GPIO3 or GLOBAL_EN to ground — and provisioning refuses to halt the rails
-without it.
+without it. None of this applies to a Pi Zero 2 W: it has no bootloader EEPROM, so the flag must be false there and a
+halt leaves the rails up. If such a board is unreachable after a shutdown it has genuinely stopped rather than powered
+down, and cutting the plug is what restarts it.
 
 A plug cut has to be long enough. The whole stack sits at roughly 0W once halted, so the 20V brick's capacitors keep
 the rail up through a brief interruption: a 10 second off/on does nothing. Leave it off for **at least 60 seconds**, or
