@@ -2,6 +2,7 @@
     "name": "pimus",
     "version": "0.1.0",
     "private": true,
+    "license": "MIT",
     "description": "Development workspace for the pimus Node apps. Nothing here is deployed; see apps/controller for the app that runs on the Pi.",
     "packageManager": "pnpm@11.17.0",
     "engines": {

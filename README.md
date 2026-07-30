@@ -90,3 +90,7 @@ docs/                You are here
 Each app owns its own `src/` and `test/`; see [`apps/README.md`](apps/README.md)
 for the module boundaries. The Node apps are a pnpm workspace on this computer
 only — the Pi installs the controller's exact pins with plain npm.
+
+## ⚖️ License
+
+[MIT](LICENSE)
