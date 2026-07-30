@@ -212,36 +212,49 @@ class AudioManager:
         # the routes below gate on the same values.
         self.usb_host = usb_gadget.host_attached()
         self.usb_playback = self.usb_host and usb_gadget.streaming()
+        was_idle = self.idle.idle
         idle = self.idle.update(self._audio_active())
-        background_sink = self.background.reconcile(sink, bridged=not idle)
-        voice_sink = self.voice_bus.reconcile(sink, bridged=not idle)
-        self.voice_bus.apply_gain(self.voice_volume)
-        self.voice_meter.set_source(
-            self.voice_bus.monitor_name if self.voice_bus.available else None
-        )
-        # The remap source's properties name its master device, so it would
-        # match voice_input_match itself; exclude it or it becomes its own
-        # master on the next reconcile.
-        voice_device = self.graph.find_source(
-            self.config.voice_input_match, excluding=voice_capture.SOURCE_NAME
-        )
-        voice_source, capture_status = self.voice_capture.reconcile(voice_device)
-        ducked = self.apply_ducking()
-        self._adopt_defaults(sink, voice_source)
-        aec_status = self.aec_reference.reconcile(sink, wanted=not idle)
-        source_status = self.routes.reconcile(
-            output=sink,
-            background_sink=background_sink,
-            music_volume=self.music_volume,
-            usb_playback=self.usb_playback,
-            idle=idle,
-        )
-        output.hold_client_streams(self.graph, sink, self.music_volume)
-        # Sendspin plays into the bus as an ordinary Pulse client; the bridge
-        # carries the music level, so its stream holds only the input's trim.
-        output.hold_client_streams(
-            self.graph, background_sink, self.config.background.client_volume_percent
-        )
+        # An idle rebuild only ever happens because something has just started
+        # playing, and a fresh loopback stream runs at full volume until its
+        # gain below lands - a pop of full-level audio through the amp. Hold
+        # the sink muted for the pass so the rebuild is silent, and restore
+        # the commanded mute state even if the graph moves mid-pass.
+        rebuilding = was_idle and not idle and sink is not None and not self.output_muted
+        if rebuilding:
+            output.set_mute(sink, True)
+        try:
+            background_sink = self.background.reconcile(sink, bridged=not idle)
+            voice_sink = self.voice_bus.reconcile(sink, bridged=not idle)
+            self.voice_bus.apply_gain(self.voice_volume)
+            self.voice_meter.set_source(
+                self.voice_bus.monitor_name if self.voice_bus.available else None
+            )
+            # The remap source's properties name its master device, so it would
+            # match voice_input_match itself; exclude it or it becomes its own
+            # master on the next reconcile.
+            voice_device = self.graph.find_source(
+                self.config.voice_input_match, excluding=voice_capture.SOURCE_NAME
+            )
+            voice_source, capture_status = self.voice_capture.reconcile(voice_device)
+            ducked = self.apply_ducking()
+            self._adopt_defaults(sink, voice_source)
+            aec_status = self.aec_reference.reconcile(sink, wanted=not idle)
+            source_status = self.routes.reconcile(
+                output=sink,
+                background_sink=background_sink,
+                music_volume=self.music_volume,
+                usb_playback=self.usb_playback,
+                idle=idle,
+            )
+            output.hold_client_streams(self.graph, sink, self.music_volume)
+            # Sendspin plays into the bus as an ordinary Pulse client; the bridge
+            # carries the music level, so its stream holds only the input's trim.
+            output.hold_client_streams(
+                self.graph, background_sink, self.config.background.client_volume_percent
+            )
+        finally:
+            if rebuilding:
+                output.set_mute(sink, False)
         published = {
             "sink": sink.get("name") if sink else None,
             "music_volume": self.music_volume,

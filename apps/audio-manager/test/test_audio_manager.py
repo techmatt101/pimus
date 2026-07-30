@@ -1113,7 +1113,10 @@ class IdleTeardownTests(ManagerTestCase):
                 )
             return module_id
 
+        commands: list[tuple[str, ...]] = []
+
         def run(*args: str, check: bool = True) -> Any:
+            commands.append(args)
             if args[:2] == ("pactl", "unload-module"):
                 module_id = int(args[2])
                 listings["modules"] = [
@@ -1165,7 +1168,8 @@ class IdleTeardownTests(ManagerTestCase):
         self.assertIn("_background_bridge", manager.modules)
 
         # Past the timeout the bridges are released; the null sink stays so
-        # clients pointed at it by PULSE_SINK keep their target.
+        # clients pointed at it by PULSE_SINK keep their target. Nothing is
+        # playing, so the teardown needs no protective mute.
         clock["now"] = 90.0
         status = reconcile()
         self.assertTrue(status["idle"])
@@ -1173,14 +1177,23 @@ class IdleTeardownTests(ManagerTestCase):
             self.assertNotIn(role, manager.modules)
         self.assertIn("_background_sink", manager.modules)
         self.assertIsNone(manager.idle.deadline())
+        self.assertNotIn("set-sink-mute", {arg for args in commands for arg in args})
 
-        # A client starts playing again: everything rebuilds on the next pass.
+        # A client starts playing again: everything rebuilds on the next pass,
+        # behind a mute held on the output sink, because the fresh bridge
+        # streams run at full volume until their gains land.
         listings["sink-inputs"].append(playing)
         clock["now"] = 100.0
+        before_rebuild = len(commands)
         status = reconcile()
         self.assertFalse(status["idle"])
         for role in ("_background_bridge", "_aec", "aux"):
             self.assertIn(role, manager.modules)
+        rebuild = commands[before_rebuild:]
+        muted = rebuild.index(("pactl", "set-sink-mute", "hifiberry", "1"))
+        unmuted = rebuild.index(("pactl", "set-sink-mute", "hifiberry", "0"))
+        self.assertLess(muted, unmuted)
+        self.assertEqual(unmuted, len(rebuild) - 1)
 
     def test_a_voice_session_wakes_an_idle_graph_immediately(self) -> None:
         manager = self.make_manager(

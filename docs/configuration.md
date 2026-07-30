@@ -81,9 +81,11 @@ voice session, no enabled analogue route — the audio manager unloads the backg
 reference, and the muted aux bridge, and the devices suspend. The null sinks stay loaded so Sendspin and LVA keep
 their PULSE_SINK targets, and the wake-word capture path is untouched. Everything rebuilds within about a second of a
 client stream appearing, a voice session opening (the controller's duck/meter request arrives before the first TTS
-audio), the USB host starting to stream, or a route being toggled on; the first moment of music after a long quiet
-spell is lost while the bridge loads. There is no echo to cancel in silence, so the AEC reference being down while
-idle costs the DSP nothing.
+audio), the USB host starting to stream, or a route being toggled on. The rebuild pass holds the output sink muted
+until every bridge gain is in place — a fresh loopback stream plays at full volume until its gain lands, which would
+otherwise pop the first instant of audio through the amp at full level — so the first moment of music after a long
+quiet spell arrives a beat late rather than loud. There is no echo to cancel in silence, so the AEC reference being
+down while idle costs the DSP nothing.
 
 Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Sendspin and USB computer audio share the
 `smartamp_background_sink_name` bus and fade down to `smartamp_voice_duck_volume_percent` per cent of their normal level
