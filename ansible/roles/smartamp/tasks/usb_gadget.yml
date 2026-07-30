@@ -35,25 +35,11 @@
 
 # In gadget mode the Pi is GPIO-powered, so the bootloader has no USB-PD source
 # to negotiate with; without a declared supply it assumes a weak one, logs a
-# low-power warning at boot, and caps USB-A output at 600mA total. The EEPROM
-# update is staged on disk and flashed during the reboot the notify schedules.
-# This does not affect a host computer's willingness to enumerate the gadget
-# (tested: a Mac still needs a dock either way, see docs/troubleshooting.md).
-- name: Declare the GPIO power supply to the bootloader
-  ansible.builtin.shell: |
-    set -eu
-    wanted='PSU_MAX_CURRENT={{ usb_audio_psu_max_current_ma | int }}'
-    config=$(rpi-eeprom-config)
-    if printf '%s\n' "$config" | grep -qx "$wanted"; then exit 0; fi
-    updated=$(mktemp)
-    printf '%s\n' "$config" | grep -v '^PSU_MAX_CURRENT=' > "$updated" || true
-    printf '%s\n' "$wanted" >> "$updated"
-    rpi-eeprom-config --apply "$updated"
-    rm -f "$updated"
-    echo CHANGED
-  register: smartamp_eeprom_psu
-  changed_when: "'CHANGED' in smartamp_eeprom_psu.stdout"
-  notify: Reboot Smart Amp
+# low-power warning at boot, and caps USB-A output at 600mA total. That
+# declaration is PSU_MAX_CURRENT, applied with the rest of the bootloader
+# settings in eeprom.yml. This does not affect a host computer's willingness to
+# enumerate the gadget (tested: a Mac still needs a dock either way, see
+# docs/troubleshooting.md).
 
 # Run gadget creation only after the kernel modules are available and tear it
 # down cleanly on service stop/reconfiguration.

@@ -181,6 +181,19 @@ default states what the AAmp60's 5V rail realistically provides; do not raise it
 stack's power budget. Disabling `usb_audio_gadget_enabled` removes the declaration again so a USB-C PSU negotiates
 normally.
 
+## The Pi does not come back after a shutdown
+
+With `smartamp_power_off_on_halt: true` (the default) the bootloader cuts the board's rails on halt, so a halted Pi
+draws nothing and answers nothing — no ping, no SSH, no wake-on-LAN. Boot it with the dedicated power button, an RTC
+wakealarm, or by power-cycling the plug. `WAKE_ON_GPIO` has no bearing on this: from the Pi 5 onwards the power button
+wakes the board from HALT or STANDBY whatever that setting is.
+
+A plug cut has to be long enough. The whole stack sits at roughly 0W once halted, so the 20V brick's capacitors keep
+the rail up through a brief interruption: a 10 second off/on does nothing. Leave it off for **at least 60 seconds**, or
+switch the plug off shortly after the shutdown finishes so that turning it on is a clean cold start. If the board is up
+but you expected it to be off, check `sudo rpi-eeprom-config` for `POWER_OFF_ON_HALT=1` — a hand-flashed or re-imaged
+EEPROM loses it, and re-provisioning puts it back.
+
 ## Stream Deck is dark
 
 Unplug/replug it once after the initial udev rule installation, then check `lsusb | grep 0fd9` and the controller

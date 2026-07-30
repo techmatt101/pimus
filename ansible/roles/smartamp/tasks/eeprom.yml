@@ -1,0 +1,66 @@
+---
+# Every bootloader setting is applied in one read-modify-write. rpi-eeprom-config
+# --apply rebuilds the staged image from the *running* EEPROM, so a second apply
+# in the same run would silently drop the first one's staged change. Keys this
+# role does not manage are carried through untouched, and a key that drops out of
+# the wanted list is removed, which is what makes the flags reversible.
+- name: Read the bootloader configuration
+  ansible.builtin.command: rpi-eeprom-config
+  register: smartamp_eeprom_config
+  changed_when: false
+
+# POWER_OFF_ON_HALT cuts the board's rails on halt (PMIC STANDBY on a Pi 5).
+# WAKE_ON_GPIO is inert on this board — the dedicated power button wakes it from
+# HALT or STANDBY regardless — and is pinned only so the value cannot drift.
+# WAIT_FOR_POWER_BUTTON off is what lets restoring the plug boot the amp rather
+# than park it at the bootloader.
+# PSU_MAX_CURRENT declares the GPIO supply the bootloader cannot negotiate for
+# (see usb_gadget.yml), so it belongs to the gadget flag and disappears with it.
+- name: Work out the wanted bootloader configuration
+  ansible.builtin.set_fact:
+    smartamp_eeprom_keys:
+      - POWER_OFF_ON_HALT
+      - WAKE_ON_GPIO
+      - WAIT_FOR_POWER_BUTTON
+      - PSU_MAX_CURRENT
+    smartamp_eeprom_settings: >-
+      {{ ['POWER_OFF_ON_HALT=' ~ (1 if smartamp_power_off_on_halt | bool else 0),
+          'WAKE_ON_GPIO=' ~ (1 if smartamp_wake_on_gpio | bool else 0),
+          'WAIT_FOR_POWER_BUTTON=' ~ (1 if smartamp_wait_for_power_button | bool else 0)]
+         + (['PSU_MAX_CURRENT=' ~ (usb_audio_psu_max_current_ma | int)]
+            if usb_audio_gadget_enabled | bool else []) }}
+
+- name: Merge the wanted settings into the bootloader configuration
+  ansible.builtin.set_fact:
+    smartamp_eeprom_updated: >-
+      {{ (smartamp_eeprom_config.stdout_lines
+          | reject('match', '(' ~ smartamp_eeprom_keys | join('|') ~ ')=')
+          | list) + smartamp_eeprom_settings }}
+
+# The update is staged on disk and flashed during the reboot the notify
+# schedules; nothing changes on the running board until then. The comparison
+# sorts because merging moves a managed key to the end of the file: without it
+# a config that already holds the wanted values, in another order, would
+# re-apply and reboot on every run.
+- name: Stage the bootloader EEPROM update
+  when: (smartamp_eeprom_updated | sort) != (smartamp_eeprom_config.stdout_lines | sort)
+  notify: Reboot Smart Amp
+  block:
+    # /run is tmpfs, so the intermediate file costs no card writes and cannot be
+    # mistaken for a source of truth after a reboot.
+    - name: Write the wanted bootloader configuration
+      ansible.builtin.copy:
+        content: "{{ smartamp_eeprom_updated | join('\n') + '\n' }}"
+        dest: /run/smartamp-eeprom.conf
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Apply the bootloader configuration
+      ansible.builtin.command: rpi-eeprom-config --apply /run/smartamp-eeprom.conf
+      changed_when: true
+
+    - name: Remove the staged configuration file
+      ansible.builtin.file:
+        path: /run/smartamp-eeprom.conf
+        state: absent

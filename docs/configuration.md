@@ -154,6 +154,33 @@ back to their stock values.
 `smartamp-doctor` reports available memory and whether zram is actually swapped
 on, which is the number to watch when moving to a board with less RAM.
 
+## Power
+
+`smartamp_power_off_on_halt: true` sets `POWER_OFF_ON_HALT` in the bootloader EEPROM, so halting the board drops its
+rails rather than leaving them energised. Because the whole stack is fed from one 20V brick through the AAmp60, that
+takes the amplifier's roughly 2W quiescent draw down with the Pi: `sudo poweroff` measures at about 0W at the wall,
+with no need to cut the plug to reach that floor.
+
+The trade-off is waking it again. A halted board is not reachable over the network, so only the dedicated power button,
+an RTC wakealarm, or a plug power-cycle boots it — plan any away-from-home automation around that before turning the
+flag on. At near-zero load the brick's capacitors also hold the rail for a surprisingly long time, so a plug cut has to
+last **at least 60 seconds** before switching back on, or the Pi never sees the gap. Cutting the plug shortly after the
+shutdown completes and simply switching it on at arrival avoids the problem entirely — which is what
+`smartamp_wait_for_power_button: false` protects. Its EEPROM key, `WAIT_FOR_POWER_BUTTON`, only does anything when
+`POWER_OFF_ON_HALT` is set (preflight rejects the combination without it): turn it on and the first boot after power
+was removed halts immediately and waits for the dedicated power button, so restoring the plug would no longer wake the
+amp on its own. Left off, power coming back is a normal boot.
+
+`smartamp_wake_on_gpio: false` pins `WAKE_ON_GPIO`, which on a Pi 4 chose whether a halted board could be woken by
+pulling GPIO3 or GLOBAL_EN to ground. Raspberry Pi document it as *not relevant* from the Pi 5 onwards, because the
+dedicated power button wakes the board from HALT or STANDBY whatever the setting says, and `POWER_OFF_ON_HALT` needs no
+help from it there. It is managed purely so a re-flashed EEPROM cannot come back with a different value; changing it
+will not alter how this board wakes.
+
+Bootloader settings are applied together in one staged EEPROM update (`ansible/roles/smartamp/tasks/eeprom.yml`) that
+the firmware flashes during the reboot provisioning schedules; `PSU_MAX_CURRENT` is the fourth key this role owns. Keys
+set by hand outside that list are carried through untouched. Check the live values with `sudo rpi-eeprom-config`.
+
 ## Voice
 
 `voice_assistant_version` pins the upstream release tag that is checked out,

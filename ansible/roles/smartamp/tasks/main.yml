@@ -13,6 +13,11 @@
 - name: Reduce SD-card wear
   ansible.builtin.import_tasks: sdcard.yml
 
+# One place owns the bootloader EEPROM, ahead of the features whose flags it
+# reads, so a single staged update carries every setting into the next boot.
+- name: Configure the bootloader EEPROM
+  ansible.builtin.import_tasks: eeprom.yml
+
 - name: Configure audio hardware and PipeWire
   ansible.builtin.import_tasks: audio.yml
 
@@ -38,23 +43,6 @@
     enabled: false
     state: stopped
   failed_when: false
-  when: not (usb_audio_gadget_enabled | bool)
-
-# Returning the USB-C port to PSU duty must also restore USB-PD negotiation,
-# or the firmware would keep assuming a fixed supply it no longer has.
-- name: Remove the GPIO power declaration when the gadget is disabled
-  ansible.builtin.shell: |
-    set -eu
-    config=$(rpi-eeprom-config)
-    if ! printf '%s\n' "$config" | grep -q '^PSU_MAX_CURRENT='; then exit 0; fi
-    updated=$(mktemp)
-    printf '%s\n' "$config" | grep -v '^PSU_MAX_CURRENT=' > "$updated"
-    rpi-eeprom-config --apply "$updated"
-    rm -f "$updated"
-    echo CHANGED
-  register: smartamp_eeprom_psu_removed
-  changed_when: "'CHANGED' in smartamp_eeprom_psu_removed.stdout"
-  notify: Reboot Smart Amp
   when: not (usb_audio_gadget_enabled | bool)
 
 # Without this, dwc2/libcomposite would still load at every boot and a stale
