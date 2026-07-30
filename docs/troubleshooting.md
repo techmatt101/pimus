@@ -53,9 +53,13 @@ continuously.
 
 ## HiFiBerry is missing
 
-Confirm `/boot/firmware/config.txt` contains `force_eeprom_read=0`, `dtparam=audio=off`, and
-`dtoverlay=hifiberry-dacplusadcpro`. The board needs the kernel overlay rather than the older overlay embedded in the
-HAT EEPROM. Check `dmesg | grep -i hifiberry` after reboot.
+Confirm `/boot/firmware/config.txt` contains `force_eeprom_read=0`, `dtparam=audio=off`, and the overlay for the board
+named in `hifiberry_board` — `dtoverlay=hifiberry-dacplusadcpro` for a DAC2 ADC Pro, `dtoverlay=hifiberry-amp100` for an
+Amp100 (with `,auto_mute` appended when `hifiberry_auto_mute` is on). The board needs the kernel overlay rather than the
+older overlay embedded in the HAT EEPROM. Both enumerate as the same ALSA card id, `sndrpihifiberry`, so after a reboot
+the card name alone will not tell you which overlay actually loaded; `dmesg | grep -i hifiberry` and whether
+`arecord -l` lists the card will. An Amp100 has no ADC, so a capture device appearing there means the wrong overlay
+loaded.
 
 ## Voice hears the speaker output, or cannot hear over music
 

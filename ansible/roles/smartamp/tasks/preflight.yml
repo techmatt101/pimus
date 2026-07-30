@@ -45,6 +45,40 @@
   ansible.builtin.set_fact:
     smartamp_board_caps: "{{ smartamp_boards[smartamp_board] }}"
 
+# The HiFiBerry board is named rather than detected, because the recipe tells
+# the firmware to ignore the HAT's own EEPROM. A typo here would otherwise
+# reach config.txt as an overlay the firmware silently skips, leaving a Pi with
+# no sound card and no explanation.
+- name: Check the HiFiBerry board is supported
+  ansible.builtin.assert:
+    that: hifiberry_board in smartamp_hifiberry_boards
+    fail_msg: >-
+      hifiberry_board is "{{ hifiberry_board }}", which is not one of
+      {{ smartamp_hifiberry_boards.keys() | join(', ') }}.
+
+- name: Select the HiFiBerry board capabilities
+  ansible.builtin.set_fact:
+    smartamp_hifiberry_caps: "{{ smartamp_hifiberry_boards[hifiberry_board] }}"
+
+# The aux route is the board's ADC. A board without one has no capture device
+# to bridge and no ADC mixer controls to set, so enabling the route would leave
+# a deck toggle and a configured source that can never carry sound.
+- name: Require an ADC for the aux input
+  ansible.builtin.assert:
+    that: smartamp_hifiberry_caps.aux_input | bool
+    fail_msg: >-
+      smartamp_aux_enabled is on but the {{ smartamp_hifiberry_caps.label }} has
+      no ADC, so there is no analogue line-in to switch. Set it to false.
+  when: smartamp_aux_enabled | bool
+
+- name: Require an amplifier mute line for auto-mute
+  ansible.builtin.assert:
+    that: smartamp_hifiberry_caps.amplifier_mute | bool
+    fail_msg: >-
+      hifiberry_auto_mute is on but the {{ smartamp_hifiberry_caps.label }} has
+      no amplifier the Pi can mute. Set it to false.
+  when: hifiberry_auto_mute | bool
+
 # Cutting VBUS needs ports that can be switched off. A board with none would
 # sleep its panel and quietly save nothing, so inventory has to say so rather
 # than promise a saving the hardware cannot make.

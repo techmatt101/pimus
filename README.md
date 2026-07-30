@@ -2,10 +2,11 @@
 
 An idempotent Raspberry Pi build recipe, for a Pi 5 or a Pi 4 Model B, for:
 
-- HiFiBerry DAC2 ADC Pro with the AAmp60 add-on amplifier
+- HiFiBerry DAC2 ADC Pro with the AAmp60 add-on amplifier, or a HiFiBerry Amp100
 - ReSpeaker XMOS XVF3800 USB four-microphone array
 - Elgato Stream Deck+
-- analogue aux input, computer audio over USB-C, Home Assistant media, and Music Assistant playback over Sendspin
+- analogue aux input (on a board with an ADC), computer audio over USB-C, Home Assistant media, and Music Assistant
+  playback over Sendspin
 - Home Assistant Assist, local wake word, voice responses, timers, and announcements
 - configurable ReSpeaker LEDs and Stream Deck+ keys, dials, and touch strip
 
@@ -16,15 +17,38 @@ SSH; running it again produces the same configuration and safely applies later c
 
 The AAmp60 is compatible with the DAC+ ADC Pro family, but its published power guarantee only covers Raspberry Pi models
 through Pi 4. A Pi 5 can expose up to 1.6 A to USB peripherals only with a 5 A supply, and a Pi 4B is fixed at roughly
-1.2 A across all four USB-A ports whatever it is powered from; the AAmp60, XVF3800 and Stream Deck+ combination
+1.2 A across all four USB-A ports whatever it is powered from; the amplifier, XVF3800 and Stream Deck+ combination
 therefore needs power validation either way. Use `smartamp-doctor` to check the Pi throttle/under-voltage flags, and
-plan on a powered USB hub if flags appear or USB devices reset.
+plan on a powered USB hub if flags appear or USB devices reset. Either amplifier board feeds the Pi from its own DC
+supply through the GPIO header, so size that supply for the whole stack rather than the amplifier alone.
 
 The optional USB audio input changes the USB-C port into a peripheral port. The Pi must then be powered through the
-HiFiBerry/AAmp60 GPIO stack. Connect the USB-C port to the source computer; the four USB-A ports remain hosts for the
+HiFiBerry GPIO stack. Connect the USB-C port to the source computer; the four USB-A ports remain hosts for the
 ReSpeaker and Stream Deck+. **On a Pi 4B that host cable must have its power line cut**: that board wires USB-C VBUS
 straight onto the same 5 V rail as the GPIO header, so the computer and the AAmp60 would otherwise feed the rail against
 each other. The Pi 5's PMIC arbitrates instead.
+
+### Which HiFiBerry board
+
+`hifiberry_board` in inventory names the board, because the recipe tells the firmware to ignore the HAT's own EEPROM so
+the chosen overlay always wins — nothing can detect it afterwards.
+
+| `hifiberry_board` | Board | Aux line-in | Amplifier mute |
+| --- | --- | --- | --- |
+| `dac2adcpro` | DAC2 ADC Pro, with the AAmp60 add-on amplifier | yes, its ADC | no — the AAmp60 has no control line |
+| `amp100` | Amp100, an amplifier with its own DAC | **no ADC at all** | yes, `hifiberry_auto_mute` |
+
+On an Amp100 there is no analogue line-in: provisioning refuses `smartamp_aux_enabled`, the generated audio
+configuration carries no aux route, and the ADC mixer controls are not written. The deck's AUX key is then a key with
+nothing to switch — the audio manager rejects the unknown route rather than misbehaving — so drop it from
+`apps/controller/src/streamdeck/layout.mts` on such a unit.
+
+`hifiberry_auto_mute` mutes the Amp100's amplifier whenever the audio device is closed and unmutes it as the stream
+opens, so nothing is clipped off the front of playback and the amplifier stops hissing into an empty room during the
+quiet the idle teardown already creates. It is off by default because the transition can click on some speakers. The
+overlay's other parameters — `leds_off`, `mute_ext_ctl`, `24db_digital_gain`, `slave` — are deliberately not
+exposed; `mute_ext_ctl` in particular would add a second, competing way to mute, beside the one the volume dial and
+Home Assistant already drive.
 
 ### What differs on a Pi 4B
 

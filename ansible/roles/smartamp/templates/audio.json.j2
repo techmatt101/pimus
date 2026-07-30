@@ -26,6 +26,12 @@
   "resync_seconds": 900,
   "idle_teardown_seconds": {{ smartamp_idle_teardown_seconds | int }},
   "sources": {
+    {# A board with no ADC has no capture device to bridge, so it gets no aux
+       source rather than a permanently unavailable one: the manager would
+       otherwise keep a muted bridge wanted and never find a device for it, and
+       the status file would report a route that cannot exist. A route the
+       manager does not know is rejected, so the deck's AUX key is a no-op. #}
+{% if smartamp_hifiberry_caps.aux_input | bool %}
     "aux": {
       "match": {{ smartamp_aux_match | to_json }},
       "enabled": {{ smartamp_aux_enabled | bool | to_json }},
@@ -33,6 +39,7 @@
       "latency_ms": {{ smartamp_aux_latency_ms | int }},
       "volume_percent": {{ smartamp_aux_volume_percent | int }}
     },
+{% endif %}
     "usb": {
       "match": {{ smartamp_usb_gadget_match | to_json }},
       "enabled": {{ ((usb_audio_gadget_enabled | bool) and (smartamp_usb_enabled | bool)) | to_json }},

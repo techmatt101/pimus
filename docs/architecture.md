@@ -16,12 +16,15 @@ XVF3800 microphones --USB/PipeWire--->| Linux Voice Assistant    |--ESPHome API-
                                              | USB           | HID
                                       XVF3800 LEDs       Stream Deck+
 
-DAC2 ADC Pro aux --PipeWire loopback------------------------+
+Aux (DAC2 ADC Pro only) --PipeWire loopback-----------------+
 Computer --USB-C UAC2--+                                    |
-                       +--> duckable background bus --------+--> HiFiBerry DAC --> AAmp60 --> speakers
+                       +--> duckable background bus --------+--> HiFiBerry DAC --> amplifier --> speakers
 Sendspin / MA ---------+                                    |
 Linux Voice Assistant TTS/media --> voice bus --------------+
 ```
+
+The amplifier is either an AAmp60 bolted to the DAC2 ADC Pro, or an Amp100 that is itself the DAC. An Amp100 has no
+ADC, so the aux path above does not exist on one; see [configuration](configuration.md).
 
 ## Audio ownership
 

@@ -69,9 +69,30 @@ smartamp_zram_enabled: true
 # memory faster than swapping relieves it.
 smartamp_zram_percent: 50
 
-# HiFiBerry DAC2 ADC Pro + AAmp60
-hifiberry_overlay: hifiberry-dacplusadcpro
+# Which HiFiBerry board is fitted. A HAT cannot be detected here - the recipe
+# tells the firmware to ignore the board's own EEPROM so the chosen overlay
+# wins - so this names it, and the overlay and what the board can do follow from
+# ansible/roles/smartamp/vars/boards.yml:
+#
+#   dac2adcpro  DAC2 ADC Pro, the amplifier-less DAC the AAmp60 add-on sits on.
+#               Its ADC is the analogue aux line-in.
+#   amp100      Amp100, an amplifier with its own DAC and no ADC at all, so it
+#               has no aux input: provisioning refuses smartamp_aux_enabled,
+#               nothing carries an aux route, and the AUX key on the deck has
+#               nothing to switch (drop it from streamdeck/layout.mts).
+hifiberry_board: dac2adcpro
+# Both boards enumerate under this ALSA card id; ALSA truncates either card
+# name to the same fifteen characters. Override only if a future board differs.
 hifiberry_card_name: sndrpihifiberry
+# Mute the amplifier whenever the audio device is closed, through the board's
+# hardware mute line (the overlay's auto_mute). It unmutes as the stream opens,
+# so nothing is clipped off the front of playback, and it silences the
+# amplifier's idle hiss during the quiet the idle teardown already creates. Off
+# by default because muting and unmuting an amplifier can be audible as a click
+# on some speakers; turn it on if the amp hisses into an empty room. Requires a
+# board whose amplifier the Pi can mute (amp100): provisioning refuses it on a
+# DAC2 ADC Pro, whose AAmp60 has no control line.
+hifiberry_auto_mute: false
 # The DAC's hardware output ceiling. The ALSA percent scale is logarithmic
 # across -103.5..0 dB, about -1 dB per point below 100: 90 is a -10 dB
 # ceiling, but 30 is -72.5 dB — inaudible on any speaker. Day-to-day loudness
@@ -79,6 +100,8 @@ hifiberry_card_name: sndrpihifiberry
 # with the output sink pinned at 100% this ceiling is the one hard cap above
 # those levels.
 hifiberry_output_volume_percent: 100
+# The analogue line-in's gain and which ADC pins carry it. These apply only to
+# a board that has an ADC, and are not written on one that does not.
 hifiberry_aux_gain_db: 0
 hifiberry_aux_input_left: "VINL1[SE]"
 hifiberry_aux_input_right: "VINR1[SE]"

@@ -3,9 +3,10 @@
 ## Project purpose
 
 Pimus provisions `office-amp`, a Raspberry Pi audio and voice endpoint built
-from a HiFiBerry DAC2 ADC Pro + AAmp60, ReSpeaker XVF3800, and Elgato Stream
-Deck+. It targets a fresh 64-bit Raspberry Pi OS Lite installation on a Pi 5 or
-a Pi 4 Model B; `office-amp` itself is a Pi 5.
+from a HiFiBerry DAC2 ADC Pro + AAmp60 or a HiFiBerry Amp100, a ReSpeaker
+XVF3800, and an Elgato Stream Deck+. It targets a fresh 64-bit Raspberry Pi OS
+Lite installation on a Pi 5 or a Pi 4 Model B; `office-amp` itself is a Pi 5
+with the DAC2 ADC Pro.
 
 Home Assistant and Music Assistant run on another machine. This repository
 must remain a lightweight client: do not add Docker, a local HA/music server, or
@@ -359,10 +360,19 @@ Provisioning can reboot the Pi when boot overlays change.
 ## Hardware constraints
 
 - What each supported board can do lives in `roles/smartamp/vars/boards.yml`,
-  and preflight publishes the matching row as `smartamp_board_caps`. Anything
-  board-conditional reads that fact; do not parse the model string again, and do
-  not give a board its own task file. A setting the board cannot honour fails
+  on two axes: the Raspberry Pi (matched from the device-tree model, published
+  as `smartamp_board_caps`) and the HiFiBerry board (named by `hifiberry_board`
+  in inventory, published as `smartamp_hifiberry_caps`). Anything
+  board-conditional reads those facts; do not parse the model string again, and
+  do not give a board its own task file. A setting the board cannot honour fails
   preflight by name rather than being silently dropped.
+- The HiFiBerry board cannot be detected, because `force_eeprom_read=0` tells
+  the firmware to ignore the HAT's EEPROM so the chosen overlay wins. Both
+  supported boards enumerate as the same ALSA card id (`sndrpihifiberry`), so
+  the card name proves nothing about which one is fitted.
+- Only a board with an ADC has an analogue aux input. The Amp100 has none, so
+  it gets no aux source in `audio.json` at all rather than a permanently
+  unavailable one, and its ADC mixer controls are never written.
 - USB audio gadget mode turns the USB-C port into a peripheral connection; it
   can no longer be the normal PSU input. The HiFiBerry/AAmp60 stack must then
   power the Pi through GPIO. On a Pi 4B the host cable must have its power line

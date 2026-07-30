@@ -1,9 +1,19 @@
 ---
+# The overlay and its parameters, assembled as one dtoverlay= line: the board
+# chosen in inventory brings the overlay name, and auto_mute is appended only
+# for a board whose amplifier the Pi can actually mute.
+- name: Work out the HiFiBerry overlay line
+  ansible.builtin.set_fact:
+    smartamp_hifiberry_overlay: >-
+      {{ ([smartamp_hifiberry_caps.overlay]
+          + (['auto_mute'] if hifiberry_auto_mute | bool else []))
+         | join(',') }}
+
 # Disable the Pi's onboard audio to avoid ambiguous card numbering, then load
-# the DAC2 ADC Pro driver. force_eeprom_read=0 is the HiFiBerry workaround that
+# the board's driver. force_eeprom_read=0 is the HiFiBerry workaround that
 # lets the explicitly selected overlay configure the HAT rather than whatever
 # the board's own EEPROM claims; it is what the Pi 5 needs and is harmless on
-# a Pi 4B.
+# a Pi 4B. It is also why the board is named in inventory rather than detected.
 - name: Configure the HiFiBerry overlay
   ansible.builtin.blockinfile:
     path: /boot/firmware/config.txt
@@ -11,7 +21,7 @@
     block: |
       dtparam=audio=off
       force_eeprom_read=0
-      dtoverlay={{ hifiberry_overlay }}
+      dtoverlay={{ smartamp_hifiberry_overlay }}
   notify: Reboot Smart Amp
 
 # Device names can change with USB enumeration. The generated config stores

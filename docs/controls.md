@@ -240,6 +240,11 @@ to the gadget port.
 key('AUX', '#4a148c', route('aux', 'toggle'))
 ```
 
+The routes that exist come from the deployed audio configuration, not from this
+layout. A HiFiBerry Amp100 has no ADC and so no `aux` route at all: the audio
+manager rejects a route it does not know, leaving the key above as a no-op.
+Remove it from the layout on such a unit.
+
 ## Panel power — `type: panel`
 
 Drives the sleep policy itself (see

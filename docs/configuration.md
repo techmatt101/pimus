@@ -4,10 +4,27 @@ All supported settings live in `ansible/inventory/group_vars/all.yml`. Re-run `m
 
 ## Audio
 
+`hifiberry_board` names the fitted board — `dac2adcpro` (DAC2 ADC Pro, the DAC the AAmp60 add-on amplifier sits on) or
+`amp100` (Amp100, an amplifier with its own DAC). It cannot be detected: the recipe sets `force_eeprom_read=0` so the
+chosen overlay configures the HAT rather than whatever its EEPROM claims. The overlay, whether the board has an ADC,
+and whether its amplifier can be muted all follow from `ansible/roles/smartamp/vars/boards.yml`, and a setting the
+board cannot honour fails preflight by name.
+
+The Amp100 has no ADC, so it has no analogue line-in. `smartamp_aux_enabled` is refused there, the generated
+`audio.json` carries no aux route at all rather than a permanently unavailable one, and `hifiberry_aux_gain_db`,
+`hifiberry_aux_input_left` and `hifiberry_aux_input_right` are not written. The deck's AUX key survives in the compiled
+layout with nothing to switch — the audio manager rejects a route it does not know — so remove it from
+`streamdeck/layout.mts` on an Amp100 unit.
+
+`hifiberry_auto_mute` (Amp100 only) ties the board's hardware mute line to the audio device opening and closing, so the
+amplifier is muted whenever nothing is playing and unmuted before the first sample arrives. It is the answer to an
+amplifier hissing into a quiet room, and it pairs with `smartamp_idle_teardown_seconds` below, which is what creates
+that silence in the first place. Off by default: muting an amplifier can be audible as a click on some speakers.
+
 `hifiberry_aux_gain_db` is the analogue ADC input gain. Start at `0`; line-level sources can clip if this is raised too
 far. `hifiberry_output_volume_percent` is the DAC's hardware output ceiling, not the playing loudness — its percent
 scale is logarithmic (about −1 dB per point below 100), so values much below 90 attenuate to silence; leave it at 100
-and control loudness in PipeWire.
+and control loudness in PipeWire. Both boards expose that one `Digital` control.
 
 Loudness itself is two independent levels held by the audio manager: the **music level** (Sendspin, USB computer audio,
 and aux) and the **voice level** (everything the assistant plays). The output sink is pinned at 100% and each level is

@@ -40,10 +40,17 @@ swapon --show=NAME --noheadings 2>/dev/null | grep -q . \
 {% endif %}
 
 heading 'ALSA hardware'
+printf 'HiFiBerry board: %s\n' '{{ smartamp_hifiberry_caps.label }}'
 aplay -l || true
 arecord -l || true
-aplay -l 2>/dev/null | grep -q {{ hifiberry_card_name | quote }} && pass 'HiFiBerry playback found' || fail 'HiFiBerry playback missing'
+aplay -l 2>/dev/null | grep -q {{ hifiberry_card_name | quote }} && pass '{{ smartamp_hifiberry_caps.label }} playback found' || fail '{{ smartamp_hifiberry_caps.label }} playback missing'
+{% if smartamp_hifiberry_caps.aux_input | bool %}
 arecord -l 2>/dev/null | grep -q {{ hifiberry_card_name | quote }} && pass 'HiFiBerry aux capture found' || fail 'HiFiBerry aux capture missing'
+{% else %}
+{# No ADC, so the card is playback-only by design; a capture device appearing
+   would mean the wrong overlay loaded. #}
+arecord -l 2>/dev/null | grep -q {{ hifiberry_card_name | quote }} && warn 'HiFiBerry reports a capture device, but this board has no ADC' || pass 'No HiFiBerry capture device, as expected for this board'
+{% endif %}
 {% if voice_assistant_enabled or respeaker_led_enabled or smartamp_aec_reference_enabled %}
 lsusb 2>/dev/null | grep -qi '2886:001a' && pass 'ReSpeaker XVF3800 connected' || fail 'Required ReSpeaker XVF3800 is not connected'
 {% else %}

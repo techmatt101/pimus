@@ -1,5 +1,5 @@
 [Unit]
-Description=Initialise HiFiBerry DAC2 ADC Pro mixer
+Description=Initialise {{ smartamp_hifiberry_caps.label }} mixer
 After=sound.target
 Wants=sound.target
 
@@ -11,6 +11,9 @@ Environment="HIFIBERRY_AUX_INPUT_LEFT={{ hifiberry_aux_input_left }}"
 Environment="HIFIBERRY_AUX_INPUT_RIGHT={{ hifiberry_aux_input_right }}"
 Environment=HIFIBERRY_AUX_GAIN_DB={{ hifiberry_aux_gain_db }}
 Environment=HIFIBERRY_OUTPUT_VOLUME_PERCENT={{ hifiberry_output_volume_percent }}
+{# Whether this board has an ADC, which decides both the ALSA readiness probe
+   and whether the aux mixer controls above exist to be set at all. #}
+Environment=HIFIBERRY_HAS_AUX={{ 1 if smartamp_hifiberry_caps.aux_input | bool else 0 }}
 Type=oneshot
 ExecStart={{ smartamp_app_dir }}/hifiberry-init.sh
 RemainAfterExit=yes

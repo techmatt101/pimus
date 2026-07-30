@@ -1,11 +1,14 @@
 ---
-# What each supported Raspberry Pi can actually do, so no task has to re-derive
-# "is this a Pi 5" from the model string. preflight.yml matches the running
-# board against model_match and publishes the winning row as
-# smartamp_board_caps; everything board-conditional reads it from there.
+# The two hardware axes this recipe supports: which Raspberry Pi is running it,
+# and which HiFiBerry board is fitted on top. Both are tables rather than
+# conditions spread through the tasks, so no task re-derives "is this a Pi 5" or
+# "does this board have an ADC" for itself.
 #
 # Adding a board means adding a row here and checking the capabilities below are
 # true of it, not editing the tasks.
+
+# preflight.yml matches the running board against model_match and publishes the
+# winning row as smartamp_board_caps.
 smartamp_boards:
   pi5:
     label: "Raspberry Pi 5"
@@ -76,3 +79,37 @@ smartamp_boards:
     eeprom_keys:
       - POWER_OFF_ON_HALT
       - WAKE_ON_GPIO
+
+# The HiFiBerry board fitted on the header, chosen by hifiberry_board in
+# inventory because a HAT cannot be detected once force_eeprom_read=0 tells the
+# firmware to ignore its EEPROM (see tasks/audio.yml). preflight.yml publishes
+# the chosen row as smartamp_hifiberry_caps.
+#
+# Both boards present the same ALSA card id: their card names differ
+# (snd_rpi_hifiberry_dacplusadcpro against snd_rpi_hifiberry_dacplus) but ALSA
+# strips the underscores and truncates to fifteen characters, which leaves
+# sndrpihifiberry either way. That is why the card name is one inventory value
+# rather than a property of the row.
+smartamp_hifiberry_boards:
+  dac2adcpro:
+    label: "HiFiBerry DAC2 ADC Pro"
+    overlay: hifiberry-dacplusadcpro
+    # A PCM1863 ADC alongside the DAC, which is what makes the analogue line-in
+    # a capture device and gives the card its ADC mixer controls. Without one
+    # there is no aux route to switch and no gain to set, so preflight refuses
+    # smartamp_aux_enabled and audio.json carries no aux source at all.
+    aux_input: true
+    # Whether the board has an amplifier with a hardware mute line the overlay
+    # can drive. The DAC2 ADC Pro is a DAC: the AAmp60 bolted to it is a plain
+    # analogue amplifier the Pi has no control over.
+    amplifier_mute: false
+  amp100:
+    label: "HiFiBerry Amp100"
+    overlay: hifiberry-amp100
+    # An amplifier with its own DAC and no ADC whatsoever.
+    aux_input: false
+    # The overlay drives a mute GPIO, and its auto_mute parameter ties that to
+    # the PCM stream opening and closing - so the amplifier is muted whenever
+    # nothing is playing, which is what silences its idle hiss. Turned on by
+    # hifiberry_auto_mute in inventory.
+    amplifier_mute: true
