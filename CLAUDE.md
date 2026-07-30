@@ -45,7 +45,8 @@ apps/
                          and the notification queue automations push to
       remote/            The authenticated LAN WebSocket server other
                          computers push REMOTE-page tile faces to
-      streamdeck/        Stream Deck lifecycle, bindings, drawing, and icons
+      streamdeck/        The optional deck addon, entered at control-surface.mts:
+                         lifecycle, bindings, drawing, and icons
         dials/           One Dial class per file (a knob's behaviour + readout)
         screens/         One Screen class per file (a full touch-strip face)
         tiles/           One Tile class per file (key behaviour + face)
@@ -126,6 +127,18 @@ runtime validation, and relevant documentation together.
 - Group modules by the boundary they own: `actions/`, `audio/`,
   `home-assistant/`, `remote/`, `streamdeck/`, and `voice/`, with `index.mts`,
   `config.mts`, `state.mts`, and `types.mts` at the root.
+- The Stream Deck is an addon, not a given. `streamdeck/control-surface.mts` is
+  the subsystem's one entry point — layout, renderer, deck loop, panel sleep,
+  power button, sleeping USB power, and the remote-tile listener — and
+  `index.mts` reaches it through a dynamic import taken only when
+  `streamdeck.enabled` is on. Nothing else may import `streamdeck/` or
+  `remote/`, because those two directories are the only ones allowed to touch
+  the manifest's `optionalDependencies` (`@napi-rs/canvas`,
+  `@elgato-stream-deck/node`, `@julusian/jpeg-turbo`): a deck-less Pi is sent
+  neither those modules nor those packages, so a static import anywhere else
+  would crash a working deployment at startup. Anything the surface needs from
+  the rest of the controller arrives through `ControlSurfaceServices`; do not
+  reach back the other way.
 - Home Assistant is reached over its WebSocket API with a long-lived token
   (`home-assistant/client.mts`). Tiles depend on the `HomeAssistantService`
   interface, never the client, and a deployment with no URL configured gets
@@ -297,11 +310,17 @@ runtime validation, and relevant documentation together.
   what it provides and why this project needs it.
 - The Pi has npm and no pnpm; do not add one. Deploy the controller under
   `/opt/smartamp/controller` and install its exact pins with
-  `npm install --omit=dev --omit=peer`. Avoid global npm installs.
+  `npm install --omit=dev --omit=peer`, plus `--omit=optional` when
+  `streamdeck_enabled` is off. That choice is recorded beside the manifest,
+  because `npm ls` cannot see packages it was told to ignore and turning the
+  deck off would otherwise never prune them.
 - Deploy the compiled `controller/dist/src/` tree, never the `.mts` sources, and
   preserve its folders on the Pi so import specifiers stay valid. The Pi gets no
   TypeScript toolchain; `make build` compiles on the control computer, and
-  provisioning fails with an instruction if that output is missing.
+  provisioning fails with an instruction if that output is missing. A unit with
+  no deck is sent neither `streamdeck/` nor `remote/` nor the bundled font, and
+  the existing obsolete-module pass takes them off a Pi whose flag has just been
+  turned off.
 
 ## Validation
 
@@ -317,7 +336,11 @@ Python and Node tests, and performs an Ansible syntax check without contacting
 the Pi. A type error fails the build before any test runs.
 
 For controller dependency changes, pin the exact version in both
-`apps/controller/package.json` and `apps/playground/package.json`, then run:
+`apps/controller/package.json` and `apps/playground/package.json`, then run the
+commands below. A package only `streamdeck/` or `remote/` imports belongs in the
+controller's `optionalDependencies`; the playground always draws, so it pins
+every one of them as a plain dependency and `make test` compares both maps
+against it.
 
 ```sh
 pnpm install                   # refresh the workspace lockfile

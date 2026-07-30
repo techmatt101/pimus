@@ -91,9 +91,12 @@ hardware output level. Both are adjustable in the Ansible variables.
 - `smartamp-sendspin`: runs the Sendspin player that Music Assistant discovers and streams to.
 - `smartamp-voice-assistant`: pinned OHF Linux Voice Assistant checkout and Python virtual environment.
 - `smartamp-controller`: maps Assist events to background ducking and XVF3800 effects, and renders/handles Stream Deck+
-  controls without Elgato desktop software. When remote tiles are enabled it also listens on one authenticated WebSocket
-  port, through which another computer on the LAN pushes key faces onto the deck's REMOTE page and receives the presses
-  back (`apps/controller/src/remote/server.mts`); the controller remains the only owner of the deck.
+  controls without Elgato desktop software. The deck half is an addon behind one dynamic import
+  (`apps/controller/src/streamdeck/control-surface.mts`), taken only when `streamdeck_enabled` is on, so a unit
+  without one loads none of it and is never sent the drawing packages it needs. When remote tiles are enabled it listens
+  one authenticated WebSocket port, through which another computer on the LAN pushes key faces onto the deck's REMOTE
+  page and receives the presses back (`apps/controller/src/remote/server.mts`); that listener is part of the same addon,
+  and the controller remains the only owner of the deck.
 
 The controller is one long-running Node process because ducking and both control
 surfaces consume the same voice, mute, media, and audio-route state.

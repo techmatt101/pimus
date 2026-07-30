@@ -58,7 +58,10 @@ check: build ## Run an Ansible dry run (hardware/service tasks may be skipped)
 test: build ## Run local source and Ansible checks without contacting the Pi
 	@# The playground compiles the controller's sources and so must resolve the
 	@# same packages; without this nothing would notice the two pins drifting.
-	@python3 -c 'import json,sys; c=json.load(open("apps/controller/package.json"))["dependencies"]; p=json.load(open("apps/playground/package.json"))["dependencies"]; d=sorted(k for k,v in c.items() if p.get(k)!=v); sys.exit(f"apps/playground pins different versions than apps/controller: {d}" if d else 0)'
+	@# The deck-only packages are optional in the controller so a deck-less Pi
+	@# never installs them, but the playground always draws, so it pins all of
+	@# them as plain dependencies and both maps are compared against it.
+	@python3 -c 'import json,sys; m=json.load(open("apps/controller/package.json")); c={**m["dependencies"], **m["optionalDependencies"]}; p=json.load(open("apps/playground/package.json"))["dependencies"]; d=sorted(k for k,v in c.items() if p.get(k)!=v); sys.exit(f"apps/playground pins different versions than apps/controller: {d}" if d else 0)'
 	python3 -m compileall -q apps/audio-manager/src
 	python3 -m unittest discover -s apps/audio-manager/test
 	node --test $$(find apps/controller/dist/test -name '*.test.mjs' | sort)

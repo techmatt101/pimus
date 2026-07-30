@@ -65,6 +65,13 @@ function validateControllerConfig(value: unknown, configPath: string): asserts v
     // An unauthenticated inbound listener must be impossible to configure by accident.
     if (isRecord(value.remote) && value.remote.enabled) {
         const {port, token} = value.remote
+        // Remote tiles are faces on a deck page, so without a deck the listener
+        // would accept pushes and paint them nowhere.
+        if (!(isRecord(value.streamdeck) && value.streamdeck.enabled)) {
+            throw new Error(
+                `remote.enabled is on in ${configPath}, but remote tiles are keys on the deck and streamdeck.enabled is off`,
+            )
+        }
         if (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535) {
             throw new Error(`Controller configuration at ${configPath} must define a TCP remote.port`)
         }

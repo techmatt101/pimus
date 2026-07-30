@@ -150,6 +150,17 @@
     - smartamp_power_off_on_halt | bool
     - not (smartamp_board_caps.power_button | bool)
 
+# A remote tile is a face on a deck page, so with no deck the listener would
+# authenticate pushes and paint them nowhere - and it is one of the two modules
+# reaching for a package a deck-less unit does not install.
+- name: Require a Stream Deck for the remote-tile listener
+  ansible.builtin.assert:
+    that: streamdeck_enabled | bool
+    fail_msg: >-
+      remote_tiles_enabled is on but streamdeck_enabled is off, and remote tiles
+      are keys on the deck. Turn the deck on, or set it to false.
+  when: remote_tiles_enabled | bool
+
 # Bookworm moved config.txt under /boot/firmware. Confirm that expected layout
 # before any blockinfile task is allowed to modify boot configuration.
 - name: Locate Raspberry Pi boot configuration

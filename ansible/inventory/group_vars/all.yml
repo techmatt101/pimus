@@ -266,7 +266,11 @@ respeaker_led_brightness: 128 # 0 - 255
 # Whether this unit drives a Stream Deck+. The key and dial layout itself is
 # compiled into the controller and edited in
 # apps/controller/src/streamdeck/layout.mts; see docs/controls.md. Set this to
-# false for an LED-only deployment with no deck attached.
+# false for an LED-only deployment with no deck attached: the deck is an addon
+# the controller loads only when this is on, so turning it off also stops the
+# deck's modules being deployed and its native packages being installed - about
+# 46MB of canvas and JPEG encoder the Pi then never carries. Remote tiles are
+# keys on the deck, so provisioning refuses them without it.
 streamdeck_enabled: true
 
 # While the amp sleeps (the room empty for five minutes, or the SLEEP key),
@@ -303,7 +307,9 @@ home_assistant_url: "https://home.techmatt101.xyz"
 # the presses back — see apps/remote-demo for a runnable client. Enabling it
 # opens this TCP port on the Pi, so it is off by default and requires
 # REMOTE_TILES_TOKEN in the secrets file; the controller refuses to listen
-# without one. Pick a long random value.
+# without one. Pick a long random value. Requires streamdeck_enabled: what it
+# pushes are keys, so with no deck the listener would authenticate a face and
+# paint it nowhere.
 remote_tiles_enabled: false
 remote_tiles_port: 8470
 

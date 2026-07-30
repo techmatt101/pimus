@@ -144,7 +144,9 @@ Use the full `make provision` after changing anything outside
 ## Project layout
 
 - `apps/controller`: one TypeScript/Node daemon for Stream Deck+, ReSpeaker LEDs, and voice-state events.
-  `make provision` compiles it here and deploys the resulting JavaScript.
+  `make provision` compiles it here and deploys the resulting JavaScript. The deck is an addon: with
+  `streamdeck_enabled: false` its modules and its ~46 MB of native drawing packages are neither deployed nor installed,
+  and the daemon runs on for the LEDs, ducking, and voice.
 - `apps/audio-manager`: the Python PipeWire reconciliation daemon and its colocated tests.
 - `apps/playground`: a development-only debug environment that runs the controller on this computer against fake
   hardware. Not deployed.

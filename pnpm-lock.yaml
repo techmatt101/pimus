@@ -14,15 +14,6 @@ importers:
 
   apps/controller:
     dependencies:
-      '@elgato-stream-deck/node':
-        specifier: 7.6.3
-        version: 7.6.3(@julusian/jpeg-turbo@3.0.1)
-      '@julusian/jpeg-turbo':
-        specifier: 3.0.1
-        version: 3.0.1
-      '@napi-rs/canvas':
-        specifier: 1.0.2
-        version: 1.0.2
       usb:
         specifier: 2.18.0
         version: 2.18.0
@@ -39,6 +30,16 @@ importers:
       typescript:
         specifier: 5.9.3
         version: 5.9.3
+    optionalDependencies:
+      '@elgato-stream-deck/node':
+        specifier: 7.6.3
+        version: 7.6.3(@julusian/jpeg-turbo@3.0.1)
+      '@julusian/jpeg-turbo':
+        specifier: 3.0.1
+        version: 3.0.1
+      '@napi-rs/canvas':
+        specifier: 1.0.2
+        version: 1.0.2
 
   apps/playground:
     dependencies:

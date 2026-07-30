@@ -358,6 +358,21 @@ models under `/var/lib/smartamp` are retained for a later re-enable.
 `streamdeck_enabled` turns the control surface on or off for this unit. Set it
 to `false` for an LED-only deployment with no deck attached.
 
+The deck is an addon rather than a part of the controller that happens to be
+idle. `index.mts` reaches it through one dynamic import of
+`streamdeck/control-surface.mts`, taken only when the flag is on, and that
+subsystem is the only thing that pulls in the drawing canvas
+(`@napi-rs/canvas`), the deck libraries (`@elgato-stream-deck/node`), and the
+native JPEG encoder (`@julusian/jpeg-turbo`). Those three are the manifest's
+`optionalDependencies`, so with the flag off provisioning installs with
+`--omit=optional`, deploys neither `streamdeck/` nor `remote/` nor the bundled
+font, and an already-provisioned Pi has all of it removed on the next run —
+roughly 46MB of native code, and none of it loaded at startup. Turning the flag
+back on restores it. What remains is the part that never needed a deck: the LED
+ring, voice ducking, the audio-manager socket, and the Home Assistant client.
+
+Remote tiles require the deck (see below), because what they push are keys.
+
 The key and dial layout, and the panel brightness, are defined in the
 controller itself at `apps/controller/src/streamdeck/layout.mts`, not in the
 inventory — edit that file and run `make deploy-controller`. Every available
@@ -406,7 +421,10 @@ This is the one inbound port the controller opens, so the feature is off by
 default and never starts without a token: set `remote_tiles_enabled: true` and
 put a long random `REMOTE_TILES_TOKEN` in the [secrets file](#secrets).
 Disabling the flag again closes the port on the next provision, and the REMOTE
-page leaves the deck with it.
+page leaves the deck with it. It also requires `streamdeck_enabled`: what it
+serves are deck keys, so with no deck the listener would authenticate a pushed
+face and paint it nowhere. Preflight refuses the combination by name, and the
+controller refuses it again from `controller.json`.
 
 ### Secrets
 
