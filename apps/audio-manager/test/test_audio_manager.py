@@ -1003,6 +1003,63 @@ class ReconcileTests(ManagerTestCase):
         status = status_write.call_args.args[1]
         self.assertEqual(status["voice_capture"], {"channel": 1, "source": None})
 
+    def test_voice_capture_remap_is_rebuilt_when_the_master_is_recreated(self) -> None:
+        manager = self.make_manager({"voice_capture_channel": 1})
+        manager.modules.adopt("_voice_capture", 40, ("xvf_mic", "front-right"))
+        device = {
+            "index": 10,
+            "name": "xvf_mic",
+            "description": "reSpeaker XVF3800 Mic Array",
+            "monitor_of_sink": 4294967295,
+            "channel_map": "front-left,front-right",
+        }
+        listings: dict[str, Any] = {
+            "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
+            "sources": [device, {"name": "smartamp_voice_capture", "monitor_of_sink": 4294967295,
+                                 "properties": {"device.master_device": "xvf_mic"}}],
+            "sink-inputs": [],
+            "cards": [],
+            "modules": [{"index": 40, "name": "module-remap-source",
+                         "argument": "master=xvf_mic master_channel_map=front-right"}],
+        }
+        loaded: list[str] = []
+
+        def load_module(module: str, *arguments: str) -> int:
+            loaded.append(module)
+            listings["modules"].append(
+                {"index": 41, "name": module, "argument": " ".join(arguments)}
+            )
+            return 41
+
+        def run(*args: str, check: bool = True) -> Any:
+            if args[:2] == ("pactl", "unload-module"):
+                listings["modules"] = [
+                    module
+                    for module in listings["modules"]
+                    if str(module["index"]) != args[2]
+                ]
+                return completed(*args)
+            return fake_run(*args, check=check)
+
+        def reconcile() -> None:
+            with self._patched_graph(listings, run), mock.patch.object(
+                pactl, "load_module", side_effect=load_module
+            ), mock.patch("audio_manager.status.write"):
+                manager.reconcile()
+
+        # A settled graph keeps the adopted remap.
+        reconcile()
+        self.assertEqual(loaded, [])
+        self.assertEqual(manager.modules.id_of("_voice_capture"), 40)
+
+        # A USB power cycle recreates the master under the same name: the
+        # surviving module would publish silence from the dead node, so it is
+        # rebuilt against the new one.
+        device["index"] = 99
+        reconcile()
+        self.assertEqual(loaded, ["module-remap-source"])
+        self.assertEqual(manager.modules.id_of("_voice_capture"), 41)
+
     def test_voice_card_without_an_input_profile_is_repaired(self) -> None:
         manager = self.make_manager({"voice_capture_channel": 1})
         # A USB power cycle re-enumerated the XVF3800 before its capture side

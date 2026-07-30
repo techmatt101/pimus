@@ -250,6 +250,9 @@ export interface LedFrame {
 
 export interface LedDevice {
     apply(frame: LedFrame): Promise<void>
+
+    /** Forget the handle and everything delivered: the device re-enumerated. */
+    reattach?(): void
 }
 
 /** What the XVF3800's own DSP reports about the voice reaching the array. */

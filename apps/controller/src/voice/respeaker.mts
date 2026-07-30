@@ -143,6 +143,15 @@ export class ReSpeakerController {
         return this.render()
     }
 
+    /**
+     * Waking from sleep restores USB power to a freshly booted array showing
+     * its firmware default effect; the watchdog keeps retrying the rewrite
+     * until the device has re-enumerated.
+     */
+    reattach(): Promise<void> {
+        return this.#renderer.reattach()
+    }
+
     #clearBootTimer(): void {
         if (this.#bootTimer) clearTimeout(this.#bootTimer)
         this.#bootTimer = null

@@ -136,6 +136,23 @@ export class Xvf3800Device implements LedDevice, VoiceSensor {
         return this.#queued(() => this.#applyFrame(frame))
     }
 
+    /**
+     * A power-cycled device rebooted into firmware defaults without the stale
+     * handle ever erroring — nothing transfers while the shown face is
+     * unchanged — so the handle and the delivered-command cache are dropped
+     * and the next frame reconnects and rewrites everything.
+     */
+    reattach(): void {
+        void this.#queued(async () => {
+            try {
+                this.#device?.close()
+            } catch {
+            }
+            this.#device = null
+            this.#written.clear()
+        })
+    }
+
     sense(): Promise<VoiceSensing> {
         return this.#queued(() => this.#senseVoice())
     }

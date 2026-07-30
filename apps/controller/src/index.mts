@@ -167,10 +167,15 @@ if (config.voice_enabled) lva.connect()
 if (config.streamdeck?.enabled) {
     const usbPower = new UsbPower({enabled: config.sleep?.usb_power_off === true})
     sleep.start()
-    // Standby (dim) suspends the amp bridges; sleep (off) also cuts USB power.
+    // Standby (dim) suspends the amp bridges; sleep (off) also cuts USB power,
+    // and leaving it hands a rebooted ReSpeaker back to the controller.
+    let lastPanel = model.state.panel
     model.subscribe(() => {
-        audio.setStandby(model.state.panel !== 'lit')
-        usbPower.set(model.state.panel !== 'off')
+        const panel = model.state.panel
+        audio.setStandby(panel !== 'lit')
+        usbPower.set(panel !== 'off')
+        if (lastPanel === 'off' && panel !== 'off') void respeaker?.reattach()
+        lastPanel = panel
     })
     audio.setStandby(model.state.panel !== 'lit')
     usbPower.set(model.state.panel !== 'off')

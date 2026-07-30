@@ -69,6 +69,7 @@ class VoiceCapture:
         self, channel: int | None, view: Graph, registry: ModuleRegistry
     ) -> None:
         self.channel = channel
+        self._master_index: str | None = None
         self._graph = view
         self._modules = registry
 
@@ -77,11 +78,22 @@ class VoiceCapture:
         status: dict[str, Any] = {"channel": self.channel, "source": None}
         if self.channel is None or device is None:
             self._modules.unload(CAPTURE_ROLE)
+            self._master_index = None
             return device, status
         master_channel = self._channel_label(device)
         if master_channel is None:
             self._modules.unload(CAPTURE_ROLE)
+            self._master_index = None
             return device, status
+        # A remap module can outlive its master: after a USB power cycle the
+        # device node is recreated under the same name, and the surviving
+        # module keeps publishing silence from the node that no longer exists.
+        # A new master identity means the remap must be rebuilt against it.
+        master_index = str(device.get("index")) if device.get("index") is not None else None
+        if master_index is not None and self._master_index not in (None, master_index):
+            self._modules.unload(CAPTURE_ROLE)
+            LOG.info("Voice capture master was recreated; rebuilding the remap")
+        self._master_index = master_index
         created = self._modules.ensure_remap_source(
             CAPTURE_ROLE,
             SOURCE_NAME,

@@ -70,6 +70,13 @@ export class LedRenderer {
         this.#timer = null
     }
 
+    /** The device re-enumerated: rewrite the current face from scratch. */
+    reattach(): Promise<void> {
+        this.#lastSignature = ''
+        this.device.reattach?.()
+        return this.render()
+    }
+
     render(): Promise<void> {
         this.#renderQueue = this.#renderQueue.then(async () => {
             const frame = this.#frame()
