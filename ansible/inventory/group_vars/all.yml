@@ -199,10 +199,10 @@ respeaker_led_brightness: 128 # 0 - 255
 streamdeck_enabled: true
 
 # While the amp sleeps (the room empty for five minutes, or the SLEEP key),
-# cut VBUS on the Pi's USB-A root hubs so the Stream Deck and ReSpeaker power
-# down - about two watts. The wake word is off while the room is empty;
-# presence returning or the Pi 5 power button powers everything back within a
-# few seconds. The sleep and standby timings themselves are compiled into the
+# power off the Pi's USB-A ports so the Stream Deck and ReSpeaker go dark -
+# about two watts. The wake word is off while the room is empty; presence
+# returning or the Pi 5 power button powers everything back within a few
+# seconds. The sleep and standby timings themselves are compiled into the
 # controller beside the layout (the SLEEP block in streamdeck/layout.mts).
 smartamp_sleep_usb_power_off: true
 

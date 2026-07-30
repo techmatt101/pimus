@@ -91,10 +91,11 @@ the controller reports standby over the control socket and the teardown happens 
 timeout (audio still playing keeps the bridges up regardless); when the panel relights, the bridges rebuild
 proactively so the first thing played or said after walking in opens on a ready graph. Standby is held against the
 controller's socket connection, exactly as a duck request is, so a controller crash releases it. In full sleep,
-`smartamp_sleep_usb_power_off` additionally cuts VBUS on the Pi's USB-A root hubs with `uhubctl`, powering the
-Stream Deck and ReSpeaker down entirely; provisioning installs the tool, the udev rule that lets the service account
-switch the hubs, and a logind override that hands the Pi 5 power button to the controller as the sleep/wake toggle —
-pressing it no longer shuts the Pi down.
+`smartamp_sleep_usb_power_off` additionally powers off the Pi's USB-A ports through the kernel's per-port `disable`
+attribute — which both cuts VBUS and forbids re-enumeration; a bare power-off is undone by the hub driver within a
+second — taking the Stream Deck and ReSpeaker down entirely. Provisioning installs the udev rule that lets the
+service account write those attributes, and a logind override that hands the Pi 5 power button to the controller as
+the sleep/wake toggle — pressing it no longer shuts the Pi down.
 
 Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Sendspin and USB computer audio share the
 `smartamp_background_sink_name` bus and fade down to `smartamp_voice_duck_volume_percent` per cent of their normal level

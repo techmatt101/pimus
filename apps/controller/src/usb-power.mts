@@ -1,29 +1,33 @@
-import {execFile} from 'node:child_process'
+import fs from 'node:fs'
 
 import {logger} from './log.mjs'
 
 const log = logger('usb-power')
 
-// The Pi 5's USB-A ports hang off two RP1 root hubs, which uhubctl addresses
-// as locations "1" (USB 2) and "3" (USB 3); switching VBUS on both powers the
-// Stream Deck and ReSpeaker down together.
-const PI5_ROOT_HUBS = ['1', '3']
+// The kernel's per-port disable attribute both cuts VBUS and forbids
+// re-enumeration, which uhubctl's bare power-off could not: the hub driver
+// re-powered the port within a second of the disconnect. The four entries are
+// the Pi 5's two USB-A device ports and their USB 3 shadow ports, which share
+// each connector's VBUS.
+const PI5_PORT_DISABLES = [
+    '/sys/bus/usb/devices/usb1/1-0:1.0/usb1-port1/disable',
+    '/sys/bus/usb/devices/usb2/2-0:1.0/usb2-port1/disable',
+    '/sys/bus/usb/devices/usb3/3-0:1.0/usb3-port1/disable',
+    '/sys/bus/usb/devices/usb4/4-0:1.0/usb4-port1/disable',
+]
 
-type Exec = (command: string, args: string[]) => Promise<void>
+const RETRY_MILLISECONDS = 30_000
 
-const execute: Exec = (command, args) =>
-    new Promise((resolve, reject) => {
-        execFile(command, args, (error) => (error ? reject(error) : resolve()))
-    })
+type Write = (path: string, value: string) => Promise<void>
+
+const writeAttribute: Write = (path, value) => fs.promises.writeFile(path, value)
 
 export interface UsbPowerOptions {
     enabled: boolean
-    hubs?: string[]
-    exec?: Exec
+    ports?: string[]
+    write?: Write
     errors?: Pick<Console, 'error'>
 }
-
-const RETRY_MILLISECONDS = 30_000
 
 export class UsbPower {
     #applied: boolean | null = null
@@ -31,14 +35,14 @@ export class UsbPower {
     #lastErrorMessage: string | null = null
     #failedAt = 0
     readonly #enabled: boolean
-    readonly #hubs: string[]
-    readonly #exec: Exec
+    readonly #ports: string[]
+    readonly #write: Write
     readonly #errors: Pick<Console, 'error'>
 
-    constructor({enabled, hubs = PI5_ROOT_HUBS, exec = execute, errors = console}: UsbPowerOptions) {
+    constructor({enabled, ports = PI5_PORT_DISABLES, write = writeAttribute, errors = console}: UsbPowerOptions) {
         this.#enabled = enabled
-        this.#hubs = hubs
-        this.#exec = exec
+        this.#ports = ports
+        this.#write = write
         this.#errors = errors
     }
 
@@ -48,9 +52,9 @@ export class UsbPower {
         this.#applied = powered
         // Serialised so an off issued mid-wake cannot overtake its own on.
         this.#queue = this.#queue.then(async () => {
-            for (const hub of this.#hubs) {
+            for (const port of this.#ports) {
                 try {
-                    await this.#exec('uhubctl', ['-l', hub, '-a', powered ? 'on' : 'off'])
+                    await this.#write(port, powered ? '0' : '1')
                 } catch (error) {
                     // Forgotten so a later pass retries rather than trusting a
                     // state that never took; every model change would retry, so
@@ -60,7 +64,7 @@ export class UsbPower {
                     const message = error instanceof Error ? error.message : String(error)
                     if (message !== this.#lastErrorMessage) {
                         this.#lastErrorMessage = message
-                        this.#errors.error(`usb power ${powered ? 'on' : 'off'} failed on hub ${hub}`, error)
+                        this.#errors.error(`usb power ${powered ? 'on' : 'off'} failed at ${port}`, error)
                     }
                     return
                 }

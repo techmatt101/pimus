@@ -52,37 +52,29 @@
   notify: Reload udev
   when: not (streamdeck_enabled | bool)
 
-# Sleep cuts VBUS on the Pi's USB-A root hubs so the deck and ReSpeaker power
-# down with the panel; uhubctl is what the controller shells out to. The
-# package stays installed when the flag is turned off - only the permission
-# rule below is active configuration.
-- name: Install the USB power control tool
-  ansible.builtin.apt:
-    name: uhubctl
-    state: present
-  when:
-    - streamdeck_enabled | bool
-    - smartamp_sleep_usb_power_off | bool
-
-# uhubctl writes to the root-hub device nodes. 1d6b is the Linux Foundation id
-# every kernel root hub carries, and the service account is already in plugdev
-# for the other USB surfaces.
-- name: Install USB hub power permissions
+# Sleep cuts USB power through the kernel's per-port disable attribute, which
+# both drops VBUS and forbids re-enumeration - a bare power-off (uhubctl) is
+# undone by the hub driver within a second of the disconnect. udev cannot set
+# permissions on sysfs attributes directly, so the rule runs a chgrp/chmod as
+# each port device appears; the service account is already in plugdev for the
+# other USB surfaces.
+- name: Install USB port power permissions
   ansible.builtin.copy:
-    dest: /etc/udev/rules.d/60-smartamp-usb-hubs.rules
-    content: |
-      SUBSYSTEM=="usb", ATTR{idVendor}=="1d6b", MODE:="0664", GROUP="plugdev"
+    dest: /etc/udev/rules.d/60-smartamp-usb-ports.rules
+    content: >
+      ACTION=="add", SUBSYSTEM=="usb", DEVTYPE=="usb_port",
+      RUN+="/bin/sh -c 'chgrp plugdev /sys%p/disable && chmod 664 /sys%p/disable'"
     owner: root
     group: root
     mode: "0644"
-  notify: Apply USB hub permissions
+  notify: Apply USB port permissions
   when:
     - streamdeck_enabled | bool
     - smartamp_sleep_usb_power_off | bool
 
-- name: Remove USB hub power permissions when disabled
+- name: Remove USB port power permissions when disabled
   ansible.builtin.file:
-    path: /etc/udev/rules.d/60-smartamp-usb-hubs.rules
+    path: /etc/udev/rules.d/60-smartamp-usb-ports.rules
     state: absent
   notify: Reload udev
   when: not ((streamdeck_enabled | bool) and (smartamp_sleep_usb_power_off | bool))
