@@ -1,6 +1,6 @@
 ---
 # /proc/device-tree/model is authoritative even when the OS image has been
-# renamed. Reading it before editing boot files prevents applying Pi 5-specific
+# renamed. Reading it before editing boot files prevents applying board-specific
 # overlays and USB-controller settings to unrelated hardware.
 - name: Read Raspberry Pi model
   ansible.builtin.slurp:
@@ -13,18 +13,72 @@
   ansible.builtin.set_fact:
     raspberry_pi_model: "{{ raspberry_pi_model_raw.content | b64decode | replace('\u0000', '') }}"
 
-# This project relies on Pi 5 USB-C peripheral support, the arm64 LVA build, and
+# The supported boards differ in ways that change behaviour rather than naming:
+# a power button, switchable USB port power, and which bootloader keys exist.
+# One table answers all of that, so no later task parses the model string again.
+- name: Load the supported board capabilities
+  ansible.builtin.include_vars:
+    file: boards.yml
+
+- name: Identify the board
+  ansible.builtin.set_fact:
+    smartamp_board: >-
+      {{ smartamp_boards | dict2items
+         | selectattr('value.model_match', 'in', raspberry_pi_model)
+         | map(attribute='key') | first | default('') }}
+
+# This project relies on USB-C peripheral support, the arm64 LVA build, and
 # Debian package names. Fail early instead of leaving a half-configured system.
 - name: Check the target platform
   ansible.builtin.assert:
     that:
       - ansible_architecture in ['aarch64', 'arm64']
-      - "'Raspberry Pi 5' in raspberry_pi_model"
+      - smartamp_board | length > 0
       - ansible_os_family == 'Debian'
     fail_msg: >-
-      This recipe requires 64-bit Raspberry Pi OS on a Pi 5. Detected
+      This recipe requires 64-bit Raspberry Pi OS on one of
+      {{ smartamp_boards.values() | map(attribute='label') | join(', ') }}. Detected
       {{ raspberry_pi_model }}, {{ ansible_distribution }} {{ ansible_distribution_version }},
       {{ ansible_architecture }}.
+
+- name: Select the board capabilities
+  ansible.builtin.set_fact:
+    smartamp_board_caps: "{{ smartamp_boards[smartamp_board] }}"
+
+# Cutting VBUS needs ports that can be switched off. A board with none would
+# sleep its panel and quietly save nothing, so inventory has to say so rather
+# than promise a saving the hardware cannot make.
+- name: Require switchable USB port power for sleep power-off
+  ansible.builtin.assert:
+    that: smartamp_board_caps.usb_port_disables | length > 0
+    fail_msg: >-
+      smartamp_sleep_usb_power_off is on but {{ smartamp_board_caps.label }} has no
+      switchable USB port power. Set it to false; the panel still sleeps and a
+      touch still wakes it.
+  when: smartamp_sleep_usb_power_off | bool
+
+- name: Require bootloader support for waiting on the power button
+  ansible.builtin.assert:
+    that: "'WAIT_FOR_POWER_BUTTON' in smartamp_board_caps.eeprom_keys"
+    fail_msg: >-
+      smartamp_wait_for_power_button is on but the {{ smartamp_board_caps.label }}
+      bootloader has no such setting. Set it to false.
+  when: smartamp_wait_for_power_button | bool
+
+# A board with a power button wakes from halt on that button whatever
+# WAKE_ON_GPIO says. Without one, WAKE_ON_GPIO is the only wake path there is,
+# and halting with it off leaves a board nobody can start again without pulling
+# the plug for a minute.
+- name: Require a wake path for a board with no power button
+  ansible.builtin.assert:
+    that: smartamp_wake_on_gpio | bool
+    fail_msg: >-
+      smartamp_power_off_on_halt is on but {{ smartamp_board_caps.label }} has no
+      power button, so only smartamp_wake_on_gpio (GPIO3 or GLOBAL_EN shorted to
+      ground) can start it again. Turn that on, or turn off the halt power-down.
+  when:
+    - smartamp_power_off_on_halt | bool
+    - not (smartamp_board_caps.power_button | bool)
 
 # Bookworm moved config.txt under /boot/firmware. Confirm that expected layout
 # before any blockinfile task is allowed to modify boot configuration.

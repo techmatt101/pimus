@@ -171,7 +171,10 @@ if (homeAssistant instanceof HomeAssistantClient) homeAssistant.connect()
 if (config.voice_enabled) lva.connect()
 
 if (config.streamdeck?.enabled) {
-    const usbPower = new UsbPower({enabled: config.sleep?.usb_power_off === true})
+    const usbPower = new UsbPower({
+        enabled: config.sleep?.usb_power_off === true,
+        ports: config.sleep?.usb_ports ?? [],
+    })
     sleep.start()
     // Standby (dim) suspends the amp bridges; sleep (off) also cuts USB power,
     // and leaving it hands a rebooted ReSpeaker back to the controller.

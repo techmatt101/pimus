@@ -6,16 +6,9 @@ const log = logger('usb-power')
 
 // The kernel's per-port disable attribute both cuts VBUS and forbids
 // re-enumeration, which uhubctl's bare power-off could not: the hub driver
-// re-powered the port within a second of the disconnect. The four entries are
-// the Pi 5's two USB-A device ports and their USB 3 shadow ports, which share
-// each connector's VBUS.
-const PI5_PORT_DISABLES = [
-    '/sys/bus/usb/devices/usb1/1-0:1.0/usb1-port1/disable',
-    '/sys/bus/usb/devices/usb2/2-0:1.0/usb2-port1/disable',
-    '/sys/bus/usb/devices/usb3/3-0:1.0/usb3-port1/disable',
-    '/sys/bus/usb/devices/usb4/4-0:1.0/usb4-port1/disable',
-]
-
+// re-powered the port within a second of the disconnect. Which ports carry the
+// deck and the ReSpeaker is the board's business, so they arrive in the
+// deployed configuration beside the permissions Ansible granted on them.
 const RETRY_MILLISECONDS = 30_000
 
 type Write = (path: string, value: string) => Promise<void>
@@ -24,7 +17,7 @@ const writeAttribute: Write = (path, value) => fs.promises.writeFile(path, value
 
 export interface UsbPowerOptions {
     enabled: boolean
-    ports?: string[]
+    ports: string[]
     write?: Write
     errors?: Pick<Console, 'error'>
 }
@@ -39,7 +32,7 @@ export class UsbPower {
     readonly #write: Write
     readonly #errors: Pick<Console, 'error'>
 
-    constructor({enabled, ports = PI5_PORT_DISABLES, write = writeAttribute, errors = console}: UsbPowerOptions) {
+    constructor({enabled, ports, write = writeAttribute, errors = console}: UsbPowerOptions) {
         this.#enabled = enabled
         this.#ports = ports
         this.#write = write

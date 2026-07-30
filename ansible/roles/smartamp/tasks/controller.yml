@@ -56,16 +56,17 @@
 # both drops VBUS and forbids re-enumeration - a bare power-off (uhubctl) is
 # undone by the hub driver within a second of the disconnect. The port devices
 # carry no udev properties, so no udev rule can grant access to the attribute;
-# systemd-tmpfiles hands it to plugdev at every boot instead. The root hubs
-# are soldered to the board, so the paths are stable.
+# systemd-tmpfiles hands it to plugdev at every boot instead. The ports are the
+# board's own list (vars/boards.yml), which the controller also receives, so the
+# permissions and the writes cannot describe different hardware. A board with no
+# switchable port power cannot enable the flag at all; preflight says so.
 - name: Install USB port power permissions
   ansible.builtin.copy:
     dest: /etc/tmpfiles.d/smartamp-usb-ports.conf
     content: |
-      z /sys/bus/usb/devices/usb1/1-0:1.0/usb1-port1/disable 0664 root plugdev -
-      z /sys/bus/usb/devices/usb2/2-0:1.0/usb2-port1/disable 0664 root plugdev -
-      z /sys/bus/usb/devices/usb3/3-0:1.0/usb3-port1/disable 0664 root plugdev -
-      z /sys/bus/usb/devices/usb4/4-0:1.0/usb4-port1/disable 0664 root plugdev -
+      {% for port in smartamp_board_caps.usb_port_disables %}
+      z {{ port }} 0664 root plugdev -
+      {% endfor %}
     owner: root
     group: root
     mode: "0644"
@@ -90,10 +91,12 @@
     - /etc/udev/rules.d/60-smartamp-usb-ports.rules
   notify: Reload udev
 
-# The Pi 5 power button is the amp's sleep/wake toggle, read by the controller
-# from its gpio-keys input device. logind has to be told to ignore the key or
-# every press would also begin a graceful shutdown; halting the Pi is the
-# SHUTDOWN key on the settings page, SSH, or the smart plug instead.
+# A board with a dedicated power button makes it the amp's sleep/wake toggle,
+# read by the controller from its gpio-keys input device. logind has to be told
+# to ignore the key or every press would also begin a graceful shutdown; halting
+# the Pi is the SHUTDOWN key on the settings page, SSH, or the smart plug
+# instead. A board without one (the Pi 4B) keeps stock logind behaviour, and a
+# panel it slept with USB power cut can only be woken by presence returning.
 - name: Create the logind override directory
   ansible.builtin.file:
     path: /etc/systemd/logind.conf.d
@@ -101,7 +104,9 @@
     owner: root
     group: root
     mode: "0755"
-  when: streamdeck_enabled | bool
+  when:
+    - streamdeck_enabled | bool
+    - smartamp_board_caps.power_button | bool
 
 - name: Ignore the power key while the controller owns it
   ansible.builtin.copy:
@@ -113,15 +118,18 @@
     group: root
     mode: "0644"
   notify: Restart logind
-  when: streamdeck_enabled | bool
+  when:
+    - streamdeck_enabled | bool
+    - smartamp_board_caps.power_button | bool
 
-# Give the button its shutdown meaning back when the deck is disabled.
-- name: Restore default power key handling when the deck is disabled
+# Give the button its shutdown meaning back when the deck is disabled, and leave
+# nothing behind on a board whose power key the controller never claimed.
+- name: Restore default power key handling when the controller does not own it
   ansible.builtin.file:
     path: /etc/systemd/logind.conf.d/smartamp-power-button.conf
     state: absent
   notify: Restart logind
-  when: not (streamdeck_enabled | bool)
+  when: not ((streamdeck_enabled | bool) and (smartamp_board_caps.power_button | bool))
 
 # The SHUTDOWN key cannot reach a halt through sudo: the controller unit sets
 # NoNewPrivileges, which forbids any setuid escalation. `systemctl poweroff`

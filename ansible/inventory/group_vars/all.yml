@@ -17,7 +17,9 @@ smartamp_power_off_on_halt: true
 # from the Pi 5 onwards, because the dedicated power button wakes the board from
 # HALT or STANDBY whatever it is set to, and POWER_OFF_ON_HALT needs no help from
 # it there. It is pinned here only so the value cannot drift; turning it on does
-# not make a halted Pi reachable over the network.
+# not make a halted Pi reachable over the network. On a Pi 4B, which has no power
+# button, this is the only wake path there is, so provisioning refuses to halt
+# the rails without it.
 smartamp_wake_on_gpio: false
 # Park the board at the bootloader on the first boot after power was removed,
 # waiting for the power button instead of starting (bootloader EEPROM
@@ -25,6 +27,7 @@ smartamp_wake_on_gpio: false
 # POWER_OFF_ON_HALT is set). Leave it off: the deep-sleep routine shuts down and
 # then cuts the plug, so switching the plug back on has to be what boots the amp
 # again. Turning it on means nobody can wake the amp without walking over to it.
+# Pi 5 and later only; provisioning fails if it is on for a Pi 4B.
 smartamp_wait_for_power_button: false
 
 # The on-board radios. Each flag maps to a boot overlay (disable-wifi /
@@ -172,8 +175,10 @@ smartamp_voice_sink_name: smartamp_voice
 smartamp_voice_startup_volume_percent: 30
 
 # Make the Pi appear as a 48 kHz 16-bit stereo USB sound card to a computer
-# connected to the Pi 5 USB-C port. The AAmp60/DAC stack must power the Pi
-# through GPIO. Sample size is bytes per sample: 2 = 16-bit, 3 = 24-bit,
+# connected to its USB-C port. The AAmp60/DAC stack must power the Pi through
+# GPIO, and on a Pi 4B the host cable's power line must be cut as well: that
+# board wires USB-C VBUS to the same 5V rail as the GPIO header, with no PMIC
+# to arbitrate. Sample size is bytes per sample: 2 = 16-bit, 3 = 24-bit,
 # 4 = 32-bit. Keep it at 2: the dwc2 gadget controller corrupts 3-byte
 # samples on its isochronous endpoints, which plays as loud static with the
 # audio faintly underneath.
@@ -185,7 +190,9 @@ usb_audio_sample_size_bytes: 2
 # (PSU_MAX_CURRENT) because a GPIO-powered Pi has no USB-PD source to
 # negotiate with; without it the firmware assumes a weak supply, warns at
 # boot, and caps USB-A output at 600mA. Do not raise to 5000 without
-# validating the AAmp60 stack's power budget.
+# validating the AAmp60 stack's power budget. Pi 5 only: a Pi 4B has no such
+# setting and a fixed ~1.2A total USB-A budget, so the value is simply not
+# written there.
 usb_audio_psu_max_current_ma: 3000
 
 # Sendspin, Music Assistant's native player protocol. Leave the URL empty so
@@ -237,6 +244,13 @@ streamdeck_enabled: true
 # returning or the Pi 5 power button powers everything back within a few
 # seconds. The sleep and standby timings themselves are compiled into the
 # controller beside the layout (the SLEEP block in streamdeck/layout.mts).
+#
+# Both supported boards switch VBUS, ganged across every USB-A socket, so
+# nothing else may be left plugged in expecting to survive sleep. A Pi 4B needs
+# VL805 firmware 000137ad or newer (sudo rpi-eeprom-update) or the write is a
+# silent no-op, and has no power button, so with this on presence returning is
+# the only thing that wakes it - set it to false there to keep a deck touch as
+# a wake source.
 smartamp_sleep_usb_power_off: true
 
 # Home Assistant, for the Stream Deck keys that show and change house state:

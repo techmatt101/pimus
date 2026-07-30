@@ -1,7 +1,10 @@
 ---
-# Pi 5's USB-C controller is normally used for power/host operation. Peripheral
+# The USB-C controller is normally used for power/host operation. Peripheral
 # mode is required for the Pi to appear as a sound card to a connected computer.
-- name: Enable the Pi 5 USB-C peripheral controller
+# On a Pi 4B that port's VBUS is wired to the same 5V rail as the GPIO header,
+# with no PMIC between them, so the host cable must have its power line cut or
+# the computer and the AAmp60 end up feeding the rail against each other.
+- name: Enable the USB-C peripheral controller
   ansible.builtin.blockinfile:
     path: /boot/firmware/config.txt
     marker: "# {mark} SMART AMP USB AUDIO"
@@ -37,9 +40,11 @@
 # to negotiate with; without a declared supply it assumes a weak one, logs a
 # low-power warning at boot, and caps USB-A output at 600mA total. That
 # declaration is PSU_MAX_CURRENT, applied with the rest of the bootloader
-# settings in eeprom.yml. This does not affect a host computer's willingness to
-# enumerate the gadget (tested: a Mac still needs a dock either way, see
-# docs/troubleshooting.md).
+# settings in eeprom.yml, and it exists only on the Pi 5: a Pi 4B's USB-A budget
+# is fixed in hardware at roughly 1.2A total whatever it is powered from, so
+# deck plus ReSpeaker there wants a powered hub. This does not affect a host
+# computer's willingness to enumerate the gadget (tested: a Mac still needs a
+# dock either way, see docs/troubleshooting.md).
 
 # Run gadget creation only after the kernel modules are available and tear it
 # down cleanly on service stop/reconfiguration.

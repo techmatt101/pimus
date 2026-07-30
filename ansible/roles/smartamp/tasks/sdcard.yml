@@ -32,10 +32,11 @@
   notify: Restart journald
 
 # Swapping to the SD card is the fastest way to wear it out, and this stack
-# fits in Pi 5 RAM. Without swap, true memory exhaustion means the kernel
-# OOM-kills the largest process and systemd restarts it, which is preferable
-# to silently grinding the card. Stopping dphys-swapfile also runs swapoff;
-# failed_when tolerates images that never shipped the package.
+# fits in RAM on any supported board. Without swap, true memory exhaustion
+# means the kernel OOM-kills the largest process and systemd restarts it,
+# which is preferable to silently grinding the card. Stopping dphys-swapfile
+# also runs swapoff; failed_when tolerates images that never shipped the
+# package.
 - name: Disable the SD-card swapfile
   ansible.builtin.systemd_service:
     name: dphys-swapfile.service
@@ -70,7 +71,7 @@
   when: smartamp_zram_enabled | bool
 
 # zram-size is an expression evaluated in MB with "ram" bound to total memory.
-# zstd rather than lz4 because the Pi 5 has CPU headroom to spare and the
+# zstd rather than lz4 because these boards have CPU headroom to spare and the
 # better ratio is the whole point of the exercise. The priority keeps zram
 # ahead of the SD swapfile whenever that is also enabled, so the card is only
 # touched once compressed RAM is exhausted.

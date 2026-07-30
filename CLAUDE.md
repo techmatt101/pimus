@@ -2,9 +2,10 @@
 
 ## Project purpose
 
-Pimus provisions `office-amp`, a Raspberry Pi 5 audio and voice endpoint built
+Pimus provisions `office-amp`, a Raspberry Pi audio and voice endpoint built
 from a HiFiBerry DAC2 ADC Pro + AAmp60, ReSpeaker XVF3800, and Elgato Stream
-Deck+. It targets a fresh 64-bit Raspberry Pi OS Lite installation.
+Deck+. It targets a fresh 64-bit Raspberry Pi OS Lite installation on a Pi 5 or
+a Pi 4 Model B; `office-amp` itself is a Pi 5.
 
 Home Assistant and Music Assistant run on another machine. This repository
 must remain a lightweight client: do not add Docker, a local HA/music server, or
@@ -357,12 +358,26 @@ Provisioning can reboot the Pi when boot overlays change.
 
 ## Hardware constraints
 
-- USB audio gadget mode turns the Pi 5 USB-C port into a peripheral connection;
-  it can no longer be the normal PSU input. The HiFiBerry/AAmp60 stack must then
-  power the Pi through GPIO.
-- The Pi 5, AAmp60, ReSpeaker, and Stream Deck+ need power-budget validation.
+- What each supported board can do lives in `roles/smartamp/vars/boards.yml`,
+  and preflight publishes the matching row as `smartamp_board_caps`. Anything
+  board-conditional reads that fact; do not parse the model string again, and do
+  not give a board its own task file. A setting the board cannot honour fails
+  preflight by name rather than being silently dropped.
+- USB audio gadget mode turns the USB-C port into a peripheral connection; it
+  can no longer be the normal PSU input. The HiFiBerry/AAmp60 stack must then
+  power the Pi through GPIO. On a Pi 4B the host cable must have its power line
+  cut as well: that board wires USB-C VBUS onto the same 5V rail as the GPIO
+  header, with no PMIC to arbitrate.
+- The Pi, AAmp60, ReSpeaker, and Stream Deck+ need power-budget validation.
   Preserve under-voltage checks and recommend a powered USB hub if USB devices
-  reset or the throttle flags are non-zero.
+  reset or the throttle flags are non-zero. A Pi 5 declares its GPIO supply with
+  `PSU_MAX_CURRENT`; a Pi 4B has no such setting and a fixed ~1.2A USB-A budget.
+- Both boards switch USB VBUS, ganged across every USB-A socket, but only the
+  Pi 5 has a dedicated power button, so the button sleep/wake toggle is a Pi 5
+  behaviour. On a Pi 4B the switch needs VL805 firmware 000137ad or newer, its
+  ports are the internal hub's, listed for both the USB2 and USB3 halves because
+  power only drops when both are switched, and a slept board with dark USB can
+  only be woken by presence.
 - The XVF3800 playback endpoint carries the far-end AEC reference even though
   its physical speaker jack is unused. Do not remove that route as "unused."
 - The XVF3800 USB capture is two DSP outputs, not stereo: channel 0 is the

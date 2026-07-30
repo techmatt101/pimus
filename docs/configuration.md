@@ -59,7 +59,7 @@ with nothing plugged in or nothing playing is therefore safe — the route simpl
 The gadget's ALSA card boots with no active profile: it has no PipeWire-visible mixer path, so WirePlumber is offered
 only "off" and "pro-audio" and picks neither. While the USB route is enabled the audio manager switches a parked card
 to its pro-audio profile itself; that is what creates the capture node it bridges. Keep `usb_audio_sample_size_bytes`
-at `2` (16-bit) — the Pi 5's dwc2 gadget controller corrupts 3-byte (24-bit) samples on its isochronous endpoints,
+at `2` (16-bit) — the dwc2 gadget controller corrupts 3-byte (24-bit) samples on its isochronous endpoints,
 which plays as loud static with the audio faintly underneath.
 
 The gadget advertises a UAC2 mute/volume control, and the connected computer's writes to it land on the gadget card's
@@ -95,10 +95,15 @@ controller's socket connection, exactly as a duck request is, so a controller cr
 attribute — which both cuts VBUS and forbids re-enumeration; a bare power-off is undone by the hub driver within a
 second — taking the Stream Deck and ReSpeaker down entirely. Provisioning installs a systemd-tmpfiles entry that
 lets the service account write those attributes (the port devices carry no udev properties, so no udev rule can),
-and a logind override that hands the Pi 5 power button to the controller as the sleep/wake toggle — pressing it no
-longer shuts the Pi down. A device re-enumerating after a power cycle can be probed before its capture side is
-ready, so the audio manager also repairs a voice card that comes back with no input profile by switching it to the
-best profile offering a source.
+and a logind override that hands the board's power button to the controller as the sleep/wake toggle — pressing it no
+longer shuts the Pi down. Which port attributes those are is a property of the board
+(`ansible/roles/smartamp/vars/boards.yml`): four one-port root hubs on a Pi 5, and on a Pi 4B the four ports of the
+internal VL805 hub listed twice, once for its USB2 half and once for its USB3 half, because power only drops when both
+are switched. On both boards the sockets are ganged, so this takes every USB-A device down together. A Pi 4B needs
+VL805 firmware `000137ad` or newer for the switch to do anything, and has no power button, so provisioning leaves stock
+`logind` handling alone there and presence returning becomes the only wake for a slept board. A device re-enumerating after a power cycle can be probed before its
+capture side is ready, so the audio manager also repairs a voice card that comes back with no input profile by
+switching it to the best profile offering a source.
 
 Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Sendspin and USB computer audio share the
 `smartamp_background_sink_name` bus and fade down to `smartamp_voice_duck_volume_percent` per cent of their normal level
@@ -163,23 +168,30 @@ with no need to cut the plug to reach that floor.
 
 The trade-off is waking it again. A halted board is not reachable over the network, so only the dedicated power button,
 an RTC wakealarm, or a plug power-cycle boots it — plan any away-from-home automation around that before turning the
-flag on. At near-zero load the brick's capacitors also hold the rail for a surprisingly long time, so a plug cut has to
+flag on. A Pi 4B has no such button: there, `smartamp_wake_on_gpio` and a wire to GPIO3 are the substitute, and
+preflight insists on it before this flag may be set. At near-zero load the brick's capacitors also hold the rail for a
+surprisingly long time, so a plug cut has to
 last **at least 60 seconds** before switching back on, or the Pi never sees the gap. Cutting the plug shortly after the
 shutdown completes and simply switching it on at arrival avoids the problem entirely — which is what
-`smartamp_wait_for_power_button: false` protects. Its EEPROM key, `WAIT_FOR_POWER_BUTTON`, only does anything when
-`POWER_OFF_ON_HALT` is set (preflight rejects the combination without it): turn it on and the first boot after power
+`smartamp_wait_for_power_button: false` protects. Its EEPROM key, `WAIT_FOR_POWER_BUTTON`, exists on flagship models
+since the Pi 5 only and does anything only when `POWER_OFF_ON_HALT` is set (preflight rejects both combinations that
+would make it a lie): turn it on and the first boot after power
 was removed halts immediately and waits for the dedicated power button, so restoring the plug would no longer wake the
 amp on its own. Left off, power coming back is a normal boot.
 
-`smartamp_wake_on_gpio: false` pins `WAKE_ON_GPIO`, which on a Pi 4 chose whether a halted board could be woken by
-pulling GPIO3 or GLOBAL_EN to ground. Raspberry Pi document it as *not relevant* from the Pi 5 onwards, because the
-dedicated power button wakes the board from HALT or STANDBY whatever the setting says, and `POWER_OFF_ON_HALT` needs no
-help from it there. It is managed purely so a re-flashed EEPROM cannot come back with a different value; changing it
-will not alter how this board wakes.
+`smartamp_wake_on_gpio: false` pins `WAKE_ON_GPIO`, which chooses whether a halted board can be woken by pulling GPIO3
+or GLOBAL_EN to ground. Raspberry Pi document it as *not relevant* from the Pi 5 onwards, because the dedicated power
+button wakes the board from HALT or STANDBY whatever the setting says, and `POWER_OFF_ON_HALT` needs no help from it
+there. On a Pi 5 it is therefore managed purely so a re-flashed EEPROM cannot come back with a different value;
+changing it will not alter how that board wakes. On a Pi 4B it is the whole story — there is no power button — so
+preflight refuses `smartamp_power_off_on_halt` unless this is on, rather than let provisioning produce a board that
+halts and cannot be started again short of a plug cycle.
 
 Bootloader settings are applied together in one staged EEPROM update (`ansible/roles/smartamp/tasks/eeprom.yml`) that
-the firmware flashes during the reboot provisioning schedules; `PSU_MAX_CURRENT` is the fourth key this role owns. Keys
-set by hand outside that list are carried through untouched. Check the live values with `sudo rpi-eeprom-config`.
+the firmware flashes during the reboot provisioning schedules; `PSU_MAX_CURRENT` is the fourth key this role owns on a
+Pi 5. Which keys exist is a property of the board (`ansible/roles/smartamp/vars/boards.yml`): a Pi 4B firmware has
+neither `WAIT_FOR_POWER_BUTTON` nor `PSU_MAX_CURRENT`, so those are neither written nor stripped there. Keys set by
+hand outside the board's list are carried through untouched. Check the live values with `sudo rpi-eeprom-config`.
 
 `smartamp_wifi_enabled` and `smartamp_bluetooth_enabled` control the on-board radios through the `disable-wifi` and
 `disable-bt` boot overlays (`ansible/roles/smartamp/tasks/radios.yml`), which remove the devices entirely — that is
@@ -191,10 +203,11 @@ flag off and provision. Bluetooth is off by default — nothing in this stack us
 `bluetoothd` on the running system — and turning it back on (say, for Bluetooth audio streaming) restores the services
 and the radio at the next reboot.
 
-HDMI is deliberately not a flag. On a Pi 5 running headless the HDMI PHY is already powered down when no display is
+HDMI is deliberately not a flag. On a modern headless Pi the HDMI PHY is already powered down when no display is
 attached, so forcing it off in boot configuration measures at roughly nothing and would only cost the option of
-plugging in a monitor to debug a dead board. (The old ~25mA `tvservice -o` saving belongs to the Pi 3/4 era.) For
-scale, the remaining floor is the board itself: a Pi 5 idles at about 2.5–3W and the AAmp60 adds its ~2W quiescent
+plugging in a monitor to debug a dead board. (The old ~25mA `tvservice -o` saving belongs to earlier firmware.) For
+scale, the remaining floor is the board itself: a Pi 5 idles at about 2.5–3W, a Pi 4B rather less, and the AAmp60 adds
+its ~2W quiescent
 draw — the idle graph teardown, deck sleep, and the halt behaviour above are the levers for those.
 
 ## Voice

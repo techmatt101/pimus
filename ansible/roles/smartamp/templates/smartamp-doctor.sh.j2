@@ -12,10 +12,16 @@ heading 'Platform'
 MODEL=$(tr -d '\000' < /proc/device-tree/model)
 printf 'Model: %s\n' "$MODEL"
 printf 'Kernel: %s\n' "$(uname -r)"
-case "$MODEL" in *'Raspberry Pi 5'*) pass 'Raspberry Pi 5 detected' ;; *) fail 'Target is not a Raspberry Pi 5' ;; esac
+case "$MODEL" in
+    *{{ smartamp_board_caps.model_match | quote }}*) pass '{{ smartamp_board_caps.label }} detected, provisioned as such' ;;
+    *) fail 'Board is no longer the {{ smartamp_board_caps.label }} this was provisioned for' ;;
+esac
 if command -v vcgencmd >/dev/null 2>&1; then
     THROTTLED=$(vcgencmd get_throttled)
-    [ "$THROTTLED" = 'throttled=0x0' ] && pass 'No under-voltage/throttle flags' || warn "$THROTTLED (check AAmp60 and USB power budget)"
+{# A Pi 4B's USB-A budget is fixed at roughly 1.2A total, with no PSU_MAX_CURRENT
+   to raise it, so deck plus ReSpeaker is already near the limit there. #}
+{% set power_hint = 'check AAmp60 and the ~1.2A total USB-A budget; a powered hub may be needed' if smartamp_board == 'pi4b' else 'check AAmp60 and USB power budget' %}
+    [ "$THROTTLED" = 'throttled=0x0' ] && pass 'No under-voltage/throttle flags' || warn "$THROTTLED ({{ power_hint }})"
 fi
 
 heading 'Memory'
@@ -47,6 +53,26 @@ lsusb 2>/dev/null | grep -qi '2886:001a' && pass 'ReSpeaker XVF3800 connected' |
 lsusb 2>/dev/null | grep -qi '0fd9:0084' && pass 'Elgato Stream Deck+ connected' || fail 'Required Elgato Stream Deck+ is not connected'
 {% else %}
 lsusb 2>/dev/null | grep -qi '0fd9:0084' && pass 'Elgato Stream Deck+ connected' || warn 'Optional Elgato Stream Deck+ is not connected'
+{% endif %}
+{% if streamdeck_enabled and smartamp_sleep_usb_power_off %}
+{# The controller writes these to take the deck and ReSpeaker down in sleep, and
+   Ansible grants the service account access to exactly this list. A path that
+   is not there means the board enumerated a different topology than
+   vars/boards.yml records, and sleep would silently save nothing. #}
+for PORT in{% for port in smartamp_board_caps.usb_port_disables %} {{ port | quote }}{% endfor %}; do
+    if [ ! -e "$PORT" ]; then
+        fail "USB port control $PORT is missing; sleep cannot cut USB power"
+    elif [ ! -w "$PORT" ]; then
+        warn "USB port control $PORT is not writable by the service account"
+    fi
+done
+{% if smartamp_board == 'pi4b' %}
+{# Switching only works on VL805 firmware 000137ad or newer. Older firmware
+   accepts the write and leaves the sockets powered, so print the version
+   rather than let a silent no-op look like a working power cut. #}
+rpi-eeprom-update 2>/dev/null | grep -i 'VL805\|CURRENT' | head -4 || true
+printf 'VL805 firmware must be 000137ad or newer for USB power switching\n'
+{% endif %}
 {% endif %}
 
 heading 'PipeWire'

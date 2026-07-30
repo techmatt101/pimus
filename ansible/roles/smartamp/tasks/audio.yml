@@ -1,8 +1,10 @@
 ---
 # Disable the Pi's onboard audio to avoid ambiguous card numbering, then load
-# the DAC2 ADC Pro driver. force_eeprom_read=0 is the HiFiBerry Pi 5 workaround
-# that lets the explicitly selected overlay configure the HAT.
-- name: Configure the Pi 5 HiFiBerry overlay
+# the DAC2 ADC Pro driver. force_eeprom_read=0 is the HiFiBerry workaround that
+# lets the explicitly selected overlay configure the HAT rather than whatever
+# the board's own EEPROM claims; it is what the Pi 5 needs and is harmless on
+# a Pi 4B.
+- name: Configure the HiFiBerry overlay
   ansible.builtin.blockinfile:
     path: /boot/firmware/config.txt
     marker: "# {mark} SMART AMP AUDIO"

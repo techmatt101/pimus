@@ -45,8 +45,21 @@ function validateControllerConfig(value: unknown, configPath: string): asserts v
         }
     }
 
-    if (isRecord(value.sleep) && typeof value.sleep.usb_power_off !== 'boolean') {
-        throw new Error(`Controller configuration at ${configPath} must give sleep.usb_power_off as a boolean`)
+    if (isRecord(value.sleep)) {
+        if (typeof value.sleep.usb_power_off !== 'boolean') {
+            throw new Error(`Controller configuration at ${configPath} must give sleep.usb_power_off as a boolean`)
+        }
+        const ports = value.sleep.usb_ports
+        if (!Array.isArray(ports) || !ports.every((port): port is string => typeof port === 'string' && port.length > 0)) {
+            throw new Error(`Controller configuration at ${configPath} must give sleep.usb_ports as an array of paths`)
+        }
+        // Cutting power with nothing to write to would report a saving the
+        // board never made.
+        if (value.sleep.usb_power_off && ports.length === 0) {
+            throw new Error(
+                `sleep.usb_power_off is on in ${configPath}, so sleep.usb_ports must name at least one port`,
+            )
+        }
     }
 
     // An unauthenticated inbound listener must be impossible to configure by accident.

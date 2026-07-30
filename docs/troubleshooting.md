@@ -54,8 +54,8 @@ continuously.
 ## HiFiBerry is missing
 
 Confirm `/boot/firmware/config.txt` contains `force_eeprom_read=0`, `dtparam=audio=off`, and
-`dtoverlay=hifiberry-dacplusadcpro`. The Pi 5 needs the kernel overlay rather than the older overlay embedded in the HAT
-EEPROM. Check `dmesg | grep -i hifiberry` after reboot.
+`dtoverlay=hifiberry-dacplusadcpro`. The board needs the kernel overlay rather than the older overlay embedded in the
+HAT EEPROM. Check `dmesg | grep -i hifiberry` after reboot.
 
 ## Voice hears the speaker output, or cannot hear over music
 
@@ -104,7 +104,9 @@ controller is connected to the socket in the `smartamp-controller` log, then loo
 
 ## USB audio device does not appear on the computer
 
-The cable must be connected to the Pi 5 USB-C port, not a USB-A port. Work down the chain on the Pi:
+The cable must be connected to the Pi's USB-C port, not a USB-A port. On a Pi 4B it must also be a cable with the power
+line cut: that board wires USB-C VBUS onto the same 5V rail the AAmp60 feeds through the GPIO header, with no PMIC
+between them. Work down the chain on the Pi:
 
 ```sh
 systemctl status smartamp-usb-audio-gadget   # the gadget was assembled and bound
@@ -163,18 +165,21 @@ cannot reach it. Cosmetic only; Windows and Linux name the device from the produ
 
 ## USB audio plays but sounds like an old radio
 
-Loud static with the music faintly underneath means the sample format, not the route: the Pi 5's dwc2 gadget
-controller corrupts 3-byte (24-bit) samples on its isochronous endpoints. Keep `usb_audio_sample_size_bytes: 2` in
+Loud static with the music faintly underneath means the sample format, not the route: the dwc2 gadget controller
+corrupts 3-byte (24-bit) samples on its isochronous endpoints. Keep `usb_audio_sample_size_bytes: 2` in
 inventory (16-bit is the tested, clean configuration) and re-provision; the gadget descriptors only change on a
 reboot, which provisioning schedules automatically.
 
 ## USB devices disconnect or LEDs flicker
 
 Run `vcgencmd get_throttled`. Any non-zero under-voltage bits indicate a power problem. Put the ReSpeaker and Stream
-Deck+ on a quality powered USB hub, ensure the AAmp60 supply and wiring are appropriately rated, and use active Pi 5
+Deck+ on a quality powered USB hub, ensure the AAmp60 supply and wiring are appropriately rated, and use active
 cooling.
 
-Provisioning sets `PSU_MAX_CURRENT` in the bootloader EEPROM from `usb_audio_psu_max_current_ma` (check with
+On a Pi 4B a powered hub is the likelier answer from the start: its four USB-A ports share a fixed budget of roughly
+1.2A whatever the board is powered from, and there is no bootloader setting to raise it.
+
+On a Pi 5, provisioning sets `PSU_MAX_CURRENT` in the bootloader EEPROM from `usb_audio_psu_max_current_ma` (check with
 `sudo rpi-eeprom-config`). A GPIO-powered Pi has no USB-PD source to negotiate with, so without the setting the
 firmware assumes a weak supply, logs a low-power warning, and caps the USB-A ports at 600mA total. The 3000 mA
 default states what the AAmp60's 5V rail realistically provides; do not raise it to 5000 without validating the
@@ -196,8 +201,10 @@ so it can be pressed again once the permission is in place.
 
 With `smartamp_power_off_on_halt: true` (the default) the bootloader cuts the board's rails on halt, so a halted Pi
 draws nothing and answers nothing — no ping, no SSH, no wake-on-LAN. Boot it with the dedicated power button, an RTC
-wakealarm, or by power-cycling the plug. `WAKE_ON_GPIO` has no bearing on this: from the Pi 5 onwards the power button
-wakes the board from HALT or STANDBY whatever that setting is.
+wakealarm, or by power-cycling the plug. On a Pi 5 `WAKE_ON_GPIO` has no bearing on this: from the Pi 5 onwards the
+power button wakes the board from HALT or STANDBY whatever that setting is. A Pi 4B has no power button, so there
+`WAKE_ON_GPIO` is the wake path — shorting GPIO3 or GLOBAL_EN to ground — and provisioning refuses to halt the rails
+without it.
 
 A plug cut has to be long enough. The whole stack sits at roughly 0W once halted, so the 20V brick's capacitors keep
 the rail up through a brief interruption: a 10 second off/on does nothing. Leave it off for **at least 60 seconds**, or

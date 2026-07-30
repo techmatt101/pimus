@@ -1,6 +1,6 @@
 # Pimus Smart Amp
 
-An idempotent Raspberry Pi 5 build recipe for:
+An idempotent Raspberry Pi build recipe, for a Pi 5 or a Pi 4 Model B, for:
 
 - HiFiBerry DAC2 ADC Pro with the AAmp60 add-on amplifier
 - ReSpeaker XMOS XVF3800 USB four-microphone array
@@ -15,13 +15,39 @@ SSH; running it again produces the same configuration and safely applies later c
 ## Read this before powering the stack
 
 The AAmp60 is compatible with the DAC+ ADC Pro family, but its published power guarantee only covers Raspberry Pi models
-through Pi 4. A Pi 5 can expose up to 1.6 A to USB peripherals only with a 5 A supply; the AAmp60, XVF3800 and Stream
-Deck+ combination therefore needs power validation. Use `smartamp-doctor` to check the Pi throttle/under-voltage flags,
-and plan on a powered USB hub if flags appear or USB devices reset.
+through Pi 4. A Pi 5 can expose up to 1.6 A to USB peripherals only with a 5 A supply, and a Pi 4B is fixed at roughly
+1.2 A across all four USB-A ports whatever it is powered from; the AAmp60, XVF3800 and Stream Deck+ combination
+therefore needs power validation either way. Use `smartamp-doctor` to check the Pi throttle/under-voltage flags, and
+plan on a powered USB hub if flags appear or USB devices reset.
 
-The optional USB audio input changes the Pi 5 USB-C port into a peripheral port. The Pi must then be powered through the
+The optional USB audio input changes the USB-C port into a peripheral port. The Pi must then be powered through the
 HiFiBerry/AAmp60 GPIO stack. Connect the USB-C port to the source computer; the four USB-A ports remain hosts for the
-ReSpeaker and Stream Deck+.
+ReSpeaker and Stream Deck+. **On a Pi 4B that host cable must have its power line cut**: that board wires USB-C VBUS
+straight onto the same 5 V rail as the GPIO header, so the computer and the AAmp60 would otherwise feed the rail against
+each other. The Pi 5's PMIC arbitrates instead.
+
+### What differs on a Pi 4B
+
+Everything the board can do is provisioned; anything it cannot is refused by name before provisioning changes anything,
+so inventory always describes what the device actually does. Two settings are Pi 5 only:
+
+| Setting | Why |
+| --- | --- |
+| `smartamp_wait_for_power_button` | The bootloader setting exists on flagship models since the Pi 5 only. |
+| `usb_audio_psu_max_current_ma` | `PSU_MAX_CURRENT` is Pi 5 only; the Pi 4B's USB budget is fixed in hardware. The value is simply not written, so it needs no change. |
+
+Sleep still cuts USB power on a Pi 4B — its VL805 hub switches VBUS across all four sockets at once — but it needs
+VL805 firmware `000137ad` or newer (`sudo rpi-eeprom-update`). Older firmware accepts the write and leaves the sockets
+lit; `smartamp-doctor` reports the version and checks the port controls are actually there.
+
+A Pi 4B has no dedicated power button, which the Pi 5 uses as the sleep/wake toggle. Provisioning leaves stock `logind`
+handling alone there, and refuses `smartamp_power_off_on_halt` unless `smartamp_wake_on_gpio` is also on — without a
+button, shorting GPIO3 or `GLOBAL_EN` to ground is the only way to start a halted board short of a plug cycle. The same
+gap applies to sleep: with `smartamp_sleep_usb_power_off` on, the deck is dark and there is no button, so **presence
+returning is the only thing that wakes a sleeping Pi 4B**. Turn the flag off to keep a deck touch as a wake source.
+
+The supported boards and their capabilities live in
+[`ansible/roles/smartamp/vars/boards.yml`](ansible/roles/smartamp/vars/boards.yml).
 
 ## Quick start
 

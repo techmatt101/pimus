@@ -1,0 +1,78 @@
+---
+# What each supported Raspberry Pi can actually do, so no task has to re-derive
+# "is this a Pi 5" from the model string. preflight.yml matches the running
+# board against model_match and publishes the winning row as
+# smartamp_board_caps; everything board-conditional reads it from there.
+#
+# Adding a board means adding a row here and checking the capabilities below are
+# true of it, not editing the tasks.
+smartamp_boards:
+  pi5:
+    label: "Raspberry Pi 5"
+    model_match: "Raspberry Pi 5"
+    # The dedicated power button, which arrives as a pwr_button gpio-keys input
+    # device. The controller reads it as the sleep/wake toggle, and logind has
+    # to be told to leave the key alone; a board without one gets neither.
+    power_button: true
+    # The per-port disable attributes that cut VBUS to the USB-A sockets, and
+    # the answer to whether the board can do it at all: an empty list means it
+    # cannot, and preflight refuses the sleep power-off flag. On both boards the
+    # sockets are ganged into one power group, so a write takes every USB-A
+    # device down together - which is what this feature wants, deck and
+    # ReSpeaker off as one, but it means nothing else may be left plugged in
+    # expecting to survive sleep.
+    #
+    # The Pi 5's two USB-A connectors and their USB 3 shadow ports, which share
+    # each connector's VBUS across four separate root hubs. The root hubs are
+    # soldered to the board, so the paths are stable. Ansible grants access to
+    # these and the controller writes them; both read this one list.
+    usb_port_disables:
+      - /sys/bus/usb/devices/usb1/1-0:1.0/usb1-port1/disable
+      - /sys/bus/usb/devices/usb2/2-0:1.0/usb2-port1/disable
+      - /sys/bus/usb/devices/usb3/3-0:1.0/usb3-port1/disable
+      - /sys/bus/usb/devices/usb4/4-0:1.0/usb4-port1/disable
+    # Which bootloader EEPROM keys this firmware understands. eeprom.yml writes
+    # only these and strips only these, so a key absent here is never staged
+    # and never removed from a config someone else set.
+    # WAIT_FOR_POWER_BUTTON is documented as flagship-since-Pi-5 only, and
+    # PSU_MAX_CURRENT as Pi 5 only.
+    eeprom_keys:
+      - POWER_OFF_ON_HALT
+      - WAKE_ON_GPIO
+      - WAIT_FOR_POWER_BUTTON
+      - PSU_MAX_CURRENT
+  pi4b:
+    label: "Raspberry Pi 4 Model B"
+    model_match: "Raspberry Pi 4 Model B"
+    # No power button of any kind, so a halted board needs WAKE_ON_GPIO (GPIO3
+    # or GLOBAL_EN shorted to ground) or a plug cycle to come back; preflight
+    # refuses POWER_OFF_ON_HALT here without it. It also means a slept board
+    # whose USB power is cut can only be woken by presence: see the note on
+    # smartamp_sleep_usb_power_off in inventory.
+    power_button: false
+    # The VL805 does switch VBUS, but only with firmware 000137ad or newer
+    # (sudo rpi-eeprom-update). On older firmware the writes below succeed and
+    # nothing goes dark, which is what the doctor's port check is for.
+    #
+    # Unlike the Pi 5's four one-port root hubs, the Pi 4B's four USB-A sockets
+    # are the four ports of one internal hub, present twice: the USB2 side as
+    # hub 1-1 and the USB3 side as root hub usb2. A USB 3.0 hub appears as two
+    # independent virtual hubs, and power only actually drops when both are
+    # switched, so both halves are listed. usb1-port1 is deliberately absent:
+    # that port daisy-chains the internal hub itself, and switching a
+    # daisy-chain port confuses the hub circuitry.
+    usb_port_disables:
+      - /sys/bus/usb/devices/1-1/1-1:1.0/1-1-port1/disable
+      - /sys/bus/usb/devices/1-1/1-1:1.0/1-1-port2/disable
+      - /sys/bus/usb/devices/1-1/1-1:1.0/1-1-port3/disable
+      - /sys/bus/usb/devices/1-1/1-1:1.0/1-1-port4/disable
+      - /sys/bus/usb/devices/usb2/2-0:1.0/usb2-port1/disable
+      - /sys/bus/usb/devices/usb2/2-0:1.0/usb2-port2/disable
+      - /sys/bus/usb/devices/usb2/2-0:1.0/usb2-port3/disable
+      - /sys/bus/usb/devices/usb2/2-0:1.0/usb2-port4/disable
+    # The Pi 4B bootloader has no WAIT_FOR_POWER_BUTTON and no PSU_MAX_CURRENT:
+    # its USB-A budget is fixed in hardware at roughly 1.2A total, with no
+    # supply to declare.
+    eeprom_keys:
+      - POWER_OFF_ON_HALT
+      - WAKE_ON_GPIO

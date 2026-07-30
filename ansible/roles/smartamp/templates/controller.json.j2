@@ -20,10 +20,12 @@
   },
   {# Sleep timings and the presence entity are compiled into the controller
      (the SLEEP block in streamdeck/layout.mts); whether sleep also cuts USB
-     power deploys from here because it needs uhubctl and a udev rule
-     provisioned alongside. #}
+     power deploys from here because it needs the port permissions provisioned
+     alongside, and which ports those are is the board's business (boards.yml),
+     not the controller's. #}
   "sleep": {
-    "usb_power_off": {{ ((streamdeck_enabled | bool) and (smartamp_sleep_usb_power_off | bool)) | to_json }}
+    "usb_power_off": {{ ((streamdeck_enabled | bool) and (smartamp_sleep_usb_power_off | bool)) | to_json }},
+    "usb_ports": {{ smartamp_board_caps.usb_port_disables | to_json }}
   },
   {# The remote-tile WebSocket server, the controller's one inbound listener.
      Its REMOTE_TILES_TOKEN lives in the secrets file alongside the Home

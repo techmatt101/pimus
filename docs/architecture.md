@@ -82,7 +82,7 @@ hardware output level. Both are adjustable in the Ansible variables.
 ## Service boundaries
 
 - `smartamp-hifiberry`: applies hardware mixer settings after ALSA detects the HAT.
-- `smartamp-usb-audio-gadget`: creates the stereo UAC2 peripheral on the Pi 5 USB-C controller.
+- `smartamp-usb-audio-gadget`: creates the stereo UAC2 peripheral on the board's USB-C controller.
 - `smartamp-audio-manager`: maintains PipeWire defaults, switchable routes, the background bus and its ducking gain,
   the voice bus and its volume, and the output sink's mute, driven by `pactl subscribe` events and a Unix control socket.
 - `smartamp-sendspin`: runs the Sendspin player that Music Assistant discovers and streams to.

@@ -20,8 +20,10 @@ export interface StreamDeckDeployment {
 }
 
 export interface SleepDeployment {
-    /** Whether sleep also cuts VBUS to the deck and ReSpeaker via uhubctl. */
+    /** Whether sleep also cuts VBUS to the deck and ReSpeaker. */
     usb_power_off: boolean
+    /** The board's per-port disable attributes; empty where it has none. */
+    usb_ports: string[]
 }
 
 export interface ReSpeakerConfig {

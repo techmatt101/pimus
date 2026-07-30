@@ -14,7 +14,9 @@ const KEY_PRESSED = 1
 
 // The Pi 5's dedicated power button registers as this gpio-keys input device.
 // systemd-logind is told to ignore it (HandlePowerKey=ignore, deployed by
-// Ansible), or every press here would also be a graceful shutdown.
+// Ansible), or every press here would also be a graceful shutdown. A board
+// without one (the Pi 4B) simply has no such device, and a panel slept with its
+// USB power cut is then woken by presence alone.
 const DEVICE_NAME = 'pwr_button'
 const RETRY_MILLISECONDS = 60_000
 

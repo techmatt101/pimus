@@ -248,8 +248,8 @@ the session rather than pausing it.
 
 | Command    | Effect                                                                                                        |
 |------------|---------------------------------------------------------------------------------------------------------------|
-| `sleep`    | Force sleep at once: panel off, amp suspended, USB power cut. Presence returning or the Pi power button wakes it. |
-| `shutdown` | Halt the Pi. It draws nothing once down and answers nothing: only its power button or a plug power-cycle starts it again. |
+| `sleep`    | Force sleep at once: panel off, amp suspended, USB power cut where the board can. Presence returning, a deck touch, or the Pi power button wakes it. |
+| `shutdown` | Halt the Pi. It draws nothing once down and answers nothing: only its power button, a GPIO3 wake, or a plug power-cycle starts it again. |
 
 ```ts
 key('SLEEP', '#263238', panelBinding(power, 'sleep'))
@@ -579,8 +579,8 @@ Waking from sleep, in the order you will meet them:
 | Wakes the amp                        | Notes                                                         |
 |--------------------------------------|---------------------------------------------------------------|
 | The presence sensor turning `on`     | Walking back in; everything is powered before you reach it    |
-| The Pi 5's power button              | Its shutdown meaning is disabled by provisioning; a press wakes a sleeping amp and forces sleep on a waking one |
-| A key press                          | Only when USB power stays on; **the first press on a dark deck only wakes it** |
+| The board's power button (Pi 5)      | Its shutdown meaning is disabled by provisioning; a press wakes a sleeping amp and forces sleep on a waking one. A Pi 4B has none, and keeps stock power-key handling |
+| A key press                          | Only when USB power stays on; **the first press on a dark deck only wakes it**. On a Pi 4B with the USB power cut there is no button either, so presence is the only wake |
 
 A forced sleep holds while you remain in the room; leave and return (or press
 the power button) and it wakes as usual.
