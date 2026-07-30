@@ -235,6 +235,10 @@ class AudioManager:
             voice_device = self.graph.find_source(
                 self.config.voice_input_match, excluding=voice_capture.SOURCE_NAME
             )
+            if voice_device is None:
+                voice_capture.activate_capture_card(
+                    self.graph, self.config.voice_input_match
+                )
             voice_source, capture_status = self.voice_capture.reconcile(voice_device)
             ducked = self.apply_ducking()
             self._adopt_defaults(sink, voice_source)

@@ -54,16 +54,18 @@
 
 # Sleep cuts USB power through the kernel's per-port disable attribute, which
 # both drops VBUS and forbids re-enumeration - a bare power-off (uhubctl) is
-# undone by the hub driver within a second of the disconnect. udev cannot set
-# permissions on sysfs attributes directly, so the rule runs a chgrp/chmod as
-# each port device appears; the service account is already in plugdev for the
-# other USB surfaces.
+# undone by the hub driver within a second of the disconnect. The port devices
+# carry no udev properties, so no udev rule can grant access to the attribute;
+# systemd-tmpfiles hands it to plugdev at every boot instead. The root hubs
+# are soldered to the board, so the paths are stable.
 - name: Install USB port power permissions
   ansible.builtin.copy:
-    dest: /etc/udev/rules.d/60-smartamp-usb-ports.rules
-    content: >
-      ACTION=="add", SUBSYSTEM=="usb", DEVTYPE=="usb_port",
-      RUN+="/bin/sh -c 'chgrp plugdev /sys%p/disable && chmod 664 /sys%p/disable'"
+    dest: /etc/tmpfiles.d/smartamp-usb-ports.conf
+    content: |
+      z /sys/bus/usb/devices/usb1/1-0:1.0/usb1-port1/disable 0664 root plugdev -
+      z /sys/bus/usb/devices/usb2/2-0:1.0/usb2-port1/disable 0664 root plugdev -
+      z /sys/bus/usb/devices/usb3/3-0:1.0/usb3-port1/disable 0664 root plugdev -
+      z /sys/bus/usb/devices/usb4/4-0:1.0/usb4-port1/disable 0664 root plugdev -
     owner: root
     group: root
     mode: "0644"
@@ -74,10 +76,19 @@
 
 - name: Remove USB port power permissions when disabled
   ansible.builtin.file:
-    path: /etc/udev/rules.d/60-smartamp-usb-ports.rules
+    path: /etc/tmpfiles.d/smartamp-usb-ports.conf
     state: absent
-  notify: Reload udev
   when: not ((streamdeck_enabled | bool) and (smartamp_sleep_usb_power_off | bool))
+
+# Rules from approaches that turned out not to work on this hardware.
+- name: Remove legacy USB power udev rules
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/udev/rules.d/60-smartamp-usb-hubs.rules
+    - /etc/udev/rules.d/60-smartamp-usb-ports.rules
+  notify: Reload udev
 
 # The Pi 5 power button is the amp's sleep/wake toggle, read by the controller
 # from its gpio-keys input device. logind has to be told to ignore the key or

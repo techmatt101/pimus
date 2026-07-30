@@ -5,11 +5,48 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from . import pactl
 from .graph import Graph, Node
 from .modules import ModuleRegistry
 
 
 LOG = logging.getLogger(__name__)
+
+
+def activate_capture_card(view: Graph, pattern: str) -> None:
+    # A card re-enumerating after a USB power cycle can be probed before the
+    # XVF3800's capture side is ready, leaving WirePlumber restored onto a
+    # profile - sometimes an entire profile list - with no input; the voice
+    # source then never appears and the assistant cannot start. Switch to the
+    # best profile that actually offers a source, preferring one that keeps a
+    # sink so the AEC reference endpoint survives, and let the resulting graph
+    # event schedule the reconcile that finds the node.
+    card = view.find_card(pattern)
+    if card is None:
+        return
+    profiles = card.get("profiles") or {}
+    active = profiles.get(str(card.get("active_profile", "")))
+    if isinstance(active, dict) and int(active.get("sources", 0) or 0) > 0:
+        return
+    candidates = [
+        (name, profile)
+        for name, profile in profiles.items()
+        if isinstance(profile, dict) and int(profile.get("sources", 0) or 0) > 0
+    ]
+    if not candidates:
+        return
+    name, _ = max(
+        candidates,
+        key=lambda item: (
+            int(item[1].get("sinks", 0) or 0) > 0,
+            int(item[1].get("priority", 0) or 0),
+        ),
+    )
+    pactl.set_card_profile(str(card["name"]), name)
+    view.invalidate()
+    LOG.info(
+        "Activated %s profile on card %s for voice capture", name, card.get("name")
+    )
 
 # The mono source published for the voice assistant when a capture channel is
 # selected; see VoiceCapture for why the device is not used directly.

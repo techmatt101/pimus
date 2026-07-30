@@ -1003,6 +1003,45 @@ class ReconcileTests(ManagerTestCase):
         status = status_write.call_args.args[1]
         self.assertEqual(status["voice_capture"], {"channel": 1, "source": None})
 
+    def test_voice_card_without_an_input_profile_is_repaired(self) -> None:
+        manager = self.make_manager({"voice_capture_channel": 1})
+        # A USB power cycle re-enumerated the XVF3800 before its capture side
+        # was ready: WirePlumber restored an output-only profile, so no voice
+        # source exists even though the card is present.
+        listings = {
+            "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
+            "sources": [{"name": "hifiberry.monitor", "monitor_of_sink": 0}],
+            "sink-inputs": [],
+            "cards": [
+                {
+                    "name": "alsa_card.usb-XVF3800",
+                    "properties": {"device.product.name": "reSpeaker XVF3800"},
+                    "active_profile": "output:analog-stereo",
+                    "profiles": {
+                        "off": {"sinks": 0, "sources": 0, "priority": 0},
+                        "output:analog-stereo": {
+                            "sinks": 1,
+                            "sources": 0,
+                            "priority": 6500,
+                        },
+                        "pro-audio": {"sinks": 1, "sources": 1, "priority": 1},
+                    },
+                }
+            ],
+        }
+
+        with self._patched_graph(listings, fake_run) as run, mock.patch(
+            "audio_manager.status.write"
+        ):
+            manager.reconcile()
+
+        # The only profile with a source wins; it also keeps a sink, so the
+        # AEC reference endpoint survives the repair.
+        self.assertIn(
+            ("pactl", "set-card-profile", "alsa_card.usb-XVF3800", "pro-audio"),
+            [call.args for call in run.call_args_list],
+        )
+
     def test_voice_capture_is_released_when_the_xvf3800_disappears(self) -> None:
         manager = self.make_manager({"voice_capture_channel": 1})
         manager.modules.adopt("_voice_capture", 40, ("xvf_mic", "front-right"))

@@ -93,9 +93,12 @@ proactively so the first thing played or said after walking in opens on a ready 
 controller's socket connection, exactly as a duck request is, so a controller crash releases it. In full sleep,
 `smartamp_sleep_usb_power_off` additionally powers off the Pi's USB-A ports through the kernel's per-port `disable`
 attribute — which both cuts VBUS and forbids re-enumeration; a bare power-off is undone by the hub driver within a
-second — taking the Stream Deck and ReSpeaker down entirely. Provisioning installs the udev rule that lets the
-service account write those attributes, and a logind override that hands the Pi 5 power button to the controller as
-the sleep/wake toggle — pressing it no longer shuts the Pi down.
+second — taking the Stream Deck and ReSpeaker down entirely. Provisioning installs a systemd-tmpfiles entry that
+lets the service account write those attributes (the port devices carry no udev properties, so no udev rule can),
+and a logind override that hands the Pi 5 power button to the controller as the sleep/wake toggle — pressing it no
+longer shuts the Pi down. A device re-enumerating after a power cycle can be probed before its capture side is
+ready, so the audio manager also repairs a voice card that comes back with no input profile by switching it to the
+best profile offering a source.
 
 Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Sendspin and USB computer audio share the
 `smartamp_background_sink_name` bus and fade down to `smartamp_voice_duck_volume_percent` per cent of their normal level
