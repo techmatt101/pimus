@@ -10,14 +10,16 @@ layout.
 - **Behaviour** lives in `apps/controller/src/actions/catalog.mts`, the single
   source of truth for what an action does, how it is validated, and how a key
   lights up while its target is active.
-- Whether a unit drives a deck at all is the `streamdeck_enabled` flag in
-  `ansible/inventory/group_vars/all.yml`. Everything on this page is an addon:
-  with the flag off none of it is deployed, installed, or loaded, and the
+- Whether a unit drives a deck at all is the `streamdeck_enabled` flag in that
+  unit's `ansible/inventory/host_vars/<hostname>.yml`; it is off by default, and
+  `office-amp` is the one amp that turns it on. Everything on this page is an
+  addon: with the flag off none of it is deployed, installed, or loaded, and the
   controller runs on for the LED ring, ducking, and voice —
   see [configuration](configuration.md#stream-deck).
 
 After editing the layout, run `make deploy-controller` (or `make provision`) to
-compile and push it. A mistyped `route`/`volume` command is a compile error, and
+compile and push it — the layout is compiled in, so it reaches every unit that
+has a deck. A mistyped `route`/`volume` command is a compile error, and
 `make test` rejects any key or dial the catalog does not understand before it
 can ship.
 

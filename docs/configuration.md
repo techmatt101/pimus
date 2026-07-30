@@ -1,6 +1,12 @@
 # Configuration
 
-All supported settings live in `ansible/inventory/group_vars/all.yml`. Re-run `make provision` after changing them.
+Every supported setting is listed and explained in `ansible/inventory/group_vars/all.yml`, which holds the answer all
+the amps share. A unit overrides only what makes it that unit — its HiFiBerry board, whether a Stream Deck is
+attached, its power flags, and the names it advertises — in `ansible/inventory/host_vars/<hostname>.yml`. Re-run
+`make provision` after changing either, or `make provision LIMIT=<hostname>` to reconfigure one amp.
+
+The defaults in `all.yml` are deliberately the conservative ones: no deck, no USB sound card, no bootloader power
+flags. A new unit works from them and turns on what it actually has.
 
 ## Audio
 
@@ -355,8 +361,9 @@ models under `/var/lib/smartamp` are retained for a later re-enable.
 
 ## Stream Deck+
 
-`streamdeck_enabled` turns the control surface on or off for this unit. Set it
-to `false` for an LED-only deployment with no deck attached.
+`streamdeck_enabled` turns the control surface on or off for one unit, in its
+`host_vars` file. It is off by default — an LED-only amp with no deck attached
+is the plainer build — and `office-amp` is the one that turns it on.
 
 The deck is an addon rather than a part of the controller that happens to be
 idle. `index.mts` reaches it through one dynamic import of
@@ -383,7 +390,10 @@ error, and `make test` rejects any action the catalog does not understand.
 ### Home Assistant
 
 `home_assistant_url` connects the controller to Home
-Assistant's WebSocket API. This is what the keys that *show* house state need —
+Assistant's WebSocket API. Because everything it feeds is a deck face, a unit
+with no deck empties it in `host_vars` rather than holding open a connection
+nothing reads and requiring a token for it; Assist is unaffected, since the
+voice satellite connects to Home Assistant on its own. This is what the keys that *show* house state need —
 the fan, blinds, PC, scenes, temperature, weather, the lights dial, and
 the media transport — because they read entity state as well as change it. It
 also carries the assistant timers the TIMER key starts and cancels, which are
@@ -428,8 +438,10 @@ controller refuses it again from `controller.json`.
 
 ### Secrets
 
-The two tokens are the only settings that do not live in `all.yml`. They are
-typed once on the Pi itself, in `/etc/smartamp/secrets.env`:
+The two tokens are the only settings that live in neither `all.yml` nor a unit's
+`host_vars`. They are typed on each Pi that needs them, in that unit's
+`/etc/smartamp/secrets.env` — an amp with no deck and no Home Assistant URL
+needs no such file at all:
 
 ```sh
 sudo mkdir -p /etc/smartamp

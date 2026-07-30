@@ -8,7 +8,13 @@ sudo smartamp-doctor
 
 The command exits non-zero when required hardware, an enabled service, or an
 enabled audio path is unavailable. Power-throttle history remains a warning so
-you can distinguish a past transient from a currently broken endpoint.
+you can distinguish a past transient from a currently broken endpoint. It
+reports only what that unit is configured for, so a deck-less amp is not asked
+about a deck.
+
+From the control computer, `make doctor` runs it on every amp at once, or
+`make doctor LIMIT=kitchen-amp` on one. The examples below use `office-amp`;
+substitute the unit you are chasing.
 
 ## Reading logs
 

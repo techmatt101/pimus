@@ -1,6 +1,14 @@
 ---
-# Identity
-smartamp_hostname: office-amp
+# Every setting on this page applies to every amp. What differs between them -
+# the Raspberry Pi, the HiFiBerry board, the Stream Deck, the names each
+# unit advertises - is set in inventory/host_vars/<hostname>.yml, which
+# overrides whatever is here. The values below are therefore the conservative
+# answer for a unit that has said nothing: no deck, no sound card, no bootloader
+# power flags. A new amp works from them and turns on what it actually has.
+
+# Identity. The hostname follows the inventory name, so adding an amp to
+# hosts.yml is what names it; nothing here has to be kept in step by hand.
+smartamp_hostname: "{{ inventory_hostname }}"
 smartamp_timezone: Europe/London
 smartamp_service_user: smartamp
 
@@ -12,10 +20,13 @@ smartamp_service_user: smartamp
 # ~0W the brick's capacitors hold the rail long enough that a plug cut has to
 # last at least 60 seconds to count as one.
 #
-# This and the two settings below are bootloader EEPROM keys. A Pi Zero 2 W has
-# no bootloader EEPROM at all - it boots from the card - so all three must be
-# false there; provisioning names whichever is on rather than dropping it.
-smartamp_power_off_on_halt: true
+# This and the two settings below are bootloader EEPROM keys, so they are a
+# per-unit answer: a Pi Zero 2 W has no bootloader EEPROM at all - it boots from
+# the card - and a Pi 4B has only the first two. Provisioning names whichever is
+# on for a board that has no key behind it rather than dropping it. Off here
+# because the halt is only safe to promise where something can wake the board
+# again; office-amp turns it on.
+smartamp_power_off_on_halt: false
 # Wake a halted board by pulling GPIO3 or GLOBAL_EN to ground (bootloader EEPROM
 # WAKE_ON_GPIO, firmware default 1). Raspberry Pi document this as "not relevant"
 # from the Pi 5 onwards, because the dedicated power button wakes the board from
@@ -45,15 +56,15 @@ smartamp_wifi_enabled: true
 smartamp_bluetooth_enabled: false
 
 # SD-card endurance. True keeps systemd logs for the current boot in RAM only;
-# false persists them (capped at 64M) so crashes leave evidence. Currently off
-# while the USB-gadget crash is being investigated.
-smartamp_journal_in_ram: false
+# false persists them (capped at 64M) so crashes leave evidence. A unit being
+# investigated turns it off for as long as that takes.
+smartamp_journal_in_ram: true
 
 # Log verbosity for the controller and audio manager. Debug traces every
 # action: deck input, route commands, Home Assistant calls, and each pactl
-# invocation. Leave off day-to-day; the traces are chatty by design.
-# Currently on, with the persistent journal, for the USB-gadget crash hunt.
-smartamp_debug_logging: true
+# invocation. Leave off day-to-day; the traces are chatty by design, and on a
+# unit with the journal on disk they are what wears the card.
+smartamp_debug_logging: false
 # The stock SD swapfile is removed; memory exhaustion then OOM-kills and
 # restarts a service instead of wearing the card. Set to true to restore it.
 smartamp_swapfile_enabled: false
@@ -78,7 +89,9 @@ smartamp_zram_percent: 50
 # Which HiFiBerry board is fitted. A HAT cannot be detected here - the recipe
 # tells the firmware to ignore the board's own EEPROM so the chosen overlay
 # wins - so this names it, and the overlay and what the board can do follow from
-# ansible/roles/smartamp/vars/boards.yml:
+# ansible/roles/smartamp/vars/boards.yml. Every unit names its own in host_vars;
+# this is only what an amp that has not said inherits, and naming the wrong one
+# leaves a Pi with no sound card rather than an error.
 #
 #   dac2adcpro  DAC2 ADC Pro, the amplifier-less DAC the AAmp60 add-on sits on.
 #               Its ADC is the analogue aux line-in.
@@ -86,7 +99,7 @@ smartamp_zram_percent: 50
 #               has no aux input: provisioning refuses smartamp_aux_enabled,
 #               nothing carries an aux route, and the AUX key on the deck greys
 #               itself out - the compiled layout needs no per-unit edit.
-hifiberry_board: dac2adcpro
+hifiberry_board: amp100
 # Both boards enumerate under this ALSA card id; ALSA truncates either card
 # name to the same fifteen characters. Override only if a future board differs.
 hifiberry_card_name: sndrpihifiberry
@@ -213,8 +226,14 @@ smartamp_voice_startup_volume_percent: 30
 # audio faintly underneath. A Pi Zero 2 W has one USB data port for both roles,
 # so it cannot be a sound card and still host the deck and the ReSpeaker:
 # provisioning refuses this there, and the deck's USB key greys itself out.
-usb_audio_gadget_enabled: true
-usb_audio_product: "Office Amp USB"
+#
+# Off unless a unit says otherwise, because turning it on gives up the USB-C
+# port as the PSU input: a unit that inherited it would stop being able to take
+# power the way it is currently wired.
+usb_audio_gadget_enabled: false
+# What the source computer sees this amp as in its sound settings. Only used
+# where the gadget is on, so a unit that is a sound card names it in host_vars.
+usb_audio_product: "{{ smartamp_hostname }} USB"
 usb_audio_sample_rate: 48000
 usb_audio_sample_size_bytes: 2
 # What the GPIO 5V rail can supply, declared to the bootloader EEPROM
@@ -228,9 +247,11 @@ usb_audio_psu_max_current_ma: 3000
 
 # Sendspin, Music Assistant's native player protocol. Leave the URL empty so
 # the player advertises itself over mDNS and Music Assistant discovers it, or
-# set the server WebSocket URL, e.g. "ws://192.168.1.10:8097/sendspin".
+# set the server WebSocket URL, e.g. "ws://192.168.1.10:8097/sendspin". The
+# player name is what appears in Music Assistant, so each unit gives itself a
+# room name in host_vars rather than taking the hostname below.
 sendspin_enabled: true
-sendspin_name: "Office Amp"
+sendspin_name: "{{ smartamp_hostname }}"
 sendspin_server_url: ""
 # Upstream sendspin-cli release installed into the player's virtual environment.
 sendspin_version: "7.5.0"
@@ -242,7 +263,9 @@ voice_assistant_enabled: true
 # Upstream linux-voice-assistant release tag checked out into the satellite's
 # virtual environment, matching how sendspin_version pins its client.
 voice_assistant_version: "1.1.14"
-voice_assistant_name: "Office Amp Voice"
+# The satellite's name in Home Assistant's ESPHome integration, and so the
+# device every Assist automation targets. Named per unit in host_vars.
+voice_assistant_name: "{{ smartamp_hostname }} Voice"
 # Wake and stop words are microWakeWord models bundled with the pinned release.
 # v1.1.14 ships: okay_nabu, okay_computer, hey_jarvis, hey_mycroft, hey_luna,
 # hey_morgan, hey_home_assistant, choo_choo_homie, alexa, and stop. Custom
@@ -270,8 +293,12 @@ respeaker_led_brightness: 128 # 0 - 255
 # the controller loads only when this is on, so turning it off also stops the
 # deck's modules being deployed and its native packages being installed - about
 # 46MB of canvas and JPEG encoder the Pi then never carries. Remote tiles are
-# keys on the deck, so provisioning refuses them without it.
-streamdeck_enabled: true
+# keys on the deck, so provisioning refuses them without it, and panel sleep
+# below is part of the same addon.
+#
+# Off unless a unit says otherwise: an amp with no deck is the plainer build,
+# and the LEDs, ducking, routing, and voice all run without one.
+streamdeck_enabled: false
 
 # While the amp sleeps (the room empty for five minutes, or the SLEEP key),
 # power off the Pi's USB-A ports so the Stream Deck and ReSpeaker go dark -
@@ -288,7 +315,11 @@ streamdeck_enabled: true
 # a wake source. A Pi Zero 2 W has no switchable port at all and its devices
 # hang off a self-powered hub, so this must be false there; the panel still
 # sleeps and a touch still wakes it.
-smartamp_sleep_usb_power_off: true
+#
+# Panel sleep is part of the deck addon, so this does nothing on a unit with no
+# deck: the generated controller.json carries it only alongside
+# streamdeck_enabled.
+smartamp_sleep_usb_power_off: false
 
 # Home Assistant, for the Stream Deck keys that show and change house state:
 # the fan, blinds, PC, scenes, timer, temperature, weather, lights dial, and
@@ -296,10 +327,15 @@ smartamp_sleep_usb_power_off: true
 # the WebSocket API.
 #
 # Setting this URL turns the integration on and makes HOME_ASSISTANT_TOKEN
-# required in the Pi's secrets file (see the note at the bottom of this file).
-# Leave it empty to run without Home Assistant: those keys stay on the deck and
-# draw an unknown state, and nothing else is affected. Which entities the keys
-# drive is compiled into apps/controller/src/streamdeck/layout.mts, not set here.
+# required in that unit's secrets file (see the note at the bottom of this
+# file). Leave it empty to run without Home Assistant: those keys stay on the
+# deck and draw an unknown state, and nothing else is affected. Which entities
+# the keys drive is compiled into apps/controller/src/streamdeck/layout.mts, not
+# set here.
+#
+# This connection exists for the deck, so a unit with no deck empties it in
+# host_vars rather than carrying a token for a client nothing reads. Assist is
+# unaffected either way: the voice satellite makes its own connection.
 home_assistant_url: "https://home.techmatt101.xyz"
 
 # Remote tiles: a WebSocket server inside the controller that lets another
@@ -313,9 +349,11 @@ home_assistant_url: "https://home.techmatt101.xyz"
 remote_tiles_enabled: false
 remote_tiles_port: 8470
 
-# Secrets are not configured here. Tokens are typed once on the Pi itself, in
-# /etc/smartamp/secrets.env, which provisioning reads only to confirm each
-# required key has a value and never writes:
+# Secrets are not configured here. Tokens are typed on each Pi itself, in that
+# unit's /etc/smartamp/secrets.env, which provisioning reads only to confirm
+# each required key has a value and never writes. A unit needs the file only for
+# the features it has turned on, so an amp with no deck and no Home Assistant
+# URL needs none at all:
 #
 #   sudo mkdir -p /etc/smartamp
 #   sudo nano /etc/smartamp/secrets.env

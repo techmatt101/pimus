@@ -1,0 +1,26 @@
+---
+# bedroom-amp: Raspberry Pi 4 Model B, HiFiBerry Amp100, ReSpeaker XVF3800, no
+# Stream Deck. A voice satellite and a Music Assistant player: Assist, the LED
+# ring, ducking, and Sendspin playback, driven by voice and by Home Assistant
+# rather than by keys.
+#
+# Only what differs from inventory/group_vars/all.yml belongs in this file;
+# every setting is explained there.
+
+# An amplifier with its own DAC and no ADC at all, so this unit has no aux
+# route: smartamp_aux_enabled must stay off and the aux gain and input pins are
+# never written.
+hifiberry_board: amp100
+
+sendspin_name: "Bedroom Amp"
+voice_assistant_name: "Bedroom Amp Voice"
+
+# A Pi 4B has no power button, so a halted board could only be started again by
+# shorting GPIO3 to ground or pulling the plug for a minute. Not worth it in a
+# bedroom; the board stays up and the idle teardown handles the quiet.
+smartamp_power_off_on_halt: false
+
+# The Home Assistant WebSocket client exists for deck keys, and there are none
+# here, so this unit carries no HOME_ASSISTANT_TOKEN and needs no secrets file.
+# Assist still reaches Home Assistant: the voice satellite connects on its own.
+home_assistant_url: ""

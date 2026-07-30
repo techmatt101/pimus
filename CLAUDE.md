@@ -2,12 +2,19 @@
 
 ## Project purpose
 
-Pimus provisions `office-amp`, a Raspberry Pi audio and voice endpoint built
-from a HiFiBerry DAC2 ADC Pro + AAmp60 or a HiFiBerry Amp100, a ReSpeaker
-XVF3800, and an Elgato Stream Deck+. It targets a fresh 64-bit Raspberry Pi OS
+Pimus provisions a fleet of Raspberry Pi audio and voice endpoints built from a
+HiFiBerry DAC2 ADC Pro + AAmp60 or a HiFiBerry Amp100, a ReSpeaker XVF3800, and
+optionally an Elgato Stream Deck+. It targets a fresh 64-bit Raspberry Pi OS
 Lite installation on a Pi 5, a Pi 4 Model B, or a Pi Zero 2 W (which reaches its
-USB devices through a self-powered hub); `office-amp` itself is a Pi 5
-with the DAC2 ADC Pro.
+USB devices through a self-powered hub). Three units are configured today:
+
+- `office-amp` — Pi 5, DAC2 ADC Pro + AAmp60, Stream Deck+, USB sound card.
+  The reference build and the only one with a deck or an aux input.
+- `bedroom-amp` — Pi 4 Model B, Amp100, no deck.
+- `kitchen-amp` — Pi Zero 2 W, Amp100, no deck, USB devices on a powered hub.
+
+Every unit has a ReSpeaker and runs the voice assistant. A unit's hardware is
+its `host_vars` file; nothing in the code branches on which room it is.
 
 Home Assistant and Music Assistant run on another machine. This repository
 must remain a lightweight client: do not add Docker, a local HA/music server, or
@@ -65,7 +72,10 @@ apps/
                          remote-tile socket; runs on the control computer
 tools/                   Development-only code generators
 ansible/
-  inventory/             User-editable device configuration
+  inventory/
+    hosts.yml            The units, one entry per amp
+    group_vars/all.yml   Settings shared by every amp
+    host_vars/           One file per unit: only what makes it that unit
   playbooks/             Provisioning and verification entry points
   roles/smartamp/        Tasks, handlers, and generated templates
 docs/                    Architecture, configuration, troubleshooting
@@ -76,7 +86,13 @@ tests inside the app that owns them.
 
 ## Sources of truth
 
-- User configuration lives in `ansible/inventory/group_vars/all.yml`.
+- User configuration lives in `ansible/inventory/group_vars/all.yml`, which
+  holds the conservative shared answer, and `ansible/inventory/host_vars/`,
+  where each unit declares only what differs — its HiFiBerry board, whether a
+  deck is attached, its names, its power flags. Do not copy a whole settings
+  file per unit, and do not push a room's specifics into `all.yml`. A setting
+  every amp shares gets a default and a comment in `all.yml`; a unit that
+  cannot honour it fails preflight by name.
 - Runtime JSON and systemd units are generated from
   `ansible/roles/smartamp/templates/`; do not rely on hand-edited target files.
 - Every upstream is pinned: release versions in the inventory
@@ -91,7 +107,8 @@ tests inside the app that owns them.
   manifest the Pi receives and it installs with plain `npm install`.
   `apps/playground` must pin the identical versions; `make test` enforces it.
 - Service relationships are documented in `docs/architecture.md`.
-- The hostname is `office-amp` and is managed by Ansible.
+- A unit's hostname is its inventory name, set on the Pi by Ansible from
+  `smartamp_hostname`; adding a host to `hosts.yml` is what names it.
 
 When adding a setting, update the inventory defaults, generated template,
 runtime validation, and relevant documentation together.
@@ -377,9 +394,11 @@ Add fakes there rather than changing controller code to accommodate the
 playground; it may only replace boundaries the controller already injects.
 
 Commands such as `make provision`, `make check`, `make verify`, and `make doctor`
-contact or change the real Pi. Do not run them unless the user asks for remote
-deployment/verification and the inventory target is expected to be reachable.
-Provisioning can reboot the Pi when boot overlays change.
+contact or change the real Pis, and run against every unit in the inventory
+unless `LIMIT` names one (`make provision LIMIT=kitchen-amp`). Do not run them
+unless the user asks for remote deployment/verification and the targets are
+expected to be reachable. Provisioning can reboot a Pi when boot overlays
+change.
 
 ## Hardware constraints
 

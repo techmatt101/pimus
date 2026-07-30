@@ -59,7 +59,10 @@ lsusb 2>/dev/null | grep -qi '2886:001a' && pass 'ReSpeaker XVF3800 connected' |
 {% if streamdeck_enabled %}
 lsusb 2>/dev/null | grep -qi '0fd9:0084' && pass 'Elgato Stream Deck+ connected' || fail 'Required Elgato Stream Deck+ is not connected'
 {% else %}
-lsusb 2>/dev/null | grep -qi '0fd9:0084' && pass 'Elgato Stream Deck+ connected' || warn 'Optional Elgato Stream Deck+ is not connected'
+{# No deck by configuration, so its absence is the expected answer rather than
+   something to warn about every run. One plugged in anyway is worth saying:
+   nothing is deployed to drive it, which is why it stays dark. #}
+lsusb 2>/dev/null | grep -qi '0fd9:0084' && warn 'An Elgato Stream Deck+ is connected, but streamdeck_enabled is off for this unit' || pass 'No Stream Deck, as configured'
 {% endif %}
 {% if streamdeck_enabled and smartamp_sleep_usb_power_off %}
 {# The controller writes these to take the deck and ReSpeaker down in sleep, and

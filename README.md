@@ -10,8 +10,26 @@ An idempotent Raspberry Pi build recipe, for a Pi 5, a Pi 4 Model B, or a Pi Zer
 - Home Assistant Assist, local wake word, voice responses, timers, and announcements
 - configurable ReSpeaker LEDs and Stream Deck+ keys, dials, and touch strip
 
-The recipe targets a fresh 64-bit Raspberry Pi OS Lite Bookworm or Trixie install. It provisions the Pi directly over
+The recipe targets a fresh 64-bit Raspberry Pi OS Lite Bookworm or Trixie install. It provisions each Pi directly over
 SSH; running it again produces the same configuration and safely applies later changes.
+
+## The units
+
+One recipe builds every amp. What differs between them is a short file in `ansible/inventory/host_vars/`, and anything
+a board cannot do is refused by name before provisioning changes anything.
+
+| | `office-amp` | `bedroom-amp` | `kitchen-amp` |
+| --- | --- | --- | --- |
+| Raspberry Pi | Pi 5 | Pi 4 Model B | Pi Zero 2 W, powered hub |
+| HiFiBerry | DAC2 ADC Pro + AAmp60 | Amp100 | Amp100 |
+| ReSpeaker XVF3800, Assist, LEDs | yes | yes | yes |
+| Stream Deck+ | yes | — | — |
+| Analogue aux in | yes, the ADC | — | — |
+| USB sound card | yes | — | — |
+| Home Assistant WebSocket | yes | — | — |
+
+The Home Assistant connection exists for deck keys, so the two units without a deck do not open one and need no token
+on the Pi; Assist reaches Home Assistant either way through the voice satellite's own connection.
 
 ## Read this before powering the stack
 
@@ -100,8 +118,11 @@ corepack enable pnpm   # or: npm install -g pnpm
 make install
 ```
 
-Edit [`ansible/inventory/hosts.yml`](ansible/inventory/hosts.yml) so the hostname/IP and `ansible_user` match the Pi.
-Review the feature settings in [`ansible/inventory/group_vars/all.yml`](ansible/inventory/group_vars/all.yml), then run:
+Edit [`ansible/inventory/hosts.yml`](ansible/inventory/hosts.yml) so the hostname/IP and `ansible_user` match your
+Pis. Each unit's hardware — its HiFiBerry board, whether a Stream Deck is attached, what it is called in Home Assistant
+and Music Assistant — is a short file in [`ansible/inventory/host_vars/`](ansible/inventory/host_vars); everything the
+units share, and an explanation of every setting, is in
+[`ansible/inventory/group_vars/all.yml`](ansible/inventory/group_vars/all.yml). Then run:
 
 ```sh
 ssh matt@office-amp.local  # accept the new host key, then exit
@@ -114,16 +135,25 @@ Boot configuration changes trigger one reboot. When provisioning finishes:
 make doctor
 ```
 
-In Home Assistant, open **Settings → Devices & services**. The device named **Office Amp Voice** should be discovered by
-the ESPHome integration. Add it and select the desired Assist pipeline. The ReSpeaker LED ring is purely reactive — it
-reflects voice, media, timer, mute, and error states configured in the Ansible variables.
+Every command that contacts a Pi runs against all of them. Name one with `LIMIT` to work on a single amp:
 
-For Music Assistant, the Sendspin player named **Office Amp** appears automatically — the Sendspin provider is built
-into Music Assistant and mDNS discovery normally works on the local network. Otherwise set `sendspin_server_url` to the
-Music Assistant Sendspin WebSocket URL and provision again. The Sendspin client requires Python 3.12, so use a
-Trixie-based (or newer) Raspberry Pi OS image, or set `sendspin_enabled: false` on Bookworm.
+```sh
+make provision LIMIT=kitchen-amp
+make deploy-controller LIMIT=office-amp,bedroom-amp
+```
 
-This project installs no Home Assistant or Music Assistant server components. `office-amp` is only a network audio/voice
+In Home Assistant, open **Settings → Devices & services**. Each unit's voice satellite — **Office Amp Voice**,
+**Bedroom Amp Voice**, **Kitchen Amp Voice**, from `voice_assistant_name` in its `host_vars` — should be discovered by
+the ESPHome integration. Add each and select the desired Assist pipeline. The ReSpeaker LED ring is purely reactive —
+it reflects voice, media, timer, mute, and error states configured in the Ansible variables.
+
+For Music Assistant, the Sendspin players named **Office Amp**, **Bedroom Amp**, and **Kitchen Amp** appear
+automatically — the Sendspin provider is built into Music Assistant and mDNS discovery normally works on the local
+network. Otherwise set `sendspin_server_url` to the Music Assistant Sendspin WebSocket URL and provision again. The
+Sendspin client requires Python 3.12, so use a Trixie-based (or newer) Raspberry Pi OS image, or set
+`sendspin_enabled: false` on Bookworm.
+
+This project installs no Home Assistant or Music Assistant server components. Each amp is only a network audio/voice
 endpoint; the server and media library remain on your other machine.
 
 ### Updating the controller
@@ -150,7 +180,8 @@ Use the full `make provision` after changing anything outside
 - `apps/audio-manager`: the Python PipeWire reconciliation daemon and its colocated tests.
 - `apps/playground`: a development-only debug environment that runs the controller on this computer against fake
   hardware. Not deployed.
-- `ansible`: inventory, playbooks, deployment tasks, generated configuration, and systemd templates.
+- `ansible`: inventory (the units, their shared settings, and one `host_vars` file per amp), playbooks, deployment
+  tasks, generated configuration, and systemd templates.
 
 Each app owns its `src/` directory and, where applicable, a sibling `test/`
 directory. See [`apps/README.md`](apps/README.md) for the module boundaries. The

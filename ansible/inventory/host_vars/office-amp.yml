@@ -1,0 +1,35 @@
+---
+# office-amp: Raspberry Pi 5, HiFiBerry DAC2 ADC Pro with the AAmp60 add-on
+# amplifier, ReSpeaker XVF3800, and an Elgato Stream Deck+. The reference build
+# and the only unit here with a deck, an analogue aux input, or a USB-C port
+# given over to being a sound card.
+#
+# Only what differs from inventory/group_vars/all.yml belongs in this file;
+# every setting is explained there.
+
+# The DAC the AAmp60 sits on. Its PCM1863 ADC is the analogue line-in, so this
+# is the one unit with an aux route at all.
+hifiberry_board: dac2adcpro
+
+# The Stream Deck+ and the names the house knows this amp by.
+streamdeck_enabled: true
+sendspin_name: "Office Amp"
+voice_assistant_name: "Office Amp Voice"
+
+# The desk computer plays into the USB-C port, which means the AAmp60 stack
+# feeds the Pi through the GPIO header instead. The Pi 5's PMIC arbitrates the
+# two supplies, which is why this is safe here and needs a power-cut cable on a
+# Pi 4B.
+usb_audio_gadget_enabled: true
+usb_audio_product: "Office Amp USB"
+
+# The Pi 5's power button wakes a halted board, so the rails can be cut on halt
+# without stranding it, and the ganged USB-A sockets can go dark while the room
+# is empty. Both are Pi 5 behaviours; the other two units leave them off.
+smartamp_power_off_on_halt: true
+smartamp_sleep_usb_power_off: true
+
+# Kept on, with the journal persisted, while the USB-gadget crash is being
+# investigated. Turn both back to the shared defaults once that is closed.
+smartamp_debug_logging: true
+smartamp_journal_in_ram: false

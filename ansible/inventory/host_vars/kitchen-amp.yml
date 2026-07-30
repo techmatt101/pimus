@@ -1,0 +1,27 @@
+---
+# kitchen-amp: Raspberry Pi Zero 2 W, HiFiBerry Amp100, ReSpeaker XVF3800, no
+# Stream Deck. The same voice satellite and Sendspin player as bedroom-amp on
+# the smallest board this stack runs on: one micro-USB data port, so the
+# ReSpeaker and any Ethernet adapter arrive through a self-powered hub, and
+# 512MB of RAM.
+#
+# Only what differs from inventory/group_vars/all.yml belongs in this file;
+# every setting is explained there. The Zero's refusals - no USB sound card, no
+# switchable port power, no bootloader EEPROM - are already the shared defaults,
+# so nothing here has to turn them off.
+
+hifiberry_board: amp100
+
+sendspin_name: "Kitchen Amp"
+voice_assistant_name: "Kitchen Amp Voice"
+
+# 512MB is the tightest this stack runs in, so let zram advertise the whole of
+# it rather than half. The pool costs RAM only as it fills, and at the 2.5-3x
+# these heaps compress at that is roughly 170-200MB of real memory for 512MB of
+# headroom. smartamp-doctor reports what is left.
+smartamp_zram_percent: 100
+
+# No deck, so nothing reads the Home Assistant WebSocket client; Assist reaches
+# Home Assistant through the voice satellite's own connection. This unit needs
+# no token and so no secrets file.
+home_assistant_url: ""

@@ -3,6 +3,14 @@
 ANSIBLE_CONFIG := $(CURDIR)/ansible/ansible.cfg
 export ANSIBLE_CONFIG
 
+# Every target that contacts a Pi runs against all of them. Name one - or a
+# comma-separated few - to work on a single amp:
+#
+#   make provision LIMIT=kitchen-amp
+#   make deploy-controller LIMIT=office-amp,bedroom-amp
+LIMIT ?=
+ANSIBLE_LIMIT := $(if $(LIMIT),--limit $(LIMIT),)
+
 .PHONY: help install build icons update-versions playground dev provision deploy-controller check test verify doctor
 
 help:
@@ -44,16 +52,16 @@ dev: ## Run the playground with live reload while you edit the controller
 	[ -d apps/playground/node_modules ] || pnpm install --frozen-lockfile
 	pnpm --filter pimus-playground dev
 
-provision: build ## Configure the Pi and reboot when boot settings change
-	ansible-playbook ansible/playbooks/site.yml
+provision: build ## Configure every Pi and reboot when boot settings change
+	ansible-playbook ansible/playbooks/site.yml $(ANSIBLE_LIMIT)
 
 # Runs only the controller-tagged tasks (plus preflight validation), so it needs
 # a Pi that has already completed a full "make provision" at least once.
 deploy-controller: build ## Rebuild and push only the controller to a provisioned Pi
-	ansible-playbook ansible/playbooks/site.yml --tags controller
+	ansible-playbook ansible/playbooks/site.yml --tags controller $(ANSIBLE_LIMIT)
 
 check: build ## Run an Ansible dry run (hardware/service tasks may be skipped)
-	ansible-playbook ansible/playbooks/site.yml --check --diff
+	ansible-playbook ansible/playbooks/site.yml --check --diff $(ANSIBLE_LIMIT)
 
 test: build ## Run local source and Ansible checks without contacting the Pi
 	@# The playground compiles the controller's sources and so must resolve the
@@ -72,7 +80,7 @@ test: build ## Run local source and Ansible checks without contacting the Pi
 	ansible-playbook ansible/playbooks/site.yml --syntax-check
 
 verify: test ## Run local checks, then inspect the configured Pi
-	ansible-playbook ansible/playbooks/verify.yml
+	ansible-playbook ansible/playbooks/verify.yml $(ANSIBLE_LIMIT)
 
 doctor: ## Run the diagnostic report on the Pi
-	ansible smartamp -b -a smartamp-doctor
+	ansible smartamp $(ANSIBLE_LIMIT) -b -a smartamp-doctor
