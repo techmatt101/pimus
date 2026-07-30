@@ -1,35 +1,40 @@
 import {type ControlModel, LIVE_ASSIST_STATES, type Unsubscribe} from '../state.mjs'
 import type {HomeAssistantService, PanelState} from '../types.mjs'
 
-export const DEFAULT_GRACE_MILLISECONDS = 2 * 60_000
-export const DEFAULT_DIM_MILLISECONDS = 5_000
+export const DEFAULT_STANDBY_MILLISECONDS = 3 * 60_000
+export const DEFAULT_SLEEP_MILLISECONDS = 5 * 60_000
 
 export interface SleepControllerOptions {
     model: ControlModel
     ha: HomeAssistantService
-    /** Empty turns sleeping off entirely and the panel stays lit. */
+    /** Empty turns standby and sleep off entirely and the panel stays lit. */
     presenceEntity: string
-    graceMilliseconds?: number
-    /** How long the panel is dimmed as a warning before it goes dark. */
-    dimMilliseconds?: number
+    /** How long without a touch or a live pipeline before the panel dims. */
+    standbyMilliseconds?: number
+    /** How long the room must read empty before the panel switches off. */
+    sleepMilliseconds?: number
 }
 
 /**
- * Dims the deck's panel when the room empties and switches it off shortly
- * after. Only the panel sleeps — the wake word, LED ring, and playback are
- * untouched. Fails open: an unreachable Home Assistant or an unknown presence
- * sensor means stay lit.
+ * Standby dims the panel after a spell without interaction — music can still
+ * be playing — and sleep switches it off once the room has read empty long
+ * enough, or at once when forced from the SLEEP key or the power button.
+ * Whoever watches `panel` acts on the same states: dim suspends the amp
+ * bridges, off also cuts USB power. Only sleep needs the presence sensor, and
+ * it fails open: an unreachable Home Assistant or an unknown reading means
+ * the panel never switches off, though it still dims.
  */
 export class SleepController {
     readonly #model: ControlModel
     readonly #ha: HomeAssistantService
     readonly #presenceEntity: string
-    readonly #graceMilliseconds: number
-    readonly #dimMilliseconds: number
-    #awakeUntil = 0
-    // The countdown starts when this goes false, so a room occupied all
-    // afternoon still gets its full grace period when you finally leave.
-    #keeping = true
+    readonly #standbyMilliseconds: number
+    readonly #sleepMilliseconds: number
+    #interactedAt = 0
+    #absentSince: number | null = null
+    #present: boolean | null = null
+    #forced = false
+    #running = false
     #timer: NodeJS.Timeout | null = null
     readonly #subscriptions: Unsubscribe[] = []
 
@@ -37,18 +42,20 @@ export class SleepController {
         model,
         ha,
         presenceEntity,
-        graceMilliseconds = DEFAULT_GRACE_MILLISECONDS,
-        dimMilliseconds = DEFAULT_DIM_MILLISECONDS,
+        standbyMilliseconds = DEFAULT_STANDBY_MILLISECONDS,
+        sleepMilliseconds = DEFAULT_SLEEP_MILLISECONDS,
     }: SleepControllerOptions) {
         this.#model = model
         this.#ha = ha
         this.#presenceEntity = presenceEntity
-        this.#graceMilliseconds = graceMilliseconds
-        this.#dimMilliseconds = dimMilliseconds
+        this.#standbyMilliseconds = standbyMilliseconds
+        this.#sleepMilliseconds = sleepMilliseconds
     }
 
     start(): void {
         if (!this.#presenceEntity) return
+        this.#running = true
+        this.#interactedAt = Date.now()
         this.#subscriptions.push(this.#ha.watch([this.#presenceEntity], () => this.#evaluate()))
         // Writing `panel` back into the model re-enters here; it terminates
         // because `evaluate` only notifies when the value actually changed.
@@ -57,6 +64,7 @@ export class SleepController {
     }
 
     stop(): void {
+        this.#running = false
         for (const unsubscribe of this.#subscriptions.splice(0)) unsubscribe()
         this.#clearTimer()
     }
@@ -69,49 +77,92 @@ export class SleepController {
      */
     touch(now = Date.now()): boolean {
         const woke = this.#model.state.panel === 'off'
-        this.#awakeUntil = Math.max(this.#awakeUntil, now + this.#graceMilliseconds)
+        this.#forced = false
+        this.#interactedAt = now
+        // A touch is proof the room is not empty, whatever the sensor says;
+        // evaluate re-seeds the empty-room clock if it still reads off.
+        this.#absentSince = null
         this.#evaluate(now)
         return woke
     }
 
+    /** The SLEEP key: off at once, until presence returns or the button wakes it. */
+    forceSleep(): void {
+        if (!this.#running) return
+        this.#forced = true
+        this.#evaluate()
+    }
+
+    /** The Pi's power button: wakes a sleeping panel, and forces sleep otherwise. */
+    pressPowerButton(now = Date.now()): void {
+        if (!this.#running) return
+        if (this.#model.state.panel === 'off') this.touch(now)
+        else this.forceSleep()
+    }
+
     #evaluate(now = Date.now()): void {
-        const keep = this.#keepAwake()
-        if (this.#keeping && !keep) this.#awakeUntil = now + this.#graceMilliseconds
-        this.#keeping = keep
-        const panel = keep ? 'lit' : this.#panelAt(now)
-        this.#arm(keep ? 0 : this.#nextChangeIn(now, panel))
+        const live = LIVE_ASSIST_STATES.has(this.#model.state.assist)
+        if (live) this.#interactedAt = now
+        this.#readPresence(now)
+        const emptied =
+            this.#absentSince !== null && now - this.#absentSince >= this.#sleepMilliseconds
+        const sleeping = this.#forced || (emptied && !live)
+        const panel: PanelState = sleeping
+            ? 'off'
+            : now - this.#interactedAt >= this.#standbyMilliseconds
+                ? 'dim'
+                : 'lit'
+        this.#arm(now, sleeping)
         if (panel === this.#model.state.panel) return
         this.#model.state.panel = panel
         this.#model.notify()
     }
 
-    #panelAt(now: number): PanelState {
-        if (now < this.#awakeUntil) return 'lit'
-        if (now < this.#awakeUntil + this.#dimMilliseconds) return 'dim'
-        return 'off'
+    #readPresence(now: number): void {
+        const reading = this.#presenceReading()
+        if (reading === null) {
+            this.#absentSince = null
+            this.#present = null
+            return
+        }
+        if (reading) {
+            // Walking back in is the arrival edge: it relights the panel and
+            // releases a forced sleep, so the room is ready before anything
+            // is pressed or said.
+            if (this.#present === false) {
+                this.#forced = false
+                this.#interactedAt = now
+            }
+            this.#absentSince = null
+        } else {
+            this.#absentSince ??= now
+        }
+        this.#present = reading
     }
 
-    #nextChangeIn(now: number, panel: PanelState): number {
-        if (panel === 'lit') return this.#awakeUntil - now
-        if (panel === 'dim') return this.#awakeUntil + this.#dimMilliseconds - now
-        return 0
-    }
-
-    #keepAwake(): boolean {
-        if (!this.#ha.connected) return true
+    #presenceReading(): boolean | null {
+        if (!this.#ha.connected) return null
         const presence = this.#ha.entity(this.#presenceEntity)?.state
-        if (presence === undefined || presence === 'unknown' || presence === 'unavailable') return true
         if (presence === 'on') return true
-        return LIVE_ASSIST_STATES.has(this.#model.state.assist)
+        if (presence === 'off') return false
+        return null
     }
 
-    #arm(remaining: number): void {
+    #arm(now: number, sleeping: boolean): void {
         this.#clearTimer()
-        if (remaining <= 0) return
+        if (sleeping) return
+        const deadlines: number[] = []
+        const dimAt = this.#interactedAt + this.#standbyMilliseconds
+        if (dimAt > now) deadlines.push(dimAt)
+        if (this.#absentSince !== null) {
+            const sleepAt = this.#absentSince + this.#sleepMilliseconds
+            if (sleepAt > now) deadlines.push(sleepAt)
+        }
+        if (deadlines.length === 0) return
         this.#timer = setTimeout(() => {
             this.#timer = null
             this.#evaluate()
-        }, remaining)
+        }, Math.min(...deadlines) - now)
         this.#timer.unref()
     }
 

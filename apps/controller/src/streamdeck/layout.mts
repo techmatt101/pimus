@@ -1,6 +1,6 @@
 import type {RouteActionName} from '../actions/catalog.mjs'
 import {isEntityOn, numericAttribute} from '../home-assistant/entity.mjs'
-import {type Binding, routeBinding, voiceBinding} from './bindings.mjs'
+import {type Binding, panelBinding, routeBinding, voiceBinding} from './bindings.mjs'
 import type {Dial} from './dial.mjs'
 import {DynamicDial} from './dials/dynamic-dial.mjs'
 import {MediaDial} from './dials/media-dial.mjs'
@@ -24,7 +24,14 @@ import type {Tile} from './tile.mjs'
 import {VoiceTile} from './tiles/voice-tile.mjs'
 import {VoiceVolumeTile} from './tiles/voice-volume-tile.mjs'
 import type {ControlModel} from '../state.mjs'
-import type {AudioControls, HomeAssistantService, LvaSender, NotificationFeed, RemoteTileFeed} from '../types.mjs'
+import type {
+    AudioControls,
+    HomeAssistantService,
+    LvaSender,
+    NotificationFeed,
+    PowerControls,
+    RemoteTileFeed,
+} from '../types.mjs'
 
 const HA = {
     player: 'media_player.house_speakers',
@@ -55,8 +62,10 @@ const CLOCK_FORMAT: ClockFormat = '12h'
 
 export const SLEEP = {
     presence: HA.presence,
-    graceMilliseconds: 2 * 60_000,
-    dimMilliseconds: 5_000,
+    /** How long without a touch or a live pipeline before the panel dims and the amp suspends. */
+    standbyMilliseconds: 3 * 60_000,
+    /** How long the room must read empty before the panel and USB power switch off. */
+    sleepMilliseconds: 5 * 60_000,
 } as const
 
 export interface ControllerServices {
@@ -65,12 +74,13 @@ export interface ControllerServices {
     lva: LvaSender
     audio: AudioControls
     ha: HomeAssistantService
+    power: PowerControls
     notifications?: NotificationFeed
     remote?: RemoteTileFeed
 }
 
 export function createLayout(services: ControllerServices): StreamDeckLayout {
-    const {model, clock, lva, audio, ha, notifications, remote} = services
+    const {model, clock, lva, audio, ha, power, notifications, remote} = services
     const voice = (command: string): Binding => voiceBinding(lva, model, command)
     const route = (source: string, command: RouteActionName): Binding => routeBinding(audio, source, command)
     const key = (label: string, color: string, binding: Binding): Tile =>
@@ -170,7 +180,7 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
             key('AUX', '#4a148c', route('aux', 'toggle')),
             key('USB', '#0d47a1', route('usb', 'toggle')),
             key('MUTE', '#7f0000', voice('mute_toggle')),
-            null
+            key('SLEEP', '#263238', panelBinding(power, 'sleep')),
         ],
     ]
 

@@ -1,7 +1,7 @@
 import type {Image} from '@napi-rs/canvas'
 
 export interface Action {
-    type: 'noop' | 'lva' | 'audio' | 'ha'
+    type: 'noop' | 'lva' | 'audio' | 'ha' | 'panel'
     command?: string
     /** Named audio route for `audio` actions; absent means the master volume. */
     source?: string
@@ -9,8 +9,17 @@ export interface Action {
     data?: Record<string, unknown>
 }
 
+export interface PowerControls {
+    forceSleep(): void
+}
+
 export interface StreamDeckDeployment {
     enabled: boolean
+}
+
+export interface SleepDeployment {
+    /** Whether sleep also cuts VBUS to the deck and ReSpeaker via uhubctl. */
+    usb_power_off: boolean
 }
 
 export interface ReSpeakerConfig {
@@ -105,6 +114,7 @@ export interface ControllerConfig {
     audio_socket: string
     ducking?: DuckingConfig
     streamdeck?: StreamDeckDeployment
+    sleep?: SleepDeployment
     respeaker?: ReSpeakerConfig
     home_assistant?: HomeAssistantConfig
     remote?: RemoteConfig
@@ -165,7 +175,7 @@ export interface TimerState {
     ringing: boolean
 }
 
-/** Lit, dimmed as a warning that the room reads as empty, then dark. */
+/** Lit, dimmed in standby with the amp suspended, then dark asleep. */
 export type PanelState = 'lit' | 'dim' | 'off'
 
 export interface ControlState {

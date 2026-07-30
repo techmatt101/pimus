@@ -11,8 +11,9 @@ import type {ControlModel} from '../state.mjs'
 
 const FORMAT = {format: 'rgba'} as const
 
-// A dimmed panel is a warning that the room reads as empty, so it has to stay
-// readable rather than fade to something indistinguishable from off.
+// A dimmed panel is standby - the amp is suspended but somebody may well be
+// in the room - so it has to stay readable rather than fade to something
+// indistinguishable from off.
 const DIM_FRACTION = 0.25
 
 export interface DeckRendererOptions {

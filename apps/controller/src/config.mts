@@ -45,6 +45,10 @@ function validateControllerConfig(value: unknown, configPath: string): asserts v
         }
     }
 
+    if (isRecord(value.sleep) && typeof value.sleep.usb_power_off !== 'boolean') {
+        throw new Error(`Controller configuration at ${configPath} must give sleep.usb_power_off as a boolean`)
+    }
+
     // An unauthenticated inbound listener must be impossible to configure by accident.
     if (isRecord(value.remote) && value.remote.enabled) {
         const {port, token} = value.remote

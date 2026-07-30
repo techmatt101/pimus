@@ -52,6 +52,74 @@
   notify: Reload udev
   when: not (streamdeck_enabled | bool)
 
+# Sleep cuts VBUS on the Pi's USB-A root hubs so the deck and ReSpeaker power
+# down with the panel; uhubctl is what the controller shells out to. The
+# package stays installed when the flag is turned off - only the permission
+# rule below is active configuration.
+- name: Install the USB power control tool
+  ansible.builtin.apt:
+    name: uhubctl
+    state: present
+  when:
+    - streamdeck_enabled | bool
+    - smartamp_sleep_usb_power_off | bool
+
+# uhubctl writes to the root-hub device nodes. 1d6b is the Linux Foundation id
+# every kernel root hub carries, and the service account is already in plugdev
+# for the other USB surfaces.
+- name: Install USB hub power permissions
+  ansible.builtin.copy:
+    dest: /etc/udev/rules.d/60-smartamp-usb-hubs.rules
+    content: |
+      SUBSYSTEM=="usb", ATTR{idVendor}=="1d6b", MODE:="0664", GROUP="plugdev"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload udev
+  when:
+    - streamdeck_enabled | bool
+    - smartamp_sleep_usb_power_off | bool
+
+- name: Remove USB hub power permissions when disabled
+  ansible.builtin.file:
+    path: /etc/udev/rules.d/60-smartamp-usb-hubs.rules
+    state: absent
+  notify: Reload udev
+  when: not ((streamdeck_enabled | bool) and (smartamp_sleep_usb_power_off | bool))
+
+# The Pi 5 power button is the amp's sleep/wake toggle, read by the controller
+# from its gpio-keys input device. logind has to be told to ignore the key or
+# every press would also begin a graceful shutdown; shutting the Pi down moves
+# to SSH or the smart plug.
+- name: Create the logind override directory
+  ansible.builtin.file:
+    path: /etc/systemd/logind.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: streamdeck_enabled | bool
+
+- name: Ignore the power key while the controller owns it
+  ansible.builtin.copy:
+    dest: /etc/systemd/logind.conf.d/smartamp-power-button.conf
+    content: |
+      [Login]
+      HandlePowerKey=ignore
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart logind
+  when: streamdeck_enabled | bool
+
+# Give the button its shutdown meaning back when the deck is disabled.
+- name: Restore default power key handling when the deck is disabled
+  ansible.builtin.file:
+    path: /etc/systemd/logind.conf.d/smartamp-power-button.conf
+    state: absent
+  notify: Restart logind
+  when: not (streamdeck_enabled | bool)
+
 # Keep the app, its src directory, and node_modules together under /opt rather
 # than installing project-specific npm packages globally.
 - name: Create hardware controller directories

@@ -239,6 +239,19 @@ to the gadget port.
 key('AUX', '#4a148c', route('aux', 'toggle'))
 ```
 
+## Panel power — `type: panel`
+
+Drives the sleep policy itself (see
+[Standby and sleep](#standby-and-sleep) below).
+
+| Command | Effect                                                                                                        |
+|---------|---------------------------------------------------------------------------------------------------------------|
+| `sleep` | Force sleep at once: panel off, amp suspended, USB power cut. Presence returning or the Pi power button wakes it. |
+
+```ts
+key('SLEEP', '#263238', panelBinding(power, 'sleep'))
+```
+
 ## Home Assistant — `type: ha`
 
 Calls a Home Assistant service over the WebSocket API and reads entity state
@@ -529,55 +542,63 @@ Nothing needs configuring on the Pi: the event name is compiled in
 Home Assistant connection carries it. To try one without a Pi, run
 `make playground` and use the notification buttons in the Home Assistant panel.
 
-## Sleeping when the room is empty
+## Standby and sleep
 
-A lit deck in an empty office is the only thing that sleeps here. The wake word,
-the ReSpeaker ring, Sendspin, and whatever is playing all keep running; the panel
-simply dims and then switches off, and its keys stop drawing, animating, and
-watching entities while nobody can see them.
+The amp has two resting states below awake, driven by one controller and shown
+by one field — `state.panel`, one of `lit`, `dim`, and `off`:
 
-It follows one Home Assistant presence sensor, named beside the other entity ids
-in `layout.mts` and read over the connection the keys already use. Three things
-keep the panel lit, and each restarts the grace period rather than pinning it
-awake, so leaving the room always ends the same way:
+**Standby** is about your hands, not the room. Three minutes after the last key
+press, dial turn, strip tap, or live Assist pipeline, the panel dims — music
+can still be playing; the strip stays readable — and the audio manager is told
+to release its idle bridges, so the DAC path and the XVF3800 playback endpoint
+suspend. Any touch relights the panel and runs the key as normal (a dimmed deck
+is readable, so nothing is swallowed), and the amp rebuilds its bridges the
+moment anything plays or a voice session opens.
 
-| Keeps the panel lit                                                                | Why                                              |
-|------------------------------------------------------------------------------------|--------------------------------------------------|
-| The presence sensor reading `on`                                                   | Somebody is in the room                          |
-| A live Assist pipeline — wake word, listening, thinking, speaking, a ringing timer | What Assist is doing has to be visible           |
-| A key press, dial turn, or tap on the strip                                        | The safety net for a sensor that is simply wrong |
+**Sleep** is about the room. Five minutes after the presence sensor reads
+`off` — or at once when the SLEEP key on the SETTINGS page or the Pi's power
+button forces it — the panel switches off, and with
+`smartamp_sleep_usb_power_off` set the Pi also cuts VBUS on its USB ports:
+the Stream Deck and ReSpeaker power down entirely, about two watts. The wake
+word is off while the amp sleeps, which is the point — there is nobody in the
+room to say it.
 
-Two minutes after the last of those the panel dims, and five seconds later it
-goes dark; either way it comes back to full brightness the instant presence
-returns. The dim is the warning: a deck that is about to switch off in a room the
-sensor has misjudged is still readable, and touching anything on it during those
-five seconds both runs the key and restores the light. **The first press on a
-dark deck only wakes it** — that press is you asking to see the keys, not asking
-to toggle something you cannot read — so nothing runs until you press again.
+Waking from sleep, in the order you will meet them:
 
-It fails towards a lit panel in every direction. An unreachable Home Assistant, a
-sensor that has never reported, one reporting `unavailable`, an LED-only unit, and
-a deployment with no `home_assistant_url` at all each mean the deck never sleeps:
-a dark panel you cannot explain is worse than a lit one you did not need.
+| Wakes the amp                        | Notes                                                         |
+|--------------------------------------|---------------------------------------------------------------|
+| The presence sensor turning `on`     | Walking back in; everything is powered before you reach it    |
+| The Pi 5's power button              | Its shutdown meaning is disabled by provisioning; a press wakes a sleeping amp and forces sleep on a waking one |
+| A key press                          | Only when USB power stays on; **the first press on a dark deck only wakes it** |
 
-A notification pushed while the deck is asleep waits in the queue rather than
+A forced sleep holds while you remain in the room; leave and return (or press
+the power button) and it wakes as usual.
+
+Sleep fails towards a lit panel in every direction. An unreachable Home
+Assistant, a sensor that has never reported, one reporting `unavailable`, an
+LED-only unit, and a deployment with no `home_assistant_url` at all each mean
+the amp never sleeps on its own: a dark panel you cannot explain is worse than
+a lit one you did not need. Standby needs no sensor and still dims.
+
+A notification pushed while the deck is dark waits in the queue rather than
 lighting an empty room, and is on the strip when you walk back in.
 
-All three settings are compiled in, in `apps/controller/src/streamdeck/layout.mts`:
+The timings and the presence entity are compiled in, in
+`apps/controller/src/streamdeck/layout.mts`:
 
 ```ts
 export const SLEEP = {
-  presence: HA.presence,          // clear this to keep the deck lit permanently
-  graceMilliseconds: 2 * 60_000,
-  dimMilliseconds: 5_000,         // how long it is dimmed before going dark
+  presence: HA.presence,             // clear this to keep the deck lit permanently
+  standbyMilliseconds: 3 * 60_000,   // idle time before dim + amp suspend
+  sleepMilliseconds: 5 * 60_000,     // empty-room time before panel + USB power off
 } as const
 ```
 
-The policy itself is `streamdeck/sleep.mts`, which writes one field —
-`state.panel`, one of `lit`, `dim`, and `off` — that the renderer follows exactly
-as it follows a deck being unplugged. To watch it without a Pi, run
-`make playground` and use the
-**leave room** and **enter room** buttons in the Home Assistant panel.
+The policy itself is `streamdeck/sleep.mts`; the renderer follows `state.panel`
+exactly as it follows a deck being unplugged, and `index.mts` maps the same
+field onto the audio manager's standby signal and the USB power switch. To
+watch it without a Pi, run `make playground` and use the **leave room** and
+**enter room** buttons in the Home Assistant panel.
 
 ## Remote tiles from another computer
 

@@ -11,6 +11,11 @@
   ansible.builtin.command: udevadm control --reload-rules
   changed_when: true
 
+- name: Restart logind
+  ansible.builtin.systemd_service:
+    name: systemd-logind.service
+    state: restarted
+
 - name: Restart journald
   ansible.builtin.systemd_service:
     name: systemd-journald.service

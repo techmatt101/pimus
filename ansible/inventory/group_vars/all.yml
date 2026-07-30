@@ -104,8 +104,10 @@ smartamp_aec_reference_enabled: true
 # their PULSE_SINK targets, and the voice capture path is untouched (the wake
 # word keeps hearing). Bridges rebuild within a second of a client stream, a
 # voice session opening, or a route toggle; the first ~half second of music
-# after a long quiet spell is dropped while the bridge loads. 0 keeps every
-# bridge loaded permanently.
+# after a long quiet spell is dropped while the bridge loads. The deck's
+# panel sleeping (presence-driven) skips this wait and tears down at once;
+# the panel waking rebuilds proactively. 0 keeps every bridge loaded
+# permanently, panel asleep or not.
 smartamp_idle_teardown_seconds: 180
 
 # Keep background playback audible but quieter while Assist is listening,
@@ -195,6 +197,14 @@ respeaker_led_brightness: 128 # 0 - 255
 # apps/controller/src/streamdeck/layout.mts; see docs/controls.md. Set this to
 # false for an LED-only deployment with no deck attached.
 streamdeck_enabled: true
+
+# While the amp sleeps (the room empty for five minutes, or the SLEEP key),
+# cut VBUS on the Pi's USB-A root hubs so the Stream Deck and ReSpeaker power
+# down - about two watts. The wake word is off while the room is empty;
+# presence returning or the Pi 5 power button powers everything back within a
+# few seconds. The sleep and standby timings themselves are compiled into the
+# controller beside the layout (the SLEEP block in streamdeck/layout.mts).
+smartamp_sleep_usb_power_off: true
 
 # Home Assistant, for the Stream Deck keys that show and change house state:
 # the fan, blinds, PC, scenes, timer, temperature, weather, lights dial, and

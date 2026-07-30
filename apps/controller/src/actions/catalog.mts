@@ -1,4 +1,4 @@
-import type {Action, AudioState, ControlState, HomeAssistantService, LvaSender,} from '../types.mjs'
+import type {Action, AudioState, ControlState, HomeAssistantService, LvaSender, PowerControls,} from '../types.mjs'
 
 export interface IndicatorContext {
     state: ControlState
@@ -129,6 +129,25 @@ export const ROUTE_ACTIONS = {
 } as const satisfies Record<string, ActionSpec>
 
 export type RouteActionName = keyof typeof ROUTE_ACTIONS
+
+export interface PanelContext {
+    power: PowerControls
+}
+
+interface PanelActionSpec extends ActionSpec {
+    run(context: PanelContext): void
+}
+
+export const PANEL_ACTIONS = {
+    sleep: {
+        summary:
+            'Force sleep at once: panel off, amp suspended, USB power cut. Presence returning or the Pi power button wakes it.',
+        example: '{ type: panel, command: sleep }',
+        run: ({power}) => power.forceSleep(),
+    },
+} as const satisfies Record<string, PanelActionSpec>
+
+export type PanelActionName = keyof typeof PANEL_ACTIONS
 
 export interface HaContext {
     ha: HomeAssistantService
@@ -263,6 +282,9 @@ export const isRouteAction = (command: string): command is RouteActionName =>
 
 export const isHaAction = (command: string): command is HaActionName => has(HA_ACTIONS, command)
 
+export const isPanelAction = (command: string): command is PanelActionName =>
+    has(PANEL_ACTIONS, command)
+
 export function runHaCommand(command: HaActionName, context: HaContext): void {
     HA_ACTIONS[command].run(context)
 }
@@ -330,5 +352,11 @@ export function describeActionProblem(action: unknown): string | null {
             : 'a "ha" action needs an entity id such as "fan.office_ceiling"'
     }
 
-    return `unknown action type "${String(type)}"; expected noop, lva, audio, or ha`
+    if (type === 'panel') {
+        return typeof command === 'string' && isPanelAction(command)
+            ? null
+            : `unknown panel command "${String(command)}"; expected ${Object.keys(PANEL_ACTIONS).join(', ')}`
+    }
+
+    return `unknown action type "${String(type)}"; expected noop, lva, audio, ha, or panel`
 }

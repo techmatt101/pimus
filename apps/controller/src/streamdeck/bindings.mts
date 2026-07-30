@@ -1,12 +1,14 @@
 import {
     type HaActionName,
+    PANEL_ACTIONS,
+    type PanelActionName,
     type RouteActionName,
     runHaCommand,
     runVoiceCommand,
     type VolumeActionName,
 } from '../actions/catalog.mjs'
 import type {ControlModel} from '../state.mjs'
-import type {Action, AudioControls, HomeAssistantService, LvaSender} from '../types.mjs'
+import type {Action, AudioControls, HomeAssistantService, LvaSender, PowerControls} from '../types.mjs'
 
 /**
  * One executable control binding: the declarative action it stands for — kept
@@ -49,5 +51,12 @@ export function routeBinding(audio: AudioControls, source: string, command: Rout
     return {
         action: {type: 'audio', source, command},
         run: () => audio.setSource(source, command),
+    }
+}
+
+export function panelBinding(power: PowerControls, command: PanelActionName): Binding {
+    return {
+        action: {type: 'panel', command},
+        run: () => PANEL_ACTIONS[command].run({power}),
     }
 }

@@ -5,12 +5,14 @@ import {defaultRouteExists, HealthMonitor} from './health.mjs'
 import {createOfflineHomeAssistant, HomeAssistantClient} from './home-assistant/client.mjs'
 import {NotificationCenter} from './home-assistant/notifications.mjs'
 import {logger} from './log.mjs'
+import {PowerButton} from './power-button.mjs'
 import {RemoteTileServer} from './remote/server.mjs'
 import {ControlModel, createState} from './state.mjs'
 import {runDeckLoop} from './streamdeck/deck.mjs'
 import {createLayout, SLEEP} from './streamdeck/layout.mjs'
 import {DeckRenderer} from './streamdeck/renderer.mjs'
 import {SleepController} from './streamdeck/sleep.mjs'
+import {UsbPower} from './usb-power.mjs'
 import {LvaClient} from './voice/lva-client.mjs'
 import {ReSpeakerController} from './voice/respeaker.mjs'
 
@@ -91,10 +93,19 @@ const lva = new LvaClient({
     },
 })
 
+const sleep = new SleepController({
+    model,
+    ha: homeAssistant,
+    presenceEntity: SLEEP.presence,
+    standbyMilliseconds: SLEEP.standbyMilliseconds,
+    sleepMilliseconds: SLEEP.sleepMilliseconds,
+})
+
 const layout = createLayout({
     model,
     clock: Date.now,
     lva,
+    power: {forceSleep: () => sleep.forceSleep()},
     audio: {
         setSource: (name, command) => {
             audio.setSource(name, command)
@@ -154,14 +165,17 @@ if (homeAssistant instanceof HomeAssistantClient) homeAssistant.connect()
 if (config.voice_enabled) lva.connect()
 
 if (config.streamdeck?.enabled) {
-    const sleep = new SleepController({
-        model,
-        ha: homeAssistant,
-        presenceEntity: SLEEP.presence,
-        graceMilliseconds: SLEEP.graceMilliseconds,
-        dimMilliseconds: SLEEP.dimMilliseconds,
-    })
+    const usbPower = new UsbPower({enabled: config.sleep?.usb_power_off === true})
     sleep.start()
+    // Standby (dim) suspends the amp bridges; sleep (off) also cuts USB power.
+    model.subscribe(() => {
+        audio.setStandby(model.state.panel !== 'lit')
+        usbPower.set(model.state.panel !== 'off')
+    })
+    audio.setStandby(model.state.panel !== 'lit')
+    usbPower.set(model.state.panel !== 'off')
+    const powerButton = new PowerButton({onPress: () => sleep.pressPowerButton()})
+    powerButton.start()
     await runDeckLoop({layout, renderer, onActivity: () => sleep.touch()})
 } else {
     // LED-only deployments: the ReSpeaker watch timer and LVA socket do the

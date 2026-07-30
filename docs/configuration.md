@@ -85,7 +85,16 @@ audio), the USB host starting to stream, or a route being toggled on. The rebuil
 until every bridge gain is in place — a fresh loopback stream plays at full volume until its gain lands, which would
 otherwise pop the first instant of audio through the amp at full level — so the first moment of music after a long
 quiet spell arrives a beat late rather than loud. There is no echo to cancel in silence, so the AEC reference being
-down while idle costs the DSP nothing.
+down while idle costs the DSP nothing. The teardown is also tied to the deck's own resting states (see
+[Standby and sleep](controls.md#standby-and-sleep)): the moment the panel dims into standby or switches off asleep,
+the controller reports standby over the control socket and the teardown happens at once instead of waiting out the
+timeout (audio still playing keeps the bridges up regardless); when the panel relights, the bridges rebuild
+proactively so the first thing played or said after walking in opens on a ready graph. Standby is held against the
+controller's socket connection, exactly as a duck request is, so a controller crash releases it. In full sleep,
+`smartamp_sleep_usb_power_off` additionally cuts VBUS on the Pi's USB-A root hubs with `uhubctl`, powering the
+Stream Deck and ReSpeaker down entirely; provisioning installs the tool, the udev rule that lets the service account
+switch the hubs, and a logind override that hands the Pi 5 power button to the controller as the sleep/wake toggle —
+pressing it no longer shuts the Pi down.
 
 Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Sendspin and USB computer audio share the
 `smartamp_background_sink_name` bus and fade down to `smartamp_voice_duck_volume_percent` per cent of their normal level

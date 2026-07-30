@@ -209,10 +209,21 @@ const remote = config.remote?.enabled
     })
     : null
 
+// The real sleep policy, on timings short enough to watch: the panel is meant
+// to outstay you by minutes, which is no way to develop against it.
+const sleep = new SleepController({
+    model,
+    ha: homeAssistant,
+    presenceEntity: SLEEP.presence,
+    standbyMilliseconds: 5000,
+    sleepMilliseconds: 8000,
+})
+
 const layout = createLayout({
     model,
     clock: Date.now,
     lva,
+    power: {forceSleep: () => sleep.forceSleep()},
     notifications,
     ...(remote ? {remote} : {}),
     audio: {
@@ -244,15 +255,6 @@ homeAssistant.connect()
 notifications.start()
 remote?.start()
 lva.connect()
-// The real sleep policy, on a grace period short enough to watch: the panel is
-// meant to outstay you by minutes, which is no way to develop against it.
-const sleep = new SleepController({
-    model,
-    ha: homeAssistant,
-    presenceEntity: SLEEP.presence,
-    graceMilliseconds: 5000,
-    dimMilliseconds: SLEEP.dimMilliseconds,
-})
 sleep.start()
 
 void runDeckLoop({
