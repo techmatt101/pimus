@@ -25,28 +25,39 @@
   },
   "resync_seconds": 900,
   "idle_teardown_seconds": {{ smartamp_idle_teardown_seconds | int }},
+{# Only the routes this unit's hardware actually has. A board with no ADC has
+     no capture device to bridge, and a unit with no USB gadget has no capture
+     card at all, so neither gets a permanently unavailable source: the manager
+     would otherwise keep a muted bridge wanted and never find a device for it,
+     and the status file would report a route that cannot exist.
+
+     This list is also what the Stream Deck greys out against. The manager
+     rejects a command for a route it does not know, and publishes the names it
+     does, so a key whose route is missing here draws unavailable and does
+     nothing rather than pretending to switch something. Both may be absent -
+     an Amp100 with the gadget off has no switchable input at all - so mind the
+     commas below. #}
   "sources": {
-    {# A board with no ADC has no capture device to bridge, so it gets no aux
-       source rather than a permanently unavailable one: the manager would
-       otherwise keep a muted bridge wanted and never find a device for it, and
-       the status file would report a route that cannot exist. A route the
-       manager does not know is rejected, so the deck's AUX key is a no-op. #}
-{% if smartamp_hifiberry_caps.aux_input | bool %}
+{% set aux_route = smartamp_hifiberry_caps.aux_input | bool %}
+{% set usb_route = usb_audio_gadget_enabled | bool %}
+{% if aux_route %}
     "aux": {
       "match": {{ smartamp_aux_match | to_json }},
       "enabled": {{ smartamp_aux_enabled | bool | to_json }},
       "mute_when_off": true,
       "latency_ms": {{ smartamp_aux_latency_ms | int }},
       "volume_percent": {{ smartamp_aux_volume_percent | int }}
-    },
+    }{{ ',' if usb_route else '' }}
 {% endif %}
+{% if usb_route %}
     "usb": {
       "match": {{ smartamp_usb_gadget_match | to_json }},
-      "enabled": {{ ((usb_audio_gadget_enabled | bool) and (smartamp_usb_enabled | bool)) | to_json }},
+      "enabled": {{ smartamp_usb_enabled | bool | to_json }},
       "requires_usb_host": true,
       "target": {{ ('background' if voice_ducking_enabled else 'output') | to_json }},
       "latency_ms": {{ smartamp_loopback_latency_ms | int }},
       "volume_percent": {{ smartamp_usb_volume_percent | int }}
     }
+{% endif %}
   }
 }

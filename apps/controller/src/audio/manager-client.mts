@@ -39,7 +39,7 @@ export interface AudioManagerClientOptions {
  * toggles so user choices survive a manager restart within a boot.
  */
 export class AudioManagerClient {
-    state: AudioState = {sources: {}}
+    state: AudioState = {sources: {}, routesKnown: false}
     connected = false
     /** The metered voice-playback level, 0..1, and zero unless metering is on. */
     voiceLevel = 0
@@ -47,7 +47,6 @@ export class AudioManagerClient {
     #duckActive = false
     #standbyActive = false
     #voiceMeterActive = false
-    #synced = false
     #buffer = ''
     #lastErrorMessage: string | null = null
     #socket: net.Socket | null = null
@@ -89,7 +88,7 @@ export class AudioManagerClient {
             this.#lastErrorMessage = null
             // A manager restart resets its routes to configured defaults, so
             // re-assert the cache; with no cache yet, adopt what the manager has.
-            if (this.#synced) {
+            if (this.state.routesKnown) {
                 this.#write({command: 'set-sources', sources: this.state.sources})
                 if (this.state.voiceVolume !== undefined) this.setVoiceVolume(this.state.voiceVolume)
                 if (this.state.musicVolume !== undefined) this.setMusicVolume(this.state.musicVolume)
@@ -135,7 +134,7 @@ export class AudioManagerClient {
      * for the manager to resolve against its own live state.
      */
     setSource(name: string, command: string): void {
-        if (!this.#synced) {
+        if (!this.state.routesKnown) {
             this.#write({command: 'set-source', name, state: command})
             return
         }
@@ -260,6 +259,7 @@ export class AudioManagerClient {
                 this.#pendingVoice = voice.pending
                 this.state = {
                     sources: {...(message.sources as AudioState['sources'])},
+                    routesKnown: true,
                     usbPlayback: message.usb_playback === true,
                     ...(music.level !== undefined ? {musicVolume: music.level} : {}),
                     ...(voice.level !== undefined ? {voiceVolume: voice.level} : {}),
@@ -267,7 +267,6 @@ export class AudioManagerClient {
                         ? {outputMuted: message.output_muted}
                         : {}),
                 }
-                this.#synced = true
                 this.#onStateChange()
             } else if (message.event === 'voice_level' && typeof message.level === 'number') {
                 this.voiceLevel = Math.max(0, Math.min(1, message.level))

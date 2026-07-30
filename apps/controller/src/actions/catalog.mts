@@ -12,6 +12,13 @@ export interface KeyIndicator {
     activeColor: string
 
     label?(configuredLabel: string, active: boolean): string
+
+    /**
+     * Whether what this key controls exists on this unit at all. A key that
+     * answers false draws unavailable and does not run; leave it unset for an
+     * action that is always available.
+     */
+    isAvailable?(context: IndicatorContext): boolean
 }
 
 export interface ActionSpec {
@@ -108,6 +115,10 @@ const routeIndicator: KeyIndicator = {
     isActive: ({audio, source}) => Boolean(source && audio.sources[source]),
     activeColor: '#1b5e20',
     label: (configured, active) => `${configured} ${active ? 'ON' : 'OFF'}`,
+    // The manager's route list is what this deployment's hardware actually
+    // offers: no aux without an ADC, no usb without the gadget. A name missing
+    // from a list we have is a route this unit cannot have.
+    isAvailable: ({audio, source}) => !audio.routesKnown || !source || source in audio.sources,
 }
 
 export const ROUTE_ACTIONS = {

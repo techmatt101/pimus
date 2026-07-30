@@ -197,6 +197,14 @@ export interface ControlState {
 
 export interface AudioState {
     sources: Record<string, boolean | undefined>
+    /**
+     * Whether `sources` is the manager's own list yet. It holds exactly the
+     * routes this deployment has, so a name missing from a known list is a route
+     * the hardware does not have — but an empty map before the manager has ever
+     * answered means nothing, and a unit with no aux and no USB gadget has none
+     * legitimately. Stays true across a manager restart, as the cache does.
+     */
+    routesKnown: boolean
     usbPlayback?: boolean
     /** The music level in percent; unknown until the manager's first state event. */
     musicVolume?: number

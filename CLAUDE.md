@@ -372,7 +372,16 @@ Provisioning can reboot the Pi when boot overlays change.
   the card name proves nothing about which one is fitted.
 - Only a board with an ADC has an analogue aux input. The Amp100 has none, so
   it gets no aux source in `audio.json` at all rather than a permanently
-  unavailable one, and its ADC mixer controls are never written.
+  unavailable one, and its ADC mixer controls are never written. The same holds
+  for `usb` without the audio gadget: `audio.json` lists only the routes the
+  hardware has, and both may be absent.
+- That list is the one answer to which routes exist. The audio manager
+  publishes the names it knows, the controller mirrors them as
+  `AudioState.sources`, and a route key whose name is missing from a known list
+  draws unavailable and does not run (`routeIndicator.isAvailable` in
+  `actions/catalog.mts`). Do not add a second answer in `controller.json`, and
+  do not make the compiled layout board-conditional. `routesKnown` is what keeps
+  "the manager has not answered yet" from reading as "this unit has no routes".
 - USB audio gadget mode turns the USB-C port into a peripheral connection; it
   can no longer be the normal PSU input. The HiFiBerry/AAmp60 stack must then
   power the Pi through GPIO. On a Pi 4B the host cable must have its power line

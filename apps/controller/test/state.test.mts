@@ -87,8 +87,8 @@ test('an assistant timer survives an unrelated pipeline and ends when it is done
 })
 
 test('the control model notifies subscribers until they unsubscribe', () => {
-    const model = new ControlModel(createState(), () => ({sources: {aux: true}}))
-    assert.deepEqual(model.audio, {sources: {aux: true}})
+    const model = new ControlModel(createState(), () => ({sources: {aux: true}, routesKnown: true}))
+    assert.deepEqual(model.audio, {sources: {aux: true}, routesKnown: true})
 
     let seen = 0
     const unsubscribe = model.subscribe(() => {

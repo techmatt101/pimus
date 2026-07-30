@@ -39,9 +39,9 @@ the chosen overlay always wins — nothing can detect it afterwards.
 | `amp100` | Amp100, an amplifier with its own DAC | **no ADC at all** | yes, `hifiberry_auto_mute` |
 
 On an Amp100 there is no analogue line-in: provisioning refuses `smartamp_aux_enabled`, the generated audio
-configuration carries no aux route, and the ADC mixer controls are not written. The deck's AUX key is then a key with
-nothing to switch — the audio manager rejects the unknown route rather than misbehaving — so drop it from
-`apps/controller/src/streamdeck/layout.mts` on such a unit.
+configuration carries no aux route, and the ADC mixer controls are not written. The deck's AUX key then draws greyed
+and does nothing when pressed, so the compiled layout needs no per-unit edit — the same applies to the USB key on a
+unit built without the audio gadget.
 
 `hifiberry_auto_mute` mutes the Amp100's amplifier whenever the audio device is closed and unmutes it as the stream
 opens, so nothing is clipped off the front of playback and the amplifier stops hissing into an empty room during the

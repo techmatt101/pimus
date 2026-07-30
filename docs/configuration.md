@@ -12,9 +12,10 @@ board cannot honour fails preflight by name.
 
 The Amp100 has no ADC, so it has no analogue line-in. `smartamp_aux_enabled` is refused there, the generated
 `audio.json` carries no aux route at all rather than a permanently unavailable one, and `hifiberry_aux_gain_db`,
-`hifiberry_aux_input_left` and `hifiberry_aux_input_right` are not written. The deck's AUX key survives in the compiled
-layout with nothing to switch — the audio manager rejects a route it does not know — so remove it from
-`streamdeck/layout.mts` on an Amp100 unit.
+`hifiberry_aux_input_left` and `hifiberry_aux_input_right` are not written. `audio.json` lists only the routes the
+hardware has — the same is true of `usb` when `usb_audio_gadget_enabled` is off — and that list is what the deck greys
+its route keys against, so the AUX key on an Amp100 draws unavailable and does nothing rather than needing to be edited
+out of the compiled layout. See [controls](controls.md#audio-routes--type-audio).
 
 `hifiberry_auto_mute` (Amp100 only) ties the board's hardware mute line to the audio device opening and closing, so the
 amplifier is muted whenever nothing is playing and unmuted before the first sample arrives. It is the answer to an

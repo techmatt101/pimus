@@ -104,7 +104,7 @@ test('toggles before the first state sync defer to the manager', () => {
         name: 'aux',
         state: 'toggle',
     })
-    assert.deepEqual(client.state, {sources: {}})
+    assert.deepEqual(client.state, {sources: {}, routesKnown: false})
 
     // Once synced, toggles resolve locally and travel as absolute states.
     fake.emit('data', '{"event":"state","sources":{"aux":true}}\n')
@@ -114,7 +114,41 @@ test('toggles before the first state sync defer to the manager', () => {
         name: 'aux',
         state: 'off',
     })
-    assert.deepEqual(client.state, {sources: {aux: false}, usbPlayback: false})
+    assert.deepEqual(client.state, {sources: {aux: false}, routesKnown: true, usbPlayback: false})
+    client.close()
+})
+
+test('the manager\'s route list says which routes this unit has at all', () => {
+    const fake = new FakeSocket()
+    const client = new AudioManagerClient({
+        socketPath: '/nowhere/audio.sock',
+        connectSocket: () => fake as unknown as net.Socket,
+        logger: {
+            log: () => {
+            }, error: () => {
+            }
+        },
+    })
+    client.connect()
+    fake.emit('connect')
+
+    // An empty cache before the manager has answered means nothing is known
+    // yet, which must not read as "this unit has no routes".
+    assert.equal(client.state.routesKnown, false)
+
+    // A unit with no ADC and no USB gadget is configured with neither route, so
+    // an empty list is a legitimate answer once it is the manager's own.
+    fake.emit('data', '{"event":"state","sources":{}}\n')
+    assert.equal(client.state.routesKnown, true)
+    assert.equal('aux' in client.state.sources, false)
+
+    // A manager restart re-asserts the cache rather than re-reading it, so what
+    // this unit has stays known across the drop.
+    fake.emit('data', '{"event":"state","sources":{"usb":false}}\n')
+    fake.emit('close')
+    assert.equal(client.state.routesKnown, true)
+    assert.equal('usb' in client.state.sources, true)
+    assert.equal('aux' in client.state.sources, false)
     client.close()
 })
 
@@ -348,6 +382,6 @@ test('malformed audio manager events are ignored', () => {
     client.connect()
     fake.emit('connect')
     fake.emit('data', 'garbage\n{"event":"state","sources":{"aux":true}}\n{"event":"state","sources":null}\n')
-    assert.deepEqual(client.state, {sources: {aux: true}, usbPlayback: false})
+    assert.deepEqual(client.state, {sources: {aux: true}, routesKnown: true, usbPlayback: false})
     client.close()
 })

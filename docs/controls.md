@@ -241,9 +241,14 @@ key('AUX', '#4a148c', route('aux', 'toggle'))
 ```
 
 The routes that exist come from the deployed audio configuration, not from this
-layout. A HiFiBerry Amp100 has no ADC and so no `aux` route at all: the audio
-manager rejects a route it does not know, leaving the key above as a no-op.
-Remove it from the layout on such a unit.
+layout, and a key whose route this unit does not have **draws greyed and does
+nothing when pressed** — no per-unit layout edit needed. A HiFiBerry Amp100 has
+no ADC and so no `aux` route; a unit with `usb_audio_gadget_enabled: false` has
+no `usb` route. The audio manager publishes the names it knows and rejects a
+command for any other, so the deck greys a key against that list rather than
+pretending to switch something. Until the manager has answered for the first
+time nothing is greyed, so a manager that is merely unreachable never makes a
+key look unsupported.
 
 ## Panel power — `type: panel`
 
