@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 380" width="920" height="380" role="img" aria-label="Sources feed a Raspberry Pi running three daemons, which drives the amplifier, Home Assistant, and the control surface">
+  <title>Pimus signal flow</title>
+  <style>
+    .card { fill: #f6f8fa; stroke: #d1d9e0; stroke-width: 1.2; }
+    .pi { fill: #ffffff; stroke: #b8c0c9; stroke-width: 1.5; }
+    .inner { fill: #eef2f6; stroke: #d8dee4; stroke-width: 1; }
+    .h { font: 600 15px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; fill: #1f2328; }
+    .t { font: 600 13px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; fill: #1f2328; }
+    .s { font: 400 11.5px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; fill: #636c76; }
+    .cap { font: 600 11px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; fill: #8b949e; letter-spacing: .08em; }
+    .flow { stroke: #4a8fe7; stroke-width: 2; fill: none; }
+    .flow-v { stroke: #a06ee1; stroke-width: 2; fill: none; }
+    .dot-a { fill: #4a8fe7; }
+    .dot-v { fill: #a06ee1; }
+    @media (prefers-color-scheme: dark) {
+      .card { fill: #161b22; stroke: #30363d; }
+      .pi { fill: #0d1117; stroke: #444c56; }
+      .inner { fill: #1c2128; stroke: #30363d; }
+      .h, .t { fill: #e6edf3; }
+      .s { fill: #9198a1; }
+      .cap { fill: #6e7681; }
+    }
+  </style>
+
+  <text class="cap" x="30" y="30">SOURCES</text>
+  <text class="cap" x="330" y="30">THE AMP</text>
+  <text class="cap" x="700" y="30">OUT</text>
+
+  <g>
+    <rect class="card" x="30" y="46" width="212" height="52" rx="10"/>
+    <text class="t" x="46" y="70">Music Assistant</text>
+    <text class="s" x="46" y="87">over Sendspin</text>
+
+    <rect class="card" x="30" y="110" width="212" height="52" rx="10"/>
+    <text class="t" x="46" y="134">Your computer</text>
+    <text class="s" x="46" y="151">USB-C sound card</text>
+
+    <rect class="card" x="30" y="174" width="212" height="52" rx="10"/>
+    <text class="t" x="46" y="198">Aux line-in</text>
+    <text class="s" x="46" y="215">DAC2 ADC Pro only</text>
+
+    <rect class="card" x="30" y="238" width="212" height="52" rx="10"/>
+    <text class="t" x="46" y="262">Your voice</text>
+    <text class="s" x="46" y="279">ReSpeaker 4-mic array</text>
+  </g>
+
+  <path class="flow" d="M242 72 H272 Q282 72 282 82 V170 Q282 180 292 180 H308"/>
+  <path class="flow" d="M242 136 H272 Q282 136 282 146 V170 Q282 180 292 180 H308"/>
+  <path class="flow" d="M242 200 H272 Q282 200 282 190 V190 Q282 180 292 180 H308"/>
+  <path class="flow-v" d="M242 264 H272 Q282 264 282 254 V190 Q282 180 292 180 H308"/>
+  <circle class="dot-a" cx="310" cy="180" r="3.5"/>
+
+  <rect class="pi" x="316" y="46" width="300" height="288" rx="14"/>
+  <text class="h" x="336" y="76">Raspberry Pi</text>
+  <text class="s" x="336" y="94">Pi 5 · Pi 4 B · Pi Zero 2 W</text>
+
+  <rect class="inner" x="334" y="110" width="264" height="60" rx="9"/>
+  <text class="t" x="350" y="134">audio manager</text>
+  <text class="s" x="350" y="152">PipeWire routes, mixing, ducking</text>
+
+  <rect class="inner" x="334" y="182" width="264" height="60" rx="9"/>
+  <text class="t" x="350" y="206">voice assistant</text>
+  <text class="s" x="350" y="224">wake word, Assist pipeline</text>
+
+  <rect class="inner" x="334" y="254" width="264" height="60" rx="9"/>
+  <text class="t" x="350" y="278">controller</text>
+  <text class="s" x="350" y="296">deck, LED ring, state</text>
+
+  <path class="flow" d="M616 140 H656 Q666 140 666 130 V96 Q666 86 676 86 H692"/>
+  <path class="flow-v" d="M616 212 H656 Q666 212 666 202 V180 Q666 170 676 170 H692"/>
+  <path class="flow" d="M616 284 H656 Q666 284 666 274 V264 Q666 254 676 254 H692"/>
+
+  <rect class="card" x="700" y="60" width="190" height="52" rx="10"/>
+  <text class="t" x="716" y="84">Amp &amp; speakers</text>
+  <text class="s" x="716" y="101">HiFiBerry board</text>
+
+  <rect class="card" x="700" y="144" width="190" height="52" rx="10"/>
+  <text class="t" x="716" y="168">Home Assistant</text>
+  <text class="s" x="716" y="185">voice satellite + entities</text>
+
+  <rect class="card" x="700" y="228" width="190" height="52" rx="10"/>
+  <text class="t" x="716" y="252">Stream Deck+</text>
+  <text class="s" x="716" y="269">keys, dials, touch strip</text>
+</svg>

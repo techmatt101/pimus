@@ -8,6 +8,9 @@ attached, its power flags, and the names it advertises — in `ansible/inventory
 The defaults in `all.yml` are deliberately the conservative ones: no deck, no USB sound card, no bootloader power
 flags. A new unit works from them and turns on what it actually has.
 
+The physical side — what to buy, what each board can do, power and wiring — is in [hardware](hardware.md), and the
+first-run walkthrough is in [setup](setup.md).
+
 ## Audio
 
 `hifiberry_board` names the fitted board — `dac2adcpro` (DAC2 ADC Pro, the DAC the AAmp60 add-on amplifier sits on) or
