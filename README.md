@@ -37,19 +37,6 @@ endpoint: no Docker, no local server, no image-building pipeline.
 whole stack — and read [hardware](docs/hardware.md) before powering it on,
 especially if you want the USB-C sound card.
 
-## 🏠 The fleet
-
-One recipe, three rooms. What differs between them is a short file in
-`ansible/inventory/host_vars/`; nothing in the code knows which room it is.
-
-| | `office-amp` | `bedroom-amp` | `kitchen-amp` |
-| --- | --- | --- | --- |
-| Raspberry Pi | Pi 5 | Pi 4 Model B | Pi Zero 2 W + powered hub |
-| HiFiBerry | DAC2 ADC Pro + AAmp60 | Amp100 | Amp100 |
-| Voice, LEDs | ✅ | ✅ | ✅ |
-| Stream Deck+ | ✅ | — | — |
-| Aux in, USB sound card | ✅ | — | — |
-
 ## 🚀 Get started
 
 ```sh
