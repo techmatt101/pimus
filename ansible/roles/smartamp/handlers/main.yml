@@ -43,6 +43,16 @@
     daemon_reload: true
   failed_when: false
 
+# Resource limits are read when the user manager starts, so a changed drop-in
+# needs the smartamp session restarted before it takes effect. PipeWire and
+# the loopback graph come back on their own: the sockets are enabled for the
+# session and the audio manager rebuilds its modules on the next reconcile.
+- name: Restart service-account session
+  ansible.builtin.systemd_service:
+    name: "user@{{ smartamp_uid }}.service"
+    state: restarted
+    daemon_reload: true
+
 # Re-run the one-shot mixer setup whenever its script or unit changes. This
 # applies new ADC routing and amplifier gain immediately instead of waiting for
 # the next reboot.

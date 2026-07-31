@@ -101,8 +101,6 @@
       - pulseaudio-utils
       # Runs the audio router; hardware control is Node.
       - python3
-      # Lets PipeWire request safe real-time scheduling for glitch-free audio.
-      - rtkit
       # Supplies lsusb for device discovery and smartamp-doctor diagnostics.
       - usbutils
       # Applies PipeWire device policy and creates usable sources and sinks.
@@ -110,6 +108,18 @@
     state: present
     update_cache: true
     cache_valid_time: 3600
+
+# rtkit was installed to hand PipeWire realtime scheduling, but it only grants
+# to users polkit sees in an active logind session, which the lingering
+# smartamp account never has: every request was refused and the audio thread
+# ran timeshared, popping every few seconds as the 5 ms cycle missed its
+# deadline. The user-manager drop-in below raises the RTPRIO limit so PipeWire
+# takes SCHED_FIFO itself; remove rtkit so the dead path cannot silently come
+# back and mask a broken grant.
+- name: Remove RealtimeKit
+  ansible.builtin.apt:
+    name: rtkit
+    state: absent
 
 # All long-running clients use one non-login account. PipeWire sockets are
 # private to a user session, so sharing this account avoids both root services
@@ -155,6 +165,33 @@
   args:
     creates: "/var/lib/systemd/linger/{{ smartamp_service_user }}"
 
+# PipeWire's processing loop must run SCHED_FIFO or ordinary scheduler jitter
+# overruns the small audio quantum and crackles the amp. The service-account
+# user manager starts with RLIMIT_RTPRIO=0 and rtkit refuses session-less
+# users, so raise the limits on the manager itself; its user services inherit
+# them and PipeWire promotes its data loop directly. All three lines are
+# needed: module-rt wants nice -11 as well as SCHED_FIFO, and if either rlimit
+# blocks it, it silently demotes the loop and routes the whole request over
+# D-Bus to the absent RTKit — DISABLE_RTKIT forbids that dead end so realtime
+# either works or fails aloud in the journal. PipeWire caps the thread with
+# RLIMIT_RTTIME, so a runaway loop is demoted rather than owning a core.
+- name: Create the service-account manager drop-in directory
+  ansible.builtin.file:
+    path: "/etc/systemd/system/user@{{ smartamp_uid }}.service.d"
+    state: directory
+    mode: "0755"
+
+- name: Allow the service-account session realtime scheduling
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/user@{{ smartamp_uid }}.service.d/realtime.conf"
+    content: |
+      [Service]
+      LimitRTPRIO=95
+      LimitNICE=-20
+      Environment=DISABLE_RTKIT=1
+    mode: "0644"
+  notify: Restart service-account session
+
 # Enable these globally so the sockets and policy manager start for the
 # persistent smartamp user session rather than only for interactive users.
 - name: Enable PipeWire services for user sessions
@@ -165,6 +202,37 @@
     - wireplumber.service
   register: global_user_units
   changed_when: "'Created symlink' in global_user_units.stdout or 'Created symlink' in global_user_units.stderr"
+
+# The global enable also gives every SSH login as the admin user its own
+# PipeWire and WirePlumber. That second instance owns no devices, busy-spins
+# against the missing session infrastructure, and steals enough CPU to xrun
+# the amp's graph while anyone is logged in. Mask the units for the admin
+# account; the smartamp session is the only PipeWire this appliance runs.
+- name: Create the admin account user-unit directory
+  ansible.builtin.file:
+    path: "/home/{{ ansible_user }}/{{ item }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+  loop:
+    - .config
+    - .config/systemd
+    - .config/systemd/user
+
+- name: Mask PipeWire for the admin account
+  ansible.builtin.file:
+    path: "/home/{{ ansible_user }}/.config/systemd/user/{{ item }}"
+    src: /dev/null
+    state: link
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+  loop:
+    - pipewire.service
+    - pipewire.socket
+    - pipewire-pulse.service
+    - pipewire-pulse.socket
+    - wireplumber.service
+    - filter-chain.service
 
 # Start it immediately so later service handlers can reach the PipeWire socket
 # during this same provisioning run; no manual login is required.

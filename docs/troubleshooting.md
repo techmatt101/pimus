@@ -147,6 +147,35 @@ returns to full volume; there is no lease file to inspect or expire. If the gain
 controller is connected to the socket in the `smartamp-controller` log, then look for `Ducked`/`Restored` lines in
 `smartamp-audio-manager`.
 
+## Music crackles or pops every few seconds
+
+Steady, quiet crackling through the speakers — with `vcgencmd get_throttled` reading `0x0` and low CPU load — is the
+audio graph missing its cycle deadline. Confirm it by watching the xrun counter climb on the HiFiBerry nodes:
+
+```sh
+sudo -u smartamp XDG_RUNTIME_DIR=/run/user/$(id -u smartamp) pw-top   # ERR column on the soc_sound nodes
+```
+
+A rising ERR count with `BUSY` times far below the quantum means scheduling, not CPU. PipeWire's processing loop must
+run realtime; check its class:
+
+```sh
+ps -eLo tid,user,cls,rtprio,comm | grep data-loop   # FF 88 is healthy, TS - is the fault
+```
+
+`TS` means PipeWire could not take SCHED_FIFO. Provisioning installs
+`/etc/systemd/system/user@<uid>.service.d/realtime.conf` raising `LimitRTPRIO` and `LimitNICE` and setting
+`DISABLE_RTKIT=1`; re-provision if it is missing, and restart the session
+(`sudo systemctl restart user@$(id -u smartamp)`) after changing it. All three lines matter: rtkit itself refuses
+users without an active logind session (which a lingering service account never has), and PipeWire's module-rt wants
+nice -11 as well as SCHED_FIFO — if either rlimit blocks it, it silently demotes the loop and routes the whole
+request over D-Bus to that dead end. With the drop-in in place a failure is loud: `journalctl` shows `mod.rt`
+saying exactly what it could not do.
+
+Crackling that only happens while someone is SSH'd into the Pi is the other classic: each login used to start a second
+PipeWire under the admin user that busy-spun against the missing session infrastructure. Provisioning masks the
+PipeWire user units for the admin account; `pgrep -au matt pipewire` should find nothing.
+
 ## USB audio device does not appear on the computer
 
 The cable must be connected to the Pi's USB-C port, not a USB-A port. On a Pi 4B it must also be a cable with the power
