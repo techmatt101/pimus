@@ -70,7 +70,12 @@ central dispatcher:
   behaviour, built by the `voice`, `volume`, `route`, and `ha` builders in
   `streamdeck/bindings.mts`). Its active-state feedback comes from the bound
   action's catalog indicator (see below), so most keys need nothing more than
-  `key('LABEL', '#colour', binding)` in the layout.
+  `key('LABEL', '#colour', binding)` in the layout. A fourth argument gives it
+  an icon above the caption — one name, or an `{on, off}` pair it swaps as the
+  indicator reads active, which is how MUTE strikes its microphone through:
+  `key('MUTE', '#7f0000', voice('mute_toggle'), {on: 'micOff', off: 'mic'})`.
+  The glyph is tinted white while active, slate while not, and the unavailable
+  grey when the unit has no such route.
 - A key that needs richer behaviour or stateful rendering is its own `Tile`
   class built on the injected services, one class per file. New dynamic keys
   (icons, per-state styling, animation) belong in their own class rather than
@@ -87,7 +92,7 @@ central dispatcher:
 | `EntityToggleTile` | The general Home Assistant on/off key — lights, fan, blinds, PC. Its service comes from the entity's own domain, plus an icon and an optional `spin` (the fan turns while it runs) and `level` (how far the blinds are down), so the four are one class configured four ways. Its caption reads its own state rather than repeating the key's name: the icon says which device it is, so the room keys drop the label and show just `ON`/`OFF`, `OPEN`/`CLOSED`, or a percentage when part-way (fan speed, light brightness, blind position); `?` when unreachable. Given the dynamic dial, the first press arms it — glow, strip readout, 15s timeout — turning adjusts the level live and a second press toggles, so a double-press turns it on; a plain switch like PC has nothing to adjust and just toggles at once. |
 | `TimerTile`        | The amp's assistant timer, whichever way it was set: a draining ring and a countdown, named if the timer is. Idle, press to arm the dynamic dial and set the length — it starts fresh at five minutes and the detent scales (a second under ten, five under a minute, then fifteen, thirty, a minute past ten minutes) — press again to start. While it runs the key cancels it, resumes it if a voice command paused it, and silences it while it rings. |
 | `TemperatureTile`  | A sensor reading, with the background banded by temperature. Read-only.                                                                                                                                                                                                                                                                                        |
-| `PowerTile`        | Halts or restarts the Pi, in two presses. The first arms the key — it turns red, reads `SHUTDOWN`, and a ring drains over five seconds beside the remaining count; the second press within that window acts and the face goes to `HALTING`. Turning the dynamic dial while armed switches to `REBOOT` (amber, `REBOOTING`) and earns the whole window again. Letting the ring empty, leaving the page, or touching another dial disarms it and returns the choice to `SHUTDOWN`. Two presses because nothing on the network can start a halted board again.  |
+| `PowerTile`        | The one key that puts the amp down: sleep, shutdown, or reboot, in two presses. The first arms the key — a ring drains over five seconds beside the remaining count — and turning the dynamic dial picks between the three, each with its own colour and icon and each earning the whole window again. The second press within that window acts: sleep returns the key to idle, while `SHUTDOWN` and `REBOOT` leave the face on `HALTING` or `REBOOTING`. Letting the ring empty, leaving the page, or touching another dial disarms it and returns the choice to `SLEEP`, which leads so that a stray double-press only sleeps a room the amp wakes from by itself. |
 | `PageTile`         | Page navigation from a grid slot, for a page that wants a "next" key of its own in addition to the page dial.                                                                                                                                                                                                                                                  |
 
 The arm-then-confirm behaviour those keys share — playlist, scene, brightness,
@@ -248,7 +253,7 @@ to the gadget port.
 | `toggle` | Flip the named audio route on or off. |
 
 ```ts
-key('AUX', '#4a148c', route('aux', 'toggle'))
+key('AUX', '#4a148c', route('aux', 'toggle'), 'cable')
 ```
 
 The routes that exist come from the deployed audio configuration, not from this
@@ -264,8 +269,8 @@ key look unsupported.
 ## Panel power — `type: panel`
 
 Drives the sleep policy itself (see
-[Standby and sleep](#standby-and-sleep) below), and the one action that ends
-the session rather than pausing it.
+[Standby and sleep](#standby-and-sleep) below), and the two actions that end the
+session rather than pausing it. All three are choices on the one POWER key.
 
 | Command    | Effect                                                                                                        |
 |------------|---------------------------------------------------------------------------------------------------------------|
@@ -274,7 +279,6 @@ the session rather than pausing it.
 | `reboot`   | Restart the Pi. It comes back on its own, which a halt does not. |
 
 ```ts
-key('SLEEP', '#263238', panelBinding(power, 'sleep'))
 new PowerTile(power, dynamic, clock)
 ```
 
@@ -589,8 +593,8 @@ is readable, so nothing is swallowed), and the amp rebuilds its bridges the
 moment anything plays or a voice session opens.
 
 **Sleep** is about the room. Five minutes after the presence sensor reads
-`off` — or at once when the SLEEP key on the SETTINGS page or the Pi's power
-button forces it — the panel switches off, and with
+`off` — or at once when the POWER key's SLEEP choice on the SETTINGS page or the
+Pi's power button forces it — the panel switches off, and with
 `smartamp_sleep_usb_power_off` set the Pi also cuts VBUS on its USB ports:
 the Stream Deck and ReSpeaker power down entirely, about two watts. The wake
 word is off while the amp sleeps, which is the point — there is nobody in the

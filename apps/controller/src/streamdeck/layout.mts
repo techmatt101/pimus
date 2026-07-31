@@ -1,6 +1,6 @@
 import type {RouteActionName} from '../actions/catalog.mjs'
 import {isEntityOn, numericAttribute} from '../home-assistant/entity.mjs'
-import {type Binding, panelBinding, routeBinding, voiceBinding} from './bindings.mjs'
+import {type Binding, routeBinding, voiceBinding} from './bindings.mjs'
 import type {Dial} from './dial.mjs'
 import {DynamicDial} from './dials/dynamic-dial.mjs'
 import {MediaDial} from './dials/media-dial.mjs'
@@ -12,7 +12,7 @@ import {NowPlayingScreen} from './screens/now-playing-screen.mjs'
 import {StartingScreen} from './screens/starting-screen.mjs'
 import type {ClockFormat} from './screens/screen.mjs'
 import {TouchStrip} from './strip.mjs'
-import {ActionTile} from './tiles/action-tile.mjs'
+import {ActionTile, type ActionTileConfig} from './tiles/action-tile.mjs'
 import {BrightnessTile} from './tiles/brightness-tile.mjs'
 import {EntityToggleTile} from './tiles/entity-toggle-tile.mjs'
 import {PlaylistTile} from './tiles/playlist-tile.mjs'
@@ -84,8 +84,8 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
     const {model, clock, lva, audio, ha, power, notifications, remote} = services
     const voice = (command: string): Binding => voiceBinding(lva, model, command)
     const route = (source: string, command: RouteActionName): Binding => routeBinding(audio, source, command)
-    const key = (label: string, color: string, binding: Binding): Tile =>
-        new ActionTile(model, {label, color, binding})
+    const key = (label: string, color: string, binding: Binding, icon?: ActionTileConfig['icon']): Tile =>
+        new ActionTile(model, {label, color, binding, ...(icon ? {icon} : {})})
 
     const dynamic = new DynamicDial(model)
 
@@ -178,10 +178,10 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
             new PowerTile(power, dynamic, clock)
         ],
         [
-            key('AUX', '#4a148c', route('aux', 'toggle')),
-            key('USB', '#0d47a1', route('usb', 'toggle')),
-            key('MUTE', '#7f0000', voice('mute_toggle')),
-            key('SLEEP', '#263238', panelBinding(power, 'sleep')),
+            key('AUX', '#4a148c', route('aux', 'toggle'), 'cable'),
+            key('USB', '#0d47a1', route('usb', 'toggle'), 'usb'),
+            key('MUTE', '#7f0000', voice('mute_toggle'), {on: 'micOff', off: 'mic'}),
+            null,
         ],
     ]
 

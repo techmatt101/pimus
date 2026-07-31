@@ -18,7 +18,7 @@ export interface SleepControllerOptions {
 /**
  * Standby dims the panel after a spell without interaction — music can still
  * be playing — and sleep switches it off once the room has read empty long
- * enough, or at once when forced from the SLEEP key or the power button.
+ * enough, or at once when forced from the POWER key or the power button.
  * Whoever watches `panel` acts on the same states: dim suspends the amp
  * bridges, off also cuts USB power. Only sleep needs the presence sensor, and
  * it fails open: an unreachable Home Assistant or an unknown reading means
@@ -86,7 +86,7 @@ export class SleepController {
         return woke
     }
 
-    /** The SLEEP key: off at once, until presence returns or the button wakes it. */
+    /** The POWER key's sleep choice: off at once, until presence returns or the button wakes it. */
     forceSleep(): void {
         if (!this.#running) return
         this.#forced = true

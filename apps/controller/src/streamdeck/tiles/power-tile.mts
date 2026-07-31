@@ -5,6 +5,7 @@ import type {IconName} from '../icon-set.mjs'
 import {SelectionDial, type SelectionOption} from '../selection-dial.mjs'
 import {drawIcon, drawText, type Surface} from '../surface.mjs'
 import {drawActiveGlow, drawBackground, drawCaption, drawDots, FACE_CENTER, type Tile, type TileHost} from '../tile.mjs'
+import type {PanelActionName} from '../../actions/catalog.mjs'
 import type {PowerControls} from '../../types.mjs'
 
 const ARM_MILLISECONDS = 5_000
@@ -19,32 +20,39 @@ const IDLE_ACCENT = '#b0bec5'
 const DOTS_Y = 84
 
 interface PowerChoice extends SelectionOption {
-    command: 'shutdown' | 'reboot'
+    command: PanelActionName
     icon: IconName
-    endingLabel: string
     background: string
-    endingBackground: string
     accent: string
+    /** The face it leaves behind; only for a choice the amp does not come back from by itself. */
+    ending?: {label: string, background: string}
 }
 
+// Sleep leads, so the choice a stray double-press lands on is the one the room
+// wakes from rather than one that needs somebody at the plug.
 const CHOICES: readonly PowerChoice[] = [
+    {
+        label: 'SLEEP',
+        command: 'sleep',
+        icon: 'moon',
+        background: '#37474f',
+        accent: '#90a4ae',
+    },
     {
         label: 'SHUTDOWN',
         command: 'shutdown',
         icon: 'power',
-        endingLabel: 'HALTING',
         background: '#b71c1c',
-        endingBackground: '#4a0000',
         accent: '#ff8a80',
+        ending: {label: 'HALTING', background: '#4a0000'},
     },
     {
         label: 'REBOOT',
         command: 'reboot',
         icon: 'restart',
-        endingLabel: 'REBOOTING',
         background: '#e65100',
-        endingBackground: '#3d1600',
         accent: '#ffcc80',
+        ending: {label: 'REBOOTING', background: '#3d1600'},
     },
 ]
 
@@ -54,10 +62,11 @@ export interface PowerTileConfig {
 }
 
 /**
- * Ending the session takes two presses: the first arms the key and starts a ring
- * draining back to disarmed, the second confirms. While armed the shared dial
- * picks between halting and rebooting. Nothing on the network can start a halted
- * board again, so a single stray press must not be enough.
+ * The one key that puts the amp down: sleeping, halting, or restarting. It takes
+ * two presses — the first arms the key and starts a ring draining back to
+ * disarmed, the second confirms — with the shared dial choosing between them
+ * while armed. Nothing on the network can start a halted board again, so a
+ * single stray press must not be enough.
  */
 export class PowerTile implements Tile {
     readonly #power: PowerControls
@@ -119,7 +128,7 @@ export class PowerTile implements Tile {
         const choice = this.#selection.selected
         this.#disarm()
         if (!choice) return
-        this.#ending = choice
+        if (choice.ending) this.#ending = choice
         panelBinding(this.#power, choice.command).run()
         this.#host?.invalidate()
     }
@@ -152,10 +161,10 @@ export class PowerTile implements Tile {
         const x = surface.width / 2
 
         const ending = this.#ending
-        if (ending) {
-            drawBackground(surface, ending.endingBackground)
+        if (ending?.ending) {
+            drawBackground(surface, ending.ending.background)
             drawIcon(surface, ending.icon, {x, y: FACE_CENTER, size: 44, color: ending.accent, opacity: 0.7})
-            drawCaption(surface, ending.endingLabel)
+            drawCaption(surface, ending.ending.label)
             return
         }
 
