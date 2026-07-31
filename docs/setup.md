@@ -88,10 +88,10 @@ make deploy-controller LIMIT=office-amp,bedroom-amp
 | `make update-versions` | Refresh every upstream version pin to the latest |
 
 The Node controller changes more often than anything else, so
-`make deploy-controller` recompiles the TypeScript, validates the inventory,
-copies the modules, dependencies, and generated `controller.json`, and restarts
-`smartamp-controller` — without touching audio, voice, or boot configuration. Use
-the full `make provision` after changing anything else.
+`make deploy-controller` recompiles and bundles the TypeScript, validates the
+inventory, copies the bundles, dependencies, and generated `controller.json`, and
+restarts `smartamp-controller` — without touching audio, voice, or boot
+configuration. Use the full `make provision` after changing anything else.
 
 Something wrong? [troubleshooting](troubleshooting.md), and `sudo smartamp-doctor`
 on the Pi.

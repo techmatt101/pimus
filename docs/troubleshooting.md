@@ -33,6 +33,13 @@ starts at "now" and misses startup.
 The other units are `smartamp-audio-manager`, `smartamp-voice-assistant`,
 `smartamp-sendspin`, and `smartamp-usb-audio-gadget`.
 
+The controller is deployed as three bundles rather than one module per source
+file, so a raw stack trace would name a line in `index.mjs` and tell you nothing.
+Their source maps are deployed beside them and the unit runs Node with
+`--enable-source-maps`, so traces in the journal name the original `.mts` file
+and line. If you ever need the unbundled equivalent to read alongside, it is
+`apps/controller/dist/src/` on the control computer after `make build`.
+
 From the control computer, straight over SSH:
 
 ```sh

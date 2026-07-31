@@ -20,11 +20,16 @@ install: ## Install control computer dependencies (Ansible collections, Node wor
 	ansible-galaxy collection install -r ansible/requirements.yml
 	pnpm install --frozen-lockfile
 
-# The Pi never compiles anything; this produces the .mjs modules Ansible copies.
+# The Pi never compiles anything; this produces the modules Ansible copies.
 # Install the toolchain on demand so a fresh clone can build without make install.
-build: ## Compile the TypeScript controller to apps/controller/dist
-	[ -d apps/controller/node_modules ] || pnpm install --frozen-lockfile
+# tsc emits one .mjs per source, which is what the tests import and what the
+# playground compiles against. The bundler then rolls that output into the three
+# files a Pi is actually sent - core, deck addon, and what they share - and
+# fails the build if deck code or its optional packages reach the core.
+build: ## Compile and bundle the TypeScript controller to apps/controller/dist
+	[ -d apps/controller/node_modules ] && [ -d node_modules/esbuild ] || pnpm install --frozen-lockfile
 	pnpm --filter pimus-controller build
+	node tools/bundle-controller.mjs
 
 # Rewrites the committed icon set from only the icons listed in
 # tools/generate-icons.mjs, read from the @hugeicons/core-free-icons
@@ -82,6 +87,15 @@ test: build ## Run local source and Ansible checks without contacting the Pi
 	python3 -m compileall -q ansible/roles/smartamp/files/smartamp_lva.py
 	python3 -m unittest discover -s apps/audio-manager/test
 	node --test $$(find apps/controller/dist/test -name '*.test.mjs' | sort)
+	@# The tests import the tsc modules; the Pi runs the bundle, so check that
+	@# artifact too. The entry can only be parsed - importing it would load
+	@# /etc/smartamp/controller.json and start the daemon - while the deck bundle
+	@# is imported outright, which is what proves it links and finds the font
+	@# beside it. A font path that resolves to nothing registers nothing without
+	@# raising, and the deck then draws blank labels, so assert the family.
+	@# This is the one check that needs the deck's optional packages installed here.
+	node --check apps/controller/dist/bundle/index.mjs
+	cd apps/controller && node --input-type=module -e "import assert from 'node:assert/strict'; await import('./dist/bundle/streamdeck/control-surface.mjs'); const {GlobalFonts} = await import('@napi-rs/canvas'); assert.ok(GlobalFonts.families.some((f) => f.family === 'Deck'), 'the bundled font did not register')"
 	@# The role's shell scripts are plain files (values injected via their unit's
 	@# Environment=), so unlike the .j2 templates they can be statically checked.
 	@command -v shellcheck >/dev/null || { echo "shellcheck is required for make test: brew install shellcheck (or apt-get install shellcheck)"; exit 1; }

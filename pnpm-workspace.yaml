@@ -12,9 +12,12 @@ packages:
 # Which dependencies may run install scripts. usb and node-hid fetch the
 # prebuilt native binding they need to load at all, so both apps need them
 # built. The optional jpeg-turbo peer is deliberately left unbuilt to match the
-# Pi, which installs with --omit=peer and falls back to jpeg-js.
+# Pi, which installs with --omit=peer and falls back to jpeg-js. esbuild's
+# postinstall links the platform binary tools/bundle-controller.mjs runs; it is
+# a root devDependency for this computer only and never reaches the Pi.
 allowBuilds:
     '@julusian/jpeg-turbo': false
+    esbuild: true
     node-hid: true
     usb: true
 # Recorded by pnpm's supply-chain policy when the icon artwork source was

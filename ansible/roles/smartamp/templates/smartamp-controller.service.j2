@@ -37,7 +37,11 @@ EnvironmentFile={{ smartamp_secrets_file }}
 # manager's control socket like every other level.
 Environment=XDG_RUNTIME_DIR=/run/user/{{ smartamp_uid }}
 WorkingDirectory={{ smartamp_app_dir }}/controller
-ExecStart=/usr/bin/node {{ smartamp_app_dir }}/controller/src/index.mjs
+# The deployed modules are bundles, so a bare trace would name a line in
+# index.mjs and nothing else. The source maps beside them are deployed with the
+# code and carry their own sources, which turns that back into the .mts file and
+# line the crash came from.
+ExecStart=/usr/bin/node --enable-source-maps {{ smartamp_app_dir }}/controller/src/index.mjs
 Restart=always
 RestartSec=3
 # Apply a small, predictable isolation baseline while leaving the network, USB,

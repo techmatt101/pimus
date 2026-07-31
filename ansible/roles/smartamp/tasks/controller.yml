@@ -247,17 +247,23 @@
       (controller_dependencies.rc | default(1)) != 0
   notify: Restart controller
 
-# The controller is written in TypeScript and compiled on this computer, so the
-# Pi needs no build tooling and keeps running plain ESM under the NodeSource
-# nodejs package. "make provision" builds first; check the output before copying so a
-# missing build fails here instead of leaving a stale controller on the Pi.
-# The compiled tree is nested (actions/, audio/, streamdeck/, voice/), so search
-# recursively and track each module by its path relative to dist/src. That
-# relative path is what the Pi mirrors, keeping import specifiers valid.
+# The controller is written in TypeScript, compiled on this computer and then
+# bundled into one module per deployment boundary, so the Pi needs no build
+# tooling and keeps running plain ESM under the NodeSource nodejs package.
+# "make provision" builds first; check the output before copying so a missing
+# build fails here instead of leaving a stale controller on the Pi.
+# There are three of them - index.mjs, the streamdeck/control-surface.mjs addon,
+# and the shared chunk both import - plus a source map each, and every one is
+# tracked by its path relative to dist/bundle. That relative path is what the Pi
+# mirrors, keeping the import specifiers between them valid. The chunk's name
+# carries a content hash, so a rebuild renames it and the obsolete-module pass
+# below is what takes the previous one away.
 - name: Find compiled hardware controller modules
   ansible.builtin.find:
-    paths: "{{ smartamp_source_dir }}/controller/dist/src"
-    patterns: "*.mjs"
+    paths: "{{ smartamp_source_dir }}/controller/dist/bundle"
+    patterns:
+      - "*.mjs"
+      - "*.mjs.map"
     file_type: file
     recurse: true
   delegate_to: localhost
@@ -265,21 +271,23 @@
   register: compiled_controller_modules
   when: smartamp_controller_enabled | bool
 
-# streamdeck/ and remote/ are the only modules that reach for an optional
-# dependency, so a unit with no deck must not receive them: they would be code
-# that cannot load beside packages that are not installed. Nothing imports them
-# there - index.mjs reaches the deck only through streamdeck/control-surface.mjs
-# - and the removal task below takes them off a Pi whose flag has just been
-# turned off.
+# The deck addon is the one bundle that reaches for an optional dependency, so a
+# unit with no deck must not receive it: it would be code that cannot load
+# beside packages that are not installed. tools/bundle-controller.mjs is what
+# makes that safe, failing the build if any streamdeck/ or remote/ module - or
+# any of those packages - ends up in the core bundle or the shared chunk;
+# rejecting the path here only carries the decision out. The chunk is emitted at
+# the root of dist/bundle precisely so this filter leaves it in place, and the
+# removal task below takes the addon off a Pi whose flag has just been turned off.
 - name: Record compiled hardware controller modules
   ansible.builtin.set_fact:
     smartamp_controller_modules: >-
       {{ smartamp_compiled_modules if streamdeck_enabled | bool
-         else (smartamp_compiled_modules | reject('match', '(streamdeck|remote)/') | list) }}
+         else (smartamp_compiled_modules | reject('match', 'streamdeck/') | list) }}
   vars:
     smartamp_compiled_modules: >-
       {{ compiled_controller_modules.files | default([]) | map(attribute='path')
-         | map('relpath', smartamp_source_dir + '/controller/dist/src') | list }}
+         | map('relpath', smartamp_source_dir + '/controller/dist/bundle') | list }}
   when: smartamp_controller_enabled | bool
 
 - name: Require a compiled hardware controller
@@ -288,17 +296,22 @@
       - smartamp_controller_modules | length > 0
       - "'index.mjs' in smartamp_controller_modules"
     fail_msg: >-
-      The compiled controller entrypoint is missing from
-      apps/controller/dist/src. Run "make build" on this computer before
+      The bundled controller entrypoint is missing from
+      apps/controller/dist/bundle. Run "make build" on this computer before
       provisioning.
   when: smartamp_controller_enabled | bool
 
-# TypeScript no longer emits a module after its source is deleted. Remove any
-# corresponding old file on the Pi so Node cannot load code from a prior build.
+# A rebuild renames the shared chunk, and an earlier build laid down a module
+# per source file. Remove anything on the Pi the current build did not produce
+# so Node cannot load code from a prior one. The map pattern has to be here too:
+# "*.mjs" does not match "index.mjs.map", and a map nothing prunes would outlive
+# every bundle it ever described.
 - name: Find deployed hardware controller modules
   ansible.builtin.find:
     paths: "{{ smartamp_app_dir }}/controller/src"
-    patterns: "*.mjs"
+    patterns:
+      - "*.mjs"
+      - "*.mjs.map"
     file_type: file
     recurse: true
   register: deployed_controller_modules
@@ -318,7 +331,10 @@
 
 # Deploy the modules into src so the installed layout mirrors the app boundary
 # in Git and makes runtime ownership clear during troubleshooting. copy does not
-# create intermediate directories, so make the subfolders first.
+# create intermediate directories, so make the subfolder the deck addon needs
+# first. Its depth is load-bearing beyond the import specifiers: the addon
+# resolves the bundled font two directories up from itself, which is what puts
+# it in controller/assets/fonts below.
 - name: Create hardware controller module directories
   ansible.builtin.file:
     path: "{{ smartamp_app_dir }}/controller/src/{{ item }}"
@@ -332,7 +348,7 @@
 
 - name: Install hardware controller modules
   ansible.builtin.copy:
-    src: "{{ smartamp_source_dir }}/controller/dist/src/{{ item }}"
+    src: "{{ smartamp_source_dir }}/controller/dist/bundle/{{ item }}"
     dest: "{{ smartamp_app_dir }}/controller/src/{{ item }}"
     owner: root
     group: root
@@ -341,11 +357,26 @@
   notify: Restart controller
   when: smartamp_controller_enabled | bool
 
+# The prune above removes files, never the directories they were the last
+# occupant of - the folders a pre-bundle deployment left behind, and streamdeck/
+# on a Pi whose deck has just been turned off. Left alone they read during
+# troubleshooting as code that is still installed. One find clears the lot, and
+# -depth empties the leaves before it tests their parents. This runs after the
+# copy, never before it, so it can only ever see directories nothing needs.
+- name: Remove empty hardware controller module directories
+  ansible.builtin.command:
+    cmd: >-
+      find {{ smartamp_app_dir }}/controller/src
+      -depth -mindepth 1 -type d -empty -print -delete
+  register: controller_empty_module_dirs
+  changed_when: controller_empty_module_dirs.stdout | length > 0
+  when: smartamp_controller_enabled | bool
+
 # Raspberry Pi OS Lite ships almost no fonts, and the controller must not fall
 # back to whatever a given image happens to have: the deck would draw its labels
-# blank. The bundled face is deployed beside the modules, where
-# streamdeck/surface.mjs resolves it relative to itself - and it is that module's
-# font alone, so a unit with no deck is sent none.
+# blank. The bundled face is deployed beside the modules, where the deck addon
+# resolves it relative to itself - and it is that bundle's font alone, so a unit
+# with no deck is sent none.
 - name: Find compiled hardware controller assets
   ansible.builtin.find:
     paths: "{{ smartamp_source_dir }}/controller/dist/assets"

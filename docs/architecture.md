@@ -96,7 +96,9 @@ hardware output level. Both are adjustable in the Ansible variables.
   without one loads none of it and is never sent the drawing packages it needs. When remote tiles are enabled it listens
   one authenticated WebSocket port, through which another computer on the LAN pushes key faces onto the deck's REMOTE
   page and receives the presses back (`apps/controller/src/remote/server.mts`); that listener is part of the same addon,
-  and the controller remains the only owner of the deck.
+  and the controller remains the only owner of the deck. That dynamic import is also where the deployed code is cut in
+  two: `make build` compiles the sources with `tsc` and then bundles them into `index.mjs`, the
+  `streamdeck/control-surface.mjs` addon, and one shared chunk, which is what a Pi is sent instead of 75 modules.
 
 The controller is one long-running Node process because ducking and both control
 surfaces consume the same voice, mute, media, and audio-route state.

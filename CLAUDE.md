@@ -60,7 +60,8 @@ apps/
         tiles/           One Tile class per file (key behaviour + face)
       voice/             LVA WebSocket and ReSpeaker LEDs
     test/                A few high-level behaviour tests (.mts); see Validation
-    dist/                Compiled .mjs output; build artifact, not tracked
+    dist/                Build artifact, not tracked: src/ is tsc's module per
+                         source, bundle/ is the three modules the Pi is sent
     package.json
     tsconfig.json
   audio-manager/
@@ -71,7 +72,7 @@ apps/
     ui/                  The browser page the fake deck is drawn on
   remote-demo/           Development-only example client for the controller's
                          remote-tile socket; runs on the control computer
-tools/                   Development-only code generators
+tools/                   Development-only generators and the controller bundler
 ansible/
   inventory/
     hosts.yml            The units, one entry per amp
@@ -154,9 +155,12 @@ runtime validation, and relevant documentation together.
   the manifest's `optionalDependencies` (`@napi-rs/canvas`,
   `@elgato-stream-deck/node`, `@julusian/jpeg-turbo`): a deck-less Pi is sent
   neither those modules nor those packages, so a static import anywhere else
-  would crash a working deployment at startup. Anything the surface needs from
-  the rest of the controller arrives through `ControlSurfaceServices`; do not
-  reach back the other way.
+  would crash a working deployment at startup. That dynamic import is also the
+  bundler's split point, and `tools/bundle-controller.mjs` fails the build if a
+  module from either directory — or one of those three packages — reaches the
+  core bundle, so breaking the rule stops `make build` rather than a Pi. Anything
+  the surface needs from the rest of the controller arrives through
+  `ControlSurfaceServices`; do not reach back the other way.
 - Home Assistant is reached over its WebSocket API with a long-lived token
   (`home-assistant/client.mts`). Tiles depend on the `HomeAssistantService`
   interface, never the client, and a deployment with no URL configured gets
@@ -254,6 +258,10 @@ runtime validation, and relevant documentation together.
   explicitly at startup. Pi OS Lite has almost no fonts, so never rely on a
   system face; `make build` copies `assets/` into `dist/` and Ansible deploys it
   beside the modules, which is what keeps the relative path valid on the Pi.
+  `surface.mts` resolves that path two directories up from its own module, so the
+  depth it is deployed at is load-bearing: registering a font that is not there
+  raises nothing and the deck simply draws blank labels. The bundler asserts the
+  module lands in the deck bundle, and `make test` asserts the family registered.
 - Keep shared display/voice state in `state.mts`; the `ControlModel` there is
   the change-notification surface — mutate state, then `notify()`.
 - Treat USB and WebSocket disconnects as normal. Log, retain useful state, and
@@ -332,13 +340,21 @@ runtime validation, and relevant documentation together.
   `streamdeck_enabled` is off. That choice is recorded beside the manifest,
   because `npm ls` cannot see packages it was told to ignore and turning the
   deck off would otherwise never prune them.
-- Deploy the compiled `controller/dist/src/` tree, never the `.mts` sources, and
-  preserve its folders on the Pi so import specifiers stay valid. The Pi gets no
-  TypeScript toolchain; `make build` compiles on the control computer, and
-  provisioning fails with an instruction if that output is missing. A unit with
-  no deck is sent neither `streamdeck/` nor `remote/` nor the bundled font, and
-  the existing obsolete-module pass takes them off a Pi whose flag has just been
-  turned off.
+- Deploy the bundled `controller/dist/bundle/` output, never the `.mts` sources
+  and never the per-file `dist/src/` tree. `make build` compiles with `tsc` on
+  the control computer and then rolls that output up with
+  `tools/bundle-controller.mjs` into one module per deployment boundary —
+  `index.mjs`, the `streamdeck/control-surface.mjs` addon, and the hashed
+  `shared-*.mjs` chunk both import — each with a source map beside it. Copying
+  75 modules one at a time was most of what a controller deploy spent its time
+  on. Preserve the two-level layout on the Pi: the import specifiers between the
+  bundles and the addon's font path both depend on it. The Pi gets no TypeScript
+  toolchain, and provisioning fails with an instruction if the output is missing.
+  A unit with no deck is sent neither the addon nor the bundled font, and the
+  obsolete-module pass takes both off a Pi whose flag has just been turned off,
+  along with the empty directories they leave behind. `dist/src/` stays the
+  unbundled reference — the tests run against it, and it is what a bundled stack
+  trace maps back to.
 
 ## Validation
 
@@ -349,9 +365,16 @@ finished:
 make test
 ```
 
-This compiles Python, type-checks and compiles the TypeScript controller, runs
-Python and Node tests, and performs an Ansible syntax check without contacting
-the Pi. A type error fails the build before any test runs.
+This compiles Python, type-checks and compiles the TypeScript controller,
+bundles it, runs Python and Node tests, checks the bundles, and performs an
+Ansible syntax check without contacting the Pi. A type error fails the build
+before any test runs, and so does a bundle that crossed a deployment boundary.
+
+The tests import the `dist/src` modules; the Pi runs the bundles, so those are
+checked as their own artifact. The entry is only parsed — importing it would
+read `/etc/smartamp/controller.json` and start the daemon — while the deck
+bundle is imported outright and its font family asserted. That check is the one
+part of `make test` needing the deck's optional packages installed here.
 
 For controller dependency changes, pin the exact version in both
 `apps/controller/package.json` and `apps/playground/package.json`, then run the
