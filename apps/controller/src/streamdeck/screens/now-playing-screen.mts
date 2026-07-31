@@ -108,6 +108,7 @@ export class NowPlayingScreen implements Screen {
     readonly #clockFormat: ClockFormat
     #host: ScreenHost | null = null
     #unwatch: (() => void) | null = null
+    #phase = 0
     #pressed: Button | null = null
     #pressedAt = 0
     #controlsShownAt: number | null = null
@@ -219,14 +220,15 @@ export class NowPlayingScreen implements Screen {
         return this.#flash() > 0
     }
 
-    draw(surface: Surface): void {
+    draw(surface: Surface, deltaTime: number): void {
         const now = this.#clock()
+        this.#phase += deltaTime
         const player = this.#ha.entity(this.#player)
         const playing = player?.state === 'playing'
         surface.fill(BACKDROP)
 
         if (this.#controlsShown()) this.#drawControls(surface, player)
-        else this.#drawTrack(surface, player, playing, now)
+        else this.#drawTrack(surface, player, playing)
 
         const play = (playing ? 'pause' : 'play') as IconName
         this.#drawButton(surface, PLAY_CENTER, BUTTON_ZONE, play, playing ? PLAY_ON : PLAY_OFF, this.#pressed === 'play')
@@ -244,12 +246,12 @@ export class NowPlayingScreen implements Screen {
             y: FAULT_ICON_Y,
             size: FAULT_ICON_SIZE,
             gap: FAULT_ICON_GAP,
-            now,
+            phase: this.#phase,
             alertsOnly: true,
         })
     }
 
-    #drawTrack(surface: Surface, player: HomeAssistantEntity | undefined, playing: boolean, now: number): void {
+    #drawTrack(surface: Surface, player: HomeAssistantEntity | undefined, playing: boolean): void {
         const {title, secondary} = nowPlayingLines(player, this.#ha.connected)
         drawStripLine(surface, title, {
             centerY: secondary ? 36 : 46,
@@ -257,7 +259,7 @@ export class NowPlayingScreen implements Screen {
             color: playing ? PLAYING_TITLE : PAUSED_TITLE,
             left: TEXT_LEFT,
             width: TEXT_AVAILABLE,
-            now,
+            phase: this.#phase,
         })
         if (secondary) {
             drawStripLine(surface, secondary, {
@@ -267,7 +269,7 @@ export class NowPlayingScreen implements Screen {
                 weight: REGULAR,
                 left: TEXT_LEFT,
                 width: TEXT_AVAILABLE,
-                now,
+                phase: this.#phase,
             })
         }
     }

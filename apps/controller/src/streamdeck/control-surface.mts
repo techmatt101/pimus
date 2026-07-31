@@ -94,7 +94,7 @@ export function createControlSurface({
         ...(remote ? {remote} : {}),
     })
 
-    const renderer = new DeckRenderer({layout, model})
+    const renderer = new DeckRenderer({layout, model, dimPercent: SLEEP.dimPercent})
 
     const usbPower = new UsbPower({
         enabled: sleepConfig?.usb_power_off === true,

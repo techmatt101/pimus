@@ -163,10 +163,12 @@ a state that paints from it is showing, so nothing is captured between replies.
 The panel dims and then switches itself off when the room is empty. `streamdeck/sleep.mts` follows a Home Assistant
 presence sensor over that same connection and writes one field of shared state — `lit`, then `dim` as a five-second
 warning, then `off`. The renderer reacts to it exactly as it reacts to the deck being unplugged, dropping the mounted
-tiles so their animation timers and entity watches stop with the light.
+tiles so their animation timers and entity watches stop with the light. Dimming stops short of that: the faces stay
+mounted and current, but the renderer freezes the time it hands them and the strip drops to a once-a-minute frame, so
+every animation holds still and resumes where it stopped.
 Nothing else sleeps: the wake word, the ReSpeaker ring, and background playback are untouched. It fails towards a lit
 panel — an unreachable Home Assistant, a sensor reporting `unavailable`, or a hand on a deck the sensor thinks nobody is
-near all keep it awake, and the first press on a dark panel wakes it without also running the key.
+near all keep it awake, and the first press on a dark or dimmed panel wakes it without also running the key.
 
 Each key is a tile that owns its own behaviour and face; the touch strip is one full-width display owned by
 `streamdeck/strip.mts`, which picks between screens — the dial being turned, a notification, or what is playing. Home

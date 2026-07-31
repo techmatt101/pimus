@@ -47,6 +47,7 @@ export class StartingScreen implements Screen {
     readonly #graceMilliseconds: number
     readonly #startedAt: number
     #settled = false
+    #phase = 0
 
     constructor(model: ControlModel, clock: () => number, graceMilliseconds = BOOT_GRACE_MILLISECONDS) {
         this.#model = model
@@ -72,12 +73,13 @@ export class StartingScreen implements Screen {
         return FRAME_MILLISECONDS
     }
 
-    draw(surface: Surface): void {
+    draw(surface: Surface, deltaTime: number): void {
         surface.fill(BACKDROP)
         drawText(surface, TITLE, {x: STRIP_WIDTH / 2, y: TITLE_Y, size: TITLE_SIZE, color: TITLE_COLOR})
 
-        const phase = (this.#clock() % PENDING_PERIOD_MILLISECONDS) / PENDING_PERIOD_MILLISECONDS
-        const breath = 0.35 + 0.65 * (0.5 - Math.cos(phase * 2 * Math.PI) / 2)
+        this.#phase += deltaTime
+        const step = (this.#phase % PENDING_PERIOD_MILLISECONDS) / PENDING_PERIOD_MILLISECONDS
+        const breath = 0.35 + 0.65 * (0.5 - Math.cos(step * 2 * Math.PI) / 2)
         const left = (STRIP_WIDTH - SUBSYSTEMS.length * SLOT_WIDTH) / 2
 
         SUBSYSTEMS.forEach(({key, label, icon}, slot) => {

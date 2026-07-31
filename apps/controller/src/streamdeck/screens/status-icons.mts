@@ -45,19 +45,19 @@ export interface StatusIconOptions {
     y: number
     size: number
     gap: number
-    /** The instant of this repaint, which is what pulses a red icon. */
-    now: number
+    /** Animation time accumulated by the screen, which is what pulses a red icon. */
+    phase: number
     /** Draw only the slots that are red, for faces with no room for a full row. */
     alertsOnly?: boolean
 }
 
-function faultOpacity(now: number): number {
-    const phase = (now % FLASH_PERIOD_MILLISECONDS) / FLASH_PERIOD_MILLISECONDS
-    return FLASH_FLOOR + (1 - FLASH_FLOOR) * (0.5 + 0.5 * Math.cos(phase * 2 * Math.PI))
+function faultOpacity(phase: number): number {
+    const step = (phase % FLASH_PERIOD_MILLISECONDS) / FLASH_PERIOD_MILLISECONDS
+    return FLASH_FLOOR + (1 - FLASH_FLOOR) * (0.5 + 0.5 * Math.cos(step * 2 * Math.PI))
 }
 
 export function drawStatusIcons(surface: Surface, state: ControlState, options: StatusIconOptions): void {
-    const {x, y, size, gap, now, alertsOnly = false} = options
+    const {x, y, size, gap, phase, alertsOnly = false} = options
     let at = x
     for (const slot of slots(state)) {
         if (alertsOnly && !slot.fault && !slot.muted) continue
@@ -66,7 +66,7 @@ export function drawStatusIcons(surface: Surface, state: ControlState, options: 
             y,
             size,
             color: slot.fault || slot.muted ? ALERT_COLOR : slot.color,
-            opacity: slot.fault ? faultOpacity(now) : undefined,
+            opacity: slot.fault ? faultOpacity(phase) : undefined,
         })
         at += size + gap
     }

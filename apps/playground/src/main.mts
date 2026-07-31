@@ -252,7 +252,7 @@ const layout = createLayout({
     ha: homeAssistant,
 })
 
-const renderer = new DeckRenderer({layout, model, logger: busLogger(bus, 'deck')})
+const renderer = new DeckRenderer({layout, model, dimPercent: SLEEP.dimPercent, logger: busLogger(bus, 'deck')})
 
 respeaker?.start()
 audio.connect()

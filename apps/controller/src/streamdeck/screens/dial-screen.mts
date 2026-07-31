@@ -10,33 +10,29 @@ const BACKDROP = ['#1d2d38', '#101a21'] as const
 /** The one face all four dials share; the strip calls `show` before drawing. */
 export class DialScreen implements Screen {
     #dial: Dial | undefined
-    readonly #clock: () => number
-
-    constructor(clock: () => number) {
-        this.#clock = clock
-    }
+    #phase = 0
 
     show(dial: Dial): void {
         this.#dial = dial
     }
 
-    draw(surface: Surface): void {
+    draw(surface: Surface, deltaTime: number): void {
         surface.fill(verticalGradient(surface, BACKDROP[0], BACKDROP[1]))
         const dial = this.#dial
         if (!dial) return
 
-        const now = this.#clock()
+        this.#phase += deltaTime
         const value = dial.detail()
         drawStripLine(surface, dial.label, {
             centerY: 22,
             size: LABEL_SIZE,
             color: LABEL_COLOR,
-            now,
+            phase: this.#phase,
         })
         drawStripLine(surface, value, {
             centerY: 58,
             size: fittingSize(value, VALUE_SIZES, STRIP_WIDTH - STRIP_MARGIN * 2),
-            now,
+            phase: this.#phase,
         })
 
         const level = dial.level?.()

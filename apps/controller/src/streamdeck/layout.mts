@@ -67,6 +67,8 @@ export const SLEEP = {
     standbyMilliseconds: 3 * 60_000,
     /** How long the room must read empty before the panel and USB power switch off. */
     sleepMilliseconds: 5 * 60_000,
+    /** Panel brightness while dimmed, as a percentage of the lit level. */
+    dimPercent: 25,
 } as const
 
 export interface ControllerServices {

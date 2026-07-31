@@ -14,17 +14,20 @@ const FORMAT = {format: 'rgba'} as const
 // A dimmed panel is standby - the amp is suspended but somebody may well be
 // in the room - so it has to stay readable rather than fade to something
 // indistinguishable from off.
-const DIM_FRACTION = 0.25
+const DEFAULT_DIM_PERCENT = 25
 
 export interface DeckRendererOptions {
     layout: StreamDeckLayout
     model: ControlModel
+    /** Panel brightness while dimmed, as a percentage of the lit level. */
+    dimPercent?: number
     logger?: Pick<Console, 'error'>
 }
 
 export class DeckRenderer implements PageNavigator {
     readonly layout: StreamDeckLayout
     readonly #model: ControlModel
+    readonly #dimFraction: number
     readonly #logger: Pick<Console, 'error'>
     #deck: StreamDeck | null = null
     #asleep = false
@@ -48,9 +51,10 @@ export class DeckRenderer implements PageNavigator {
     readonly #sharedDial: DynamicDial | null
     readonly #sharedDialIndex: number
 
-    constructor({layout, model, logger = console}: DeckRendererOptions) {
+    constructor({layout, model, dimPercent = DEFAULT_DIM_PERCENT, logger = console}: DeckRendererOptions) {
         this.layout = layout
         this.#model = model
+        this.#dimFraction = Math.min(100, Math.max(0, dimPercent)) / 100
         this.#logger = logger
         this.#asleep = model.state.panel === 'off'
         for (const dial of layout.dials) if (dial instanceof PageDial) dial.connect(this)
@@ -124,12 +128,23 @@ export class DeckRenderer implements PageNavigator {
 
     #mountVisible(): void {
         this.#mountPage()
-        this.layout.strip.mount({invalidate: () => this.#invalidateStrip()})
+        this.layout.strip.mount({
+            invalidate: () => this.#invalidateStrip(),
+            animating: () => this.#animating(),
+        })
     }
 
     #unmountVisible(): void {
         this.#unmountPage()
         this.layout.strip.unmount()
+    }
+
+    // Dimming pauses every face: a frozen delta holds each animation where it
+    // stood rather than leaving movement in the corner of the eye, and the strip
+    // drops its frame timer. A repaint the state asks for still lands, so a dim
+    // panel stays truthful rather than becoming a still image.
+    #animating(): boolean {
+        return this.#model.state.panel === 'lit'
     }
 
     async #applyBrightness(): Promise<void> {
@@ -150,7 +165,7 @@ export class DeckRenderer implements PageNavigator {
     #brightnessTarget(): number {
         const {panel, brightness} = this.#model.state
         if (panel === 'off') return 0
-        if (panel === 'dim') return Math.max(1, Math.round(brightness * DIM_FRACTION))
+        if (panel === 'dim') return Math.max(1, Math.round(brightness * this.#dimFraction))
         return brightness
     }
 
@@ -181,15 +196,19 @@ export class DeckRenderer implements PageNavigator {
         return this.#pageNameAt(0)
     }
 
+    // The instant is recorded even while paused, so waking resumes an animation
+    // from where it froze instead of jumping the whole standby forward.
     #keyDelta(index: number, at: number): number {
         const last = this.#lastKeyDrawAt.get(index)
         this.#lastKeyDrawAt.set(index, at)
+        if (!this.#animating()) return 0
         return last === undefined ? 0 : at - last
     }
 
     #stripDelta(at: number): number {
         const last = this.#lastStripDrawAt
         this.#lastStripDrawAt = at
+        if (!this.#animating()) return 0
         return last === 0 ? 0 : at - last
     }
 

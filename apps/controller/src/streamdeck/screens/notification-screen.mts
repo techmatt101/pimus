@@ -12,6 +12,7 @@ const DRAIN_FRAME_MILLISECONDS = 250
 /** The banner for a pushed notification; the strip calls `show` before drawing. */
 export class NotificationScreen implements Screen {
     #notification: Notification | undefined
+    #phase = 0
     readonly #clock: () => number
 
     constructor(clock: () => number) {
@@ -26,7 +27,7 @@ export class NotificationScreen implements Screen {
         return this.#notification ? DRAIN_FRAME_MILLISECONDS : undefined
     }
 
-    draw(surface: Surface): void {
+    draw(surface: Surface, deltaTime: number): void {
         const notification = this.#notification
         if (!notification) {
             surface.fill('#101820')
@@ -34,16 +35,17 @@ export class NotificationScreen implements Screen {
         }
 
         const now = this.#clock()
+        this.#phase += deltaTime
         const {title, message, color} = notification
         surface.fill(verticalGradient(surface, lighten(color, 0.22), color))
 
         if (title) {
-            drawStripLine(surface, title, {centerY: 24, size: TITLE_SIZE, color: TITLE_COLOR, now})
+            drawStripLine(surface, title, {centerY: 24, size: TITLE_SIZE, color: TITLE_COLOR, phase: this.#phase})
         }
         drawStripLine(surface, message, {
             centerY: title ? 62 : 46,
             size: fittingSize(message, title ? TITLED_MESSAGE_SIZES : MESSAGE_SIZES, STRIP_WIDTH - STRIP_MARGIN * 2),
-            now,
+            phase: this.#phase,
         })
 
         const total = Math.max(1, notification.expiresAt - notification.shownAt)

@@ -48,6 +48,7 @@ export class IdleScreen implements Screen {
     readonly #player: string
     readonly #clockFormat: ClockFormat
     #unwatch: (() => void) | null = null
+    #phase = 0
     #showNowPlaying: (() => void) | null = null
 
     constructor(ha: HomeAssistantService, model: ControlModel, clock: () => number, {player, weatherEntityId, clockFormat = '24h'}: IdleScreenOptions) {
@@ -85,15 +86,16 @@ export class IdleScreen implements Screen {
         return hasFault(this.#model.state) ? Math.min(tick, STATUS_FLASH_FRAME_MILLISECONDS) : tick
     }
 
-    draw(surface: Surface): void {
+    draw(surface: Surface, deltaTime: number): void {
         surface.fill(BACKDROP)
         const now = this.#clock()
+        this.#phase += deltaTime
         const clock = drawClock(surface, now, this.#clockFormat, {centerX: STRIP_WIDTH / 2, y: ROW_Y, size: TIME_SIZE, color: TIME_COLOR})
         const date = formatDate(now)
         const dateLeft = clock.right + DATE_GAP
         drawText(surface, date, {x: dateLeft, y: ROW_Y, size: DATE_SIZE, color: DATE_COLOR, align: 'left'})
         this.#drawWeather(surface, dateLeft + measureText(date, DATE_SIZE) + WEATHER_GAP)
-        drawStatusIcons(surface, this.#model.state, {x: STATUS_X, y: ROW_Y, size: STATUS_SIZE, gap: STATUS_GAP, now})
+        drawStatusIcons(surface, this.#model.state, {x: STATUS_X, y: ROW_Y, size: STATUS_SIZE, gap: STATUS_GAP, phase: this.#phase})
         this.#drawMedia(surface)
     }
 

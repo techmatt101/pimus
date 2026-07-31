@@ -1,6 +1,6 @@
 import {DialScreen} from './screens/dial-screen.mjs'
 import {NotificationScreen} from './screens/notification-screen.mjs'
-import type {Screen, ScreenHost} from './screens/screen.mjs'
+import {minuteTick, type Screen, type ScreenHost} from './screens/screen.mjs'
 import type {Surface} from './surface.mjs'
 import type {Dial} from './dial.mjs'
 import type {Notification, NotificationFeed} from '../types.mjs'
@@ -50,7 +50,7 @@ export class TouchStrip {
         this.#notifications = notifications
         this.#dialHoldMilliseconds = dialHoldMilliseconds
         this.#clock = clock
-        this.#dialScreen = new DialScreen(clock)
+        this.#dialScreen = new DialScreen()
         this.#notificationScreen = new NotificationScreen(clock)
     }
 
@@ -78,7 +78,9 @@ export class TouchStrip {
     mount(host: ScreenHost): void {
         if (this.#host) this.unmount()
         this.#host = host
-        for (const screen of this.#screens) screen.mount?.({invalidate: () => host.invalidate()})
+        for (const screen of this.#screens) {
+            screen.mount?.({invalidate: () => host.invalidate(), animating: () => host.animating()})
+        }
     }
 
     unmount(): void {
@@ -163,7 +165,10 @@ export class TouchStrip {
     }
 
     #arm(screen: Screen, dial: Dial | undefined): void {
-        const rate = screen.animationMilliseconds?.()
+        // A dimmed panel animates nothing, but its clock still has to be honest,
+        // so the frame timer drops to the minute rather than stopping outright.
+        const animating = this.#host?.animating() ?? true
+        const rate = animating ? screen.animationMilliseconds?.() : minuteTick(this.#clock())
         if (rate !== this.#frameRate) {
             this.#stopFrames()
             this.#frameRate = rate ?? 0

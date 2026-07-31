@@ -11,6 +11,9 @@ export const SCROLL_FRAME_MILLISECONDS = 80
 export interface ScreenHost {
     /** Repaint the strip, outside the shared render schedule. */
     invalidate(): void
+
+    /** Whether faces may move; a dimmed panel holds every animation still. */
+    animating(): boolean
 }
 
 export interface Screen {
@@ -43,8 +46,8 @@ export interface StripLineOptions {
     centerY: number
     size: number
     color?: string
-    /** The instant of this repaint, which is what moves a scrolling line. */
-    now?: number
+    /** Animation time accumulated by the screen, which is what moves a scrolling line. */
+    phase?: number
     margin?: number
     /** Left-align rather than centre, for a line that shares a row with something else. */
     left?: number
@@ -60,7 +63,7 @@ export interface StripLineOptions {
  * decides to ask for animation frames.
  */
 export function drawStripLine(surface: Surface, value: string, options: StripLineOptions): boolean {
-    const {centerY, size, color = '#ffffff', now = 0, margin = STRIP_MARGIN, left, width, opacity, weight = BOLD} = options
+    const {centerY, size, color = '#ffffff', phase = 0, margin = STRIP_MARGIN, left, width, opacity, weight = BOLD} = options
     const start = left ?? margin
     const available = width ?? surface.width - margin - start
     const measured = measureText(value, size, weight)
@@ -75,7 +78,7 @@ export function drawStripLine(surface: Surface, value: string, options: StripLin
     // The line and one repeat slide together so the text runs continuously,
     // clipped to its own region so it never runs under whatever shares its row.
     const cycle = measured + SCROLL_GAP
-    const offset = ((now / 1000) * SCROLL_PIXELS_PER_SECOND) % cycle
+    const offset = ((phase / 1000) * SCROLL_PIXELS_PER_SECOND) % cycle
     const origin = start - offset
     drawClipped(surface, start, centerY - size, available, size * 2, () => {
         drawText(surface, value, {...line, x: origin})

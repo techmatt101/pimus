@@ -72,11 +72,11 @@ export class SleepController {
     /**
      * Report a key press, dial turn, or strip tap. Returns true when the input
      * was spent waking the panel, so the caller must not also run the key under
-     * the finger. A dimmed panel is still readable, so its keys run as normal
-     * and the press simply brings the light back.
+     * the finger. A dark or dimmed panel is one whose faces cannot be read at a
+     * glance, so the first input only brings the light back and the second acts.
      */
     touch(now = Date.now()): boolean {
-        const woke = this.#model.state.panel === 'off'
+        const woke = this.#model.state.panel !== 'lit'
         this.#forced = false
         this.#interactedAt = now
         // A touch is proof the room is not empty, whatever the sensor says;

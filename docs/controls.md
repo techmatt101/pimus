@@ -585,12 +585,20 @@ The amp has two resting states below awake, driven by one controller and shown
 by one field — `state.panel`, one of `lit`, `dim`, and `off`:
 
 **Standby** is about your hands, not the room. Three minutes after the last key
-press, dial turn, strip tap, or live Assist pipeline, the panel dims — music
-can still be playing; the strip stays readable — and the audio manager is told
-to release its idle bridges, so the DAC path and the XVF3800 playback endpoint
-suspend. Any touch relights the panel and runs the key as normal (a dimmed deck
-is readable, so nothing is swallowed), and the amp rebuilds its bridges the
-moment anything plays or a voice session opens.
+press, dial turn, strip tap, or live Assist pipeline, the panel dims to a
+quarter of its brightness — music can still be playing; the strip stays
+readable — and the audio manager is told to release its idle bridges, so the
+DAC path and the XVF3800 playback endpoint suspend. The amp rebuilds its
+bridges the moment anything plays or a voice session opens.
+
+A dimmed panel holds still. Every animation pauses where it stood — the
+scrolling title, the fan's spin, the voice pulse, a flashing fault icon — so
+there is no movement in the corner of your eye in a dark room, and each resumes
+from that point rather than jumping when the light comes back. What the faces
+*say* stays current: a state change still repaints, and the strip keeps its
+clock honest on the minute. The first touch on a dimmed panel is spent waking
+it, exactly as on a dark one, so a key you press without being able to read it
+does nothing until you press it again.
 
 **Sleep** is about the room. Five minutes after the presence sensor reads
 `off` — or at once when the POWER key's SLEEP choice on the SETTINGS page or the
@@ -606,7 +614,7 @@ Waking from sleep, in the order you will meet them:
 |--------------------------------------|---------------------------------------------------------------|
 | The presence sensor turning `on`     | Walking back in; everything is powered before you reach it    |
 | The board's power button (Pi 5)      | Its shutdown meaning is disabled by provisioning; a press wakes a sleeping amp and forces sleep on a waking one. A Pi 4B and a Pi Zero 2 W have none, and keep stock power-key handling |
-| A key press                          | Only when USB power stays on; **the first press on a dark deck only wakes it**. On a Pi 4B with the USB power cut there is no button either, so presence is the only wake. A Pi Zero 2 W cannot cut USB power at all, so a key press is always a wake there |
+| A key press                          | Only when USB power stays on; **the first press on a dark or dimmed deck only wakes it**. On a Pi 4B with the USB power cut there is no button either, so presence is the only wake. A Pi Zero 2 W cannot cut USB power at all, so a key press is always a wake there |
 
 A forced sleep holds while you remain in the room; leave and return (or press
 the power button) and it wakes as usual.
@@ -620,14 +628,15 @@ a lit one you did not need. Standby needs no sensor and still dims.
 A notification pushed while the deck is dark waits in the queue rather than
 lighting an empty room, and is on the strip when you walk back in.
 
-The timings and the presence entity are compiled in, in
-`apps/controller/src/streamdeck/layout.mts`:
+The timings, the presence entity, and how far the panel dims are compiled in,
+in `apps/controller/src/streamdeck/layout.mts`:
 
 ```ts
 export const SLEEP = {
   presence: HA.presence,             // clear this to keep the deck lit permanently
   standbyMilliseconds: 3 * 60_000,   // idle time before dim + amp suspend
   sleepMilliseconds: 5 * 60_000,     // empty-room time before panel + USB power off
+  dimPercent: 25,                    // dimmed brightness, as a percentage of the lit level
 } as const
 ```
 
