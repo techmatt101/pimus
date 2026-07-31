@@ -304,7 +304,9 @@ settings shape the decision:
   when you stopped after a word shorter than the phrase length below, which is
   what trailing off mid-sentence sounds like.
 - `voice_assistant_endpoint_short_phrase_ms` (default `400`) — how long that
-  final run of speech has to be to count as a finished phrase. Raising it makes
+  final run of speech has to be to count as a finished phrase. The run
+  tolerates the detector's flicker: dips shorter than 200ms sit inside the
+  phrase rather than splitting it, so only a real hesitation starts a new one. Raising it makes
   more endings count as hesitant, which is a slower amp, not a safer one.
 - `voice_assistant_endpoint_min_speech_ms` (default `500`) — speech that must
   have been heard before the Pi may end a turn at all, so a cough or a slammed

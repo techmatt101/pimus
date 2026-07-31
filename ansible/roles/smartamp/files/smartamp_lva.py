@@ -59,6 +59,11 @@ ENDPOINT_FRAME_BYTES = 160 * 2
 # Above this the frame is speech; a negative score means the detector is still
 # warming up and has nothing to say about the frame yet.
 ENDPOINT_SPEECH_PROBABILITY = 0.5
+# The detector's verdict flickers, dropping lone frames inside continuous
+# speech, so a phrase is speech bridged across dips no longer than this; only a
+# longer silence starts a new phrase. It must stay below the confident silence
+# threshold, or a turn would end before a gap could ever be bridged.
+ENDPOINT_PHRASE_GAP_MILLISECONDS = 200
 
 # The events that mean the request is no longer being listened for, either
 # because Home Assistant closed the stream itself or the run is over.
@@ -425,6 +430,11 @@ class TurnEndpointer:
     sounds like. Below the minimum it never ends the turn at all, leaving a
     cough or a slammed door to Home Assistant's own detector.
 
+    A phrase is not an unbroken run of speech frames: the detector's verdict
+    flickers even mid-word, so dips no longer than the phrase gap are bridged
+    into the phrase rather than splitting it. Without that, the final phrase
+    always measured a frame or two and every turn took the patient wait.
+
     It holds nothing but frame counts, so a turn is replayable and there is no
     clock in it.
     """
@@ -443,24 +453,23 @@ class TurnEndpointer:
         self.speech = 0
         self.phrase = 0
         self.waited = 0
-        self._run = 0
 
     def reset(self) -> None:
         self.speech = 0
         self.phrase = 0
         self.waited = 0
-        self._run = 0
 
     def add(self, is_speech: bool) -> bool:
         """Add one frame, answering whether the turn ended on it."""
         if is_speech:
             self.speech += ENDPOINT_FRAME_MILLISECONDS
-            self._run += ENDPOINT_FRAME_MILLISECONDS
+            if self.waited > ENDPOINT_PHRASE_GAP_MILLISECONDS:
+                self.phrase = 0
+            else:
+                self.phrase += self.waited
+            self.phrase += ENDPOINT_FRAME_MILLISECONDS
             self.waited = 0
             return False
-        if self._run:
-            self.phrase = self._run
-            self._run = 0
         self.waited += ENDPOINT_FRAME_MILLISECONDS
         if self.speech < self.minimum_speech_milliseconds:
             return False
