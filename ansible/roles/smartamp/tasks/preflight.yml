@@ -250,6 +250,13 @@
         (smartamp_voice_capture_channel | int) <= 7)
       - (voice_assistant_mic_volume | int) >= 0
       - (voice_assistant_mic_volume | int) <= 100
+      - (voice_assistant_endpoint_silence_ms | int) >= 0
+      - (voice_assistant_endpoint_short_phrase_ms | int) >= 0
+      - (voice_assistant_endpoint_min_speech_ms | int) >= 0
+      # A patient wait shorter than the confident one would end a hesitant turn
+      # sooner than a complete-sounding one, which is backwards.
+      - (voice_assistant_endpoint_patient_silence_ms | int) >=
+        (voice_assistant_endpoint_silence_ms | int)
       - (voice_assistant_port | int) >= 1
       - (voice_assistant_port | int) <= 65535
       - (voice_assistant_peripheral_port | int) >= 1
@@ -261,7 +268,8 @@
       - sendspin_server_url == '' or sendspin_server_url is match('^wss?://')
     fail_msg: >-
       Hardware/controller inventory contains an out-of-range value, conflicting
-      voice ports, or an invalid Home Assistant or Sendspin server URL.
+      voice ports, an endpoint wait that is patient for less time than it is
+      confident, or an invalid Home Assistant or Sendspin server URL.
 
 # Tokens are typed on the Pi itself, in a file this repository never writes and
 # never reads the values of, so provisioning has to confirm they are actually

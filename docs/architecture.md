@@ -196,6 +196,19 @@ that is taking too long or was never wanted ends on the word from either side of
 the reply. Listening is deliberately left out: those words are the request
 itself, and "stop the music" would cancel it rather than run it.
 
+The same adapter decides when the request is over. Upstream streams the
+microphone from the wake word onwards and stops only when told, and Home
+Assistant tells it after a fixed run of silence, so one figure has to serve both
+a three-word command and a sentence with a pause in the middle of it. The
+adapter scores 10ms frames locally and closes the speech-to-text stream itself
+once the request sounds complete — a short silence after a finished phrase, a
+longer one after a word too short to be the end of a sentence, and never at all
+before enough speech has been heard. This is the graceful counterpart of the
+cancel above: an audio message marked `end` lets the pipeline run on to the
+intent, where `start=False` abandons it. Home Assistant's own detector, turned
+up to relaxed, stays as the patient backstop for the turns the Pi declines to
+end, and setting the silence to 0 hands the whole decision back to it.
+
 The service units use a compact isolation baseline: core system configuration is
 read-only, home directories are hidden, temporary directories are private, and
 privilege escalation is blocked. File ownership protects application and state

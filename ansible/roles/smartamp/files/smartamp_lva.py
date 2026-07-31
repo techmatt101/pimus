@@ -11,11 +11,17 @@ until the upstream peripheral protocol supplies them.
 from __future__ import annotations
 
 import json
+import logging
+import os
 import time
 from enum import Enum
 from typing import Any, Callable, Dict, Iterable
 
-from aioesphomeapi.api_pb2 import MediaPlayerCommandRequest, VoiceAssistantRequest
+from aioesphomeapi.api_pb2 import (
+    MediaPlayerCommandRequest,
+    VoiceAssistantAudio,
+    VoiceAssistantRequest,
+)
 from aioesphomeapi.model import (
     MediaPlayerCommand,
     VoiceAssistantEventType,
@@ -27,6 +33,8 @@ from linux_voice_assistant.entity import MediaPlayerEntity
 from linux_voice_assistant.models import ServerState
 from linux_voice_assistant.peripheral_api import LVACommand, LVAEvent, PeripheralAPIServer
 from linux_voice_assistant.satellite import VoiceSatelliteProtocol
+
+_LOGGER = logging.getLogger("smartamp")
 
 # Peripheral events that say a voice pipeline is live.
 LIVE_PIPELINE_EVENTS = frozenset(
@@ -43,6 +51,25 @@ LIVE_PIPELINE_EVENTS = frozenset(
 # words being listened for are the request itself, and "stop the music" would
 # cancel that request instead of running it.
 STOP_WORD_PHASES = frozenset({LVAEvent.THINKING, LVAEvent.TTS_SPEAKING, LVAEvent.TIMER_RINGING})
+
+# The voice detector scores one fixed 10ms frame of 16-bit mono 16kHz audio at a
+# time, so the endpointer counts turn lengths in frames and never reads a clock.
+ENDPOINT_FRAME_MILLISECONDS = 10
+ENDPOINT_FRAME_BYTES = 160 * 2
+# Above this the frame is speech; a negative score means the detector is still
+# warming up and has nothing to say about the frame yet.
+ENDPOINT_SPEECH_PROBABILITY = 0.5
+
+# The events that mean the request is no longer being listened for, either
+# because Home Assistant closed the stream itself or the run is over.
+ENDPOINT_CLOSING_EVENTS = frozenset(
+    {
+        VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END,
+        VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
+        VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END,
+        VoiceAssistantEventType.VOICE_ASSISTANT_ERROR,
+    }
+)
 
 
 class SmartampMediaEvent(str, Enum):
@@ -338,10 +365,208 @@ def install_timer_detail_adapter() -> None:
     VoiceSatelliteProtocol.handle_timer_event = handle_timer_event  # type: ignore[method-assign]
 
 
+class TurnEndpointer:
+    """How long a silence has to last before the request counts as finished.
+
+    A single silence threshold cannot serve both "turn on the lamp" and a
+    sentence with a pause in the middle of it, which is why Home Assistant's own
+    figure is either slow or cuts people off. This one is chosen per turn from
+    what has been heard so far: the short threshold applies only once enough
+    speech has arrived and the speaker had got a phrase out before stopping,
+    because trailing off after a single short word is what a mid-sentence pause
+    sounds like. Below the minimum it never ends the turn at all, leaving a
+    cough or a slammed door to Home Assistant's own detector.
+
+    It holds nothing but frame counts, so a turn is replayable and there is no
+    clock in it.
+    """
+
+    def __init__(
+        self,
+        silence_milliseconds: int,
+        patient_silence_milliseconds: int,
+        short_phrase_milliseconds: int,
+        minimum_speech_milliseconds: int,
+    ) -> None:
+        self.silence_milliseconds = silence_milliseconds
+        self.patient_silence_milliseconds = patient_silence_milliseconds
+        self.short_phrase_milliseconds = short_phrase_milliseconds
+        self.minimum_speech_milliseconds = minimum_speech_milliseconds
+        self.speech = 0
+        self.phrase = 0
+        self.waited = 0
+        self._run = 0
+
+    def reset(self) -> None:
+        self.speech = 0
+        self.phrase = 0
+        self.waited = 0
+        self._run = 0
+
+    def add(self, is_speech: bool) -> bool:
+        """Add one frame, answering whether the turn ended on it."""
+        if is_speech:
+            self.speech += ENDPOINT_FRAME_MILLISECONDS
+            self._run += ENDPOINT_FRAME_MILLISECONDS
+            self.waited = 0
+            return False
+        if self._run:
+            self.phrase = self._run
+            self._run = 0
+        self.waited += ENDPOINT_FRAME_MILLISECONDS
+        if self.speech < self.minimum_speech_milliseconds:
+            return False
+        return self.waited >= self.threshold
+
+    @property
+    def threshold(self) -> int:
+        if self.phrase < self.short_phrase_milliseconds:
+            return self.patient_silence_milliseconds
+        return self.silence_milliseconds
+
+
+class LocalEndpoint:
+    """The endpointer's view of the microphone stream, in whole frames.
+
+    Audio arrives in blocks of whatever size the input device was opened with,
+    so the frames the detector wants are cut from a running buffer rather than
+    from each block.
+    """
+
+    def __init__(self, vad: Any, endpointer: TurnEndpointer) -> None:
+        self._vad = vad
+        self._buffer = bytearray()
+        self.endpointer = endpointer
+        self.armed = False
+
+    def arm(self) -> None:
+        self._buffer.clear()
+        self.endpointer.reset()
+        self.armed = True
+
+    def disarm(self) -> None:
+        self.armed = False
+
+    def ended(self, chunk: bytes) -> bool:
+        self._buffer.extend(chunk)
+        while len(self._buffer) >= ENDPOINT_FRAME_BYTES:
+            frame = bytes(self._buffer[:ENDPOINT_FRAME_BYTES])
+            del self._buffer[:ENDPOINT_FRAME_BYTES]
+            probability = self._vad.process_10ms(frame)
+            if probability < 0:
+                continue
+            if self.endpointer.add(probability > ENDPOINT_SPEECH_PROBABILITY):
+                return True
+        return False
+
+
+def _endpoint_milliseconds(name: str) -> int:
+    value = os.environ.get(name, "")
+    try:
+        return max(0, int(value))
+    except ValueError:
+        _LOGGER.warning("Ignoring non-numeric %s=%r", name, value)
+        return 0
+
+
+def install_local_endpoint_adapter() -> None:
+    """Let the satellite decide it has heard the whole request.
+
+    Nothing on this machine decides when the speaker stopped: upstream streams
+    the microphone from the wake word onwards and waits to be told, and Home
+    Assistant tells it after a fixed run of silence chosen by the satellite's
+    "finished speaking detection" setting. Deciding here instead is what allows
+    both answers at once - a short silence ends a request that sounded complete,
+    while Home Assistant's own figure, turned up to relaxed, stays as the
+    patient backstop for the turns this declines to end.
+
+    The protocol already distinguishes the two ways a device can stop talking.
+    An audio message marked `end` closes the speech-to-text stream and lets the
+    pipeline run on to the intent, where the `start=False` request the cancel
+    adapter sends aborts the run outright.
+
+    Installed last, so its event wrapper sits outside the cancel adapter's and
+    still sees the end of a run that was abandoned.
+    """
+
+    endpointer = TurnEndpointer(
+        silence_milliseconds=_endpoint_milliseconds("SMARTAMP_ENDPOINT_SILENCE_MS"),
+        patient_silence_milliseconds=_endpoint_milliseconds("SMARTAMP_ENDPOINT_PATIENT_SILENCE_MS"),
+        short_phrase_milliseconds=_endpoint_milliseconds("SMARTAMP_ENDPOINT_SHORT_PHRASE_MS"),
+        minimum_speech_milliseconds=_endpoint_milliseconds("SMARTAMP_ENDPOINT_MIN_SPEECH_MS"),
+    )
+    if not endpointer.silence_milliseconds:
+        return
+
+    try:
+        from pymicro_vad import MicroVad  # pylint: disable=import-outside-toplevel
+    except ImportError:
+        # Leaves Home Assistant doing the whole job, which is what this unit did
+        # before local endpointing existed. Losing voice over it would be worse.
+        _LOGGER.warning("No local voice detector installed; Home Assistant will end each turn")
+        return
+
+    endpoint = LocalEndpoint(MicroVad(), endpointer)
+
+    original_handle_audio = VoiceSatelliteProtocol.handle_audio
+
+    def handle_audio(
+        self: VoiceSatelliteProtocol,
+        audio_chunk: bytes,
+        audio_chunk_2: bytes | None = None,
+    ) -> None:
+        # Upstream first: the frames that ended the turn are part of the request
+        # and Home Assistant has to have them before the stream is closed.
+        original_handle_audio(self, audio_chunk, audio_chunk_2)
+        if not endpoint.armed or not self._is_streaming_audio:  # pylint: disable=protected-access
+            return
+        if self.state.muted or not endpoint.ended(audio_chunk):
+            return
+        endpoint.disarm()
+        self._is_streaming_audio = False  # pylint: disable=protected-access
+        self.send_messages([VoiceAssistantAudio(data=b"", end=True)])
+        _LOGGER.debug(
+            "Ended the turn locally after %dms of silence (%dms of speech, %dms final phrase)",
+            endpointer.waited,
+            endpointer.speech,
+            endpointer.phrase,
+        )
+
+    VoiceSatelliteProtocol.handle_audio = handle_audio  # type: ignore[method-assign]
+
+    original_handle_voice_event = VoiceSatelliteProtocol.handle_voice_event
+
+    def handle_voice_event(
+        self: VoiceSatelliteProtocol,
+        event_type: VoiceAssistantEventType,
+        data: Dict[str, str],
+    ) -> None:
+        # Armed at the speech-to-text stage rather than at the wake word: before
+        # it there is no stream for an `end` to close, and the wake chime is
+        # still playing into the room.
+        if event_type == VoiceAssistantEventType.VOICE_ASSISTANT_STT_START:
+            endpoint.arm()
+        elif event_type in ENDPOINT_CLOSING_EVENTS:
+            endpoint.disarm()
+        original_handle_voice_event(self, event_type, data)
+
+    VoiceSatelliteProtocol.handle_voice_event = handle_voice_event  # type: ignore[method-assign]
+
+    original_stop = VoiceSatelliteProtocol.stop
+
+    def stop(self: VoiceSatelliteProtocol) -> None:
+        # A cancelled request must not have its ending land in the next one.
+        endpoint.disarm()
+        original_stop(self)
+
+    VoiceSatelliteProtocol.stop = stop  # type: ignore[method-assign]
+
+
 if __name__ == "__main__":
     install_media_event_adapters()
     install_pipeline_cancel_adapter()
     install_stop_word_sensitivity_adapter()
     install_stop_word_scope_adapter()
     install_timer_detail_adapter()
+    install_local_endpoint_adapter()
     lva_main.run()

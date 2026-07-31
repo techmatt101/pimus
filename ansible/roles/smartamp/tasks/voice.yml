@@ -101,9 +101,24 @@
     access_time: preserve
   when: voice_assistant_needs_setup | bool
 
+# The launcher adapter's local endpointer scores 10ms frames of microphone
+# audio to decide the speaker has finished, rather than waiting for Home
+# Assistant to say so. Upstream's own setup does not install a voice detector,
+# so this is added to the same virtual environment afterwards; it ships aarch64
+# wheels, and python3-dev above covers a build if that ever stops being true.
+# The adapter degrades to Home Assistant's timing if the import fails, so this
+# is not fatal to voice.
+- name: Install local voice activity detector
+  ansible.builtin.pip:
+    name: "pymicro-vad=={{ voice_assistant_vad_version }}"
+    virtualenv: "{{ smartamp_app_dir }}/linux-voice-assistant/.venv"
+    state: present
+  notify: Restart voice assistant
+
 # This wrapper leaves the pinned checkout clean while adding the pause/idle
-# peripheral events needed for a reliable physical play/pause control, and the
-# pipeline abort the upstream stop_pipeline command only half performs.
+# peripheral events needed for a reliable physical play/pause control, the
+# pipeline abort the upstream stop_pipeline command only half performs, and the
+# local decision that the speaker has finished talking.
 - name: Install Smart Amp voice media event adapter
   ansible.builtin.copy:
     src: smartamp_lva.py

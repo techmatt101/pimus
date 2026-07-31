@@ -279,6 +279,25 @@ voice_assistant_wake_model: okay_nabu
 # satellite; see docs/configuration.md.
 voice_assistant_stop_model: stop
 voice_assistant_mic_volume: 100
+# How the satellite decides the request is finished, instead of waiting for Home
+# Assistant's fixed run of silence. The launcher adapter scores the microphone
+# locally and closes the speech-to-text stream itself, which is what lets a
+# complete-sounding request end quickly while a mid-sentence pause is still
+# tolerated. Home Assistant remains the backstop for every turn this declines to
+# end, so set the satellite's "finished speaking detection" to relaxed there;
+# see docs/configuration.md. Set the silence to 0 to switch the whole thing off
+# and hand the decision back.
+voice_assistant_endpoint_silence_ms: 350
+# Used instead when the speaker stopped after a word shorter than the phrase
+# length below, which is what trailing off mid-sentence sounds like.
+voice_assistant_endpoint_patient_silence_ms: 900
+voice_assistant_endpoint_short_phrase_ms: 400
+# Speech heard before a turn may be ended locally at all, so a cough or a door
+# is left to Home Assistant rather than sent as a request.
+voice_assistant_endpoint_min_speech_ms: 500
+# Voice detector installed into the satellite's virtual environment for the
+# above; pinned exactly as the satellite and player releases are.
+voice_assistant_vad_version: "2.1.0"
 voice_assistant_port: 6053
 voice_assistant_peripheral_port: 6055
 voice_assistant_debug: false

@@ -282,6 +282,37 @@ Sensitivity** number on the satellite device — lower it if a shouted stop is
 missed, raise it if conversation trips it — and the same adapter is what makes
 that setting survive a restart.
 
+### Deciding you have finished talking
+
+Left to itself, Home Assistant ends a request after one fixed run of silence,
+chosen by the **Finished speaking detection** select on the satellite device.
+One figure has to serve both "turn on the lamp" and a sentence with a pause in
+the middle of it, so it is either slow or it cuts you off. The launcher adapter
+scores the microphone locally instead and closes the speech-to-text stream
+itself when the request sounds complete, which is a different thing from the
+stop word above: the pipeline runs on and answers, rather than being abandoned.
+
+Home Assistant is still the backstop for every turn the Pi declines to end, so
+set that select to **relaxed** once this is on and let the Pi lead. Four
+settings shape the decision:
+
+- `voice_assistant_endpoint_silence_ms` (default `350`) — the silence that ends
+  a request the Pi is confident about. Set it to `0` to switch local
+  endpointing off entirely and hand the decision back to Home Assistant, in
+  which case put that select back to default or aggressive.
+- `voice_assistant_endpoint_patient_silence_ms` (default `900`) — used instead
+  when you stopped after a word shorter than the phrase length below, which is
+  what trailing off mid-sentence sounds like.
+- `voice_assistant_endpoint_short_phrase_ms` (default `400`) — how long that
+  final run of speech has to be to count as a finished phrase.
+- `voice_assistant_endpoint_min_speech_ms` (default `500`) — speech that must
+  have been heard before the Pi may end a turn at all, so a cough or a slammed
+  door is left to Home Assistant rather than sent as a request.
+
+The detector itself is `pymicro-vad`, pinned by `voice_assistant_vad_version`
+and installed into the satellite's virtual environment. If it is ever missing
+the adapter says so once in the journal and leaves the timing to Home Assistant.
+
 The XVF3800 already performs AEC, beamforming, dereverberation, noise suppression and gain control. Leave LVA software
 noise suppression and auto-gain disabled initially to avoid processing the signal twice.
 

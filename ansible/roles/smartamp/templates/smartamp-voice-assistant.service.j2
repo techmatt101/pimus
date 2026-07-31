@@ -14,6 +14,12 @@ Environment=HOME={{ smartamp_state_dir }}
 Environment=XDG_RUNTIME_DIR=/run/user/{{ smartamp_uid }}
 Environment=PULSE_SERVER=/run/user/{{ smartamp_uid }}/pulse/native
 Environment=PYTHONUNBUFFERED=1
+# Read by the launcher adapter's local endpointer. A silence of 0 disables it
+# and leaves Home Assistant deciding when the speaker has finished.
+Environment=SMARTAMP_ENDPOINT_SILENCE_MS={{ voice_assistant_endpoint_silence_ms }}
+Environment=SMARTAMP_ENDPOINT_PATIENT_SILENCE_MS={{ voice_assistant_endpoint_patient_silence_ms }}
+Environment=SMARTAMP_ENDPOINT_SHORT_PHRASE_MS={{ voice_assistant_endpoint_short_phrase_ms }}
+Environment=SMARTAMP_ENDPOINT_MIN_SPEECH_MS={{ voice_assistant_endpoint_min_speech_ms }}
 # The audio manager chooses the real PipeWire defaults after discovering the
 # HiFiBerry and ReSpeaker. Waiting avoids racing that first hardware scan.
 ExecStartPre={{ smartamp_app_dir }}/wait-audio-ready.sh /run/user/{{ smartamp_uid }}/smartamp-audio-status.json 60

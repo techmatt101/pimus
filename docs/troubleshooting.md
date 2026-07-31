@@ -108,6 +108,24 @@ Word Sensitivity** on the satellite device in Home Assistant. A stop missed only
 problem, not a sensitivity one: the assistant's own voice is what the DSP has to cancel, so work through the AEC section
 above first.
 
+## It cuts me off, or waits too long before answering
+
+The Pi decides you have finished and closes the request itself; Home Assistant's
+**Finished speaking detection** select is only the backstop, and should be set
+to relaxed. With `voice_assistant_debug: true` each local decision logs as
+`Ended the turn locally`, with the silence it waited and the speech it heard.
+
+If it cuts you off mid-sentence, raise `voice_assistant_endpoint_silence_ms`, or
+raise `voice_assistant_endpoint_short_phrase_ms` so more endings count as
+hesitant and get the patient wait. If it still feels slow, check whether that
+line is being logged at all: no line means the decision fell through to Home
+Assistant, either because the speech was under
+`voice_assistant_endpoint_min_speech_ms` or because the detector is missing,
+which is logged once at startup as `No local voice detector installed`. A slow
+answer *after* the ring stops listening is the pipeline on the other machine,
+not the endpointer. Setting the silence to `0` disables local endpointing
+entirely and restores the old behaviour.
+
 ## Background audio does not duck or restore
 
 Check the `background` section in `/run/user/*/smartamp-audio-status.json`. `available` confirms that the background
