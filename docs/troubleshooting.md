@@ -271,11 +271,12 @@ default states what the AAmp60's 5V rail realistically provides; do not raise it
 stack's power budget. Disabling `usb_audio_gadget_enabled` removes the declaration again so a USB-C PSU negotiates
 normally.
 
-## The SHUTDOWN key arms but nothing happens
+## The POWER key arms but nothing happens
 
-The second press runs `systemctl poweroff` as the `smartamp` account, which
-logind only allows because of the polkit rule provisioning installs. Check the
-controller log for `poweroff failed` (`journalctl -u smartamp-controller`); an
+The second press runs `systemctl poweroff` — or `systemctl reboot` when the dial
+was turned to REBOOT — as the `smartamp` account, which logind only allows
+because of the polkit rule provisioning installs. Check the controller log for
+`poweroff failed` or `reboot failed` (`journalctl -u smartamp-controller`); an
 "Interactive authentication required" message means the rule is missing or
 polkitd is not running. Confirm both with
 `ls /etc/polkit-1/rules.d/50-smartamp-poweroff.rules` and

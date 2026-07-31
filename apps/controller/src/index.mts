@@ -111,6 +111,7 @@ const surface = config.streamdeck?.enabled
         postNotification: (data) => notifications.post(data),
         setStandby: (suspended) => audio.setStandby(suspended),
         shutdown: () => systemPower.shutdown(),
+        reboot: () => systemPower.reboot(),
         reattachRespeaker: () => void respeaker?.reattach(),
         ...(config.sleep ? {sleep: config.sleep} : {}),
         ...(config.remote ? {remote: config.remote} : {}),

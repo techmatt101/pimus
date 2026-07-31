@@ -162,6 +162,11 @@ export const PANEL_ACTIONS = {
         example: '{ type: panel, command: shutdown }',
         run: ({power}) => power.shutdown(),
     },
+    reboot: {
+        summary: 'Restart the Pi. It comes back on its own, which a halt does not.',
+        example: '{ type: panel, command: reboot }',
+        run: ({power}) => power.reboot(),
+    },
 } as const satisfies Record<string, PanelActionSpec>
 
 export type PanelActionName = keyof typeof PANEL_ACTIONS

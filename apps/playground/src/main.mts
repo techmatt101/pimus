@@ -227,6 +227,7 @@ const layout = createLayout({
         forceSleep: () => sleep.forceSleep(),
         // The development machine is not the amp: say it and stay running.
         shutdown: () => console.log('[power] shutdown requested'),
+        reboot: () => console.log('[power] reboot requested'),
     },
     notifications,
     ...(remote ? {remote} : {}),

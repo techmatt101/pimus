@@ -25,6 +25,7 @@ export interface ControlSurfaceServices {
     postNotification(data: Record<string, unknown>): void
     setStandby(suspended: boolean): void
     shutdown(): void
+    reboot(): void
     /** Hand a ReSpeaker back that lost its USB power while the panel was off. */
     reattachRespeaker(): void
     sleep?: SleepDeployment
@@ -56,6 +57,7 @@ export function createControlSurface({
     postNotification,
     setStandby,
     shutdown,
+    reboot,
     reattachRespeaker,
     sleep: sleepConfig,
     remote: remoteConfig,
@@ -87,6 +89,7 @@ export function createControlSurface({
         power: {
             forceSleep: () => sleep.forceSleep(),
             shutdown,
+            reboot,
         },
         ...(remote ? {remote} : {}),
     })

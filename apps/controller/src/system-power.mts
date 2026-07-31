@@ -26,7 +26,7 @@ export interface SystemPowerOptions {
 // rule Ansible deploys is what allows it. A refused or failed request unlatches
 // so the key can be pressed again.
 export class SystemPower {
-    #halting = false
+    #ending = false
     readonly #run: Run
     readonly #errors: Pick<Console, 'error'>
 
@@ -36,12 +36,22 @@ export class SystemPower {
     }
 
     shutdown(): void {
-        if (this.#halting) return
-        this.#halting = true
-        log.info('halting the system')
-        void this.#run('systemctl', ['poweroff']).catch((error: unknown) => {
-            this.#halting = false
-            this.#errors.error('poweroff failed', error)
+        this.#end('poweroff', 'halting the system')
+    }
+
+    reboot(): void {
+        this.#end('reboot', 'rebooting the system')
+    }
+
+    // One latch for both: whichever ends the session first, the second request
+    // would only race a board that is already on its way down.
+    #end(command: string, message: string): void {
+        if (this.#ending) return
+        this.#ending = true
+        log.info(message)
+        void this.#run('systemctl', [command]).catch((error: unknown) => {
+            this.#ending = false
+            this.#errors.error(`${command} failed`, error)
         })
     }
 }
