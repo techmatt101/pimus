@@ -145,8 +145,8 @@ export class ReSpeakerController {
 
     /**
      * Waking from sleep restores USB power to a freshly booted array showing
-     * its firmware default effect; the watchdog keeps retrying the rewrite
-     * until the device has re-enumerated.
+     * its firmware default effect; the face is rewritten until the device has
+     * re-enumerated and stopped starting up over the top of it.
      */
     reattach(): Promise<void> {
         return this.#renderer.reattach()

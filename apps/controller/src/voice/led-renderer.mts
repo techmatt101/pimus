@@ -16,6 +16,14 @@ export interface LedRendererOptions {
 /** How often a static face is re-checked so USB failures retry. */
 const RETRY_MILLISECONDS = 500
 
+// An array whose power has just come back enumerates before its firmware has
+// finished starting, and a frame written into that window is accepted over USB
+// and then lost to the firmware's own direction-of-arrival default. Nothing
+// errors, so one successful write is no proof the face took: the whole frame is
+// rewritten on a slow tick until the device has been answering for this long.
+const SETTLE_MILLISECONDS = 20_000
+const SETTLE_TICK_MILLISECONDS = 1000
+
 /**
  * Streams LED frames to a device. A face that never changes is written once and
  * re-verified on a slow watchdog tick so an unplugged ReSpeaker recovers; an
@@ -31,6 +39,8 @@ export class LedRenderer {
     #animation: LedAnimation = new Dark()
     #renderQueue: Promise<void> = Promise.resolve()
     #timer: NodeJS.Timeout | null = null
+    #settleTimer: NodeJS.Timeout | null = null
+    #settleUntil = 0
     #running = false
     #lastSignature = ''
     #lastWarningAt = Number.NEGATIVE_INFINITY
@@ -61,20 +71,21 @@ export class LedRenderer {
     start(): void {
         this.#running = true
         this.#schedule()
-        void this.render()
+        this.#settle()
+        void this.#rewrite()
     }
 
     stop(): void {
         this.#running = false
         if (this.#timer) clearInterval(this.#timer)
         this.#timer = null
+        this.#stopSettling()
     }
 
     /** The device re-enumerated: rewrite the current face from scratch. */
     reattach(): Promise<void> {
-        this.#lastSignature = ''
-        this.device.reattach?.()
-        return this.render()
+        this.#settle()
+        return this.#rewrite()
     }
 
     render(): Promise<void> {
@@ -91,6 +102,9 @@ export class LedRenderer {
                 // The next tick retries with a fresh device handle; repeat
                 // failures are logged once per interval rather than per tick.
                 this.#lastSignature = ''
+                // A device still coming back has not started settling yet, so
+                // the window is counted from the first write it answers.
+                if (this.#settleTimer) this.#settleUntil = this.#now() + SETTLE_MILLISECONDS
                 const warningSignature = String(error)
                 const now = this.#now()
                 if (warningSignature !== this.#lastWarningSignature
@@ -108,6 +122,27 @@ export class LedRenderer {
         const ring = this.#animation.ring(this.#now(), this.#signals)
         if (!ring) return {effect: LedEffect.Off, brightness: this.#brightness}
         return {effect: LedEffect.Ring, brightness: this.#brightness, ring}
+    }
+
+    #rewrite(): Promise<void> {
+        this.#lastSignature = ''
+        this.device.reattach?.()
+        return this.render()
+    }
+
+    #settle(): void {
+        this.#settleUntil = this.#now() + SETTLE_MILLISECONDS
+        if (this.#settleTimer) return
+        this.#settleTimer = setInterval(() => {
+            if (this.#now() >= this.#settleUntil) this.#stopSettling()
+            else void this.#rewrite()
+        }, SETTLE_TICK_MILLISECONDS)
+        this.#settleTimer.unref()
+    }
+
+    #stopSettling(): void {
+        if (this.#settleTimer) clearInterval(this.#settleTimer)
+        this.#settleTimer = null
     }
 
     #schedule(): void {

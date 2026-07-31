@@ -215,6 +215,43 @@ test('LED-only mode does not force a disconnected warning', () => {
     assert.deepEqual(controller.desired(), new Dark())
 })
 
+// A device given its power back answers USB before its firmware has finished
+// booting, and then starts up over whatever was written into that window.
+test('the ring is rewritten after a power cycle until the array has settled', async () => {
+    const rendered: LedFrame[] = []
+    let present = false
+    let reattaches = 0
+    const controller = new ReSpeakerController({
+        config: CONFIG,
+        logger: {warn: () => {}},
+        device: {
+            apply: async (frame) => {
+                if (!present) throw new Error('ReSpeaker 2886:001a not found')
+                rendered.push(frame)
+            },
+            reattach: () => {
+                reattaches += 1
+            },
+        },
+    })
+
+    await controller.handleEvent({event: 'snapshot', data: {ha_connected: true, muted: false}})
+    rendered.length = 0
+
+    // Waking hands the ring back before the USB ports have come up again.
+    await controller.reattach()
+    assert.equal(rendered.length, 0, 'a missing array writes nothing')
+
+    present = true
+    await new Promise((resolve) => setTimeout(resolve, 2200))
+    assert.ok(rendered.length > 1,
+        'the face is written again after the array answers, so a firmware default cannot outlive the wake')
+    assert.ok(reattaches > 2, 'the device is not trusted after a single successful write')
+
+    await controller.release()
+    assert.equal(rendered.at(-1)?.effect, LedEffect.Off)
+})
+
 test('ReSpeaker USB failures are retried without flooding the journal', async () => {
     let now = 0
     const warnings: unknown[][] = []

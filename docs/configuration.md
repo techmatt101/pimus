@@ -133,7 +133,11 @@ empty list — its one OTG port takes VBUS straight off the 5V rail with no swit
 a self-powered hub, so disabling the root port would drop them off the bus without saving a watt — and preflight
 refuses the flag rather than promise a saving that cannot happen. A device re-enumerating after a power cycle can be
 probed before its capture side is ready, so the audio manager also repairs a voice card that comes back with no input
-profile by switching it to the best profile offering a source.
+profile by switching it to the best profile offering a source. The ReSpeaker's ring needs the same patience: the array
+answers USB several seconds before its firmware has finished starting, and it comes up in its own direction-of-arrival
+effect over whatever was written into that gap, without any transfer having failed. The controller therefore rewrites
+the whole face on a slow tick for twenty seconds after the device starts answering again rather than trusting one
+successful write.
 
 Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Sendspin and USB computer audio share the
 `smartamp_background_sink_name` bus and fade down to `smartamp_voice_duck_volume_percent` per cent of their normal level
