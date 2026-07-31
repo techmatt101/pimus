@@ -9,6 +9,10 @@
       - libportaudio2
       # Creates the isolated virtual environment for the pinned client.
       - python3-venv
+      # Ansible's pip module imports packaging on the target to evaluate the
+      # "==" pin below. Bookworm happened to carry it; Trixie does not, so the
+      # install fails on a fresh card without this.
+      - python3-packaging
     state: present
 
 # The published sendspin wheels require Python >= 3.12. Fail with a direct
