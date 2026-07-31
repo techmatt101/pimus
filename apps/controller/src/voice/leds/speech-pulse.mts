@@ -7,8 +7,10 @@ import {LED_COUNT} from '../../types.mjs'
 
 const FRAME_MILLISECONDS = 40
 
-// A pause between words should still read as the assistant holding the floor.
-const FLOOR = 0.1
+// A pause between words should still read as the assistant holding the floor,
+// so silence sits at a dim glow the shimmer stays visible on rather than at a
+// trough that reads as the ring having stopped.
+const FLOOR = 0.22
 
 const SHIMMER = 0.25
 const SHIMMER_PERIOD_MILLISECONDS = 1400
