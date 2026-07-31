@@ -99,6 +99,15 @@ Values set this way are volatile and revert at the next power cycle, which makes
 
 Do not enable LVA's software gain/noise processing until the hardware DSP path is confirmed.
 
+## Saying "stop" does not stop it
+
+"Stop" is heard on the Pi and abandons a reply, a wait on Home Assistant, or a ringing timer — it is deliberately not
+listened for while the assistant is listening to you, so it cannot cancel a request like "stop the music". If it is
+missed in the phases it does cover, watch for `Stop word detected` with `voice_assistant_debug: true`, and lower **Stop
+Word Sensitivity** on the satellite device in Home Assistant. A stop missed only while the amp is talking is an echo
+problem, not a sensitivity one: the assistant's own voice is what the DSP has to cancel, so work through the AEC section
+above first.
+
 ## Background audio does not duck or restore
 
 Check the `background` section in `/run/user/*/smartamp-audio-status.json`. `available` confirms that the background

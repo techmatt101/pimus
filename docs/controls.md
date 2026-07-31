@@ -174,6 +174,11 @@ response is speaking; the launcher adapter described in
 [architecture](architecture.md) is what makes it abort while the satellite is
 still listening or thinking.
 
+Saying "stop" reaches the same cancel without touching the deck, recognised on
+the Pi rather than in the pipeline. It works over a reply, over the wait on Home
+Assistant, and over a ringing timer — but not while the assistant is listening
+to you, where it would take "stop the music" for a cancel rather than a request.
+
 ### Timers
 
 There is one kind of timer here. "Set a timer for five minutes" and the TIMER key

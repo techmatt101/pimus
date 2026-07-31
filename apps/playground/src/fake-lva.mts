@@ -136,7 +136,10 @@ export class FakeLvaServer {
         }
         if (command === 'stop_pipeline') {
             this.cancelPipeline()
-            this.send('idle')
+            // The launcher adapter marks the ending of a cancelled pipeline,
+            // which is what stops the controller holding it for a playout that
+            // a stopped player no longer has.
+            this.send('idle', {cancelled: true})
             return
         }
         const echo = ECHO[command]

@@ -137,6 +137,11 @@ export interface LvaEventData {
     is_active?: boolean
     /** Seconds since the epoch, added by the launcher adapter. */
     emitted_at?: number
+    /**
+     * Whether the reply was cut short rather than running out, added by the
+     * launcher adapter to the ending of a cancelled pipeline.
+     */
+    cancelled?: boolean
 }
 
 export interface LvaMessage {

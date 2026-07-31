@@ -180,7 +180,21 @@ satellite is listening or thinking left the microphone streaming, Home Assistant
 still running the pipeline, and no idle event for the deck to follow. The
 adapter withdraws the request from Home Assistant, drops the wake chime's
 callback — which would otherwise start the very stream being cancelled — and
-emits the idle the control surface waits on.
+emits the idle the control surface waits on. A cancel also has to outlive the
+instant it happens: Home Assistant can already be running the intent when the
+request is withdrawn, so the adapter ignores what that abandoned run reports
+next rather than letting a reply generated a moment too late start speaking into
+a quiet room. The ending it emits is marked cancelled, which is how the
+controller knows to drop the ring and the duck at once instead of holding them
+for the output buffer a reply that ran out would still have.
+
+The spoken stop word reaches the same cancel. Upstream detects it on every audio
+chunk but only acts on it over a spoken reply, an announcement, or a ringing
+timer, so an assistant waiting on Home Assistant hears "stop", recognises it,
+and throws it away. The adapter arms the word for thinking as well, so a request
+that is taking too long or was never wanted ends on the word from either side of
+the reply. Listening is deliberately left out: those words are the request
+itself, and "stop the music" would cancel it rather than run it.
 
 The service units use a compact isolation baseline: core system configuration is
 read-only, home directories are hidden, temporary directories are private, and

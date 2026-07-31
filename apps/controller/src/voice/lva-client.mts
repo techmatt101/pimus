@@ -39,7 +39,6 @@ export class LvaClient implements LvaSender {
     #socket: WebSocket | null = null
     #reconnectTimer: NodeJS.Timeout | null = null
     #playoutTimer: NodeJS.Timeout | null = null
-    #playerStopped = false
 
     constructor({
                     uri,
@@ -112,12 +111,14 @@ export class LvaClient implements LvaSender {
     /**
      * Whether the sound of a reply outlives the event that ended it, which it
      * does whenever mpv ran the reply out: LVA answers as soon as the file
-     * ends, an output buffer before the last of it is heard. Cancelling is
-     * exempt, because stopping the player discards that buffer with it.
+     * ends, an output buffer before the last of it is heard. A cancelled
+     * ending - the cancel key, or the stop word shouted over the reply - is
+     * exempt, because stopping the player discards that buffer with it; the
+     * launcher adapter is what marks those.
      */
     #awaitsPlayout(message: LvaMessage): boolean {
         if (message.event !== 'tts_finished' && message.event !== 'idle') return false
-        return this.state.assist === 'TTS_SPEAKING' && !this.#playerStopped
+        return this.state.assist === 'TTS_SPEAKING' && !message.data?.cancelled
     }
 
     #holdForPlayout(message: LvaMessage): void {
@@ -134,7 +135,6 @@ export class LvaClient implements LvaSender {
     }
 
     #apply(message: LvaMessage): void {
-        if (message.event === 'tts_speaking') this.#playerStopped = false
         applyLvaEvent(this.state, message)
         Promise.resolve(this.#onEvent(message)).catch((error: unknown) => this.#logger.error('voice event hook failed', error))
         this.#onStateChange()
@@ -145,7 +145,6 @@ export class LvaClient implements LvaSender {
         if (socket?.readyState !== this.#WebSocketImpl.OPEN) return false
         log.debug('send', command, data ? JSON.stringify(data) : '')
         socket.send(JSON.stringify({command, ...(data ? {data} : {})}))
-        if (command === 'stop_pipeline') this.#playerStopped = true
         return true
     }
 

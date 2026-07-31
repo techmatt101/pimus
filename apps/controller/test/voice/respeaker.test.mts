@@ -150,6 +150,13 @@ test('the ring blips green when a conversation ends, but not between its turns',
     now = 1000
     await new Promise((resolve) => setTimeout(resolve, face.durationMs + 20))
     assert.deepEqual(controller.desired(), new Dark())
+
+    // "Stop" shouted while it was still thinking ends the conversation from a
+    // phase that was never speaking, and is signed off the same way - that blip
+    // is the only answer the person who shouted gets.
+    await controller.handleEvent({event: 'thinking'})
+    await controller.handleEvent({event: 'idle', data: {cancelled: true}})
+    assert.ok(controller.desired() instanceof Flash, 'a cancelled request is signed off')
 })
 
 test('the ring shows boot until the voice socket answers, then reports a real loss', async () => {

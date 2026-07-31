@@ -2,9 +2,10 @@
 """Run pinned LVA with complete media-state peripheral events and a real cancel.
 
 LVA 1.1.13 emits a playing event but not pause, stop, or natural-completion
-events, and its `stop_pipeline` command only cancels a pipeline that has reached
-speaking. Keep the immutable upstream checkout untouched and install these small
-runtime adapters until the upstream peripheral protocol supplies them.
+events, its `stop_pipeline` command only cancels a pipeline that has reached
+speaking, and its stop word is only listened for over a spoken reply. Keep the
+immutable upstream checkout untouched and install these small runtime adapters
+until the upstream peripheral protocol supplies them.
 """
 
 from __future__ import annotations
@@ -12,18 +13,36 @@ from __future__ import annotations
 import json
 import time
 from enum import Enum
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Dict, Iterable
 
 from aioesphomeapi.api_pb2 import MediaPlayerCommandRequest, VoiceAssistantRequest
 from aioesphomeapi.model import (
     MediaPlayerCommand,
+    VoiceAssistantEventType,
     VoiceAssistantTimerEventType,
 )
 
 from linux_voice_assistant import __main__ as lva_main
 from linux_voice_assistant.entity import MediaPlayerEntity
+from linux_voice_assistant.models import ServerState
 from linux_voice_assistant.peripheral_api import LVACommand, LVAEvent, PeripheralAPIServer
 from linux_voice_assistant.satellite import VoiceSatelliteProtocol
+
+# Peripheral events that say a voice pipeline is live.
+LIVE_PIPELINE_EVENTS = frozenset(
+    {
+        LVAEvent.WAKE_WORD_DETECTED,
+        LVAEvent.LISTENING,
+        LVAEvent.THINKING,
+        LVAEvent.TTS_SPEAKING,
+        LVAEvent.TIMER_RINGING,
+    }
+)
+
+# The phases a shouted "stop" abandons. Listening is deliberately absent: the
+# words being listened for are the request itself, and "stop the music" would
+# cancel that request instead of running it.
+STOP_WORD_PHASES = frozenset({LVAEvent.THINKING, LVAEvent.TTS_SPEAKING, LVAEvent.TIMER_RINGING})
 
 
 class SmartampMediaEvent(str, Enum):
@@ -136,11 +155,22 @@ def install_pipeline_cancel_adapter() -> None:
     the request from HA, and emits no idle event, so the control surface goes on
     showing a live pipeline. Worse, stopping the player during the wake chime
     fires that chime's done callback, which is what starts the stream.
+
+    A cancel also has to outlive the moment it happens. Home Assistant may
+    already be running the intent when the request is withdrawn, and upstream
+    applies whatever that run reports next, so a reply generated a moment too
+    late would start speaking after the amp had gone quiet. The cancel therefore
+    holds until a new pipeline begins, and the ending it emits is marked, which
+    is what lets the controller drop the ring and the duck at once instead of
+    holding them for the output buffer a reply that ran out would still have.
     """
 
     original_stop = VoiceSatelliteProtocol.stop
 
     def stop(self: VoiceSatelliteProtocol) -> None:
+        # Set before anything is torn down: this is what marks the endings the
+        # teardown emits, and what drops the abandoned run's remaining events.
+        self._smartamp_cancelled = True
         player = self.state.tts_player
         ringing = self._timer_finished  # pylint: disable=protected-access
         active = self._pipeline_active  # pylint: disable=protected-access
@@ -173,6 +203,92 @@ def install_pipeline_cancel_adapter() -> None:
             self._emit(LVAEvent.IDLE)  # pylint: disable=protected-access
 
     VoiceSatelliteProtocol.stop = stop  # type: ignore[method-assign]
+
+    original_handle_voice_event = VoiceSatelliteProtocol.handle_voice_event
+
+    def handle_voice_event(
+        self: VoiceSatelliteProtocol,
+        event_type: VoiceAssistantEventType,
+        data: Dict[str, str],
+    ) -> None:
+        if event_type == VoiceAssistantEventType.VOICE_ASSISTANT_RUN_START:
+            self._smartamp_cancelled = False
+        elif getattr(self, "_smartamp_cancelled", False):
+            # The run this belongs to was cancelled; its reply must not arrive.
+            return
+        original_handle_voice_event(self, event_type, data)
+
+    VoiceSatelliteProtocol.handle_voice_event = handle_voice_event  # type: ignore[method-assign]
+
+    original_emit = VoiceSatelliteProtocol._emit  # pylint: disable=protected-access
+
+    def emit(
+        self: VoiceSatelliteProtocol,
+        event: LVAEvent | SmartampTimerEvent,
+        data: dict[str, Any] | None = None,
+    ) -> None:
+        if event in LIVE_PIPELINE_EVENTS:
+            # A pipeline is running again, so the last cancel is spent. An
+            # announcement arrives this way too, without a run of its own.
+            self._smartamp_cancelled = False
+        elif getattr(self, "_smartamp_cancelled", False) and event in (
+            LVAEvent.TTS_FINISHED,
+            LVAEvent.IDLE,
+        ):
+            data = {**(data or {}), "cancelled": True}
+        original_emit(self, event, data)  # type: ignore[arg-type]
+
+    VoiceSatelliteProtocol._emit = emit  # type: ignore[method-assign]  # pylint: disable=protected-access
+
+
+def install_stop_word_scope_adapter() -> None:
+    """Listen for the stop word while thinking, not only over a spoken reply.
+
+    LVA detects the stop word on every audio chunk, but only acts on it while
+    the model's id sits in `active_wake_words`, and upstream only puts it there
+    for a spoken reply, an announcement, and a ringing timer. An assistant
+    waiting on Home Assistant is therefore the one phase where "stop" is heard,
+    recognised, and then thrown away, leaving the deck as the only way out of a
+    request that is taking too long or was never wanted. Arming per phase also
+    re-arms after Home Assistant rebuilds the active set from a configuration
+    change, which upstream's one-shot add does not survive.
+    """
+
+    original_emit = VoiceSatelliteProtocol._emit  # pylint: disable=protected-access
+
+    def emit(
+        self: VoiceSatelliteProtocol,
+        event: LVAEvent | SmartampTimerEvent,
+        data: dict[str, Any] | None = None,
+    ) -> None:
+        if event in STOP_WORD_PHASES:
+            self.state.active_wake_words.add(self.state.stop_word.id)
+        elif event in (LVAEvent.LISTENING, LVAEvent.IDLE, LVAEvent.PIPELINE_ERROR):
+            self.state.active_wake_words.discard(self.state.stop_word.id)
+        original_emit(self, event, data)  # type: ignore[arg-type]
+
+    VoiceSatelliteProtocol._emit = emit  # type: ignore[method-assign]  # pylint: disable=protected-access
+
+
+def install_stop_word_sensitivity_adapter() -> None:
+    """Restore the saved stop-word sensitivity at startup.
+
+    Upstream writes the Home Assistant slider's value into its preferences file
+    but never reads it back (its own TODO), so every restart drops the stop word
+    to the 0.5 default while the entity still shows the tuned figure. The
+    threshold is read from server state on each chunk, so seeding it before the
+    satellite builds its entities is enough.
+    """
+
+    original_init = VoiceSatelliteProtocol.__init__
+
+    def init(self: VoiceSatelliteProtocol, state: ServerState) -> None:
+        saved = state.preferences.stop_word_sensitivity
+        if saved is not None:
+            state.stop_word_threshold = float(saved)
+        original_init(self, state)
+
+    VoiceSatelliteProtocol.__init__ = init  # type: ignore[method-assign]
 
 
 def install_timer_detail_adapter() -> None:
@@ -225,5 +341,7 @@ def install_timer_detail_adapter() -> None:
 if __name__ == "__main__":
     install_media_event_adapters()
     install_pipeline_cancel_adapter()
+    install_stop_word_sensitivity_adapter()
+    install_stop_word_scope_adapter()
     install_timer_detail_adapter()
     lva_main.run()

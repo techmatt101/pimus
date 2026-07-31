@@ -197,8 +197,11 @@ export class ReSpeakerController {
             this.#assistState = 'timer_ticking'
         }
         // A conversation LVA means to follow up answers with listening instead,
-        // so reaching idle from a reply is what says it is over.
-        if (wasSpeaking && this.#assistState === 'idle') this.#startFlash()
+        // so reaching idle from a reply is what says it is over. A cancelled
+        // pipeline is over from whatever phase it was in, and signing off is
+        // the only answer someone who shouted over it gets.
+        const ended = wasSpeaking || Boolean(data.cancelled)
+        if (ended && this.#assistState === 'idle') this.#startFlash()
         await this.render()
     }
 }

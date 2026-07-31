@@ -126,8 +126,8 @@ test('the end of a reply is held back until the audio has played out', async () 
     const socket = FakeWebSocket.instances.at(-1)
     assert.ok(socket)
     socket.emit('open')
-    const deliver = (event: string): void => {
-        socket.emit('message', Buffer.from(JSON.stringify({event})))
+    const deliver = (event: string, data?: Record<string, unknown>): void => {
+        socket.emit('message', Buffer.from(JSON.stringify({event, ...(data ? {data} : {})})))
     }
     const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 50))
 
@@ -150,11 +150,12 @@ test('the end of a reply is held back until the audio has played out', async () 
     await settle()
     assert.equal(state.assist, 'WAKE_WORD_DETECTED')
 
-    // Cancelling stops the player outright rather than letting it run out, so
-    // that ending is the truth and lands at once.
+    // Cancelling - the key, or "stop" shouted over the reply - stops the player
+    // outright rather than letting it run out, and the launcher adapter marks
+    // the ending it emits, so that ending is the truth and lands at once.
     deliver('tts_speaking')
     client.send('stop_pipeline')
-    deliver('idle')
+    deliver('tts_finished', {cancelled: true})
     assert.equal(state.assist, 'IDLE')
 
     // That exemption belongs to the reply it stopped, and not to the next one.

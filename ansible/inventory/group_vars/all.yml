@@ -272,8 +272,11 @@ voice_assistant_name: "{{ smartamp_hostname }} Voice"
 # hey_morgan, hey_home_assistant, choo_choo_homie, alexa, and stop. Custom
 # OpenWakeWord models dropped in /var/lib/smartamp/lva/wakewords work by name.
 voice_assistant_wake_model: okay_nabu
-# The stop model listens for "stop" during a response; "stop" is the only
-# bundled one, but any wake model name above is accepted here too.
+# The stop model ends a reply or a request in progress; "stop" is the only
+# bundled one, but any wake model name above is accepted here too. Which phases
+# it is listened for over is compiled into the launcher adapter, and its
+# sensitivity is Home Assistant's "Stop Word Sensitivity" number entity on the
+# satellite; see docs/configuration.md.
 voice_assistant_stop_model: stop
 voice_assistant_mic_volume: 100
 voice_assistant_port: 6053

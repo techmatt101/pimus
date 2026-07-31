@@ -269,6 +269,19 @@ files can be placed in `/var/lib/smartamp/lva/wakewords` and selected by name.
 The remote Home Assistant Assist pipeline supplies speech-to-text,
 conversation handling, and text-to-speech.
 
+`voice_assistant_stop_model` is the word that abandons what the assistant is
+doing, recognised on the Pi rather than in the pipeline, so it lands whether or
+not Home Assistant is quick or reachable. Say it while the amp is talking, while
+it is waiting on Home Assistant, or over a ringing timer, and the reply stops
+mid-word, the request is withdrawn, and the ring blips green. Which of those
+phases it is listened for over is compiled into the launcher adapter rather than
+configured; the one phase deliberately left out is listening, because the words
+being listened for are the request itself and "stop the music" would cancel the
+request instead of running it. Its sensitivity is Home Assistant's **Stop Word
+Sensitivity** number on the satellite device — lower it if a shouted stop is
+missed, raise it if conversation trips it — and the same adapter is what makes
+that setting survive a restart.
+
 The XVF3800 already performs AEC, beamforming, dereverberation, noise suppression and gain control. Leave LVA software
 noise suppression and auto-gain disabled initially to avoid processing the signal twice.
 
