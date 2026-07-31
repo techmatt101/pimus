@@ -22,8 +22,8 @@ export const VOICE_LED_STATES: ReadonlyMap<string, LedAnimation> = new Map(Objec
     // The amp has stopped listening but Home Assistant has not answered yet,
     // which on a machine transcribing without a GPU is the longest part of the
     // round trip. Spun rather than waved so it cannot be read as still hearing.
-    transcribing: new Spin('#00e5ff'),
-    thinking: new Spin('#7c4dff'),
+    transcribing: new Spin('#9df6ff'),
+    thinking: new Spin('#bf00ff'),
     tts_speaking: new SpeechPulse('#ffffff'),
     timer_ticking: new Solid('#ffab00'),
     timer_ringing: new Blink('#ff6d00'),

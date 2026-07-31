@@ -287,19 +287,14 @@ voice_assistant_mic_volume: 100
 # end, so set the satellite's "finished speaking detection" to relaxed there;
 # see docs/configuration.md. Set the silence to 0 to switch the whole thing off
 # and hand the decision back.
-voice_assistant_endpoint_silence_ms: 250
+voice_assistant_endpoint_silence_ms: 350
 # Used instead when the speaker stopped after a word shorter than the phrase
-# length below, which is what trailing off mid-sentence sounds like. Keep the
-# phrase length short: a final word like "off" or "lamp" is only about a
-# quarter of a second, and treating those as hesitant makes every short
-# command wait for the patient figure.
-voice_assistant_endpoint_patient_silence_ms: 600
-voice_assistant_endpoint_short_phrase_ms: 300
+# length below, which is what trailing off mid-sentence sounds like.
+voice_assistant_endpoint_patient_silence_ms: 900
+voice_assistant_endpoint_short_phrase_ms: 400
 # Speech heard before a turn may be ended locally at all, so a cough or a door
-# is left to Home Assistant rather than sent as a request. Two-word commands
-# are barely over half a second of speech in total, so this has to stay well
-# under that or they fall through to Home Assistant's slower figure.
-voice_assistant_endpoint_min_speech_ms: 300
+# is left to Home Assistant rather than sent as a request.
+voice_assistant_endpoint_min_speech_ms: 500
 # Voice detector installed into the satellite's virtual environment for the
 # above; pinned exactly as the satellite and player releases are.
 voice_assistant_vad_version: "2.1.0"
