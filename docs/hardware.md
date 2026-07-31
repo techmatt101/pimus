@@ -50,11 +50,13 @@ changes anything.
 
 **Pi 4 B** switches VBUS through its VL805 hub across all four sockets at once,
 but only on firmware `000137ad` or newer (`sudo rpi-eeprom-update`); older
-firmware accepts the write and leaves the sockets lit. With no power button,
-`smartamp_power_off_on_halt` is refused unless `smartamp_wake_on_gpio` is also on
-— shorting GPIO3 to ground is then the only way to start a halted board short of
-a plug cycle. The same gap applies to sleep: with the USB power-off flag on the
-deck is dark and **presence returning is the only thing that wakes the board**.
+firmware accepts the write and leaves the sockets lit. Its bootloader **ignores
+`POWER_OFF_ON_HALT` whenever `WAKE_ON_GPIO` is set**, so the two are mutually
+exclusive and preflight refuses the pair: keep `smartamp_wake_on_gpio` off for
+the ~0W halt and start the board with a plug cycle, or keep GPIO3 as a wake path
+and accept a halted board that never powers down. The same gap applies to sleep:
+with the USB power-off flag on the deck is dark and **presence returning is the
+only thing that wakes the board**.
 
 **Pi Zero 2 W** has one micro-USB data port, so the deck, the ReSpeaker, and any
 Ethernet adapter all arrive through a **self-powered hub** — which is also why it

@@ -43,6 +43,11 @@ smartamp_boards:
       - /sys/bus/usb/devices/usb2/2-0:1.0/usb2-port1/disable
       - /sys/bus/usb/devices/usb3/3-0:1.0/usb3-port1/disable
       - /sys/bus/usb/devices/usb4/4-0:1.0/usb4-port1/disable
+    # Whether this firmware ignores POWER_OFF_ON_HALT when WAKE_ON_GPIO is set.
+    # On a Pi 5 it does not: POWER_OFF_ON_HALT puts the PMIC into STANDBY and the
+    # power button wakes it whatever WAKE_ON_GPIO says, so the two are
+    # independent and both may be on.
+    wake_on_gpio_defeats_halt: false
     # Which bootloader EEPROM keys this firmware understands. eeprom.yml writes
     # only these and strips only these, so a key absent here is never staged
     # and never removed from a config someone else set.
@@ -56,10 +61,9 @@ smartamp_boards:
   pi4b:
     label: "Raspberry Pi 4 Model B"
     model_match: "Raspberry Pi 4 Model B"
-    # No power button of any kind, so a halted board needs WAKE_ON_GPIO (GPIO3
-    # or GLOBAL_EN shorted to ground) or a plug cycle to come back; preflight
-    # refuses POWER_OFF_ON_HALT here without it. It also means a slept board
-    # whose USB power is cut can only be woken by presence: see the note on
+    # No power button of any kind, so a halted board comes back on a plug cycle,
+    # or on GPIO3/GLOBAL_EN shorted to ground. It also means a slept board whose
+    # USB power is cut can only be woken by presence: see the note on
     # smartamp_sleep_usb_power_off in inventory.
     power_button: false
     usb_gadget: true
@@ -84,6 +88,12 @@ smartamp_boards:
       - /sys/bus/usb/devices/usb2/2-0:1.0/usb2-port2/disable
       - /sys/bus/usb/devices/usb2/2-0:1.0/usb2-port3/disable
       - /sys/bus/usb/devices/usb2/2-0:1.0/usb2-port4/disable
+    # The BCM2711 bootloader ignores POWER_OFF_ON_HALT whenever WAKE_ON_GPIO is
+    # set: watching GPIO3 needs the PMIC left partly up, so the two are mutually
+    # exclusive here. Asking for both is what silently costs the halt its ~0W
+    # floor and leaves the board sitting at a couple of watts, so preflight
+    # refuses the pair rather than write a flag the firmware will discard.
+    wake_on_gpio_defeats_halt: true
     # The Pi 4B bootloader has no WAIT_FOR_POWER_BUTTON and no PSU_MAX_CURRENT:
     # its USB-A budget is fixed in hardware at roughly 1.2A total, with no
     # supply to declare.
@@ -107,6 +117,8 @@ smartamp_boards:
     # no switch in the path, and the devices are on a self-powered hub anyway -
     # disabling the root port would drop them off the bus without saving a watt.
     usb_port_disables: []
+    # Moot: there is no bootloader EEPROM here to hold either key.
+    wake_on_gpio_defeats_halt: false
     # A BCM2710 boots bootcode.bin from the SD card: there is no bootloader
     # EEPROM on this board, and no rpi-eeprom-config to read. An empty list is
     # what skips that task entirely (tasks/main.yml) and what makes preflight

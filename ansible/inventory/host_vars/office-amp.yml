@@ -24,13 +24,14 @@ voice_assistant_name: "Office Amp Voice"
 usb_audio_gadget_enabled: true
 usb_audio_product: "Office Amp USB"
 
-# Cut the rails on halt, for the ~0W floor the deep-sleep automation wants. This
-# board has no power button, so WAKE_ON_GPIO is the only wake path it has and
-# provisioning insists on it before halting the rails; what actually starts the
-# amp again is the plug coming back on, which needs at least 60 seconds off for
-# the brick's capacitors to drain.
+# Cut the rails on halt, for the ~0W floor the deep-sleep automation wants.
+# WAKE_ON_GPIO has to stay off to get it: the Pi 4B bootloader ignores
+# POWER_OFF_ON_HALT whenever that key is set, because watching GPIO3 means
+# leaving the PMIC partly up - which is what left this amp drawing ~3W halted
+# while both were on. Nothing is wired to GPIO3 here anyway; what starts the amp
+# again is the plug coming back on, which needs at least 60 seconds off for the
+# brick's capacitors to drain.
 smartamp_power_off_on_halt: true
-smartamp_wake_on_gpio: true
 
 # Take the USB-A sockets dark while the room is empty, so the deck and the
 # ReSpeaker cost nothing there. The VL805 switches all four together on firmware

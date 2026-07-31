@@ -200,8 +200,8 @@ with no need to cut the plug to reach that floor.
 
 The trade-off is waking it again. A halted board is not reachable over the network, so only the dedicated power button,
 an RTC wakealarm, or a plug power-cycle boots it — plan any away-from-home automation around that before turning the
-flag on. A Pi 4B has no such button: there, `smartamp_wake_on_gpio` and a wire to GPIO3 are the substitute, and
-preflight insists on it before this flag may be set. At near-zero load the brick's capacitors also hold the rail for a
+flag on. A Pi 4B has no such button, and cannot substitute `smartamp_wake_on_gpio` for one while keeping the floor: see
+below. At near-zero load the brick's capacitors also hold the rail for a
 surprisingly long time, so a plug cut has to
 last **at least 60 seconds** before switching back on, or the Pi never sees the gap. Cutting the plug shortly after the
 shutdown completes and simply switching it on at arrival avoids the problem entirely — which is what
@@ -215,9 +215,15 @@ amp on its own. Left off, power coming back is a normal boot.
 or GLOBAL_EN to ground. Raspberry Pi document it as *not relevant* from the Pi 5 onwards, because the dedicated power
 button wakes the board from HALT or STANDBY whatever the setting says, and `POWER_OFF_ON_HALT` needs no help from it
 there. On a Pi 5 it is therefore managed purely so a re-flashed EEPROM cannot come back with a different value;
-changing it will not alter how that board wakes. On a Pi 4B it is the whole story — there is no power button — so
-preflight refuses `smartamp_power_off_on_halt` unless this is on, rather than let provisioning produce a board that
-halts and cannot be started again short of a plug cycle.
+changing it will not alter how that board wakes.
+
+On a Pi 4B the two flags are **mutually exclusive**: that bootloader ignores `POWER_OFF_ON_HALT` whenever
+`WAKE_ON_GPIO` is set, because watching GPIO3 means leaving the PMIC partly up. Setting both does not get you a wake
+path *and* the floor — it gets you the wake path and a halt that quietly does nothing, which reads at the wall as a
+powered-off amp still drawing a couple of watts. Preflight refuses the pair
+(`wake_on_gpio_defeats_halt` in `boards.yml`). Leave `smartamp_wake_on_gpio` off there and start the board with a plug
+cycle, which is what the deep-sleep routine does anyway; turn it on only if a wire to GPIO3 matters more than the
+halted draw.
 
 Bootloader settings are applied together in one staged EEPROM update (`ansible/roles/smartamp/tasks/eeprom.yml`) that
 the firmware flashes during the reboot provisioning schedules; `PSU_MAX_CURRENT` is the fourth key this role owns on a

@@ -216,9 +216,10 @@ so it can be pressed again once the permission is in place.
 With `smartamp_power_off_on_halt: true` (the default) the bootloader cuts the board's rails on halt, so a halted Pi
 draws nothing and answers nothing — no ping, no SSH, no wake-on-LAN. Boot it with the dedicated power button, an RTC
 wakealarm, or by power-cycling the plug. On a Pi 5 `WAKE_ON_GPIO` has no bearing on this: from the Pi 5 onwards the
-power button wakes the board from HALT or STANDBY whatever that setting is. A Pi 4B has no power button, so there
-`WAKE_ON_GPIO` is the wake path — shorting GPIO3 or GLOBAL_EN to ground — and provisioning refuses to halt the rails
-without it. None of this applies to a Pi Zero 2 W: it has no bootloader EEPROM, so the flag must be false there and a
+power button wakes the board from HALT or STANDBY whatever that setting is. A Pi 4B has no power button, and there
+`WAKE_ON_GPIO` cannot be the answer: that bootloader ignores `POWER_OFF_ON_HALT` whenever it is set, so provisioning
+refuses the two together and a plug cycle is the wake path. None of this applies to a Pi Zero 2 W: it has no
+bootloader EEPROM, so the flag must be false there and a
 halt leaves the rails up. If such a board is unreachable after a shutdown it has genuinely stopped rather than powered
 down, and cutting the plug is what restarts it.
 
@@ -227,6 +228,20 @@ the rail up through a brief interruption: a 10 second off/on does nothing. Leave
 switch the plug off shortly after the shutdown finishes so that turning it on is a clean cold start. If the board is up
 but you expected it to be off, check `sudo rpi-eeprom-config` for `POWER_OFF_ON_HALT=1` — a hand-flashed or re-imaged
 EEPROM loses it, and re-provisioning puts it back.
+
+## A halted Pi 4B still draws a couple of watts
+
+Check the same output for `WAKE_ON_GPIO`:
+
+```sh
+sudo rpi-eeprom-config | grep -E 'POWER_OFF_ON_HALT|WAKE_ON_GPIO'
+```
+
+`WAKE_ON_GPIO=1` makes the BCM2711 bootloader ignore `POWER_OFF_ON_HALT` altogether, so the halt leaves the rails up
+and the board sits at roughly the draw it would if it had never powered down. Both keys set is the combination to look
+for; provisioning now refuses it, but an EEPROM flashed before that check went in can still carry it. Set
+`smartamp_wake_on_gpio: false` for the unit and re-provision. This is a Pi 4B trait — on a Pi 5 the two are
+independent, which is why the same inventory measured near 0W there.
 
 ## Stream Deck is dark
 

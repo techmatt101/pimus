@@ -12,7 +12,9 @@
 # POWER_OFF_ON_HALT cuts the board's rails on halt (PMIC STANDBY on a Pi 5).
 # WAKE_ON_GPIO is inert on a board with a dedicated power button, which wakes it
 # from HALT or STANDBY regardless, and is pinned there only so the value cannot
-# drift; on a Pi 4B it is the only wake path and preflight insists on it.
+# drift; on a Pi 4B it is the one wake path that avoids the plug, but the
+# bootloader ignores POWER_OFF_ON_HALT whenever it is set, so preflight refuses
+# the two together (wake_on_gpio_defeats_halt in vars/boards.yml).
 # WAIT_FOR_POWER_BUTTON off is what lets restoring the plug boot the amp rather
 # than park it at the bootloader.
 # PSU_MAX_CURRENT declares the GPIO supply the bootloader cannot negotiate for

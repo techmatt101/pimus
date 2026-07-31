@@ -32,9 +32,10 @@ smartamp_power_off_on_halt: false
 # from the Pi 5 onwards, because the dedicated power button wakes the board from
 # HALT or STANDBY whatever it is set to, and POWER_OFF_ON_HALT needs no help from
 # it there. It is pinned here only so the value cannot drift; turning it on does
-# not make a halted Pi reachable over the network. On a Pi 4B, which has no power
-# button, this is the only wake path there is, so provisioning refuses to halt
-# the rails without it.
+# not make a halted Pi reachable over the network. On a Pi 4B it is the one wake
+# path that does not involve the plug, but it costs the halt entirely: that
+# bootloader ignores POWER_OFF_ON_HALT whenever this is set, so provisioning
+# refuses the two together and off is what buys the ~0W floor.
 smartamp_wake_on_gpio: false
 # Park the board at the bootloader on the first boot after power was removed,
 # waiting for the power button instead of starting (bootloader EEPROM

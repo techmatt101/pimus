@@ -135,20 +135,25 @@
       Set {{ 'them' if smartamp_unsupported_power_settings | length > 1 else 'it' }}
       to false.
 
-# A board with a power button wakes from halt on that button whatever
-# WAKE_ON_GPIO says. Without one, WAKE_ON_GPIO is the only wake path there is,
-# and halting with it off leaves a board nobody can start again without pulling
-# the plug for a minute.
-- name: Require a wake path for a board with no power button
+# On a board whose bootloader watches GPIO3 by leaving the PMIC partly up, the
+# two flags are mutually exclusive: asking for both gets the wake path and a
+# halt that quietly does nothing, which reads at the wall as a powered-off amp
+# still drawing a couple of watts. Name it rather than write a flag the firmware
+# discards. The board is still startable with WAKE_ON_GPIO off - a plug cycle
+# cold-boots it, which is what the deep-sleep routine does anyway - so this
+# refuses the pair rather than either flag on its own.
+- name: Refuse a halt power-down the wake-on-GPIO flag would defeat
   ansible.builtin.assert:
-    that: smartamp_wake_on_gpio | bool
+    that: not (smartamp_wake_on_gpio | bool)
     fail_msg: >-
-      smartamp_power_off_on_halt is on but {{ smartamp_board_caps.label }} has no
-      power button, so only smartamp_wake_on_gpio (GPIO3 or GLOBAL_EN shorted to
-      ground) can start it again. Turn that on, or turn off the halt power-down.
+      smartamp_power_off_on_halt and smartamp_wake_on_gpio are both on, but the
+      {{ smartamp_board_caps.label }} bootloader ignores POWER_OFF_ON_HALT
+      whenever WAKE_ON_GPIO is set, so the rails would stay up on halt. Turn off
+      smartamp_wake_on_gpio and start the board with a plug cycle (or GLOBAL_EN
+      shorted to ground), or turn off the halt power-down to keep GPIO3 waking it.
   when:
     - smartamp_power_off_on_halt | bool
-    - not (smartamp_board_caps.power_button | bool)
+    - smartamp_board_caps.wake_on_gpio_defeats_halt | bool
 
 # A remote tile is a face on a deck page, so with no deck the listener would
 # authenticate pushes and paint them nowhere - and it is one of the two modules
