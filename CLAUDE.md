@@ -8,7 +8,8 @@ optionally an Elgato Stream Deck+. It targets a fresh 64-bit Raspberry Pi OS
 Lite installation on a Pi 5, a Pi 4 Model B, or a Pi Zero 2 W (which reaches its
 USB devices through a self-powered hub). Three units are configured today:
 
-- `office-amp` — Pi 5, DAC2 ADC Pro + AAmp60, Stream Deck+, USB sound card.
+- `office-amp` — Pi 4 Model B, DAC2 ADC Pro + AAmp60, Stream Deck+, USB sound
+  card.
   The reference build and the only one with a deck or an aux input.
 - `bedroom-amp` — Pi 4 Model B, Amp100, no deck.
 - `kitchen-amp` — Pi Zero 2 W, Amp100, no deck, USB devices on a powered hub.

@@ -311,8 +311,8 @@ streamdeck_enabled: false
 # nothing else may be left plugged in expecting to survive sleep. A Pi 4B needs
 # VL805 firmware 000137ad or newer (sudo rpi-eeprom-update) or the write is a
 # silent no-op, and has no power button, so with this on presence returning is
-# the only thing that wakes it - set it to false there to keep a deck touch as
-# a wake source. A Pi Zero 2 W has no switchable port at all and its devices
+# the only thing that wakes it - leave it false there if a deck touch has to
+# stay a wake source. A Pi Zero 2 W has no switchable port at all and its devices
 # hang off a self-powered hub, so this must be false there; the panel still
 # sleeps and a touch still wakes it.
 #

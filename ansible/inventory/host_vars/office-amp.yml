@@ -1,8 +1,8 @@
 ---
-# office-amp: Raspberry Pi 5, HiFiBerry DAC2 ADC Pro with the AAmp60 add-on
-# amplifier, ReSpeaker XVF3800, and an Elgato Stream Deck+. The reference build
-# and the only unit here with a deck, an analogue aux input, or a USB-C port
-# given over to being a sound card.
+# office-amp: Raspberry Pi 4 Model B, HiFiBerry DAC2 ADC Pro with the AAmp60
+# add-on amplifier, ReSpeaker XVF3800, and an Elgato Stream Deck+. The reference
+# build and the only unit here with a deck, an analogue aux input, or a USB-C
+# port given over to being a sound card.
 #
 # Only what differs from inventory/group_vars/all.yml belongs in this file;
 # every setting is explained there.
@@ -17,16 +17,25 @@ sendspin_name: "Office Amp"
 voice_assistant_name: "Office Amp Voice"
 
 # The desk computer plays into the USB-C port, which means the AAmp60 stack
-# feeds the Pi through the GPIO header instead. The Pi 5's PMIC arbitrates the
-# two supplies, which is why this is safe here and needs a power-cut cable on a
-# Pi 4B.
+# feeds the Pi through the GPIO header instead. On a Pi 4B the host cable's
+# power line has to be cut as well - this board wires USB-C VBUS onto the same
+# 5V rail as the GPIO header, with no PMIC to arbitrate the two supplies - so
+# the cable to the desk computer is a data-only one.
 usb_audio_gadget_enabled: true
 usb_audio_product: "Office Amp USB"
 
-# The Pi 5's power button wakes a halted board, so the rails can be cut on halt
-# without stranding it, and the ganged USB-A sockets can go dark while the room
-# is empty. Both are Pi 5 behaviours; the other two units leave them off.
+# Cut the rails on halt, for the ~0W floor the deep-sleep automation wants. This
+# board has no power button, so WAKE_ON_GPIO is the only wake path it has and
+# provisioning insists on it before halting the rails; what actually starts the
+# amp again is the plug coming back on, which needs at least 60 seconds off for
+# the brick's capacitors to drain.
 smartamp_power_off_on_halt: true
+smartamp_wake_on_gpio: true
+
+# Take the USB-A sockets dark while the room is empty, so the deck and the
+# ReSpeaker cost nothing there. The VL805 switches all four together on firmware
+# 000137ad or newer (this board is on 138c0); with the deck dark and no power
+# button, presence returning is what wakes the amp.
 smartamp_sleep_usb_power_off: true
 
 # Kept on, with the journal persisted, while the USB-gadget crash is being
