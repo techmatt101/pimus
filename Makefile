@@ -11,7 +11,7 @@ export ANSIBLE_CONFIG
 LIMIT ?=
 ANSIBLE_LIMIT := $(if $(LIMIT),--limit $(LIMIT),)
 
-.PHONY: help install build icons update-versions playground dev provision deploy-controller check test verify doctor
+.PHONY: help install build icons update-versions playground playground-check dev provision deploy-controller check test verify doctor
 
 help:
 	@awk 'BEGIN {FS = ":.*## "; printf "Usage: make <target>\n\n"} /^[a-zA-Z_-]+:.*## / {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -46,6 +46,12 @@ update-versions: ## Refresh every upstream version pin and checksum to the lates
 playground: ## Run the controller locally with a fake Stream Deck in a browser
 	[ -d apps/playground/node_modules ] || pnpm install --frozen-lockfile
 	pnpm --filter pimus-playground start
+
+# The exiting counterpart to "playground": type-checks the fakes against the
+# controller sources without starting the server, so it can follow "make test".
+playground-check: ## Type-check the playground against the controller sources
+	[ -d apps/playground/node_modules ] || pnpm install --frozen-lockfile
+	pnpm --filter pimus-playground typecheck
 
 # Recompiles on every save, restarts the playground, and reloads the browser.
 dev: ## Run the playground with live reload while you edit the controller

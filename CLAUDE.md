@@ -388,11 +388,15 @@ It compiles `apps/controller/src` with the controller's own strict settings, so
 after changing a controller module's shape also run:
 
 ```sh
-make playground        # or: pnpm --filter pimus-playground typecheck
+make playground-check
 ```
 
 Add fakes there rather than changing controller code to accommodate the
 playground; it may only replace boundaries the controller already injects.
+
+`make playground` and `make dev` are not checks: they start the fake amp and
+run until interrupted. Never run either to validate a change — they never
+return.
 
 Commands such as `make provision`, `make check`, `make verify`, and `make doctor`
 contact or change the real Pis, and run against every unit in the inventory
