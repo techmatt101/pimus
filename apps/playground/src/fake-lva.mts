@@ -2,7 +2,7 @@
 // LvaClient connects to it over a loopback socket, so reconnects, the snapshot
 // handshake, and every command the catalog sends are exercised for real.
 //
-// It also plays back a plausible pipeline (wake -> listening -> thinking ->
+// It also plays back a plausible pipeline (wake -> listening -> transcribing -> thinking ->
 // speaking -> idle) so ducking, the ReSpeaker LEDs, and the key indicators all
 // move on their own without anyone speaking to a microphone.
 
@@ -15,8 +15,11 @@ import type {LvaEventData} from '../../controller/src/types.mjs'
 const PIPELINE: ReadonlyArray<readonly [delay: number, event: string]> = [
     [0, 'wake_word_detected'],
     [400, 'listening'],
-    [2200, 'thinking'],
-    [3600, 'tts_speaking'],
+    // The satellite stops listening well before Home Assistant answers; on a
+    // machine transcribing without a GPU this is the longest wait of the run.
+    [2200, 'transcribing'],
+    [3400, 'thinking'],
+    [4200, 'tts_speaking'],
     // Upstream emits both in one breath, and it is the idle that says the
     // conversation is over: a reply it means to follow up sends listening here.
     [6000, 'tts_finished'],

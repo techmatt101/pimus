@@ -85,6 +85,24 @@ class SmartampTimerEvent(str, Enum):
     CANCELLED = "timer_cancelled"
 
 
+class SmartampVoiceEvent(str, Enum):
+    """The request has been heard in full and is being turned into words.
+
+    Upstream reports listening and then thinking, and calls everything in
+    between listening - but thinking only begins once Home Assistant has
+    transcribed the request, which is the slowest part of the round trip on a
+    machine without a GPU. A ring still showing "listening" through it invites
+    the speaker to repeat themselves.
+    """
+
+    TRANSCRIBING = "transcribing"
+
+
+# Everything the peripheral socket carries: upstream's own states and the ones
+# these adapters add beside them.
+PeripheralEvent = LVAEvent | SmartampMediaEvent | SmartampTimerEvent | SmartampVoiceEvent
+
+
 def event_for_command(command: MediaPlayerCommand) -> LVAEvent | SmartampMediaEvent | None:
     if command == MediaPlayerCommand.PLAY:
         return LVAEvent.MEDIA_PLAYER_PLAYING
@@ -100,12 +118,12 @@ def install_media_event_adapters() -> None:
 
     async def emit_event(
         self: PeripheralAPIServer,
-        event: LVAEvent | SmartampMediaEvent,
+        event: PeripheralEvent,
         data: dict[str, Any] | None = None,
     ) -> None:
         # Upstream's state cache only recognises its own enum. Cache the added
         # states here so a reconnecting controller receives the correct replay.
-        if isinstance(event, SmartampMediaEvent):
+        if isinstance(event, (SmartampMediaEvent, SmartampVoiceEvent)):
             self._current_state = event  # type: ignore[assignment]  # pylint: disable=protected-access
             self._current_state_data = data or None  # pylint: disable=protected-access
         await original_emit_event(self, event, data)  # type: ignore[arg-type]
@@ -251,7 +269,7 @@ def install_pipeline_cancel_adapter() -> None:
 
     def emit(
         self: VoiceSatelliteProtocol,
-        event: LVAEvent | SmartampTimerEvent,
+        event: PeripheralEvent,
         data: dict[str, Any] | None = None,
     ) -> None:
         if event in LIVE_PIPELINE_EVENTS:
@@ -285,7 +303,7 @@ def install_stop_word_scope_adapter() -> None:
 
     def emit(
         self: VoiceSatelliteProtocol,
-        event: LVAEvent | SmartampTimerEvent,
+        event: PeripheralEvent,
         data: dict[str, Any] | None = None,
     ) -> None:
         if event in STOP_WORD_PHASES:
@@ -318,6 +336,36 @@ def install_stop_word_sensitivity_adapter() -> None:
     VoiceSatelliteProtocol.__init__ = init  # type: ignore[method-assign]
 
 
+def install_transcribing_event_adapter() -> None:
+    """Report the wait between the last word and the reply.
+
+    Home Assistant reaching the intent is what upstream calls thinking, and the
+    speech-to-text that runs first can take longer than everything else in the
+    round trip put together. Upstream has no event for it, so a control surface
+    shows listening the whole way through and the speaker cannot tell a request
+    being worked on from one that was never heard.
+
+    This is the half Home Assistant decides. The local endpointer emits the same
+    event when it is the one that stopped listening, which happens before Home
+    Assistant has said anything at all.
+    """
+
+    original_handle_voice_event = VoiceSatelliteProtocol.handle_voice_event
+
+    def handle_voice_event(
+        self: VoiceSatelliteProtocol,
+        event_type: VoiceAssistantEventType,
+        data: Dict[str, str],
+    ) -> None:
+        # The end of speech, not the end of the stage: Home Assistant sends
+        # STT_END once the words are ready, by which time thinking follows.
+        if event_type == VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END:
+            self._emit(SmartampVoiceEvent.TRANSCRIBING)  # pylint: disable=protected-access
+        original_handle_voice_event(self, event_type, data)
+
+    VoiceSatelliteProtocol.handle_voice_event = handle_voice_event  # type: ignore[method-assign]
+
+
 def install_timer_detail_adapter() -> None:
     """Give peripheral timer events the facts needed to draw a countdown.
 
@@ -335,7 +383,7 @@ def install_timer_detail_adapter() -> None:
 
     def emit(
         self: VoiceSatelliteProtocol,
-        event: LVAEvent | SmartampTimerEvent,
+        event: PeripheralEvent,
         data: dict[str, Any] | None = None,
     ) -> None:
         if data is not None and "seconds_left" in data:
@@ -525,6 +573,9 @@ def install_local_endpoint_adapter() -> None:
         endpoint.disarm()
         self._is_streaming_audio = False  # pylint: disable=protected-access
         self.send_messages([VoiceAssistantAudio(data=b"", end=True)])
+        # Home Assistant has not been asked anything yet, so nothing else will
+        # say the amp stopped listening until the words come back.
+        self._emit(SmartampVoiceEvent.TRANSCRIBING)  # pylint: disable=protected-access
         _LOGGER.debug(
             "Ended the turn locally after %dms of silence (%dms of speech, %dms final phrase)",
             endpointer.waited,
@@ -579,6 +630,7 @@ if __name__ == "__main__":
     install_pipeline_cancel_adapter()
     install_stop_word_sensitivity_adapter()
     install_stop_word_scope_adapter()
+    install_transcribing_event_adapter()
     install_timer_detail_adapter()
     install_local_endpoint_adapter()
     lva_main.run()

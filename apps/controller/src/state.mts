@@ -6,6 +6,7 @@ import type {AudioState, ControlState, LvaEventData, LvaMessage, TimerState} fro
 const ASSIST_EVENTS = new Set([
     'wake_word_detected',
     'listening',
+    'transcribing',
     'thinking',
     'tts_speaking',
     'timer_ringing',

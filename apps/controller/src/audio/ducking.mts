@@ -3,6 +3,9 @@ import type {LvaMessage} from '../types.mjs'
 const ACTIVE_EVENTS = new Set([
     'wake_word_detected',
     'listening',
+    // Already ducked by listening in a run heard from the start, but it is the
+    // first event a controller connecting mid-request is replayed.
+    'transcribing',
     'thinking',
     'tts_speaking',
     'timer_ringing',

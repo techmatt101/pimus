@@ -44,6 +44,13 @@ const VOICE_FACES: ReadonlyMap<string, VoiceFace> = new Map(Object.entries({
         caption: 'LISTENING',
         animation: 'ripple',
     },
+    TRANSCRIBING: {
+        background: '#00363a',
+        accent: '#00e5ff',
+        iconColor: '#ffffff',
+        caption: 'HEARD YOU',
+        animation: 'orbit',
+    },
     THINKING: {
         background: '#311b92',
         accent: '#7c4dff',

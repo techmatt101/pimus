@@ -37,7 +37,7 @@ interface VoiceActionSpec extends ActionSpec {
     run(context: VoiceContext): void
 }
 
-export const ASSIST_ACTIVE = ['WAKE_WORD_DETECTED', 'LISTENING', 'THINKING', 'TTS_SPEAKING']
+export const ASSIST_ACTIVE = ['WAKE_WORD_DETECTED', 'LISTENING', 'TRANSCRIBING', 'THINKING', 'TTS_SPEAKING']
 
 export const isAssistRunning = (state: ControlState): boolean => ASSIST_ACTIVE.includes(state.assist)
 

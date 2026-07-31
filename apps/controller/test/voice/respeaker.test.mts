@@ -64,6 +64,7 @@ test('the ring rides the microphone array while listening and the assistant whil
     const rendered: LedFrame[] = []
     const metering: boolean[] = []
     let sensing: VoiceSensing = {direction: 0, energy: 1}
+    let senses = 0
     let speech = 0
     const controller = new ReSpeakerController({
         config: CONFIG,
@@ -75,7 +76,12 @@ test('the ring rides the microphone array while listening and the assistant whil
                 rendered.push(frame)
             },
         },
-        sensor: {sense: async () => sensing},
+        sensor: {
+            sense: async () => {
+                senses += 1
+                return sensing
+            },
+        },
         speechLevel: () => speech,
         onSpeechMeter: (active) => metering.push(active),
     })
@@ -102,6 +108,14 @@ test('the ring rides the microphone array while listening and the assistant whil
     assert.ok(turned, 'the ring is still painted')
     assert.ok(lightness(turned, 0) > lightness(turned, LED_COUNT / 2),
         'the wave follows the speaker round to the other side of the ring')
+
+    // The request is in, so the array is left alone: a ring that went on
+    // pointing at whoever last spoke would still be claiming to hear them.
+    await controller.handleEvent({event: 'transcribing'})
+    const sensedByNow = senses
+    assert.ok(sensedByNow > 0, 'listening had been reading the array')
+    await settle()
+    assert.equal(senses, sensedByNow, 'the microphone stops being read once it has stopped listening')
 
     // Speaking is metered by the audio manager, and only while it is showing.
     speech = 1

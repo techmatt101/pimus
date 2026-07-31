@@ -209,6 +209,16 @@ intent, where `start=False` abandons it. Home Assistant's own detector, turned
 up to relaxed, stays as the patient backstop for the turns the Pi declines to
 end, and setting the silence to 0 hands the whole decision back to it.
 
+Either way of stopping emits a `transcribing` state upstream has no event for.
+Home Assistant only reaches the intent — what upstream calls thinking — once the
+words are ready, and transcribing them is the longest part of the round trip on a
+machine without a GPU. Without it the ring would show listening throughout,
+which reads as a request that was never heard and invites the speaker to repeat
+themselves. The controller shows it as a cyan spinner on the ring and a HEARD YOU
+face on the deck, and it counts as a live pipeline everywhere one matters: the
+duck holds, the panel stays awake, and the voice key cancels rather than
+starting a second request.
+
 The service units use a compact isolation baseline: core system configuration is
 read-only, home directories are hidden, temporary directories are private, and
 privilege escalation is blocked. File ownership protects application and state
