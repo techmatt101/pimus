@@ -117,14 +117,22 @@ to relaxed. With `voice_assistant_debug: true` each local decision logs as
 
 If it cuts you off mid-sentence, raise `voice_assistant_endpoint_silence_ms`, or
 raise `voice_assistant_endpoint_short_phrase_ms` so more endings count as
-hesitant and get the patient wait. If it still feels slow, check whether that
-line is being logged at all: no line means the decision fell through to Home
-Assistant, either because the speech was under
-`voice_assistant_endpoint_min_speech_ms` or because the detector is missing,
-which is logged once at startup as `No local voice detector installed`. A slow
-answer *after* the ring stops listening is the pipeline on the other machine,
-not the endpointer. Setting the silence to `0` disables local endpointing
-entirely and restores the old behaviour.
+hesitant and get the patient wait.
+
+If it is slow, read which of the two lines appears. `Home Assistant ended the
+turn first` names the figure the Pi was still waiting for: a large "needed"
+means the turn was judged hesitant, so lower `short_phrase_ms`, and a small
+speech total means it never cleared `min_speech_ms`. Neither line at all means
+the adapter is not running — check for `No local voice detector installed` at
+startup, and that the unit carries the `SMARTAMP_ENDPOINT_` environment. That
+case is worth catching quickly, because **relaxed** on the Home Assistant select
+is slower than the default the amp had before local endpointing existed.
+
+Time after the ring stops listening belongs to the other machine, not the
+endpointer: the spinner starts when Home Assistant reaches the intent, so
+speech-to-text sits between the two. The pipeline debug view (Settings → Voice
+assistants → ⋮ → Debug) times each stage. Setting the silence to `0` disables
+local endpointing entirely and restores the old behaviour.
 
 ## Background audio does not duck or restore
 

@@ -296,18 +296,25 @@ Home Assistant is still the backstop for every turn the Pi declines to end, so
 set that select to **relaxed** once this is on and let the Pi lead. Four
 settings shape the decision:
 
-- `voice_assistant_endpoint_silence_ms` (default `350`) — the silence that ends
+- `voice_assistant_endpoint_silence_ms` (default `250`) — the silence that ends
   a request the Pi is confident about. Set it to `0` to switch local
   endpointing off entirely and hand the decision back to Home Assistant, in
   which case put that select back to default or aggressive.
-- `voice_assistant_endpoint_patient_silence_ms` (default `900`) — used instead
+- `voice_assistant_endpoint_patient_silence_ms` (default `800`) — used instead
   when you stopped after a word shorter than the phrase length below, which is
   what trailing off mid-sentence sounds like.
-- `voice_assistant_endpoint_short_phrase_ms` (default `400`) — how long that
-  final run of speech has to be to count as a finished phrase.
-- `voice_assistant_endpoint_min_speech_ms` (default `500`) — speech that must
+- `voice_assistant_endpoint_short_phrase_ms` (default `250`) — how long that
+  final run of speech has to be to count as a finished phrase. Raising it makes
+  more endings count as hesitant, which is a slower amp, not a safer one.
+- `voice_assistant_endpoint_min_speech_ms` (default `300`) — speech that must
   have been heard before the Pi may end a turn at all, so a cough or a slammed
-  door is left to Home Assistant rather than sent as a request.
+  door is left to Home Assistant rather than sent as a request. A two-word
+  command is only around half a second of speech, so raising this much drops
+  short commands back onto Home Assistant's timing.
+
+Both decisions are logged with `voice_assistant_debug: true`: `Ended the turn
+locally` when the Pi called it, and `Home Assistant ended the turn first` with
+the figure it was still waiting for when it did not.
 
 The detector itself is `pymicro-vad`, pinned by `voice_assistant_vad_version`
 and installed into the satellite's virtual environment. If it is ever missing

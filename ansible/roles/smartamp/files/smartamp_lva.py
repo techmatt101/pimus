@@ -547,6 +547,18 @@ def install_local_endpoint_adapter() -> None:
         if event_type == VoiceAssistantEventType.VOICE_ASSISTANT_STT_START:
             endpoint.arm()
         elif event_type in ENDPOINT_CLOSING_EVENTS:
+            # Worth a line of its own: a turn Home Assistant ended first is the
+            # one case where the thresholds are wrong and nothing else would
+            # say so.
+            if endpoint.armed and endpointer.speech:
+                _LOGGER.debug(
+                    "Home Assistant ended the turn first, after %dms of silence "
+                    "(%dms of speech, %dms final phrase, needed %dms)",
+                    endpointer.waited,
+                    endpointer.speech,
+                    endpointer.phrase,
+                    endpointer.threshold,
+                )
             endpoint.disarm()
         original_handle_voice_event(self, event_type, data)
 
