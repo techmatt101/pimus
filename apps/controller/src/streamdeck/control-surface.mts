@@ -10,8 +10,9 @@ import type {
     SleepDeployment,
 } from '../types.mjs'
 import {UsbPower} from '../usb-power.mjs'
+import {AutoBrightness} from './auto-brightness.mjs'
 import {runDeckLoop} from './deck.mjs'
-import {createLayout, SLEEP} from './layout.mjs'
+import {BRIGHTNESS, createLayout, SLEEP} from './layout.mjs'
 import {DeckRenderer} from './renderer.mjs'
 import {SleepController} from './sleep.mjs'
 
@@ -70,6 +71,18 @@ export function createControlSurface({
         sleepMilliseconds: SLEEP.sleepMilliseconds,
     })
 
+    const brightness = new AutoBrightness({
+        model,
+        ha,
+        clock,
+        illuminanceEntity: BRIGHTNESS.illuminance,
+        minPercent: BRIGHTNESS.minPercent,
+        maxPercent: BRIGHTNESS.maxPercent,
+        brightLux: BRIGHTNESS.brightLux,
+        jumpPercent: BRIGHTNESS.jumpPercent,
+        settleMilliseconds: BRIGHTNESS.settleMilliseconds,
+    })
+
     const remote = remoteConfig?.enabled
         ? new RemoteTileServer({
             port: remoteConfig.port,
@@ -106,6 +119,7 @@ export function createControlSurface({
         run: () => {
             remote?.start()
             sleep.start()
+            brightness.start()
             // Standby (dim) suspends the amp bridges; sleep (off) also cuts USB
             // power, and leaving it hands a rebooted ReSpeaker back to the controller.
             let lastPanel = model.state.panel

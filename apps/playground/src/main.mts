@@ -38,8 +38,9 @@ import {HomeAssistantClient} from '../../controller/src/home-assistant/client.mj
 import {NotificationCenter} from '../../controller/src/home-assistant/notifications.mjs'
 import {RemoteTileServer} from '../../controller/src/remote/server.mjs'
 import {ControlModel, createState} from '../../controller/src/state.mjs'
+import {AutoBrightness} from '../../controller/src/streamdeck/auto-brightness.mjs'
 import {runDeckLoop} from '../../controller/src/streamdeck/deck.mjs'
-import {createLayout, SLEEP} from '../../controller/src/streamdeck/layout.mjs'
+import {BRIGHTNESS, createLayout, SLEEP} from '../../controller/src/streamdeck/layout.mjs'
 import {DeckRenderer} from '../../controller/src/streamdeck/renderer.mjs'
 import {SleepController} from '../../controller/src/streamdeck/sleep.mjs'
 import {LvaClient} from '../../controller/src/voice/lva-client.mjs'
@@ -219,6 +220,19 @@ const sleep = new SleepController({
     sleepMilliseconds: 8000,
 })
 
+// The real auto-brightness policy against the real sensor, settling in seconds
+// rather than the minute the amp holds a drifting reading for.
+const brightness = new AutoBrightness({
+    model,
+    ha: homeAssistant,
+    illuminanceEntity: BRIGHTNESS.illuminance,
+    minPercent: BRIGHTNESS.minPercent,
+    maxPercent: BRIGHTNESS.maxPercent,
+    brightLux: BRIGHTNESS.brightLux,
+    jumpPercent: BRIGHTNESS.jumpPercent,
+    settleMilliseconds: 5000,
+})
+
 const layout = createLayout({
     model,
     clock: Date.now,
@@ -261,6 +275,7 @@ notifications.start()
 remote?.start()
 lva.connect()
 sleep.start()
+brightness.start()
 
 void runDeckLoop({
     layout,

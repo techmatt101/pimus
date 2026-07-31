@@ -1,8 +1,5 @@
-import {ArmedControl} from '../armed-control.mjs'
-import {DynamicDial} from '../dials/dynamic-dial.mjs'
-import {LevelDial} from '../level-dial.mjs'
 import {fittingSize, drawIcon, type Surface, drawText} from '../surface.mjs'
-import {drawActiveGlow, drawBackground, drawCaption, FACE_CENTER, type Tile} from '../tile.mjs'
+import {drawBackground, drawCaption, FACE_CENTER, type Tile} from '../tile.mjs'
 import type {ControlModel} from '../../state.mjs'
 
 export interface BrightnessTileConfig {
@@ -10,39 +7,20 @@ export interface BrightnessTileConfig {
 }
 
 /**
- * Adjusts the Stream Deck panel's own brightness. Press to arm: the shared
- * dial steps it live in 5% notches, clamped at the ends; press again — the
- * key or the knob — to finish.
+ * Reads out the panel brightness the room's light level is driving
+ * (`streamdeck/auto-brightness.mts`). A read-only key: pressing it does nothing
+ * on purpose, because the illuminance sensor owns the level.
  */
 export class BrightnessTile implements Tile {
     readonly #model: ControlModel
     readonly #label: string
-    readonly #armed: ArmedControl
 
-    constructor(model: ControlModel, dial: DynamicDial, {label = 'BRIGHT'}: BrightnessTileConfig = {}) {
+    constructor(model: ControlModel, {label = 'AUTO'}: BrightnessTileConfig = {}) {
         this.#model = model
         this.#label = label
-        const control = new LevelDial(label, {
-            read: () => this.#model.state.brightness,
-            apply: (percent) => {
-                this.#model.state.brightness = percent
-                this.#model.notify()
-            },
-            onConfirm: () => this.#armed.release(),
-        })
-        this.#armed = new ArmedControl(dial, control, () => this.#armed.release())
     }
 
     press(): void {
-        this.#armed.press()
-    }
-
-    holdsDial(): boolean {
-        return this.#armed.armed
-    }
-
-    unmount(): void {
-        this.#armed.release()
     }
 
     draw(surface: Surface): void {
@@ -53,7 +31,5 @@ export class BrightnessTile implements Tile {
         const value = `${brightness}%`
         drawText(surface, value, {x, y: FACE_CENTER + 22, size: fittingSize(value, [30, 26, 22], 112)})
         drawCaption(surface, this.#label)
-
-        if (this.#armed.armed) drawActiveGlow(surface)
     }
 }

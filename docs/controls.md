@@ -85,7 +85,7 @@ central dispatcher:
 |--------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `MediaTile`        | Play/pause. Draws the play or pause glyph from the playback state, and the glyph breathes while playing.                                                                                                                                                                                                                                                       |
 | `VoiceTile`        | Start Assist, or cancel the pipeline already running. The face follows the pipeline state with the same colours as the ReSpeaker ring: cyan expanding rings while listening, a cyan orbiting spinner reading HEARD YOU while the request is being transcribed, a purple orbiting spinner while thinking, a white pulse while speaking, a red pulse on a pipeline error, and a dimmed OFFLINE face while LVA is unreachable. A ringing timer belongs to `TimerTile`, not this key.                                                                                                                                                                                                                                                                       |
-| `BrightnessTile`   | Adjusts the Stream Deck panel's own brightness. Press to arm, turn the dynamic dial to step it live in 5% notches — clamped at 0 and 100, never wrapping — press again to finish. Mutates display state on the model; the renderer re-lights the panel as the knob turns.                                                               |
+| `BrightnessTile`   | Reads out the panel brightness the room's light level is driving (see [auto brightness](#auto-brightness)). Read-only: there is no manual level to set, so pressing it does nothing.                                                               |
 | `VoiceVolumeTile`  | Adjusts the voice level — how loud Assist speaks, rings, and announces, independent of the music level. Press to arm, turn the dynamic dial to step it live in 5% notches — clamped at 0 and 100, never wrapping — press again to finish. Shows the audio manager's reported level, `?` while the manager is unreachable. The volume dial adjusts the same level whenever Assist is speaking.                                |
 | `PlaylistTile`     | Picks and plays one of a short list of playlists. Press to arm (the key glows and claims the dynamic dial), turn the dynamic dial to choose, press again — the key or the knob — to confirm. A single playlist is just press-then-confirm. The armed state releases itself after 15s, or when any other dial or key is touched — that first touch only cancels the arm and does nothing else.        |
 | `SceneTile`        | Picks one of a short list of scenes. Press to arm, turn to choose, press again — key or knob — to apply. Scenes have no state to read back, so it stays dim until the first apply, then shows the one last applied.                                                                                                                                              |
@@ -95,12 +95,12 @@ central dispatcher:
 | `PowerTile`        | The one key that puts the amp down: sleep, shutdown, or reboot, in two presses. The first arms the key — a ring drains over five seconds beside the remaining count — and turning the dynamic dial picks between the three, each with its own colour and icon and each earning the whole window again. The second press within that window acts: sleep returns the key to idle, while `SHUTDOWN` and `REBOOT` leave the face on `HALTING` or `REBOOTING`. Letting the ring empty, leaving the page, or touching another dial disarms it and returns the choice to `SLEEP`, which leads so that a stray double-press only sleeps a room the amp wakes from by itself. |
 | `PageTile`         | Page navigation from a grid slot, for a page that wants a "next" key of its own in addition to the page dial.                                                                                                                                                                                                                                                  |
 
-The arm-then-confirm behaviour those keys share — playlist, scene, brightness,
-voice volume, power, and the room keys — is one helper,
+The arm-then-confirm behaviour those keys share — playlist, scene, voice volume,
+power, and the room keys — is one helper,
 `streamdeck/armed-control.mts`:
 the key composes an `ArmedControl` over the dynamic dial and the `Dial` it lends
-(a `SelectionDial` picker, a `LevelDial` clamped 5% stepper for brightness and
-voice volume, a `DurationDial` for the timer, or the one `entityDial`
+(a `SelectionDial` picker, a `LevelDial` clamped 5% stepper for the voice
+volume, a `DurationDial` for the timer, or the one `entityDial`
 builds from the entity's domain),
 which owns the transient claim, the confirm-on-second-press, and the release. The
 key keeps only its own drawing — the glow and what it shows while armed.
@@ -645,6 +645,54 @@ exactly as it follows a deck being unplugged, and `index.mts` maps the same
 field onto the audio manager's standby signal and the USB power switch. To
 watch it without a Pi, run `make playground` and use the **leave room** and
 **enter room** buttons in the Home Assistant panel.
+
+## Auto brightness
+
+The panel follows the room rather than a level you set.
+`streamdeck/auto-brightness.mts` watches a Home Assistant illuminance sensor
+over the same WebSocket the rest of the deck reads and maps its lux onto the
+panel's brightness on a log scale — the eye reads light logarithmically, so the
+notch between an unlit room and a lamp is worth as much of the range as the one
+between that lamp and full daylight. Every reading lands on a 5% notch: an unlit
+room settles at 15%, a lit one somewhere in the seventies, and daylight at 100%.
+The SETTINGS page's `AUTO` key reads out the level it picked.
+
+The sensor moves all day and reports every step of it, which the panel must not
+follow blink for blink. Two rules keep it still:
+
+- a small change waits — at most one every 60s, and a burst of readings
+  collapses into one write of the last of them
+- a jump of 20 points or more is the room's lights going on or off, and lands at
+  once
+
+A dark panel writes nothing at all, and takes the newest reading whole when it
+wakes. Sleep and the lights are the same moment — the amp wakes as you walk in,
+and so do the lamps — so waking lights at the level the room is at now rather
+than easing up from the one an empty dark room left behind.
+
+It fails towards leaving the panel be: an unreachable Home Assistant, a sensor
+that has never reported, or one reading `unavailable` means the brightness
+simply stops moving at whatever it last was (40% from cold). Standby still dims
+that to a quarter, so the two compose — auto brightness picks the lit level, and
+sleep decides how much of it the panel shows.
+
+The sensor and the curve are compiled in, in
+`apps/controller/src/streamdeck/layout.mts`:
+
+```ts
+export const BRIGHTNESS = {
+  illuminance: HA.illuminance,   // clear this to leave the panel where it starts
+  minPercent: 15,                // an unlit room
+  maxPercent: 100,               // at or above brightLux
+  brightLux: 500,                // the lux the panel is fully lit at
+  jumpPercent: 20,               // a change this big lands at once
+  settleMilliseconds: 60_000,    // the shortest spell between smaller changes
+} as const
+```
+
+To watch it without a Pi, run `make playground`: it runs the same policy against
+the real sensor on a five-second settle, the `AUTO` key shows the level, and
+every change is logged as `panel brightness N` in the deck log.
 
 ## Remote tiles from another computer
 

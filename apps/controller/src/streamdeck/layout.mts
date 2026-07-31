@@ -43,6 +43,7 @@ const HA = {
     satellite: 'assist_satellite.office_amp',
     presence: 'binary_sensor.office_presence',
     temperature: 'sensor.office_temperature',
+    illuminance: 'sensor.office_sensor_illuminance',
     weather: 'weather.met_office_stafford',
     scenes: [
         {label: 'BRIGHT', entity: 'scene.office_bright', color: '#f9a825'},
@@ -69,6 +70,20 @@ export const SLEEP = {
     sleepMilliseconds: 5 * 60_000,
     /** Panel brightness while dimmed, as a percentage of the lit level. */
     dimPercent: 25,
+} as const
+
+export const BRIGHTNESS = {
+    /** Clear this to leave the panel on the brightness it starts with. */
+    illuminance: HA.illuminance,
+    /** Panel percent in an unlit room, and once it reaches `brightLux`. */
+    minPercent: 15,
+    maxPercent: 100,
+    /** The lux the panel is fully lit at; the room's lamps read a few hundred. */
+    brightLux: 500,
+    /** A change this big is the lights going on or off, and lands at once. */
+    jumpPercent: 20,
+    /** The shortest spell between smaller changes, which the sensor makes constantly. */
+    settleMilliseconds: 60_000,
 } as const
 
 export interface ControllerServices {
@@ -174,7 +189,7 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
 
     const settingsGrid: PageGrid = [
         [
-            new BrightnessTile(model, dynamic),
+            new BrightnessTile(model),
             new VoiceVolumeTile(model, audio, dynamic),
             null,
             new PowerTile(power, dynamic, clock)

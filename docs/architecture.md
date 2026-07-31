@@ -170,6 +170,11 @@ Nothing else sleeps: the wake word, the ReSpeaker ring, and background playback 
 panel — an unreachable Home Assistant, a sensor reporting `unavailable`, or a hand on a deck the sensor thinks nobody is
 near all keep it awake, and the first press on a dark or dimmed panel wakes it without also running the key.
 
+How bright that lit level is comes from the room, not from a key: `streamdeck/auto-brightness.mts` reads an illuminance
+sensor over the same connection and writes the panel percent, rate-limiting the sensor's constant drift to one change a
+minute while letting the jump of the lights coming on land at once. A dark panel writes nothing and takes the newest
+reading whole when it wakes, which is the same moment the room's lamps come on.
+
 Each key is a tile that owns its own behaviour and face; the touch strip is one full-width display owned by
 `streamdeck/strip.mts`, which picks between screens — the dial being turned, a notification, or what is playing. Home
 Assistant automations reach that strip by firing a `smartamp_notify` event on the same WebSocket the entity cache is
