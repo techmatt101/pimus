@@ -183,6 +183,33 @@ Crackling that only happens while someone is SSH'd into the Pi is the other clas
 PipeWire under the admin user that busy-spun against the missing session infrastructure. Provisioning masks the
 PipeWire user units for the admin account; `pgrep -au matt pipewire` should find nothing.
 
+## A rare loud pop from the speakers
+
+A single loud pop out of nowhere — not the steady crackle above — is a full-scale transient reaching the amplifier: a
+stream connecting in the instant before the audio manager lands its gain, a DC step from a bridge being loaded or
+unloaded, or driver garbage during a graph rebuild. The backstop is the DAC's hardware ceiling,
+`hifiberry_output_volume_percent` (default 90, about −10 dB): it sits below everything PipeWire does, so it caps every
+one of those cases at once. Confirm it is actually holding — WirePlumber must not be managing the same control:
+
+```sh
+amixer -c sndrpihifiberry sget Digital        # both values should read the configured ceiling, not 100%
+grep -r soft-mixer /etc/wireplumber/          # the smartamp rule keeping PipeWire volume in software
+```
+
+If `Digital` reads 100% with a lower ceiling configured, PipeWire has folded the pinned sink volume back into the
+hardware control — re-provision so the soft-mixer rule above is installed, and restart the session.
+
+To catch the culprit rather than just cap it, note the clock time of the next pop and read what the graph was doing:
+
+```sh
+journalctl -u smartamp-audio-manager --since "10 min ago" -o short-precise
+```
+
+A pop that lines up with `releasing the idle bridges` or `Rebuilding the idle bridges` is the idle teardown
+(`smartamp_idle_teardown_seconds`, default 180) — set it to `0` for a day to confirm, at the cost of about a watt of
+standing draw. A pop that lines up with `Holding client stream` is a client that connected loud before the manager
+caught it; the ceiling is the intended protection for that race.
+
 ## USB audio device does not appear on the computer
 
 The cable must be connected to the Pi's USB-C port, not a USB-A port. On a Pi 4B it must also be a cable with the power

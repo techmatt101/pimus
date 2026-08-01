@@ -33,8 +33,14 @@ that silence in the first place. Off by default: muting an amplifier can be audi
 
 `hifiberry_aux_gain_db` is the analogue ADC input gain. Start at `0`; line-level sources can clip if this is raised too
 far. `hifiberry_output_volume_percent` is the DAC's hardware output ceiling, not the playing loudness — its percent
-scale is logarithmic (about −1 dB per point below 100), so values much below 90 attenuate to silence; leave it at 100
-and control loudness in PipeWire. Both boards expose that one `Digital` control.
+scale is logarithmic (about −1 dB per point below 100), so values much below 90 attenuate to silence. Both boards
+expose that one `Digital` control. The ceiling is also the speaker protection: every day-to-day gain lives in PipeWire,
+so a transient that escapes them — a client stream in the instant before the manager lands its gain, driver garbage, a
+graph glitch — otherwise reaches the amplifier at full scale as a genuinely loud pop. The default of 90 trades 10 dB of
+rarely-used maximum loudness for a hard cap on that worst case; raise it only if music at 100% is truly not loud
+enough. A WirePlumber soft-mixer rule (deployed by `tasks/audio.yml`) keeps PipeWire's volume handling in software on
+the HiFiBerry: without it WirePlumber maps sink volume onto the same `Digital` control, and the audio manager pinning
+the output sink at 100% would quietly push the ceiling back to 0 dB.
 
 Loudness itself is two independent levels held by the audio manager: the **music level** (Sendspin, USB computer audio,
 and aux) and the **voice level** (everything the assistant plays). The output sink is pinned at 100% and each level is

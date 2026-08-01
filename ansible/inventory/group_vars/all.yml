@@ -118,8 +118,16 @@ hifiberry_auto_mute: false
 # ceiling, but 30 is -72.5 dB — inaudible on any speaker. Day-to-day loudness
 # comes from the audio manager's music and voice levels (PipeWire), not this;
 # with the output sink pinned at 100% this ceiling is the one hard cap above
-# those levels.
-hifiberry_output_volume_percent: 100
+# those levels — and it is the speaker protection. Every software gain lives in
+# PipeWire, so a transient that escapes them (a client stream in the instant
+# before its gain lands, driver garbage, a graph glitch) otherwise reaches the
+# amplifier at full scale as a genuinely loud pop. The default gives up 10 dB
+# of never-used maximum loudness to cap that worst case; raise it back toward
+# 100 only if an amp truly cannot play loud enough with music at 100%. The
+# WirePlumber soft-mixer rule (tasks/audio.yml) is what makes this hold:
+# without it, PipeWire would fold the pinned sink volume back into this same
+# hardware control and quietly undo the ceiling.
+hifiberry_output_volume_percent: 90
 # The analogue line-in's gain and which ADC pins carry it. These apply only to
 # a board that has an ADC, and are not written on one that does not.
 hifiberry_aux_gain_db: 0

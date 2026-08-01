@@ -116,6 +116,37 @@
     mode: "0755"
   notify: Restart HiFiBerry
 
+# WirePlumber would otherwise map sink volume onto the DAC's `Digital` control,
+# and the audio manager pinning the output sink at 100% would push the
+# hifiberry_output_volume_percent ceiling straight back to 0 dB. The soft-mixer
+# rule keeps PipeWire's volume in software so the hardware ceiling the init
+# script sets actually holds — it is the pop protection between a full-scale
+# transient and the amplifier. Two files because the two supported OS releases
+# read different formats: Trixie's WirePlumber 0.5 reads wireplumber.conf.d,
+# Bookworm's 0.4 reads main.lua.d, and each ignores the other's directory.
+- name: Create WirePlumber configuration directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /etc/wireplumber/wireplumber.conf.d
+    - /etc/wireplumber/main.lua.d
+
+- name: Keep PipeWire volume off the HiFiBerry hardware mixer
+  ansible.builtin.copy:
+    src: "wireplumber/{{ item.file }}"
+    dest: "/etc/wireplumber/{{ item.dir }}/{{ item.file }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - { dir: wireplumber.conf.d, file: 51-smartamp-soft-mixer.conf }
+    - { dir: main.lua.d, file: 51-smartamp-soft-mixer.lua }
+  notify: Restart service-account session
+
 # A separate early service ensures ALSA has detected the HAT before mixer
 # settings are applied and before PipeWire begins routing sound.
 - name: Install HiFiBerry initialisation service
