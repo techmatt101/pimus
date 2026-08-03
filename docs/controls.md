@@ -85,7 +85,7 @@ central dispatcher:
 |--------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `MediaTile`        | Play/pause. Draws the play or pause glyph from the playback state, and the glyph breathes while playing.                                                                                                                                                                                                                                                       |
 | `VoiceTile`        | Start Assist, or cancel the pipeline already running. The face follows the pipeline state with the same colours as the ReSpeaker ring: cyan expanding rings while listening, a cyan orbiting spinner reading HEARD YOU while the request is being transcribed, a purple orbiting spinner while thinking, a white pulse while speaking, a red pulse on a pipeline error, and a dimmed OFFLINE face while LVA is unreachable. A ringing timer belongs to `TimerTile`, not this key.                                                                                                                                                                                                                                                                       |
-| `BrightnessTile`   | Reads out the panel brightness the room's light level is driving (see [auto brightness](#auto-brightness)). Read-only: there is no manual level to set, so pressing it does nothing.                                                               |
+| `BrightnessTile`   | The panel's own level, and what decides it (see [auto brightness](#auto-brightness)). It reads out the percent the panel is at, captioned `AUTO` while the room's light level is driving it. Press to arm the dynamic dial: turning it tunes `brightLux` — the lux this room counts as fully lit — and the panel answers each notch at once. A second press, key or knob, switches the following off; the caption reads `MANUAL`, the face dims, and the same dial now steps the panel itself in 5% notches, no lower than 5% so the deck never goes dark with no way back. Press again to hand it back to the sensor. A unit with no illuminance sensor configured is manual only. |
 | `VoiceVolumeTile`  | Adjusts the voice level — how loud Assist speaks, rings, and announces, independent of the music level. Press to arm, turn the dynamic dial to step it live in 5% notches — clamped at 0 and 100, never wrapping — press again to finish. Shows the audio manager's reported level, `?` while the manager is unreachable. The volume dial adjusts the same level whenever Assist is speaking.                                |
 | `PlaylistTile`     | Picks and plays one of a short list of playlists. Press to arm (the key glows and claims the dynamic dial), turn the dynamic dial to choose, press again — the key or the knob — to confirm. A single playlist is just press-then-confirm. The armed state releases itself after 15s, or when any other dial or key is touched — that first touch only cancels the arm and does nothing else.        |
 | `SceneTile`        | Picks one of a short list of scenes. Press to arm, turn to choose, press again — key or knob — to apply. Scenes have no state to read back, so it stays dim until the first apply, then shows the one last applied.                                                                                                                                              |
@@ -100,8 +100,8 @@ power, and the room keys — is one helper,
 `streamdeck/armed-control.mts`:
 the key composes an `ArmedControl` over the dynamic dial and the `Dial` it lends
 (a `SelectionDial` picker, a `LevelDial` clamped 5% stepper for the voice
-volume, a `DurationDial` for the timer, or the one `entityDial`
-builds from the entity's domain),
+volume, a `DurationDial` for the timer, a `BrightnessDial` for the panel, or the
+one `entityDial` builds from the entity's domain),
 which owns the transient claim, the confirm-on-second-press, and the release. The
 key keeps only its own drawing — the glow and what it shows while armed.
 
@@ -386,6 +386,7 @@ the content of that face:
 | `VolumeDial`  | The music level, read from the audio manager's reported state (`?` while it is unreachable). `MUTED` is its own reading, and an empty bar. While Assist is live (wake through TTS, or a ringing timer) it relabels to `VOICE` and steers the voice level instead, so a shout can be turned down as it happens without touching the music. |
 | `MediaDial`   | Transport through the Music Assistant player: skip with a turn, play or pause with a press, and read `PLAYING` / `PAUSED` from the player.           |
 | `PageDial`    | Pages the key grid — turn to move between pages — and reads out the page you land on. Takes over the job the bottom-corner keys used to do.          |
+| `BrightnessDial` | The panel's own knob, lent by the `BRIGHTNESS` key. It turns whichever number is deciding the level: `brightLux` while auto brightness is following the room (reading `FULL AT 500 LX`, stepping through notches that crowd near an unlit room and open out towards daylight), and the panel percent itself once auto is off. Pressing switches between the two. |
 | `DynamicDial` | The shared knob. A playlist key hands it a `Dial` to delegate to; a room key hands it the `Dial` its entity's domain builds (`entityDial`).           |
 
 Write a new `Dial` class when a knob needs a reading it has to work out for
@@ -655,7 +656,8 @@ panel's brightness on a log scale — the eye reads light logarithmically, so th
 notch between an unlit room and a lamp is worth as much of the range as the one
 between that lamp and full daylight. Every reading lands on a 5% notch: an unlit
 room settles at 15%, a lit one somewhere in the seventies, and daylight at 100%.
-The SETTINGS page's `AUTO` key reads out the level it picked.
+The SETTINGS page's `BRIGHTNESS` key reads out the level it picked, and is where
+the following is tuned or switched off.
 
 The sensor moves all day and reports every step of it, which the panel must not
 follow blink for blink. Two rules keep it still:
@@ -676,23 +678,48 @@ simply stops moving at whatever it last was (40% from cold). Standby still dims
 that to a quarter, so the two compose — auto brightness picks the lit level, and
 sleep decides how much of it the panel shows.
 
+### Tuning it from the deck
+
+The one number that has to be found rather than reasoned about is `brightLux` —
+what counts as a fully lit room here — because the same lamps read differently
+in every room, and the curve is only as good as that end of it. The
+`BRIGHTNESS` key lends the dynamic dial to it: press to arm, turn to step
+through 20, 50, 100, 150, 200, 300, 400, 500, 650, 800, 1000, 1250, 1500 and
+2000 lux (crowded near an unlit room, opening out towards daylight, because
+that is how the eye reads it), and the panel answers each notch at once instead
+of waiting for the settle. The strip reads `FULL AT 500 LX`. Lower it and the
+room reaches full brightness sooner; raise it and the panel stays dimmer for
+longer.
+
+A second press — the key or the knob — switches the following off. The caption
+reads `MANUAL`, the face dims, the sensor stops writing anything, and the same
+dial now steps the panel itself in 5% notches, floored at 5% so the deck can
+never be dialled dark with no way back. Press again to hand it back to the
+sensor, which takes the current reading whole. A unit with no illuminance
+sensor configured is manual only, and the key stays on `MANUAL`.
+
+Neither is remembered: both are live tuning, so a restart returns to the
+compiled-in curve with auto on. Settle on a `brightLux` at the deck, then bring
+that number back to `layout.mts` to keep it.
+
 The sensor and the curve are compiled in, in
 `apps/controller/src/streamdeck/layout.mts`:
 
 ```ts
 export const BRIGHTNESS = {
-  illuminance: HA.illuminance,   // clear this to leave the panel where it starts
+  illuminance: HA.illuminance,   // clear this to leave the panel manual-only
   minPercent: 15,                // an unlit room
   maxPercent: 100,               // at or above brightLux
-  brightLux: 500,                // the lux the panel is fully lit at
+  brightLux: 500,                // the lux the panel is fully lit at; the dial tunes this
   jumpPercent: 20,               // a change this big lands at once
   settleMilliseconds: 60_000,    // the shortest spell between smaller changes
 } as const
 ```
 
 To watch it without a Pi, run `make playground`: it runs the same policy against
-the real sensor on a five-second settle, the `AUTO` key shows the level, and
-every change is logged as `panel brightness N` in the deck log.
+the real sensor on a five-second settle, the `BRIGHTNESS` key shows the level
+and takes the same presses, and every change is logged as `panel brightness N`
+in the deck log.
 
 ## Remote tiles from another computer
 

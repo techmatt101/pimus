@@ -1,11 +1,14 @@
 import {numericState} from '../home-assistant/entity.mjs'
 import type {ControlModel, Unsubscribe} from '../state.mjs'
-import type {HomeAssistantService, PanelState} from '../types.mjs'
+import type {BrightnessControls, HomeAssistantService, PanelState} from '../types.mjs'
 
 export const DEFAULT_SETTLE_MILLISECONDS = 60_000
 
 /** The panel's own levels are coarse, so every reading lands on a 5% notch. */
 const LEVEL_STEP = 5
+
+/** A hand-set panel stops here rather than at nothing, which reads as a broken deck. */
+const MIN_MANUAL_PERCENT = 5
 
 export interface AutoBrightnessOptions {
     model: ControlModel
@@ -16,6 +19,7 @@ export interface AutoBrightnessOptions {
     minPercent?: number
     /** Panel percent once the room reaches `brightLux`. */
     maxPercent?: number
+    /** Where the key's dial starts; tuning it from the deck does not outlive a restart. */
     brightLux?: number
     /** A change this big is the room's lights going on or off, and lands at once. */
     jumpPercent?: number
@@ -34,18 +38,23 @@ export interface AutoBrightnessOptions {
  *
  * It fails towards leaving the panel be: an unreachable Home Assistant or a
  * sensor that has never reported means the brightness simply stops moving.
+ *
+ * The SETTINGS key switches the whole thing off — leaving the level to the
+ * dial — and tunes `brightLux`, the one number that says what "a bright room"
+ * means here, since the same lamps read differently in every room.
  */
-export class AutoBrightness {
+export class AutoBrightness implements BrightnessControls {
     readonly #model: ControlModel
     readonly #ha: HomeAssistantService
     readonly #entity: string
     readonly #minPercent: number
     readonly #maxPercent: number
-    readonly #brightLux: number
     readonly #jumpPercent: number
     readonly #settleMilliseconds: number
     readonly #now: () => number
     readonly #subscriptions: Unsubscribe[] = []
+    #brightLux: number
+    #auto: boolean
     #target: number | null = null
     #appliedAt = 0
     #panel: PanelState = 'lit'
@@ -71,6 +80,43 @@ export class AutoBrightness {
         this.#jumpPercent = jumpPercent
         this.#settleMilliseconds = settleMilliseconds
         this.#now = clock
+        this.#auto = Boolean(illuminanceEntity)
+    }
+
+    get autoAvailable(): boolean {
+        return this.#entity !== ''
+    }
+
+    get auto(): boolean {
+        return this.#auto
+    }
+
+    get brightLux(): number {
+        return this.#brightLux
+    }
+
+    setAuto(auto: boolean): void {
+        const next = auto && this.autoAvailable
+        if (next === this.#auto) return
+        this.#auto = next
+        if (next) this.#read(true)
+        else this.#clearTimer()
+        this.#model.notify()
+    }
+
+    setBrightLux(lux: number): void {
+        const next = Math.max(1, Math.round(lux))
+        if (next === this.#brightLux) return
+        this.#brightLux = next
+        // Land the new curve at once: tuning it is watching the panel answer.
+        this.#read(true)
+        this.#model.notify()
+    }
+
+    setBrightness(percent: number): void {
+        const target = Math.max(MIN_MANUAL_PERCENT, Math.min(100, Math.round(percent)))
+        if (target === this.#model.state.brightness) return
+        this.#apply(target)
     }
 
     start(): void {
@@ -116,7 +162,7 @@ export class AutoBrightness {
     #settle(immediate: boolean): void {
         this.#clearTimer()
         const target = this.#target
-        if (target === null || this.#panel === 'off') return
+        if (target === null || !this.#auto || this.#panel === 'off') return
         const delta = Math.abs(target - this.#model.state.brightness)
         if (delta === 0) return
         const wait = this.#settleMilliseconds - (this.#now() - this.#appliedAt)

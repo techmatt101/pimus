@@ -104,6 +104,7 @@ export function createControlSurface({
             shutdown,
             reboot,
         },
+        brightness,
         ...(remote ? {remote} : {}),
     })
 

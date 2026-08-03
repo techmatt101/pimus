@@ -173,7 +173,9 @@ near all keep it awake, and the first press on a dark or dimmed panel wakes it w
 How bright that lit level is comes from the room, not from a key: `streamdeck/auto-brightness.mts` reads an illuminance
 sensor over the same connection and writes the panel percent, rate-limiting the sensor's constant drift to one change a
 minute while letting the jump of the lights coming on land at once. A dark panel writes nothing and takes the newest
-reading whole when it wakes, which is the same moment the room's lamps come on.
+reading whole when it wakes, which is the same moment the room's lamps come on. The SETTINGS page's `BRIGHTNESS` key
+is the way into that policy: its dial tunes the lux the room counts as fully lit, and a second press switches the
+following off and leaves the level to the same dial by hand.
 
 Each key is a tile that owns its own behaviour and face; the touch strip is one full-width display owned by
 `streamdeck/strip.mts`, which picks between screens — the dial being turned, a notification, or what is playing. Home

@@ -27,6 +27,7 @@ import {VoiceVolumeTile} from './tiles/voice-volume-tile.mjs'
 import type {ControlModel} from '../state.mjs'
 import type {
     AudioControls,
+    BrightnessControls,
     HomeAssistantService,
     LvaSender,
     NotificationFeed,
@@ -78,7 +79,11 @@ export const BRIGHTNESS = {
     /** Panel percent in an unlit room, and once it reaches `brightLux`. */
     minPercent: 15,
     maxPercent: 100,
-    /** The lux the panel is fully lit at; the room's lamps read a few hundred. */
+    /**
+     * The lux the panel is fully lit at; the room's lamps read a few hundred.
+     * The BRIGHTNESS key's dial tunes it live, so settle on a number there and
+     * bring it back here — nothing on the Pi remembers it across a restart.
+     */
     brightLux: 500,
     /** A change this big is the lights going on or off, and lands at once. */
     jumpPercent: 20,
@@ -93,12 +98,13 @@ export interface ControllerServices {
     audio: AudioControls
     ha: HomeAssistantService
     power: PowerControls
+    brightness: BrightnessControls
     notifications?: NotificationFeed
     remote?: RemoteTileFeed
 }
 
 export function createLayout(services: ControllerServices): StreamDeckLayout {
-    const {model, clock, lva, audio, ha, power, notifications, remote} = services
+    const {model, clock, lva, audio, ha, power, brightness, notifications, remote} = services
     const voice = (command: string): Binding => voiceBinding(lva, model, command)
     const route = (source: string, command: RouteActionName): Binding => routeBinding(audio, source, command)
     const key = (label: string, color: string, binding: Binding, icon?: ActionTileConfig['icon']): Tile =>
@@ -189,7 +195,7 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
 
     const settingsGrid: PageGrid = [
         [
-            new BrightnessTile(model),
+            new BrightnessTile(model, brightness, dynamic),
             new VoiceVolumeTile(model, audio, dynamic),
             null,
             new PowerTile(power, dynamic, clock)

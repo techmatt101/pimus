@@ -243,6 +243,7 @@ const layout = createLayout({
         shutdown: () => console.log('[power] shutdown requested'),
         reboot: () => console.log('[power] reboot requested'),
     },
+    brightness,
     notifications,
     ...(remote ? {remote} : {}),
     audio: {

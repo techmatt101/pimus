@@ -17,6 +17,21 @@ export interface PowerControls {
     reboot(): void
 }
 
+export interface BrightnessControls {
+    /** False with no illuminance sensor configured, so the panel is manual only. */
+    readonly autoAvailable: boolean
+    readonly auto: boolean
+    /** The lux the panel is fully lit at, which is what tunes the curve to the room. */
+    readonly brightLux: number
+
+    setAuto(auto: boolean): void
+
+    setBrightLux(lux: number): void
+
+    /** Set the panel level by hand; only meaningful while auto is off. */
+    setBrightness(percent: number): void
+}
+
 export interface StreamDeckDeployment {
     enabled: boolean
 }
