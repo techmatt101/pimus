@@ -186,10 +186,10 @@ test('the ring shows boot until the voice socket answers, then reports a real lo
 
     // The controller now paints long before the voice assistant finishes its own
     // wait, so a first connection that has not happened is a wait, not a loss.
-    assert.deepEqual(controller.desired(), new Spin('#ffd500'))
+    assert.deepEqual(controller.desired(), new Spin(['#ffd500', '#92ff37']))
     controller.start()
     await controller.setDisconnected()
-    assert.deepEqual(controller.desired(), new Spin('#ffd500'))
+    assert.deepEqual(controller.desired(), new Spin(['#ffd500', '#92ff37']))
 
     // Once the socket has spoken, boot is over and a drop is a genuine warning.
     await controller.handleEvent({event: 'snapshot', data: {ha_connected: true, muted: false}})

@@ -16,14 +16,14 @@ export const VOICE_LED_STATES: ReadonlyMap<string, LedAnimation> = new Map(Objec
     idle: new Dark(),
     // The ring lights long before the rest of the stack is up, so boot gets its
     // own amber spinner rather than borrowing the red "disconnected" warning.
-    starting: new Spin('#ffd500'),
+    starting: new Spin(['#ff8000', '#92ff37']),
     wake_word_detected: new Pulse('#00bcd4'),
     listening: new ListenWave('#001018', '#0066ff', '#9df6ff'),
     // The amp has stopped listening but Home Assistant has not answered yet,
     // which on a machine transcribing without a GPU is the longest part of the
     // round trip. Spun rather than waved so it cannot be read as still hearing.
-    transcribing: new Spin('#9df6ff'),
-    thinking: new Spin('#bf00ff'),
+    transcribing: new Spin(['#9df6ff', '#0066ff']),
+    thinking: new Spin(['#aa00ff', '#0066ff'], { direction: "counter-clockwise" }),
     tts_speaking: new SpeechPulse('#ffffff'),
     timer_ticking: new Solid('#ffab00'),
     timer_ringing: new Blink('#ff6d00'),

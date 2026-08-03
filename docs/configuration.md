@@ -388,7 +388,7 @@ no longer running.
 | `Dark`                        | Every LED off.                                                                                          |
 | `Solid(color)`                | One steady colour.                                                                                      |
 | `Pulse(color)`                | The colour breathing, swelling and fading without ever reaching black.                                  |
-| `Spin(color)`                 | Two LEDs facing each other, travelling round the ring behind fading tails. `periodMs` sets one turn.    |
+| `Spin(color \| [color, color], options)` | Two LEDs facing each other, travelling round the ring behind fading tails. A pair of colours gives each head its own; `direction` turns it `'counter-clockwise'` and `periodMs` sets one turn. |
 | `Blink(color)`                | The whole ring flashing on and off.                                                                     |
 | `ListenWave(base, ripple, marker)` | The LED facing whoever is speaking, held dim in the marker colour and brightened by their voice, with ripples running outwards from it in their own. |
 | `SpeechPulse(color)`          | The whole ring swelling with the assistant's own speech, metered off the voice bus.                     |
