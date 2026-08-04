@@ -20,11 +20,11 @@ from .control.commands import CommandHandler
 from .control.server import ControlServer
 from .graph import Graph, Node
 from .idle import IdleTracker, playing_clients
-from .levels import VoiceLevelMeter
 from .modules import ModuleRegistry
 from .routes import SourceRoutes
 from .usb.host import UsbHost
 from .usb.volume_sync import UsbVolumeSync
+from .voice_meter import VoiceLevelMeter
 from .xvf3800.aec import AecReference
 from .xvf3800.microphone import Microphone
 

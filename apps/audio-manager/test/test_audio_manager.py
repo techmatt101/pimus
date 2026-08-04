@@ -19,8 +19,8 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
 from audio_manager import (  # noqa: E402
     graph,
-    levels,
     output,
+    voice_meter,
     volume,
 )
 from audio_manager.control import server as control_server  # noqa: E402
@@ -346,14 +346,14 @@ class VoiceLevelTests(ManagerTestCase):
             )
             return samples.tobytes()
 
-        self.assertEqual(levels.block_level(block(0)), 0.0)
-        loud = levels.block_level(block(30000))
-        quiet = levels.block_level(block(600))
+        self.assertEqual(voice_meter.block_level(block(0)), 0.0)
+        loud = voice_meter.block_level(block(30000))
+        quiet = voice_meter.block_level(block(600))
         self.assertGreater(loud, quiet)
         self.assertLessEqual(loud, 1.0)
         self.assertGreaterEqual(quiet, 0.0)
         # Anything under the floor is a pause between words, not quiet speech.
-        self.assertEqual(levels.block_level(block(20)), 0.0)
+        self.assertEqual(voice_meter.block_level(block(20)), 0.0)
 
     def test_metering_is_held_against_the_requesting_connection(self) -> None:
         manager = self.make_manager({})
@@ -407,7 +407,7 @@ class VoiceLevelTests(ManagerTestCase):
 
         selector = selectors.DefaultSelector()
         self.addCleanup(selector.close)
-        meter = levels.VoiceLevelMeter(
+        meter = voice_meter.VoiceLevelMeter(
             selector, lambda _level: None, capture=capture, clock=lambda: clock
         )
         self.addCleanup(meter.close)
@@ -424,7 +424,7 @@ class VoiceLevelTests(ManagerTestCase):
         # conversation is not metered from a cold start.
         meter.request(False)
         meter.tick()
-        self.assertEqual(meter.deadline(), 1000.0 + levels.LINGER_SECONDS)
+        self.assertEqual(meter.deadline(), 1000.0 + voice_meter.LINGER_SECONDS)
 
 
 class SubscribeEventTests(unittest.TestCase):
