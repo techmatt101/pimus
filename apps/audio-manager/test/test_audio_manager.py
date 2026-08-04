@@ -18,12 +18,12 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
 from audio_manager import (  # noqa: E402
-    control_server,
     graph,
     levels,
     output,
     volume,
 )
+from audio_manager.control import server as control_server  # noqa: E402
 from audio_manager.system import (  # noqa: E402
     monitors,
     pactl,

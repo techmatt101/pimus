@@ -6,7 +6,7 @@ import logging
 import time
 from typing import Callable
 
-from .system import usb_gadget
+from ..system import usb_gadget
 
 
 LOG = logging.getLogger(__name__)

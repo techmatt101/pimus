@@ -11,21 +11,22 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from . import output, status, voice_capture, volume
+from . import output, status, volume
 from .system import monitors, pactl
-from .aec import AecReference
+from .xvf3800 import microphone
 from .buses import BackgroundBus, VoiceBus
-from .commands import CommandHandler
 from .config import AudioConfig
-from .control_server import ControlServer
+from .control.commands import CommandHandler
+from .control.server import ControlServer
 from .graph import Graph, Node
 from .idle import IdleTracker, playing_clients
 from .levels import VoiceLevelMeter
 from .modules import ModuleRegistry
 from .routes import SourceRoutes
-from .usb_host import UsbHost
-from .usb_volume import UsbVolumeSync
-from .voice_capture import VoiceCapture
+from .usb.host import UsbHost
+from .usb.volume_sync import UsbVolumeSync
+from .xvf3800.aec import AecReference
+from .xvf3800.microphone import Microphone
 
 
 LOG = logging.getLogger(__name__)
@@ -77,7 +78,7 @@ class AudioManager:
         self.modules = ModuleRegistry(self.graph)
         self.background = BackgroundBus(config.background, self.graph, self.modules)
         self.voice_bus = VoiceBus(config.voice_bus, self.graph, self.modules)
-        self.voice_capture = VoiceCapture(
+        self.microphone = Microphone(
             config.voice_capture_channel, self.graph, self.modules
         )
         self.aec_reference = AecReference(
@@ -245,7 +246,7 @@ class AudioManager:
             self.voice_bus.monitor_name if self.voice_bus.available else None
         )
         voice_device = self._find_voice_device()
-        voice_source, capture_status = self.voice_capture.reconcile(voice_device)
+        voice_source, capture_status = self.microphone.reconcile(voice_device)
         self.apply_ducking()
         self._adopt_defaults(sink, voice_source)
         aec_status = self.aec_reference.reconcile(sink, wanted=not idle)
@@ -274,10 +275,10 @@ class AudioManager:
         # match voice_input_match itself; exclude it or it becomes its own
         # master on the next reconcile.
         device = self.graph.find_source(
-            self.config.voice_input_match, excluding=voice_capture.SOURCE_NAME
+            self.config.voice_input_match, excluding=microphone.SOURCE_NAME
         )
         if device is None:
-            voice_capture.activate_capture_card(
+            microphone.activate_capture_card(
                 self.graph, self.config.voice_input_match
             )
         return device

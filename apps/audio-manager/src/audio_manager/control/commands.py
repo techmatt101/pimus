@@ -7,11 +7,11 @@ import logging
 import socket
 from typing import TYPE_CHECKING, Any, Callable
 
-from . import volume
+from .. import volume
 
 
 if TYPE_CHECKING:
-    from .daemon import AudioManager
+    from ..daemon import AudioManager
 
 
 LOG = logging.getLogger(__name__)

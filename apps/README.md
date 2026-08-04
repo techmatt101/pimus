@@ -63,11 +63,17 @@ aux, USB audio, the Sendspin/USB background bus, ducking gain, and
 acoustic-echo-reference PipeWire routes. Its unit tests are colocated in
 `audio-manager/test/`.
 
-`daemon.py` holds the reconcile loop and owns one object per concern:
-`buses.py` (the background and voice null sinks and their bridge gains),
-`routes.py` (the switchable inputs), `voice_capture.py`, `aec.py`, `output.py`
-(the pinned output sink), `usb_volume.py`, and `modules.py` (every PipeWire
-module the daemon loaded). `pactl.py`, `usb_gadget.py`, and `process.py` are
-the command boundary, `graph.py` the cached view of the graph they read, and
-`control_server.py` plus `commands.py` the Unix control socket the controller
-speaks to. It runs as `python3 -m audio_manager`.
+`daemon.py` holds the reconcile loop and owns one object per concern. Five
+modules shape the graph, one audio path each. Three carry sound to the
+amplifier: `routes.py` (the switchable inputs), `buses.py` (the background and
+voice null sinks and their bridge gains), and `output.py` (the pinned output
+sink everything lands on). Two serve the ReSpeaker's DSP instead, in
+`xvf3800/`: `microphone.py` (its ASR channel, published as the source the
+assistant records) and `aec.py` (the output's monitor, sent back as the echo
+reference). Each owns both its endpoint and the link into it; `modules.py` owns
+every PipeWire module they loaded. `graph.py` is the cached view of the graph
+they all read. Everything crossing a boundary sits in a folder: `system/`
+(`pactl.py`, `usb_gadget.py`, `process.py` — the only place a binary is run),
+`control/` (`server.py` and `commands.py`, the Unix socket the controller
+speaks to), and `usb/` (the state kept agreed with a plugged-in computer). It
+runs as `python3 -m audio_manager`.

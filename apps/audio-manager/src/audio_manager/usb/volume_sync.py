@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import logging
 
-from . import volume
-from .system import pactl, usb_gadget
-from .graph import Node
+from .. import volume
+from ..system import pactl, usb_gadget
+from ..graph import Node
 
 
 LOG = logging.getLogger(__name__)

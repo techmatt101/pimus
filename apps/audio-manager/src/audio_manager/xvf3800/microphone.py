@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from .system import pactl
-from .graph import Graph, Node
-from .modules import ModuleRegistry
+from ..system import pactl
+from ..graph import Graph, Node
+from ..modules import ModuleRegistry
 
 
 LOG = logging.getLogger(__name__)
@@ -49,13 +49,15 @@ def activate_capture_card(view: Graph, pattern: str) -> None:
     )
 
 # The mono source published for the voice assistant when a capture channel is
-# selected; see VoiceCapture for why the device is not used directly.
+# selected; see Microphone for why the device is not used directly. The name is
+# what the assistant records and what the doctor script checks, so it stays as
+# it is however the module around it is called.
 SOURCE_NAME = "smartamp_voice_capture"
 
 CAPTURE_ROLE = "_voice_capture"
 
 
-class VoiceCapture:
+class Microphone:
     """The XVF3800's ASR channel, remapped to mono for the voice assistant.
 
     The device's two USB capture channels are different DSP outputs, not a

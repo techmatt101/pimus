@@ -66,8 +66,14 @@ apps/
     tsconfig.json
   audio-manager/
     src/audio_manager/   PipeWire reconciliation daemon, run as a package
+      control/           The Unix socket the controller drives it through:
+                         the transport, and the command vocabulary
       system/            The command-line boundary: process, pactl, amixer,
                          parec, and the monitors that read a child's lines
+      usb/               What the daemon keeps agreed with a computer plugged
+                         into the audio gadget: its state, and its volume
+      xvf3800/           The two paths serving the ReSpeaker's DSP rather than
+                         the speakers: its ASR capture, and its echo reference
     test/                Python unit tests
   playground/            Development-only debug environment; never deployed
     src/                 Fake deck, LVA, audio manager, wpctl, LEDs, web server
