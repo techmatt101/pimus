@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import logging
 
-from . import graph, pactl
+from . import graph
+from .system import pactl
 from .graph import Graph, Node
 from .modules import STREAM_PREFIX
 

@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from . import graph, pactl, volume
+from . import graph, volume
+from .system import pactl
 from .config import SourceConfig
 from .graph import Graph, Node
 from .modules import ModuleRegistry, stream_media_name

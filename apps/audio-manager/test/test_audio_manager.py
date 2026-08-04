@@ -21,12 +21,14 @@ from audio_manager import (  # noqa: E402
     control_server,
     graph,
     levels,
-    monitors,
     output,
+    volume,
+)
+from audio_manager.system import (  # noqa: E402
+    monitors,
     pactl,
     process,
     usb_gadget,
-    volume,
 )
 from audio_manager.config import AudioConfig  # noqa: E402
 from audio_manager.daemon import AudioManager  # noqa: E402
@@ -393,31 +395,30 @@ class VoiceLevelTests(ManagerTestCase):
 
     def test_the_capture_starts_only_once_its_monitor_exists(self) -> None:
         clock = 1000.0
-        spawned: list[list[str]] = []
+        captured: list[str] = []
 
-        def spawn(command: list[str]) -> Any:
-            spawned.append(command)
+        def capture(source: str) -> Any:
+            captured.append(source)
             read_fd, write_fd = os.pipe()
             self.addCleanup(os.close, write_fd)
-            capture = mock.Mock(stdout=open(read_fd, "rb", buffering=0))
-            capture.poll.return_value = None
-            return capture
+            running = mock.Mock(stdout=open(read_fd, "rb", buffering=0))
+            running.poll.return_value = None
+            return running
 
         selector = selectors.DefaultSelector()
         self.addCleanup(selector.close)
         meter = levels.VoiceLevelMeter(
-            selector, lambda _level: None, spawn=spawn, clock=lambda: clock
+            selector, lambda _level: None, capture=capture, clock=lambda: clock
         )
         self.addCleanup(meter.close)
 
         meter.request(True)
         meter.tick()
-        self.assertEqual(spawned, [])
+        self.assertEqual(captured, [])
 
         meter.set_source("smartamp_voice.monitor")
         meter.tick()
-        self.assertEqual(len(spawned), 1)
-        self.assertIn("--device=smartamp_voice.monitor", spawned[0])
+        self.assertEqual(captured, ["smartamp_voice.monitor"])
 
         # Releasing holds the capture briefly, so the next reply in the same
         # conversation is not metered from a cold start.

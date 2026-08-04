@@ -10,7 +10,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from . import graph, pactl
+from . import graph
+from .system import pactl
 from .config import AecConfig
 from .graph import Graph, Node
 from .modules import ModuleRegistry, stream_media_name

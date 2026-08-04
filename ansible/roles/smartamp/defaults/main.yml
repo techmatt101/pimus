@@ -10,3 +10,7 @@ smartamp_secrets_file: "{{ smartamp_config_dir }}/secrets.env"
 # and tested as normal source code. Override this only when embedding the role
 # in a different repository layout.
 smartamp_source_dir: "{{ playbook_dir }}/../../apps"
+# The audio manager is a package with subpackages of its own, so both ends of
+# its deployment are named once and every module path is taken relative to them.
+smartamp_audio_manager_source: "{{ smartamp_source_dir }}/audio-manager/src/audio_manager"
+smartamp_audio_manager_dir: "{{ smartamp_app_dir }}/audio-manager/audio_manager"

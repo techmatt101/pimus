@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import logging
 
-from . import pactl, usb_gadget, volume
+from . import volume
+from .system import pactl, usb_gadget
 from .graph import Node
 
 

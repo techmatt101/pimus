@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from . import pactl
+from .system import pactl
 from .graph import Graph, Node
 from .modules import ModuleRegistry
 

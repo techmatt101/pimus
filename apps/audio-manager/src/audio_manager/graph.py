@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from . import pactl
+from .system import pactl
 
 
 Node = dict[str, Any]

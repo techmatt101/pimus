@@ -10,7 +10,8 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from . import monitors, output, pactl, status, usb_gadget, voice_capture, volume
+from . import output, status, voice_capture, volume
+from .system import monitors, pactl, usb_gadget
 from .aec import AecReference
 from .buses import BackgroundBus, VoiceBus
 from .commands import CommandHandler

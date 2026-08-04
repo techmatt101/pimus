@@ -41,7 +41,7 @@
 # parent directory on PYTHONPATH.
 - name: Create Smart Amp audio manager directory
   ansible.builtin.file:
-    path: "{{ smartamp_app_dir }}/audio-manager/audio_manager"
+    path: "{{ smartamp_audio_manager_dir }}"
     state: directory
     owner: root
     group: root
@@ -49,17 +49,28 @@
 
 - name: Find Smart Amp audio manager modules
   ansible.builtin.find:
-    paths: "{{ smartamp_source_dir }}/audio-manager/src/audio_manager"
+    paths: "{{ smartamp_audio_manager_source }}"
     patterns: "*.py"
     file_type: file
+    recurse: true
   delegate_to: localhost
   become: false
   register: audio_manager_sources
 
+# Modules are tracked by their path relative to the package root, not by file
+# name, so a subpackage such as system/ deploys as its own directory instead of
+# being flattened onto the modules beside it.
 - name: Record Smart Amp audio manager modules
   ansible.builtin.set_fact:
     smartamp_audio_manager_modules: >-
-      {{ audio_manager_sources.files | map(attribute='path') | map('basename') | list }}
+      {{ audio_manager_sources.files | map(attribute='path')
+         | map('relpath', smartamp_audio_manager_source) | list }}
+
+- name: Record Smart Amp audio manager packages
+  ansible.builtin.set_fact:
+    smartamp_audio_manager_packages: >-
+      {{ smartamp_audio_manager_modules | map('dirname')
+         | reject('equalto', '') | unique | list }}
 
 - name: Require a complete Smart Amp audio manager
   ansible.builtin.assert:
@@ -69,13 +80,23 @@
       The audio manager entrypoint is missing from
       apps/audio-manager/src/audio_manager.
 
-# A module deleted upstream must not keep running here: Python would happily
-# import whatever an older layout left behind.
+- name: Create Smart Amp audio manager package directories
+  ansible.builtin.file:
+    path: "{{ smartamp_audio_manager_dir }}/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ smartamp_audio_manager_packages }}"
+
+# A module deleted or moved upstream must not keep running here: Python would
+# happily import whatever an older layout left behind.
 - name: Find deployed Smart Amp audio manager modules
   ansible.builtin.find:
-    paths: "{{ smartamp_app_dir }}/audio-manager/audio_manager"
+    paths: "{{ smartamp_audio_manager_dir }}"
     patterns: "*.py"
     file_type: file
+    recurse: true
   register: deployed_audio_manager_modules
 
 - name: Remove obsolete Smart Amp audio manager modules
@@ -84,14 +105,37 @@
     state: absent
   loop: "{{ deployed_audio_manager_modules.files | default([]) }}"
   loop_control:
-    label: "{{ item.path | basename }}"
-  when: item.path | basename not in smartamp_audio_manager_modules
+    label: "{{ item.path | relpath(smartamp_audio_manager_dir) }}"
+  when: >-
+    item.path | relpath(smartamp_audio_manager_dir)
+    not in smartamp_audio_manager_modules
+  notify: Restart audio manager
+
+# Removing the modules leaves the directory that held them, and an empty
+# package still imports.
+- name: Find deployed Smart Amp audio manager packages
+  ansible.builtin.find:
+    paths: "{{ smartamp_audio_manager_dir }}"
+    file_type: directory
+    recurse: true
+  register: deployed_audio_manager_packages
+
+- name: Remove obsolete Smart Amp audio manager packages
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ deployed_audio_manager_packages.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path | relpath(smartamp_audio_manager_dir) }}"
+  when: >-
+    item.path | relpath(smartamp_audio_manager_dir)
+    not in smartamp_audio_manager_packages
   notify: Restart audio manager
 
 - name: Install Smart Amp audio manager modules
   ansible.builtin.copy:
-    src: "{{ smartamp_source_dir }}/audio-manager/src/audio_manager/{{ item }}"
-    dest: "{{ smartamp_app_dir }}/audio-manager/audio_manager/{{ item }}"
+    src: "{{ smartamp_audio_manager_source }}/{{ item }}"
+    dest: "{{ smartamp_audio_manager_dir }}/{{ item }}"
     owner: root
     group: root
     mode: "0644"

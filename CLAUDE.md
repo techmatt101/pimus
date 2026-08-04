@@ -66,6 +66,8 @@ apps/
     tsconfig.json
   audio-manager/
     src/audio_manager/   PipeWire reconciliation daemon, run as a package
+      system/            The command-line boundary: process, pactl, amixer,
+                         parec, and the monitors that read a child's lines
     test/                Python unit tests
   playground/            Development-only debug environment; never deployed
     src/                 Fake deck, LVA, audio manager, wpctl, LEDs, web server
@@ -308,12 +310,18 @@ runtime validation, and relevant documentation together.
   the reconcile order and nothing else; each concern it drives (a bus, the
   routes, voice capture, the AEC reference, the USB volume agreement, the
   control socket) lives in its own module and holds its own state. Reach the
-  outside world through `process.run`, `pactl`, and `usb_gadget`, and read the
-  graph through the cached `Graph`, so tests patch one seam. Anything that
-  mutates the graph goes through `ModuleRegistry`, which invalidates that
-  cache. Adding a module means adding it to the deployed list in
-  `roles/smartamp/tasks/audio.yml` automatically — it globs `*.py` — but a new
-  top-level package would need its own task.
+  outside world through the `system/` subpackage — `process.run`, `pactl`,
+  `usb_gadget`, `parec`, and the `monitors` line readers — and read the graph
+  through the cached `Graph`, so tests patch one seam. Every external binary the
+  daemon runs is spawned from there and nothing in it imports the package above
+  it; a module that decides policy does not belong in it. A caller passes what
+  the command should say (the capture's rate, the device to meter) and keeps the
+  argv itself out of its own file. Anything that mutates the
+  graph goes through `ModuleRegistry`, which invalidates that cache. Adding a
+  module or a subpackage means adding it to the deployed list in
+  `roles/smartamp/tasks/audio.yml` automatically — it globs `*.py` beneath the
+  package root and deploys each one at its relative path — but a new top-level
+  package would need its own task.
 
 ### Ansible
 

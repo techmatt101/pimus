@@ -19,7 +19,7 @@ import sys
 import time
 from typing import Callable
 
-from . import process
+from .system import parec
 
 
 LOG = logging.getLogger(__name__)
@@ -43,6 +43,8 @@ SILENCE = 1e-6
 RELEASE = 0.35
 
 RETRY_SECONDS = 2.0
+
+CLIENT_NAME = "smartamp-voice-meter"
 
 # A capture started per utterance would miss the first syllable to process
 # startup, and a conversation is many utterances; holding it briefly past the
@@ -76,12 +78,19 @@ class VoiceLevelMeter:
         selector: selectors.BaseSelector,
         on_level: Callable[[float], None],
         *,
-        spawn: Callable[[list[str]], subprocess.Popen[bytes]] | None = None,
+        capture: Callable[[str], subprocess.Popen[bytes]] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._selector = selector
         self._on_level = on_level
-        self._spawn = spawn or (lambda command: process.spawn(command, quiet_stderr=True))
+        self._capture = capture or (
+            lambda source: parec.capture_mono(
+                source,
+                rate=SAMPLE_RATE,
+                latency_ms=BLOCK_MILLISECONDS,
+                client_name=CLIENT_NAME,
+            )
+        )
         self._clock = clock
         self._process: subprocess.Popen[bytes] | None = None
         self._buffer = b""
@@ -139,17 +148,8 @@ class VoiceLevelMeter:
     def _start(self) -> None:
         if self._source is None:
             return
-        command = [
-            "parec",
-            f"--device={self._source}",
-            "--format=s16le",
-            f"--rate={SAMPLE_RATE}",
-            "--channels=1",
-            f"--latency-msec={BLOCK_MILLISECONDS}",
-            "--client-name=smartamp-voice-meter",
-        ]
         try:
-            self._process = self._spawn(command)
+            self._process = self._capture(self._source)
         except OSError as error:
             LOG.warning("Voice level capture failed to start: %s", error)
             self._process = None

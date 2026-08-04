@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from . import pactl
+from .system import pactl
 
 
 def clamp(percent: Any) -> int:

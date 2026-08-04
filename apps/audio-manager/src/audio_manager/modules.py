@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Callable
 
-from . import graph, pactl
+from . import graph
+from .system import pactl
 from .graph import Graph
 
 
