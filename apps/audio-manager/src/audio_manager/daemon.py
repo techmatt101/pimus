@@ -7,11 +7,12 @@ import logging
 import selectors
 import subprocess
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
 from . import output, status, voice_capture, volume
-from .system import monitors, pactl, usb_gadget
+from .system import monitors, pactl
 from .aec import AecReference
 from .buses import BackgroundBus, VoiceBus
 from .commands import CommandHandler
@@ -22,6 +23,7 @@ from .idle import IdleTracker, playing_clients
 from .levels import VoiceLevelMeter
 from .modules import ModuleRegistry
 from .routes import SourceRoutes
+from .usb_host import UsbHost
 from .usb_volume import UsbVolumeSync
 from .voice_capture import VoiceCapture
 
@@ -32,13 +34,6 @@ LOG = logging.getLogger(__name__)
 # into one reconcile scheduled this far ahead of the first event.
 EVENT_DEBOUNCE_SECONDS = 0.3
 
-# Plugging or unplugging the USB-C gadget cable, or the host opening or closing
-# its playback stream, changes no PipeWire state, so pactl subscribe never
-# reports it. The gadget's mixer monitor usually announces a stream open/close
-# instantly; this poll is the fallback that also catches events raced while
-# that monitor was restarting.
-USB_HOST_POLL_SECONDS = 2.0
-
 # A transient graph race should heal promptly rather than waiting for the
 # normal fifteen-minute safety resync.
 RECONCILE_RETRY_SECONDS = 1.0
@@ -46,6 +41,20 @@ RECONCILE_RETRY_SECONDS = 1.0
 # Failures that mean the graph moved under us or a helper is missing: log them
 # and try again on the next pass rather than terminating the daemon.
 GRAPH_ERRORS = (subprocess.SubprocessError, json.JSONDecodeError, RuntimeError, OSError)
+
+
+@dataclass(frozen=True)
+class GraphStatus:
+    """What one pass over the graph found, as the status file describes it.
+
+    The rest of the document is manager state that outlives a pass, so only
+    these four have to be carried out of the rebuild.
+    """
+
+    voice_input: str | None
+    voice_capture: dict[str, Any]
+    aec_reference: dict[str, Any]
+    sources: dict[str, dict[str, Any]]
 
 
 class AudioManager:
@@ -62,8 +71,6 @@ class AudioManager:
         # values after either process restarts, like the routes.
         self.music_volume = config.startup_volume_percent
         self.voice_volume = config.voice_bus.volume_percent
-        self.usb_host = False
-        self.usb_playback = False
         self.output_muted = False
 
         self.graph = Graph()
@@ -77,6 +84,7 @@ class AudioManager:
             config.aec_reference, self.graph, self.modules
         )
         self.routes = SourceRoutes(config.sources, self.graph, self.modules)
+        self.usb = UsbHost()
         self.usb_volume = UsbVolumeSync()
         self.idle = IdleTracker(config.idle_teardown_seconds)
 
@@ -95,7 +103,6 @@ class AudioManager:
 
         self.pending_reconcile: float | None = None
         self.next_resync = 0.0
-        self.next_usb_poll = 0.0
         self._last_broadcast = self._broadcast_signature()
 
     def stop(self, *_args: object) -> None:
@@ -144,7 +151,7 @@ class AudioManager:
             "event": "state",
             "sources": dict(self.routes.enabled),
             "ducked": self.desired_ducking(),
-            "usb_playback": self.usb_playback,
+            "usb_playback": self.usb.streaming,
             "music_volume": self.music_volume,
             "voice_volume": self.voice_volume,
             "output_muted": self.output_muted,
@@ -211,8 +218,7 @@ class AudioManager:
         self.music_volume = self.usb_volume.sync(sink, self.music_volume)
         # USB state is read before the buses so idle can be judged from it;
         # the routes below gate on the same values.
-        self.usb_host = usb_gadget.host_attached()
-        self.usb_playback = self.usb_host and usb_gadget.streaming()
+        self.usb.refresh()
         was_idle = self.idle.idle
         idle = self.idle.update(self._audio_active())
         # An idle rebuild only ever happens because something has just started
@@ -224,64 +230,79 @@ class AudioManager:
         if rebuilding:
             output.set_mute(sink, True)
         try:
-            background_sink = self.background.reconcile(sink, bridged=not idle)
-            voice_sink = self.voice_bus.reconcile(sink, bridged=not idle)
-            self.voice_bus.apply_gain(self.voice_volume)
-            self.voice_meter.set_source(
-                self.voice_bus.monitor_name if self.voice_bus.available else None
-            )
-            # The remap source's properties name its master device, so it would
-            # match voice_input_match itself; exclude it or it becomes its own
-            # master on the next reconcile.
-            voice_device = self.graph.find_source(
-                self.config.voice_input_match, excluding=voice_capture.SOURCE_NAME
-            )
-            if voice_device is None:
-                voice_capture.activate_capture_card(
-                    self.graph, self.config.voice_input_match
-                )
-            voice_source, capture_status = self.voice_capture.reconcile(voice_device)
-            ducked = self.apply_ducking()
-            self._adopt_defaults(sink, voice_source)
-            aec_status = self.aec_reference.reconcile(sink, wanted=not idle)
-            source_status = self.routes.reconcile(
-                output=sink,
-                background_sink=background_sink,
-                music_volume=self.music_volume,
-                usb_playback=self.usb_playback,
-                idle=idle,
-            )
-            output.hold_client_streams(self.graph, sink, self.music_volume)
-            # Sendspin plays into the bus as an ordinary Pulse client; the bridge
-            # carries the music level, so its stream holds only the input's trim.
-            output.hold_client_streams(
-                self.graph, background_sink, self.config.background.client_volume_percent
-            )
+            found = self._reconcile_graph(sink, idle)
         finally:
             if rebuilding:
                 output.set_mute(sink, False)
+        self._publish(sink, found)
+
+    def _reconcile_graph(self, sink: Node | None, idle: bool) -> GraphStatus:
+        """Put the buses, capture, reference and routes back where they belong."""
+        background_sink = self.background.reconcile(sink, bridged=not idle)
+        self.voice_bus.reconcile(sink, bridged=not idle)
+        self.voice_bus.apply_gain(self.voice_volume)
+        self.voice_meter.set_source(
+            self.voice_bus.monitor_name if self.voice_bus.available else None
+        )
+        voice_device = self._find_voice_device()
+        voice_source, capture_status = self.voice_capture.reconcile(voice_device)
+        self.apply_ducking()
+        self._adopt_defaults(sink, voice_source)
+        aec_status = self.aec_reference.reconcile(sink, wanted=not idle)
+        source_status = self.routes.reconcile(
+            output=sink,
+            background_sink=background_sink,
+            music_volume=self.music_volume,
+            usb_playback=self.usb.streaming,
+            idle=idle,
+        )
+        output.hold_client_streams(self.graph, sink, self.music_volume)
+        # Sendspin plays into the bus as an ordinary Pulse client; the bridge
+        # carries the music level, so its stream holds only the input's trim.
+        output.hold_client_streams(
+            self.graph, background_sink, self.config.background.client_volume_percent
+        )
+        return GraphStatus(
+            voice_input=voice_device.get("name") if voice_device else None,
+            voice_capture=capture_status,
+            aec_reference=aec_status,
+            sources=source_status,
+        )
+
+    def _find_voice_device(self) -> Node | None:
+        # The remap source's properties name its master device, so it would
+        # match voice_input_match itself; exclude it or it becomes its own
+        # master on the next reconcile.
+        device = self.graph.find_source(
+            self.config.voice_input_match, excluding=voice_capture.SOURCE_NAME
+        )
+        if device is None:
+            voice_capture.activate_capture_card(
+                self.graph, self.config.voice_input_match
+            )
+        return device
+
+    def _publish(self, sink: Node | None, found: GraphStatus) -> None:
         published = {
             "sink": sink.get("name") if sink else None,
             "music_volume": self.music_volume,
-            "voice_input": voice_device.get("name") if voice_device else None,
-            "voice_capture": capture_status,
+            "voice_input": found.voice_input,
+            "voice_capture": found.voice_capture,
             "background": {
-                "available": self.background.available,
-                "sink": background_sink.get("name") if background_sink else None,
-                "ducked": ducked,
+                **self.background.status(),
+                "ducked": self.desired_ducking(),
             },
             "voice_bus": {
                 "enabled": self.config.voice_bus.enabled,
-                "available": self.voice_bus.available,
-                "sink": voice_sink.get("name") if voice_sink else None,
+                **self.voice_bus.status(),
                 "volume_percent": self.voice_volume,
             },
-            "aec_reference": aec_status,
-            "sources": source_status,
-            "usb_host": self.usb_host,
-            "usb_playback": self.usb_playback,
+            "aec_reference": found.aec_reference,
+            "sources": found.sources,
+            "usb_host": self.usb.attached,
+            "usb_playback": self.usb.streaming,
             "output_muted": self.output_muted,
-            "idle": idle,
+            "idle": self.idle.idle,
             "standby": self.idle.standby,
         }
         status.write(self.status_path, published)
@@ -294,7 +315,7 @@ class AudioManager:
         TTS stream exists, an enabled analogue route has no stream to watch,
         and everything else shows up as a client stream playing somewhere.
         """
-        if self.usb_playback or self.commands.duck_requested:
+        if self.usb.streaming or self.commands.duck_requested:
             return True
         if self.commands.meter_listeners or self.routes.holds_awake():
             return True
@@ -328,7 +349,7 @@ class AudioManager:
             self.control.send(connection, event)
 
     def _broadcast_signature(self) -> tuple[object, ...]:
-        return (self.usb_playback, self.music_volume, self.output_muted)
+        return (self.usb.streaming, self.music_volume, self.output_muted)
 
     def _apply_output_mute(self) -> None:
         self.graph.invalidate()
@@ -352,7 +373,7 @@ class AudioManager:
         # Ducking is applied when a set-duck arrives, when a client holding a
         # request disconnects, and at the end of every reconcile, so the loop
         # needs no poll interval to notice a duck request.
-        deadlines = [self.next_resync, self.next_usb_poll]
+        deadlines = [self.next_resync, self.usb.deadline()]
         if self.pending_reconcile is not None:
             deadlines.append(self.pending_reconcile)
         # The meter has to be started once its monitor appears, and stopped once
@@ -371,22 +392,10 @@ class AudioManager:
             key.data()
 
     def _poll_usb_host(self) -> None:
-        now = time.monotonic()
-        if now < self.next_usb_poll:
-            return
-        self.next_usb_poll = now + USB_HOST_POLL_SECONDS
-        attached = usb_gadget.host_attached()
-        playing = attached and usb_gadget.streaming()
-        if (attached, playing) == (self.usb_host, self.usb_playback):
-            return
-        LOG.info(
-            "USB host %s, playback %s",
-            "attached" if attached else "detached",
-            "streaming" if playing else "stopped",
-        )
         # Reconcile builds or tears down the gated USB route and records the
         # new state.
-        self.safe_reconcile()
+        if self.usb.poll():
+            self.safe_reconcile()
 
     def _reconcile_when_due(self) -> None:
         now = time.monotonic()

@@ -10,6 +10,7 @@ level before its volume applies.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from . import graph, volume
 from .config import BackgroundConfig, BusConfig, VoiceBusConfig
@@ -49,6 +50,12 @@ class AudioBus:
     def monitor_name(self) -> str:
         """The source carrying exactly what this bus is playing."""
         return graph.monitor_name(self.config.sink_name)
+
+    def status(self) -> dict[str, Any]:
+        return {
+            "available": self.available,
+            "sink": self.sink.get("name") if self.sink else None,
+        }
 
     def reconcile(self, output: Node | None, *, bridged: bool = True) -> Node | None:
         """Keep the null sink in place, and its bridge into the output while
