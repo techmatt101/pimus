@@ -11,6 +11,7 @@ settings named here are explained in [configuration](configuration.md).
 | HiFiBerry DAC2 ADC Pro + AAmp60 | DAC with an analogue line-in, plus a bolt-on amplifier | [DAC2 ADC Pro](https://www.hifiberry.com/shop/boards/hifiberry-dac2-adc-pro/) · [AAmp60](https://www.hifiberry.com/shop/boards/aamp60/) |
 | …or a HiFiBerry Amp100 | One board that is amplifier and DAC, no line-in | [Amp100](https://www.hifiberry.com/shop/boards/amp100/) |
 | ReSpeaker XVF3800 USB 4-mic array | Wake word, far-field voice, echo cancellation, LED ring — see [XVF3800](xvf3800.md) | [Seeed](https://www.seeedstudio.com/ReSpeaker-XVF3800-USB-Mic-Array-p-6488.html) |
+| …or a ReSpeaker Lite | Two-microphone array, echo cancellation, no ring — see [ReSpeaker Lite](respeaker-lite.md) | [Seeed](https://www.seeedstudio.com/ReSpeaker-Lite-p-5928.html) |
 | Elgato Stream Deck+ *(optional)* | Keys, dials, and a touch strip | [Elgato](https://www.elgato.com/us/en/p/stream-deck-plus-black) |
 | Passive speakers | The point of the whole thing | anywhere |
 | DC supply for the amplifier | Feeds the Pi through the GPIO header too | see [Power](#power) |
@@ -43,6 +44,28 @@ software can do about it. For private listening use a USB DAC dongle or a
 headphone amplifier with a high-impedance input fed from the RCAs. The Pi's own
 3.5 mm jack stays disabled (`dtparam=audio=off`): it is a PWM output with no jack
 detection, and only one unit in the fleet even has one.
+
+## Which microphone array
+
+`respeaker_board` in inventory names the array, because the two need different
+capture channels and offer the Pi different things. The default is the XVF3800;
+a unit with a Lite says so and turns its ring off in the same change, since
+preflight refuses `respeaker_led_enabled` on an array with no LED the Pi can
+drive.
+
+| `respeaker_board` | Array | Microphones | ASR channel | LED ring and listening ripples | `xvf_host` tuning | USB id |
+| --- | --- | --- | --- | --- | --- | --- |
+| `xvf3800` | ReSpeaker XVF3800 USB 4-Mic Array | 4, 360° beamforming | 1 | ✅ 12 LEDs, direction of arrival | ✅ | `2886:001a` |
+| `lite` | ReSpeaker Lite | 2, directional | 0 | ❌ nothing host-driven | ❌ no USB control | `2886:0019` |
+
+Both are USB audio devices with an XMOS DSP that cancels the amp's own output
+against the reference the audio manager plays back into them, so the voice
+path, the ducking, and the deck behave the same on either. What a Lite unit
+loses is the ring — voice-state feedback becomes the deck's job — and any way
+to read or tune the DSP from the Pi. The device match, capture channel, USB
+ids, and doctor check all follow from the row in
+[`boards.yml`](../ansible/roles/smartamp/vars/boards.yml); the two guides are
+[XVF3800](xvf3800.md) and [ReSpeaker Lite](respeaker-lite.md).
 
 ## Which Raspberry Pi
 
@@ -117,5 +140,8 @@ provisioning refuses the flag.
 - [ReSpeaker XVF3800 guide and host controls](https://wiki.seeedstudio.com/respeaker_xvf3800_introduction/)
 - [XMOS XVF3800 datasheet and user guide](https://www.xmos.com/documentation/XM-014888-PC/html/modules/fwk_xvf/doc/datasheet/02_overview.html)
   — the chip inside the ReSpeaker; distilled for this project in [xvf3800.md](xvf3800.md)
+- [ReSpeaker Lite getting started](https://wiki.seeedstudio.com/reSpeaker_usb_v3/)
+  and [firmware repository](https://github.com/respeaker/reSpeaker_Lite)
+  — the two-microphone array; distilled in [respeaker-lite.md](respeaker-lite.md)
 - [Linux Voice Assistant](https://github.com/OHF-Voice/linux-voice-assistant)
 - [Raspberry Pi OTG white paper](https://pip-assets.raspberrypi.com/categories/685-app-notes-guides-whitepapers/documents/RP-009276-WP-1-Using%20OTG%20mode%20on%20Raspberry%20Pi%20SBCs)

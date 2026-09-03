@@ -11,6 +11,13 @@
 # is the one unit with an aux route at all.
 hifiberry_board: dac2adcpro
 
+# The microphone array is the shared default, the XVF3800. To move this unit to
+# a ReSpeaker Lite, name it and give up the ring in the same change - the Lite
+# has no LED the Pi can drive, so preflight refuses the flag - then provision:
+#
+#   respeaker_board: lite
+#   respeaker_led_enabled: false
+
 # The Stream Deck+ and the names the house knows this amp by.
 streamdeck_enabled: true
 sendspin_name: "Office Amp"

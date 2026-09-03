@@ -338,10 +338,18 @@ noise and only smears speech. Its auto-gain is the exception — the measured re
 that conversational speech arrives too quietly for the model, and that setting is the lever aimed at it; see
 [wake word over music](xvf3800.md#wake-word-over-music).
 
-The device's two USB capture channels are separate DSP outputs, not a stereo pair: channel 0 is the Conference stream (
-tuned for human listeners), channel 1 the ASR stream (tuned for recognition). `smartamp_voice_capture_channel` (default
-`1`) tells the audio manager which channel to publish as the mono default source; set it to `null` to capture a device
-unmapped (a genuinely mono microphone). The voice assistant's capture is hardcoded to one channel in its systemd unit
+`respeaker_board` names the microphone array — `xvf3800` (the default) or `lite` — and it is the one array setting a
+unit normally touches: the device match expressions, the capture channel, the controller's USB ids, the doctor's bus
+check, and whether `xvf_host` is installed all follow from its row in `ansible/roles/smartamp/vars/boards.yml`. A
+Lite has no LED the Pi can drive, so a unit naming one must also set `respeaker_led_enabled: false` or preflight refuses
+the pair by name. See [hardware](hardware.md#which-microphone-array), [xvf3800](xvf3800.md), and
+[respeaker-lite](respeaker-lite.md).
+
+Either array's USB capture channels are separate DSP outputs, not a stereo pair. On the XVF3800 channel 0 is the
+Conference stream (tuned for human listeners) and channel 1 the ASR stream (tuned for recognition); on the Lite channel
+0 is the processed output and channel 1 a raw microphone. `smartamp_voice_capture_channel` (defaulting to the array's
+ASR channel) tells the audio manager which channel to publish as the mono default source; set it to `null` to capture
+a device unmapped (a genuinely mono microphone). The voice assistant's capture is hardcoded to one channel in its systemd unit
 because that mono source is the entire capture either way — a second LVA channel would be forwarded to Home Assistant
 labelled as a far-end echo reference for server-side AEC, and on the XVF3800 that channel carries the voice, not an echo
 reference.
@@ -352,7 +360,8 @@ Inventory carries only `respeaker_led_enabled` and `respeaker_led_brightness`.
 Which face each voice state shows is compiled into the controller and edited in
 `apps/controller/src/voice/led-states.mts`, exactly as the deck layout is: one
 line per state, so restyling the ring is an edit and a redeploy rather than an
-inventory change.
+inventory change. The ring is the XVF3800's; a unit with a ReSpeaker Lite has no
+LED the Pi can reach and keeps the flag off.
 
 ```ts
 thinking: new Spin('#7c4dff'),

@@ -35,7 +35,10 @@ XVF3800's ASR channel as the mono default voice source, and creates monitor loop
 The XVF3800's USB capture is not a stereo microphone: the chip beamforms its four mics internally and presents two
 independent DSP outputs — channel 0 is the Conference stream (post-processed for human listeners) and channel 1 is the
 ASR stream (tuned for wake-word and speech recognition). The chip's pipeline, its reference requirements, and which
-module owns each part of it are in [xvf3800](xvf3800.md). Recording the device in mono would downmix the two, so the
+module owns each part of it are in [xvf3800](xvf3800.md). A unit may carry a ReSpeaker Lite instead
+([respeaker-lite](respeaker-lite.md)): the same remap then lifts its channel 0, the processed output, and the AEC
+reference lands on its playback endpoint the same way. Which array is fitted is a row in `boards.yml` that inventory
+reads its defaults from; nothing in either daemon branches on it. Recording the device in mono would downmix the two, so the
 audio manager loads a `module-remap-source` that lifts exactly the ASR channel (`smartamp_voice_capture_channel`,
 default 1) into the `smartamp_voice_capture` source and makes that the default. Linux Voice Assistant records this one
 channel; it must not be given a second channel, which it would forward to Home Assistant advertised as a far-end echo

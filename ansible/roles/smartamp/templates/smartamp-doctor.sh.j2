@@ -51,10 +51,14 @@ arecord -l 2>/dev/null | grep -q {{ hifiberry_card_name | quote }} && pass 'HiFi
    would mean the wrong overlay loaded. #}
 arecord -l 2>/dev/null | grep -q {{ hifiberry_card_name | quote }} && warn 'HiFiBerry reports a capture device, but this board has no ADC' || pass 'No HiFiBerry capture device, as expected for this board'
 {% endif %}
+{# The array is looked for by the USB ids of the one inventory names, so a unit
+   configured for one array with the other plugged in fails here by name rather
+   than as a voice assistant that never finds its microphone. #}
+{% set respeaker_usb_id = smartamp_respeaker_caps.usb_vendor_id ~ ':' ~ smartamp_respeaker_caps.usb_product_id %}
 {% if voice_assistant_enabled or respeaker_led_enabled or smartamp_aec_reference_enabled %}
-lsusb 2>/dev/null | grep -qi '2886:001a' && pass 'ReSpeaker XVF3800 connected' || fail 'Required ReSpeaker XVF3800 is not connected'
+lsusb 2>/dev/null | grep -qi {{ respeaker_usb_id | quote }} && pass {{ (smartamp_respeaker_caps.label ~ ' connected') | quote }} || fail {{ ('Required ' ~ smartamp_respeaker_caps.label ~ ' (' ~ respeaker_usb_id ~ ') is not connected') | quote }}
 {% else %}
-lsusb 2>/dev/null | grep -qi '2886:001a' && pass 'ReSpeaker XVF3800 connected' || warn 'Optional ReSpeaker XVF3800 is not connected'
+lsusb 2>/dev/null | grep -qi {{ respeaker_usb_id | quote }} && pass {{ (smartamp_respeaker_caps.label ~ ' connected') | quote }} || warn {{ ('Optional ' ~ smartamp_respeaker_caps.label ~ ' (' ~ respeaker_usb_id ~ ') is not connected') | quote }}
 {% endif %}
 {% if streamdeck_enabled %}
 lsusb 2>/dev/null | grep -qi '0fd9:0084' && pass 'Elgato Stream Deck+ connected' || fail 'Required Elgato Stream Deck+ is not connected'

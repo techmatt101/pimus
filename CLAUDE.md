@@ -7,8 +7,8 @@ to, and most of the surprising ones exist because a real amp misbehaved.
 ## Project purpose
 
 Pimus provisions a fleet of Raspberry Pi audio and voice endpoints built from a
-HiFiBerry DAC2 ADC Pro + AAmp60 or a HiFiBerry Amp100, a ReSpeaker XVF3800, and
-optionally an Elgato Stream Deck+. It targets a fresh 64-bit Raspberry Pi OS
+HiFiBerry DAC2 ADC Pro + AAmp60 or a HiFiBerry Amp100, a ReSpeaker XVF3800 or
+ReSpeaker Lite microphone array, and optionally an Elgato Stream Deck+. It targets a fresh 64-bit Raspberry Pi OS
 Lite installation on a Pi 5, a Pi 4 Model B, or a Pi Zero 2 W (which reaches its
 USB devices through a self-powered hub). Three units are configured today:
 
@@ -17,8 +17,10 @@ USB devices through a self-powered hub). Three units are configured today:
 - `bedroom-amp` — Pi 4 Model B, Amp100, no deck.
 - `kitchen-amp` — Pi Zero 2 W, Amp100, no deck, USB devices on a powered hub.
 
-Every unit has a ReSpeaker and runs the voice assistant. A unit's hardware is
-its `host_vars` file; nothing in the code branches on which room it is.
+Every unit has a ReSpeaker (all three carry the XVF3800 today; the Lite is
+supported for the office's planned switch) and runs the voice assistant. A
+unit's hardware is its `host_vars` file; nothing in the code branches on which
+room it is.
 
 Home Assistant and Music Assistant run on another machine. This repository
 must remain a lightweight client: do not add Docker, a local HA/music server, or
@@ -33,7 +35,7 @@ an OS-image build pipeline unless the user explicitly changes that scope.
 | Which service owns what, how audio and voice flow | `docs/architecture.md` |
 | What a setting does, and where it lives | `docs/configuration.md`, then `ansible/inventory/group_vars/all.yml` (every setting is commented there) |
 | A key, dial, strip screen, or action | `docs/controls.md`, then `apps/controller/src/actions/catalog.mts` and `streamdeck/layout.mts` |
-| The microphone array: capture channels, echo reference, `xvf_host`, tuning | `docs/xvf3800.md` |
+| The microphone array: capture channels, echo reference, `xvf_host`, tuning | `docs/xvf3800.md`; `docs/respeaker-lite.md` for the two-mic array |
 | Boards, power, wiring, what each Pi can do | `docs/hardware.md`, then `ansible/roles/smartamp/vars/boards.yml` |
 | A symptom on a live amp | `docs/troubleshooting.md` |
 | Running the controller here with fake hardware | `docs/playground.md` |
@@ -130,7 +132,8 @@ ansible/
   playbooks/             Provisioning and verification entry points
   roles/smartamp/        Tasks, handlers, and generated templates
 docs/                    Architecture, configuration, controls, hardware,
-                         xvf3800, playground, setup, troubleshooting
+                         xvf3800, respeaker-lite, playground, setup,
+                         troubleshooting
 ```
 
 Do not create a generic top-level `src/` or `tests/` directory. Put code and
@@ -140,8 +143,9 @@ tests inside the app that owns them.
 
 - User configuration lives in `ansible/inventory/group_vars/all.yml`, which
   holds the conservative shared answer, and `ansible/inventory/host_vars/`,
-  where each unit declares only what differs — its HiFiBerry board, whether a
-  deck is attached, its names, its power flags. Do not copy a whole settings
+  where each unit declares only what differs — its HiFiBerry board, its
+  microphone array, whether a deck is attached, its names, its power flags. Do
+  not copy a whole settings
   file per unit, and do not push a room's specifics into `all.yml`. A setting
   every amp shares gets a default and a comment in `all.yml`; a unit that
   cannot honour it fails preflight by name.
@@ -508,12 +512,14 @@ change.
 ### Boards and power
 
 - What each supported board can do lives in `roles/smartamp/vars/boards.yml`,
-  on two axes: the Raspberry Pi (matched from the device-tree model, published
-  as `smartamp_board_caps`) and the HiFiBerry board (named by `hifiberry_board`
-  in inventory, published as `smartamp_hifiberry_caps`). Anything
-  board-conditional reads those facts; do not parse the model string again, and
-  do not give a board its own task file. A setting the board cannot honour fails
-  preflight by name rather than being silently dropped.
+  on three axes: the Raspberry Pi (matched from the device-tree model, published
+  as `smartamp_board_caps`), the HiFiBerry board (named by `hifiberry_board`
+  in inventory, published as `smartamp_hifiberry_caps`), and the ReSpeaker
+  array (named by `respeaker_board`, published as `smartamp_respeaker_caps`).
+  Anything board-conditional reads those facts; do not parse the model string
+  again, do not give a board its own task file, and do not hard-code a USB id
+  or a device match where the row already answers. A setting the board cannot
+  honour fails preflight by name rather than being silently dropped.
 - The HiFiBerry board cannot be detected, because `force_eeprom_read=0` tells
   the firmware to ignore the HAT's EEPROM so the chosen overlay wins. Both
   supported boards enumerate as the same ALSA card id (`sndrpihifiberry`), so
@@ -559,13 +565,29 @@ change.
 - Device discovery must use stable properties or USB IDs, not ALSA card numbers
   that change with enumeration order.
 
-### ReSpeaker XVF3800
+### ReSpeaker arrays
 
-The array is an XMOS XVF3800 voice processor behind a USB audio device; it is
-not a microphone. `docs/xvf3800.md` is the project's guide to it: the pipeline,
-what the Pi sees, which module owns each part, the AEC health check, the
-measurement traps, the wake-word findings, and the `xvf_host` commands that
-matter. The rules that follow from it:
+Two arrays are supported, and both are USB audio devices with an XMOS voice
+DSP inside rather than microphones. The array's row in `boards.yml` supplies
+the device match, the ASR capture channel, the USB ids, whether the Pi can
+drive its LEDs, and whether `xvf_host` applies; inventory's
+`smartamp_voice_input_match`, `smartamp_aec_reference_match`, and
+`smartamp_voice_capture_channel` default to that row. Neither daemon branches
+on the array: the audio manager remaps whichever channel it is told and the
+controller opens whichever USB ids it is given.
+
+- **ReSpeaker Lite** (`respeaker_board: lite`, `docs/respeaker-lite.md`): two
+  microphones, capture channel 0 processed and channel 1 raw, a stereo
+  playback endpoint that is the echo reference, 16 kHz, no host control over
+  USB, and a WS2812 the USB firmware releases at boot. A Lite unit keeps
+  `respeaker_led_enabled` off — preflight refuses it on — and gets no
+  `xvf_host`, no ring, and no listening ripples. Do not add a Lite LED driver
+  or DSP reader; there is no interface to build one on.
+- **ReSpeaker XVF3800** (`respeaker_board: xvf3800`, the default):
+  `docs/xvf3800.md` is the guide — the pipeline, what the Pi sees, which module
+  owns each part, the AEC health check, the measurement traps, the wake-word
+  findings, and the `xvf_host` commands that matter. The rules that follow
+  from it:
 
 - The XVF3800 USB capture is two DSP outputs, not stereo: channel 0 is the
   Conference stream (tuned for human listeners), channel 1 the ASR stream the

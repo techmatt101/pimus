@@ -137,6 +137,14 @@ sudo -u smartamp XDG_RUNTIME_DIR=/run/user/$(id -u smartamp) timeout 15 \
   --channels=2 --file-format=wav /tmp/mic.wav
 ```
 
+## The ReSpeaker Lite's LED is dark
+
+By design. The Lite's USB firmware releases its WS2812 at boot and offers no control interface over USB, so the Pi
+cannot light it; `respeaker_led_enabled` is off on such a unit and the deck carries the voice state. The same absence
+of a control path means there is no `xvf_host` on a Lite unit and no convergence flag to read: judge its echo
+cancellation by recording both capture channels under noise and comparing them, as [respeaker-lite](respeaker-lite.md)
+describes.
+
 ## Stopping the audio manager stops voice and music too
 
 `smartamp-sendspin` and `smartamp-voice-assistant` declare `Requires=smartamp-audio-manager.service`, so stopping the
@@ -394,7 +402,11 @@ service log. The Node dependency may compile `node-hid` locally on Raspberry Pi;
 If `smartamp-voice-assistant` reports that audio routing did not become ready,
 inspect `/run/user/*/smartamp-audio-status.json`. Both `sink` and `voice_input`
 must contain device names. Then check `smartamp-audio-manager` logs for the
-HiFiBerry or ReSpeaker match that is missing.
+HiFiBerry or ReSpeaker match that is missing. `smartamp-doctor` looks for the
+array `respeaker_board` names, by USB id, so a unit configured for an XVF3800
+with a ReSpeaker Lite plugged in (or the reverse) fails there by name: the two
+match different node names and want different capture channels, and neither
+works under the other's settings.
 
 `voice_capture` in the same file shows the ASR-channel remap: `source` should
 read `smartamp_voice_capture`, and that source should be the PipeWire default

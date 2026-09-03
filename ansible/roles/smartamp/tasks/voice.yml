@@ -149,6 +149,9 @@
 # generated into vars/main.yml by `make update-versions`. The file set is
 # whatever that tool checksummed: xvf_host resolves its companion libraries
 # through /proc/self/exe, so they only need to sit beside the real binary.
+# Only an array with a USB control interface (host_control in boards.yml) gets
+# it; the ReSpeaker Lite has none, and the tool is removed if the unit's array
+# is changed to one.
 - name: Create XVF3800 host-control directory
   ansible.builtin.file:
     path: "{{ smartamp_app_dir }}/xvf3800-host-control"
@@ -156,6 +159,7 @@
     owner: root
     group: root
     mode: "0755"
+  when: smartamp_respeaker_caps.host_control | bool
 
 - name: Install XVF3800 host-control tool
   ansible.builtin.get_url:
@@ -168,6 +172,7 @@
   loop: "{{ respeaker_host_control_checksums | dict2items }}"
   loop_control:
     label: "{{ item.key }}"
+  when: smartamp_respeaker_caps.host_control | bool
 
 # A symlink is enough for PATH convenience because the binary locates its
 # libraries from its resolved executable path, not the working directory.
@@ -176,6 +181,16 @@
     src: "{{ smartamp_app_dir }}/xvf3800-host-control/xvf_host"
     dest: /usr/local/bin/xvf_host
     state: link
+  when: smartamp_respeaker_caps.host_control | bool
+
+- name: Remove the host-control tool when the array has no control interface
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ smartamp_app_dir }}/xvf3800-host-control"
+    - /usr/local/bin/xvf_host
+  when: not (smartamp_respeaker_caps.host_control | bool)
 
 # The unit runs under the same account as PipeWire so it can use the private
 # audio socket. It exposes an ESPHome voice satellite to HA on the other host.

@@ -24,11 +24,12 @@ Environment=SMARTAMP_ENDPOINT_MIN_SPEECH_MS={{ voice_assistant_endpoint_min_spee
 # HiFiBerry and ReSpeaker. Waiting avoids racing that first hardware scan.
 ExecStartPre={{ smartamp_app_dir }}/wait-audio-ready.sh /run/user/{{ smartamp_uid }}/smartamp-audio-status.json 60
 # Capture is fixed at one channel: the audio manager publishes a mono default
-# source (the XVF3800's ASR channel, or the raw device when
-# smartamp_voice_capture_channel is null). Never raise this to 2 here - LVA
-# forwards a second channel to Home Assistant advertised as a far-end echo
-# reference for server-side AEC, and the XVF3800's channel 1 carries the ASR
-# voice itself, so HA would be told to cancel the speech against itself.
+# source (the array's ASR channel - 1 on the XVF3800, 0 on the ReSpeaker Lite -
+# or the raw device when smartamp_voice_capture_channel is null). Never raise
+# this to 2 here - LVA forwards a second channel to Home Assistant advertised
+# as a far-end echo reference for server-side AEC, and neither array's other
+# channel is one: the XVF3800's carries the voice itself and the Lite's a raw
+# microphone, so HA would be told to cancel the speech against itself.
 # Playback (TTS, timers, announcements, sounds) all goes through libmpv, which
 # on mpv >= 0.36 prefers its native PipeWire output and ignores PULSE_SINK;
 # --audio-output-device with the explicit mpv device name is what lands it on

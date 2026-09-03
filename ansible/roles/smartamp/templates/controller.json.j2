@@ -38,10 +38,12 @@
   {# Which appearance each voice state shows is compiled into the controller
      (voice/led-states.mts), as the deck layout is; only the flag and the
      room's brightness deploy from here. #}
+  {# The USB ids come from the array's row in vars/boards.yml, as decimal
+     integers because that is what the Node usb library's findByIds takes. #}
   "respeaker": {
     "enabled": {{ respeaker_led_enabled | bool | to_json }},
-    "vendor_id": 10374,
-    "product_id": 26,
+    "vendor_id": {{ smartamp_respeaker_caps.usb_vendor_id | int(base=16) }},
+    "product_id": {{ smartamp_respeaker_caps.usb_product_id | int(base=16) }},
     "brightness": {{ respeaker_led_brightness | int }}
   }
 }

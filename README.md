@@ -30,7 +30,7 @@ endpoint: no Docker, no local server, no image-building pipeline.
 | --- | --- |
 | **Brain** | [Raspberry Pi 5](https://www.raspberrypi.com/products/raspberry-pi-5/), [Pi 4 Model B](https://www.raspberrypi.com/products/raspberry-pi-4-model-b/), or [Pi Zero 2 W](https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/) |
 | **Sound** | [HiFiBerry DAC2 ADC Pro](https://www.hifiberry.com/shop/boards/hifiberry-dac2-adc-pro/) + [AAmp60](https://www.hifiberry.com/shop/boards/aamp60/), or a [HiFiBerry Amp100](https://www.hifiberry.com/shop/boards/amp100/) |
-| **Ears** | [ReSpeaker XVF3800 USB 4-mic array](https://www.seeedstudio.com/ReSpeaker-XVF3800-USB-Mic-Array-p-6488.html) |
+| **Ears** | [ReSpeaker XVF3800 USB 4-mic array](https://www.seeedstudio.com/ReSpeaker-XVF3800-USB-Mic-Array-p-6488.html), or a [ReSpeaker Lite](https://www.seeedstudio.com/ReSpeaker-Lite-p-5928.html) |
 | **Hands** *(optional)* | [Elgato Stream Deck+](https://www.elgato.com/us/en/p/stream-deck-plus-black) |
 
 ⚡ The amplifier feeds the Pi through the GPIO header, so size its supply for the
@@ -70,7 +70,8 @@ this computer and draws the deck in a browser 🕹️.
 | | |
 | --- | --- |
 | [Hardware](docs/hardware.md) | What to buy, board differences, power, wiring |
-| [XVF3800](docs/xvf3800.md) | The microphone array's DSP: capture channels, the echo reference, tuning, XMOS references |
+| [XVF3800](docs/xvf3800.md) | The four-mic array's DSP: capture channels, the echo reference, tuning, XMOS references |
+| [ReSpeaker Lite](docs/respeaker-lite.md) | The two-mic array: what it offers, what it lacks, how to switch a unit to it |
 | [Setup](docs/setup.md) | Install, provision, connect to HA and MA |
 | [Configuration](docs/configuration.md) | Every setting, and what it changes |
 | [Controls](docs/controls.md) | Keys, dials, touch strip, and how to rebind them |

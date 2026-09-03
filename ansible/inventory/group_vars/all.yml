@@ -144,16 +144,31 @@ smartamp_startup_volume_percent: 30
 # the Pulse/PipeWire node name, description and properties.
 smartamp_output_match: "HiFiBerry|snd_rpi_hifiberry|soc_sound"
 smartamp_aux_match: "HiFiBerry|snd_rpi_hifiberry|soc_sound"
-smartamp_voice_input_match: "reSpeaker.*XVF3800|XVF3800|2886.*001A"
-smartamp_aec_reference_match: "reSpeaker.*XVF3800|XVF3800|2886.*001A"
-# The XVF3800's USB capture is two DSP outputs, not a stereo pair: channel 0
-# carries its Conference stream (post-processed for human listeners) and
-# channel 1 its ASR stream (tuned for wake-word and speech recognition). The
-# audio manager remaps exactly this one channel into a mono source and makes
-# that the default, so the voice assistant hears the ASR stream - capturing
-# the device in mono would instead downmix Conference and ASR together. Set to
-# null to use the device unmapped (for a genuinely mono microphone).
-smartamp_voice_capture_channel: 1
+# Which ReSpeaker microphone array is plugged in: "xvf3800" (the USB 4-Mic
+# Array with the LED ring) or "lite" (the two-microphone ReSpeaker Lite). The
+# array cannot be told apart from its audio device alone, and the two differ in
+# which capture channel the assistant should hear and in what the Pi can drive:
+# only the XVF3800 has a ring and DSP readouts, so a Lite unit must also set
+# respeaker_led_enabled to false or preflight refuses it by name. Everything
+# else that follows from the choice - the device match, the ASR channel, the
+# USB ids, the doctor's check, whether xvf_host is installed - is read from
+# roles/smartamp/vars/boards.yml. See docs/xvf3800.md and docs/respeaker-lite.md.
+respeaker_board: xvf3800
+# The three settings below default to the chosen array's own row in boards.yml
+# and rarely need touching; override them only if a firmware exposes different
+# names or a different channel layout.
+smartamp_voice_input_match: "{{ smartamp_respeaker_caps.match }}"
+smartamp_aec_reference_match: "{{ smartamp_respeaker_caps.match }}"
+# The array's USB capture is a set of DSP outputs, not a stereo pair. On the
+# XVF3800 channel 0 carries its Conference stream (post-processed for human
+# listeners) and channel 1 its ASR stream (tuned for wake-word and speech
+# recognition); on the Lite channel 0 is the processed output and channel 1 a
+# raw microphone. The audio manager remaps exactly this one channel into a mono
+# source and makes that the default, so the voice assistant hears the right
+# stream - capturing the device in mono would instead downmix the channels
+# together. Set to null to use the device unmapped (for a genuinely mono
+# microphone).
+smartamp_voice_capture_channel: "{{ smartamp_respeaker_caps.asr_channel }}"
 # The kernel's f_uac2 driver always names the local capture card UAC2Gadget,
 # independent of usb_audio_product (the host-facing name), so this rarely needs
 # changing. Override only if a future kernel renames that card.
@@ -313,7 +328,9 @@ voice_assistant_debug: false
 # Whether this unit drives the ReSpeaker LED ring, and how bright it runs in
 # this room. Which appearance each voice state shows is compiled into the
 # controller and edited in apps/controller/src/voice/led-states.mts, exactly
-# as the deck layout is; see docs/configuration.md.
+# as the deck layout is; see docs/configuration.md. Only the XVF3800 has a
+# ring the Pi can drive: a unit with respeaker_board set to lite must turn this
+# off, and preflight refuses the pair by name.
 respeaker_led_enabled: true
 respeaker_led_brightness: 128 # 0 - 255
 

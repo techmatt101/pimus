@@ -61,6 +61,33 @@
   ansible.builtin.set_fact:
     smartamp_hifiberry_caps: "{{ smartamp_hifiberry_boards[hifiberry_board] }}"
 
+# The microphone array is named as well: its USB ids could identify it, but the
+# inventory's device match, capture channel, and LED flag all have to agree
+# with it before anything is deployed, and a wrong name should fail here with
+# the choices listed rather than as a voice assistant that never hears.
+- name: Check the ReSpeaker array is supported
+  ansible.builtin.assert:
+    that: respeaker_board in smartamp_respeaker_boards
+    fail_msg: >-
+      respeaker_board is "{{ respeaker_board }}", which is not one of
+      {{ smartamp_respeaker_boards.keys() | join(', ') }}.
+
+- name: Select the ReSpeaker array capabilities
+  ansible.builtin.set_fact:
+    smartamp_respeaker_caps: "{{ smartamp_respeaker_boards[respeaker_board] }}"
+
+# The ring is painted over USB vendor commands the XVF3800 firmware answers. An
+# array without that interface would leave the controller retrying a device it
+# can never open, so the flag is refused rather than quietly doing nothing.
+- name: Require a host-driven LED ring for the ReSpeaker LEDs
+  ansible.builtin.assert:
+    that: smartamp_respeaker_caps.led_ring | bool
+    fail_msg: >-
+      respeaker_led_enabled is on but the {{ smartamp_respeaker_caps.label }} has
+      no LED the Pi can drive over USB. Set respeaker_led_enabled: false for this
+      unit; voice-state feedback comes from the Stream Deck alone there.
+  when: respeaker_led_enabled | bool
+
 # The aux route is the board's ADC. A board without one has no capture device
 # to bridge and no ADC mixer controls to set, so enabling the route would leave
 # a deck toggle and a configured source that can never carry sound.

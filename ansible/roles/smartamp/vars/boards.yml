@@ -159,3 +159,50 @@ smartamp_hifiberry_boards:
     # nothing is playing, which is what silences its idle hiss. Turned on by
     # hifiberry_auto_mute in inventory.
     amplifier_mute: true
+
+# The third axis: which ReSpeaker microphone array is plugged in, named by
+# respeaker_board in inventory and published by preflight.yml as
+# smartamp_respeaker_caps. Both are USB audio devices carrying an XMOS voice
+# DSP, and both play back the far-end echo reference they are sent, but they
+# differ in what the Pi can drive and which capture channel the assistant
+# should hear. The inventory's device-match and capture-channel defaults read
+# this table; the udev rule, the doctor's bus check, and the controller's USB
+# ids read it too, so adding an array is a row here and a doc page.
+smartamp_respeaker_boards:
+  xvf3800:
+    label: "ReSpeaker XVF3800 USB 4-Mic Array"
+    usb_vendor_id: "2886"
+    usb_product_id: "001a"
+    # Matched against every PipeWire node property; the product string and the
+    # USB ids both appear there, so either identifies the device.
+    match: "reSpeaker.*XVF3800|XVF3800|2886.*001A"
+    # The USB capture channel carrying the DSP's ASR output, which is what the
+    # wake word and speech recognition should hear. On this firmware channel 0
+    # is the Conference stream for human listeners and channel 1 the ASR
+    # stream; see docs/xvf3800.md.
+    asr_channel: 1
+    # A 12-LED ring the controller paints frame by frame over USB vendor
+    # commands, and DSP readouts (speech energy, direction of arrival) it draws
+    # the listening ripples from. Both need the udev rule controller.yml
+    # installs.
+    led_ring: true
+    # Seeed's xvf_host tool speaks this device's control protocol, so voice.yml
+    # installs it for reading and tuning the DSP.
+    host_control: true
+  lite:
+    label: "ReSpeaker Lite"
+    usb_vendor_id: "2886"
+    usb_product_id: "0019"
+    match: "ReSpeaker.?Lite|2886.*0019"
+    # The USB firmware's channel 0 is the processed output (echo cancellation,
+    # interference cancellation, noise suppression, gain control); channel 1 is
+    # one raw microphone. See docs/respeaker-lite.md.
+    asr_channel: 0
+    # One WS2812 LED that the USB firmware releases at boot (v2.0.6 and later)
+    # and no vendor-control interface over USB, so nothing on the Pi can drive
+    # a light or read the DSP. Preflight refuses respeaker_led_enabled here,
+    # and voice-state feedback is the deck's alone.
+    led_ring: false
+    # Its command protocol exists only over I2C in the I2S firmware, so there is
+    # no host tool to install.
+    host_control: false

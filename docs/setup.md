@@ -28,7 +28,8 @@ make install
   the admin user you created.
 - [`ansible/inventory/host_vars/`](../ansible/inventory/host_vars) — one short
   file per unit, holding only what makes it that unit: its HiFiBerry board,
-  whether a deck is attached, the names it advertises, its power flags.
+  its microphone array, whether a deck is attached, the names it advertises,
+  its power flags.
 - [`ansible/inventory/group_vars/all.yml`](../ansible/inventory/group_vars/all.yml)
   — everything the units share, with every setting explained. The defaults are
   deliberately conservative: no deck, no USB sound card, no bootloader flags.
