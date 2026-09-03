@@ -24,7 +24,7 @@ The Amp100 has no ADC, so it has no analogue line-in. `smartamp_aux_enabled` is 
 `hifiberry_aux_input_left` and `hifiberry_aux_input_right` are not written. `audio.json` lists only the routes the
 hardware has — the same is true of `usb` when `usb_audio_gadget_enabled` is off — and that list is what the deck greys
 its route keys against, so the AUX key on an Amp100 draws unavailable and does nothing rather than needing to be edited
-out of the compiled layout. See [controls](controls.md#audio-routes--type-audio).
+out of the compiled layout. See [controls](controls.md#audio-routes--type-audio-with-a-source).
 
 `hifiberry_auto_mute` (Amp100 only) ties the board's hardware mute line to the audio device opening and closing, so the
 amplifier is muted whenever nothing is playing and unmuted before the first sample arrives. It is the answer to an
@@ -332,8 +332,11 @@ The detector itself is `pymicro-vad`, pinned by `voice_assistant_vad_version`
 and installed into the satellite's virtual environment. If it is ever missing
 the adapter says so once in the journal and leaves the timing to Home Assistant.
 
-The XVF3800 already performs AEC, beamforming, dereverberation, noise suppression and gain control. Leave LVA software
-noise suppression and auto-gain disabled initially to avoid processing the signal twice.
+The XVF3800 already performs AEC, beamforming, dereverberation, noise suppression and gain control
+([xvf3800](xvf3800.md)). Leave LVA software noise suppression disabled: it is single-channel suppression of steady
+noise and only smears speech. Its auto-gain is the exception — the measured reason the wake word misses over music is
+that conversational speech arrives too quietly for the model, and that setting is the lever aimed at it; see
+[wake word over music](xvf3800.md#wake-word-over-music).
 
 The device's two USB capture channels are separate DSP outputs, not a stereo pair: channel 0 is the Conference stream (
 tuned for human listeners), channel 1 the ASR stream (tuned for recognition). `smartamp_voice_capture_channel` (default
@@ -488,7 +491,7 @@ rather than becoming a key that presses successfully and reaches nothing.
 
 The presence sensor that puts the deck to sleep is one of those entities, in the
 `SLEEP` block of the same file along with how long the panel outstays you. See
-[sleeping when the room is empty](controls.md#sleeping-when-the-room-is-empty);
+[standby and sleep](controls.md#standby-and-sleep);
 running without Home Assistant simply keeps the deck lit.
 
 ### Remote tiles

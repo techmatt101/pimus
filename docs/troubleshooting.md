@@ -79,32 +79,73 @@ loaded.
 The XVF3800's acoustic echo cancellation requires the far-end playback reference. The audio manager mirrors the
 HiFiBerry output monitor into the XVF3800 USB playback endpoint for this purpose, and pins that whole path — the
 XVF3800 playback sink and the reference bridge stream — at 100% and unmuted on every reconcile, so the DSP receives the
-reference at the level the room hears. Check the `aec_reference` section in `/run/user/*/smartamp-audio-status.json`.
+reference at the level the room hears. Check the `aec_reference` section in `/run/user/*/smartamp-audio-status.json`,
+and plug headphones into the ReSpeaker's speaker jack: it plays exactly the reference stream, so it should carry the
+music and follow the volume dial.
 
-To hear the reference itself, plug headphones into the ReSpeaker's speaker jack: it plays exactly the reference
-stream, so it should carry the music and follow the volume dial. To inspect it properly, record the reference and the
-mic at the same time while music plays and the wake word is spoken (run as the audio user with
-`sudo -u smartamp XDG_RUNTIME_DIR=/run/user/$(id -u smartamp) parecord ...`), using the XVF3800 sink's `.monitor` for
-the reference and the XVF3800 source for the mic, then compare them: if the music is about as loud in the mic capture
-as in the reference, cancellation is doing nothing.
+Then ask the DSP whether it has converged, using broadband noise rather than music — music is self-correlated and the
+convergence flag often reads 0 on it while suppression is still working. The music volume applies and nothing needs
+restoring afterwards:
 
-If the reference path is healthy but cancellation is still poor, the usual cause is timing: the reference crosses a
-PipeWire loopback (`smartamp_loopback_latency_ms`) and USB before reaching the DSP, while the sound reaches the mics
-almost immediately, so the reference can arrive after the echo it is meant to predict. Tune the DSP with the `xvf_host`
-tool, installed with the voice assistant and on the PATH:
+```sh
+sudo -u smartamp XDG_RUNTIME_DIR=/run/user/$(id -u smartamp) \
+  paplay --raw --format=s16le --rate=48000 --channels=2 /dev/urandom &
+sudo xvf_host AEC_AECCONVERGED    # expect 1 within a few seconds
+kill %1
+```
+
+A 1 means the reference path, levels, endpoint, and timing are all right; on office-amp the stock settings converge in
+under three seconds. What sounds like "AEC off" under music is usually a working canceller meeting its worst-case
+signal at close range: the residual it leaves is about −41 dBFS in the speech band, which is quiet enough that the
+music is not what drowns the wake word. See [It does not wake over music](#it-does-not-wake-over-music) below.
+
+If the flag stays 0 on noise with the reference path healthy, the cause is timing: the reference crosses a PipeWire
+loopback (`smartamp_loopback_latency_ms`) and USB before reaching the DSP, while the sound reaches the mics almost
+immediately. `xvf_host` (installed with the voice assistant and on the PATH) shifts the reference against the mics:
 
 ```sh
 sudo xvf_host VERSION                    # confirms the device responds
-sudo xvf_host AUDIO_MGR_SYS_DELAY        # read the current system delay
-sudo xvf_host AUDIO_MGR_SYS_DELAY 30     # try a larger delay, then test the wake word over music
+sudo xvf_host AUDIO_MGR_SYS_DELAY        # read the current system delay, in 16 kHz samples
+sudo xvf_host AUDIO_MGR_SYS_DELAY 30     # try a larger delay, then repeat the noise test
 sudo xvf_host AUDIO_MGR_REF_GAIN         # far-end reference gain
 ```
 
 Values set this way are volatile and revert at the next power cycle, which makes experimenting safe. Do **not** run
 `save_configuration` to persist them: on this firmware it can stop the device enumerating over USB outside safe mode
-([upstream issue #8](https://github.com/respeaker/reSpeaker_XVF3800_USB_4MIC_ARRAY/issues/8)).
+([upstream issue #8](https://github.com/respeaker/reSpeaker_XVF3800_USB_4MIC_ARRAY/issues/8)). Before measuring
+anything more elaborate, read the measurement traps in [the XVF3800 guide](xvf3800.md#measurement-traps): correlating
+PipeWire captures against each other measures capture latency the DSP never sees, and has produced a wrong "aligned"
+loopback latency before.
 
 Do not enable LVA's software gain/noise processing until the hardware DSP path is confirmed.
+
+## It does not wake over music
+
+If the noise test above converges, the echo canceller is not the problem. Measured on office-amp, conversational
+speech reaches the ASR output at −27 to −35 dBFS and the `okay_nabu` wake model needs about −25 dBFS here, so the word
+is too quiet for the model rather than buried by the music. Work through the levers in
+[the XVF3800 guide](xvf3800.md#wake-word-over-music): the satellite's **mic auto gain** first, then **wake word
+sensitivity**, and leave its noise suppression at 0. All three are live preferences on the satellite device in Home
+Assistant and need no deploy.
+
+To hear what the model hears, record both capture channels and listen on headphones — left ear is the Conference
+stream, right ear the ASR stream the assistant actually gets:
+
+```sh
+sudo -u smartamp XDG_RUNTIME_DIR=/run/user/$(id -u smartamp) timeout 15 \
+  parecord --device=$(pactl list sources short | awk '/XVF3800/ && !/monitor/ {print $2; exit}') \
+  --channels=2 --file-format=wav /tmp/mic.wav
+```
+
+## Stopping the audio manager stops voice and music too
+
+`smartamp-sendspin` and `smartamp-voice-assistant` declare `Requires=smartamp-audio-manager.service`, so stopping the
+audio manager silently stops both, and starting it again does not bring them back. Music Assistant then needs the
+Sendspin player re-selected. After any `systemctl stop` or `restart` of the audio manager:
+
+```sh
+sudo systemctl start smartamp-sendspin smartamp-voice-assistant
+```
 
 ## Saying "stop" does not stop it
 

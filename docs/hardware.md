@@ -10,7 +10,7 @@ settings named here are explained in [configuration](configuration.md).
 | Raspberry Pi 5, Pi 4 Model B, or Pi Zero 2 W | Runs everything | [Pi 5](https://www.raspberrypi.com/products/raspberry-pi-5/) · [Pi 4 B](https://www.raspberrypi.com/products/raspberry-pi-4-model-b/) · [Zero 2 W](https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/) |
 | HiFiBerry DAC2 ADC Pro + AAmp60 | DAC with an analogue line-in, plus a bolt-on amplifier | [DAC2 ADC Pro](https://www.hifiberry.com/shop/boards/hifiberry-dac2-adc-pro/) · [AAmp60](https://www.hifiberry.com/shop/boards/aamp60/) |
 | …or a HiFiBerry Amp100 | One board that is amplifier and DAC, no line-in | [Amp100](https://www.hifiberry.com/shop/boards/amp100/) |
-| ReSpeaker XVF3800 USB 4-mic array | Wake word, far-field voice, echo cancellation, LED ring | [Seeed](https://www.seeedstudio.com/ReSpeaker-XVF3800-USB-Mic-Array-p-6488.html) |
+| ReSpeaker XVF3800 USB 4-mic array | Wake word, far-field voice, echo cancellation, LED ring — see [XVF3800](xvf3800.md) | [Seeed](https://www.seeedstudio.com/ReSpeaker-XVF3800-USB-Mic-Array-p-6488.html) |
 | Elgato Stream Deck+ *(optional)* | Keys, dials, and a touch strip | [Elgato](https://www.elgato.com/us/en/p/stream-deck-plus-black) |
 | Passive speakers | The point of the whole thing | anywhere |
 | DC supply for the amplifier | Feeds the Pi through the GPIO header too | see [Power](#power) |
@@ -33,6 +33,16 @@ whatever the HAT's EEPROM claims, and both boards enumerate as the same ALSA car
 An Amp100 has no analogue input, so `smartamp_aux_enabled` is refused there, the
 generated audio configuration carries no aux route, and the deck's AUX key draws
 itself greyed out — the compiled layout needs no per-unit edit.
+
+The DAC2 ADC Pro has **no headphone output**: its only 3.5 mm jack is the aux
+*input* (the headphone amplifier of the DAC2 Pro is what this board trades for
+its ADC). Its RCA jacks and the header feeding the AAmp60 are the same 2.1 Vrms
+line stage, so headphones plugged into the RCAs load the line and the speakers
+genuinely get quieter — there is no jack detect, no output mux, and nothing
+software can do about it. For private listening use a USB DAC dongle or a
+headphone amplifier with a high-impedance input fed from the RCAs. The Pi's own
+3.5 mm jack stays disabled (`dtparam=audio=off`): it is a PWM output with no jack
+detection, and only one unit in the fleet even has one.
 
 ## Which Raspberry Pi
 
@@ -105,5 +115,7 @@ provisioning refuses the flag.
 - [HiFiBerry Amp100 data sheet](https://www.hifiberry.com/docs/data-sheets/datasheet-amp100/)
 - [HiFiBerry driver configuration on the Pi 5](https://www.hifiberry.com/blog/dac-pro-dac2-pro-dac-adc-pro-on-pi5/)
 - [ReSpeaker XVF3800 guide and host controls](https://wiki.seeedstudio.com/respeaker_xvf3800_introduction/)
+- [XMOS XVF3800 datasheet and user guide](https://www.xmos.com/documentation/XM-014888-PC/html/modules/fwk_xvf/doc/datasheet/02_overview.html)
+  — the chip inside the ReSpeaker; distilled for this project in [xvf3800.md](xvf3800.md)
 - [Linux Voice Assistant](https://github.com/OHF-Voice/linux-voice-assistant)
 - [Raspberry Pi OTG white paper](https://pip-assets.raspberrypi.com/categories/685-app-notes-guides-whitepapers/documents/RP-009276-WP-1-Using%20OTG%20mode%20on%20Raspberry%20Pi%20SBCs)

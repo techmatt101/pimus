@@ -1,5 +1,9 @@
 # Pimus development guide
 
+Read this whole file before changing anything. It is written for an agent
+working without the author present: the rules are the ones the code was built
+to, and most of the surprising ones exist because a real amp misbehaved.
+
 ## Project purpose
 
 Pimus provisions a fleet of Raspberry Pi audio and voice endpoints built from a
@@ -9,8 +13,7 @@ Lite installation on a Pi 5, a Pi 4 Model B, or a Pi Zero 2 W (which reaches its
 USB devices through a self-powered hub). Three units are configured today:
 
 - `office-amp` — Pi 4 Model B, DAC2 ADC Pro + AAmp60, Stream Deck+, USB sound
-  card.
-  The reference build and the only one with a deck or an aux input.
+  card. The reference build and the only one with a deck or an aux input.
 - `bedroom-amp` — Pi 4 Model B, Amp100, no deck.
 - `kitchen-amp` — Pi Zero 2 W, Amp100, no deck, USB devices on a powered hub.
 
@@ -20,6 +23,41 @@ its `host_vars` file; nothing in the code branches on which room it is.
 Home Assistant and Music Assistant run on another machine. This repository
 must remain a lightweight client: do not add Docker, a local HA/music server, or
 an OS-image build pipeline unless the user explicitly changes that scope.
+
+## Orientation for agents
+
+**Where to look.** The docs are the explanation; this file is the rules.
+
+| Question | Read |
+| --- | --- |
+| Which service owns what, how audio and voice flow | `docs/architecture.md` |
+| What a setting does, and where it lives | `docs/configuration.md`, then `ansible/inventory/group_vars/all.yml` (every setting is commented there) |
+| A key, dial, strip screen, or action | `docs/controls.md`, then `apps/controller/src/actions/catalog.mts` and `streamdeck/layout.mts` |
+| The microphone array: capture channels, echo reference, `xvf_host`, tuning | `docs/xvf3800.md` |
+| Boards, power, wiring, what each Pi can do | `docs/hardware.md`, then `ansible/roles/smartamp/vars/boards.yml` |
+| A symptom on a live amp | `docs/troubleshooting.md` |
+| Running the controller here with fake hardware | `docs/playground.md` |
+| Module-by-module map of each app | `apps/README.md` |
+
+**Commands that are safe to run here.** `make test` (the full local check),
+`make build`, `make playground-check`, `make icons`, `make update-versions`.
+None contacts a Pi.
+
+**Commands that touch the real amps.** `make provision`, `make check`,
+`make verify`, `make doctor`, `make deploy-controller`, and anything over SSH.
+They run against every unit unless `LIMIT` names one. Do not run them unless
+the user asks for remote deployment or verification; provisioning can reboot a
+Pi. Stopping `smartamp-audio-manager` on a Pi also stops Sendspin and the voice
+assistant, and they do not come back on their own.
+
+**Commands that never return.** `make playground` and `make dev` start the fake
+amp and run until interrupted. They are not checks; never run them to validate
+a change.
+
+**Finishing a change.** Run `make test`; after changing a controller module's
+shape also run `make playground-check`. Update the relevant doc in the same
+change. Do not commit unless asked; when asked, validate first and describe the
+completed outcome concisely.
 
 ## Runtime architecture
 
@@ -54,11 +92,14 @@ apps/
       remote/            The authenticated LAN WebSocket server other
                          computers push REMOTE-page tile faces to
       streamdeck/        The optional deck addon, entered at control-surface.mts:
-                         lifecycle, bindings, drawing, and icons
+                         lifecycle, bindings, drawing, and icons; the Tile and
+                         Dial interfaces are tile.mts and dial.mts here
         dials/           One Dial class per file (a knob's behaviour + readout)
-        screens/         One Screen class per file (a full touch-strip face)
+        screens/         One Screen class per file (a full touch-strip face),
+                         and the Screen interface in screen.mts
         tiles/           One Tile class per file (key behaviour + face)
-      voice/             LVA WebSocket and ReSpeaker LEDs
+      voice/             LVA WebSocket, ReSpeaker LEDs and DSP readouts
+        leds/            One LedAnimation class per file (a ring face)
     test/                A few high-level behaviour tests (.mts); see Validation
     dist/                Build artifact, not tracked: src/ is tsc's module per
                          source, bundle/ is the three modules the Pi is sent
@@ -88,7 +129,8 @@ ansible/
     host_vars/           One file per unit: only what makes it that unit
   playbooks/             Provisioning and verification entry points
   roles/smartamp/        Tasks, handlers, and generated templates
-docs/                    Architecture, configuration, troubleshooting
+docs/                    Architecture, configuration, controls, hardware,
+                         xvf3800, playground, setup, troubleshooting
 ```
 
 Do not create a generic top-level `src/` or `tests/` directory. Put code and
@@ -119,6 +161,8 @@ tests inside the app that owns them.
 - Service relationships are documented in `docs/architecture.md`.
 - A unit's hostname is its inventory name, set on the Pi by Ansible from
   `smartamp_hostname`; adding a host to `hosts.yml` is what names it.
+- Secrets are never in this repository: the Home Assistant and remote-tile
+  tokens live only in `/etc/smartamp/secrets.env` on each Pi.
 
 When adding a setting, update the inventory defaults, generated template,
 runtime validation, and relevant documentation together.
@@ -126,6 +170,8 @@ runtime validation, and relevant documentation together.
 ## Implementation conventions
 
 ### Node controller
+
+**Style and language**
 
 - Controller code is essentially comment-free: a comment is treated as a sign
   the code should be refactored to read on its own. The only comments that stay
@@ -150,25 +196,35 @@ runtime validation, and relevant documentation together.
   `UsbControlDevice`) rather than concrete classes, so modules stay free of
   circular imports and tests can inject plain objects.
 - Keep `index.mts` as composition/root wiring; put device or domain logic in a
-  focused module.
-- Group modules by the boundary they own: `actions/`, `audio/`,
-  `home-assistant/`, `remote/`, `streamdeck/`, and `voice/`, with `index.mts`,
-  `config.mts`, `state.mts`, and `types.mts` at the root.
-- The Stream Deck is an addon, not a given. `streamdeck/control-surface.mts` is
-  the subsystem's one entry point — layout, renderer, deck loop, panel sleep,
-  power button, sleeping USB power, and the remote-tile listener — and
-  `index.mts` reaches it through a dynamic import taken only when
-  `streamdeck.enabled` is on. Nothing else may import `streamdeck/` or
-  `remote/`, because those two directories are the only ones allowed to touch
-  the manifest's `optionalDependencies` (`@napi-rs/canvas`,
+  focused module. Group modules by the boundary they own: `actions/`,
+  `audio/`, `home-assistant/`, `remote/`, `streamdeck/`, and `voice/`, with
+  `index.mts`, `config.mts`, `state.mts`, and `types.mts` at the root.
+- Keep shared display/voice state in `state.mts`; the `ControlModel` there is
+  the change-notification surface — mutate state, then `notify()`.
+- Treat USB and WebSocket disconnects as normal. Log, retain useful state, and
+  reconnect without terminating the daemon.
+- Keep hardware access injectable so tests run without a Stream Deck or
+  ReSpeaker attached.
+
+**The deck is an addon, and the bundle enforces it**
+
+- `streamdeck/control-surface.mts` is the subsystem's one entry point —
+  layout, renderer, deck loop, panel sleep, power button, sleeping USB power,
+  and the remote-tile listener — and `index.mts` reaches it through a dynamic
+  import taken only when `streamdeck.enabled` is on. Nothing else may import
+  `streamdeck/` or `remote/`, because those two directories are the only ones
+  allowed to touch the manifest's `optionalDependencies` (`@napi-rs/canvas`,
   `@elgato-stream-deck/node`, `@julusian/jpeg-turbo`): a deck-less Pi is sent
   neither those modules nor those packages, so a static import anywhere else
   would crash a working deployment at startup. That dynamic import is also the
   bundler's split point, and `tools/bundle-controller.mjs` fails the build if a
   module from either directory — or one of those three packages — reaches the
-  core bundle, so breaking the rule stops `make build` rather than a Pi. Anything
-  the surface needs from the rest of the controller arrives through
+  core bundle, so breaking the rule stops `make build` rather than a Pi.
+  Anything the surface needs from the rest of the controller arrives through
   `ControlSurfaceServices`; do not reach back the other way.
+
+**Home Assistant**
+
 - Home Assistant is reached over its WebSocket API with a long-lived token
   (`home-assistant/client.mts`). Tiles depend on the `HomeAssistantService`
   interface, never the client, and a deployment with no URL configured gets
@@ -185,23 +241,29 @@ runtime validation, and relevant documentation together.
   feature that is switched on but has no token fails preflight with the key
   named. Do not add a token to inventory, `controller.json.j2`, or an Ansible
   Vault file.
+- Home Assistant automations push a message to the strip by firing the
+  `smartamp_notify` event (`home-assistant/notifications.mts`), read over the
+  existing WebSocket. Notifications are moments, not states: do not give one a
+  helper entity, and do not add an inbound HTTP listener to the Pi for them.
+
+**Actions, tiles, dials, screens**
+
 - `actions/catalog.mts` is the single source of truth for the control surface.
   Declare a new action there (a voice action's `run` behaviour lives in its
   catalog entry), add it to `docs/controls.md`, then bind it in
   `streamdeck/layout.mts`. A default `ActionTile`'s colour and label feedback
   belongs in the catalog entry's `indicator`, not in the renderer.
-- Each Stream Deck key is a `Tile` — an interface in
-  `streamdeck/tiles/tile.mts`, with one implementing class per file in
-  `streamdeck/tiles/`. A tile owns what pressing it does and how it renders its
-  own face; the layout factory (`ControllerServices`, `streamdeck/layout.mts`)
-  injects each tile only the domain services it uses — the `ControlModel`, the
-  `HomeAssistantService`, the `LvaSender`, the `AudioControls`, or the `clock` —
-  not one bag of every service, and there is no central action dispatcher. A key
-  that runs a command builds it from the matching binding builder in
-  `streamdeck/bindings.mts` (`haBinding`, `voiceBinding`, `volumeBinding`,
-  `routeBinding`), each closed over just that one service. Use `ActionTile` with
-  a `Binding` for a fixed key;
-  write a new `Tile` class (as `MediaTile` does for play/pause) when a key
+- Each Stream Deck key is a `Tile` — an interface in `streamdeck/tile.mts`,
+  with one implementing class per file in `streamdeck/tiles/`. A tile owns what
+  pressing it does and how it renders its own face; the layout factory
+  (`ControllerServices`, `streamdeck/layout.mts`) injects each tile only the
+  domain services it uses — the `ControlModel`, the `HomeAssistantService`, the
+  `LvaSender`, the `AudioControls`, or the `clock` — not one bag of every
+  service, and there is no central action dispatcher. A key that runs a command
+  builds it from the matching binding builder in `streamdeck/bindings.mts`
+  (`haBinding`, `voiceBinding`, `volumeBinding`, `routeBinding`), each closed
+  over just that one service. Use `ActionTile` with a `Binding` for a fixed
+  key; write a new `Tile` class (as `MediaTile` does for play/pause) when a key
   needs behaviour or stateful rendering — icons, styling, animation — the
   catalog indicator cannot express. Never push per-key rendering back into the
   renderer.
@@ -215,7 +277,7 @@ runtime validation, and relevant documentation together.
   holds), never a passed-in context. A tile that needs true wall-clock time (the
   time of day, a countdown to an instant) reads the injected `clock` service so a
   test can pin it. Drop every timer and subscription in `unmount`.
-- Each dial is a `Dial` — an interface in `streamdeck/dials/dial.mts`, with one
+- Each dial is a `Dial` — an interface in `streamdeck/dial.mts`, with one
   implementing class per file in `streamdeck/dials/`, exactly as tiles are
   arranged. A dial owns what turning and pressing it does and what it reads out;
   `detail(context)` is required, so no code outside a dial ever infers a readout
@@ -232,20 +294,20 @@ runtime validation, and relevant documentation together.
   — do not give a device its own dial.
 - The touch strip is one full-width display, not four dial labels. `TouchStrip`
   (`streamdeck/strip.mts`) owns which `Screen` (`streamdeck/screens/`, one class
-  per file) is showing: the dial being turned wins for a short hold, then a live
-  notification, then the resting now-playing face. A screen paints the whole
-  800x100 strip and may use the same `mount`/`unmount` lifecycle a tile does,
-  including asking for animation frames; keep strip rendering there rather than
-  in the renderer, exactly as for keys.
-- Home Assistant automations push a message to the strip by firing the
-  `smartamp_notify` event (`home-assistant/notifications.mts`), read over the
-  existing WebSocket. Notifications are moments, not states: do not give one a
-  helper entity, and do not add an inbound HTTP listener to the Pi for them.
+  per file, interface in `screens/screen.mts`) is showing: the dial being turned
+  wins for a short hold, then a live notification, then the resting now-playing
+  face. A screen paints the whole 800x100 strip and may use the same
+  `mount`/`unmount` lifecycle a tile does, including asking for animation
+  frames; keep strip rendering there rather than in the renderer, exactly as
+  for keys.
 - The Stream Deck layout is compiled in at `streamdeck/layout.mts` as
   `createLayout(services)`, not in inventory. Each page is a fixed named
   `PageGrid` (`streamdeck/grid.mts`) of tiles; the grid geometry,
   physical-key mapping, and dial shape live in `grid.mts`. Only the
   `streamdeck_enabled` deployment flag lives in Ansible.
+
+**Drawing**
+
 - Tiles and screens paint onto a `Surface` (`streamdeck/surface.mts`), a
   lightweight holder for a Skia canvas (`@napi-rs/canvas`) and its 2D context.
   The helpers for the things every face repeats — `text`, `icon`, `bar`,
@@ -270,12 +332,9 @@ runtime validation, and relevant documentation together.
   depth it is deployed at is load-bearing: registering a font that is not there
   raises nothing and the deck simply draws blank labels. The bundler asserts the
   module lands in the deck bundle, and `make test` asserts the family registered.
-- Keep shared display/voice state in `state.mts`; the `ControlModel` there is
-  the change-notification surface — mutate state, then `notify()`.
-- Treat USB and WebSocket disconnects as normal. Log, retain useful state, and
-  reconnect without terminating the daemon.
-- Keep hardware access injectable so tests run without a Stream Deck or
-  ReSpeaker attached.
+
+**ReSpeaker ring and DSP**
+
 - Keep `voice/xvf3800-device.mts` limited to the vendor protocol and USB
   transport; which face a voice state should show belongs in
   `voice/respeaker.mts`. The state-to-face map itself is compiled in at
@@ -304,6 +363,8 @@ runtime validation, and relevant documentation together.
 - Preserve the XVF3800 vendor-control protocol and the `2886:001a` device match
   when changing LED behavior. `types.mts` and `xvf3800-device.mts` record the
   device's full effect and command set even though only part of it is driven.
+  Every transfer to the device goes through one queue: a read answers over two
+  exchanges and a frame written between them comes back as the read's payload.
 
 ### Python apps
 
@@ -322,9 +383,9 @@ runtime validation, and relevant documentation together.
   daemon runs is spawned from there and nothing in it imports the package above
   it; a module that decides policy does not belong in it. A caller passes what
   the command should say (the capture's rate, the device to meter) and keeps the
-  argv itself out of its own file. Anything that mutates the
-  graph goes through `ModuleRegistry`, which invalidates that cache. Adding a
-  module or a subpackage means adding it to the deployed list in
+  argv itself out of its own file. Anything that mutates the graph goes through
+  `ModuleRegistry`, which invalidates that cache. Adding a module or a
+  subpackage means adding it to the deployed list in
   `roles/smartamp/tasks/audio.yml` automatically — it globs `*.py` beneath the
   package root and deploys each one at its relative path — but a new top-level
   package would need its own task.
@@ -444,6 +505,8 @@ change.
 
 ## Hardware constraints
 
+### Boards and power
+
 - What each supported board can do lives in `roles/smartamp/vars/boards.yml`,
   on two axes: the Raspberry Pi (matched from the device-tree model, published
   as `smartamp_board_caps`) and the HiFiBerry board (named by `hifiberry_board`
@@ -467,6 +530,9 @@ change.
   `actions/catalog.mts`). Do not add a second answer in `controller.json`, and
   do not make the compiled layout board-conditional. `routesKnown` is what keeps
   "the manager has not answered yet" from reading as "this unit has no routes".
+- The DAC2 ADC Pro has no headphone output; its RCA jacks and the AAmp60 feed
+  are one line stage, so anything plugged into the RCAs loads the speakers.
+  There is no jack detect and nothing for software to switch.
 - USB audio gadget mode turns the USB-C port into a peripheral connection; it
   can no longer be the normal PSU input. The HiFiBerry/AAmp60 stack must then
   power the Pi through GPIO. On a Pi 4B the host cable must have its power line
@@ -490,8 +556,17 @@ change.
 - Only a board with a bootloader EEPROM has the halt/wake power flags. A Pi Zero
   2 W is a BCM2710 and boots from the card, so its key list is empty, `eeprom.yml`
   is skipped whole, and preflight names any power flag left on.
-- The XVF3800 playback endpoint carries the far-end AEC reference even though
-  its physical speaker jack is unused. Do not remove that route as "unused."
+- Device discovery must use stable properties or USB IDs, not ALSA card numbers
+  that change with enumeration order.
+
+### ReSpeaker XVF3800
+
+The array is an XMOS XVF3800 voice processor behind a USB audio device; it is
+not a microphone. `docs/xvf3800.md` is the project's guide to it: the pipeline,
+what the Pi sees, which module owns each part, the AEC health check, the
+measurement traps, the wake-word findings, and the `xvf_host` commands that
+matter. The rules that follow from it:
+
 - The XVF3800 USB capture is two DSP outputs, not stereo: channel 0 is the
   Conference stream (tuned for human listeners), channel 1 the ASR stream the
   voice assistant must hear. Keep the audio manager's mono ASR remap source and
@@ -499,13 +574,41 @@ change.
   directly downmixes the two streams, and a second LVA channel would be
   forwarded to Home Assistant as a far-end echo reference, which on this
   device it is not.
-- Device discovery must use stable properties or USB IDs, not ALSA card numbers
-  that change with enumeration order.
+- The XVF3800 playback endpoint carries the far-end AEC reference even though
+  its physical speaker jack is unused. Do not remove that route as "unused."
+  The DSP uses only the left channel of it, needs it at the level the room
+  hears, and can absorb up to 500 ms of reference lag; the audio manager pins
+  the whole path at 100% on every reconcile.
+- The echo canceller is verified working at stock settings: it converges in
+  under three seconds on broadband noise. Do not tune `AUDIO_MGR_SYS_DELAY`,
+  `smartamp_loopback_latency_ms`, or the reference gain from a PipeWire-side
+  correlation measurement; that measures capture latency the DSP never sees.
+  The wake word missing over music is a level problem at the wake model, and
+  the lever is the satellite's mic auto gain.
+- Values written with `xvf_host` are volatile. Never run `save_configuration`
+  on this firmware; a setting that proves out is applied from the repository
+  at start-up instead.
+- The controller and `xvf_host` share the device's control endpoint from
+  different processes, so an implausible reading during tuning may be the
+  other's answer; repeat it.
+
+Reference documentation (XMOS firmware v3.2.1; the Seeed units report 2.0.10,
+so read a default back before relying on it):
+
+- Datasheet overview: <https://www.xmos.com/documentation/XM-014888-PC/html/modules/fwk_xvf/doc/datasheet/02_overview.html>
+- Voice processing pipeline: <https://www.xmos.com/documentation/XM-014888-PC/html/modules/fwk_xvf/doc/datasheet/03_audio_pipeline.html>
+- Host application and the output-selection mux: <https://www.xmos.com/documentation/XM-014888-PC/html/modules/fwk_xvf/doc/user_guide/03_using_the_host_application.html>
+- Tuning the application: <https://www.xmos.com/documentation/XM-014888-PC/html/modules/fwk_xvf/doc/user_guide/04_tuning_the_application.html>
+- ASR output: <https://www.xmos.com/documentation/XM-014888-PC/html/modules/fwk_xvf/doc/user_guide/08_automatic_speech_recognition.html>
+- Control-command appendix: <https://www.xmos.com/documentation/XM-014888-PC/html/modules/fwk_xvf/doc/user_guide/AA_control_command_appendix.html>
+- Seeed firmware, `xvf_host` binaries, and the LED commands: <https://github.com/respeaker/reSpeaker_XVF3800_USB_4MIC_ARRAY> and <https://wiki.seeedstudio.com/respeaker_xvf3800_introduction/>
 
 ## Working practices
 
 - Preserve unrelated user changes in a dirty worktree.
 - Update README/docs when architecture, setup, controls, or troubleshooting
-  behavior changes.
+  behavior changes. A finding measured on a live amp belongs in the doc that
+  owns the subject (`docs/xvf3800.md`, `docs/troubleshooting.md`,
+  `docs/hardware.md`), not in a dated notes file.
 - Do not commit unless the user asks. When asked, run the relevant validation
   first and use a concise commit message describing the completed outcome.

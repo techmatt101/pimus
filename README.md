@@ -70,6 +70,7 @@ this computer and draws the deck in a browser 🕹️.
 | | |
 | --- | --- |
 | [Hardware](docs/hardware.md) | What to buy, board differences, power, wiring |
+| [XVF3800](docs/xvf3800.md) | The microphone array's DSP: capture channels, the echo reference, tuning, XMOS references |
 | [Setup](docs/setup.md) | Install, provision, connect to HA and MA |
 | [Configuration](docs/configuration.md) | Every setting, and what it changes |
 | [Controls](docs/controls.md) | Keys, dials, touch strip, and how to rebind them |
