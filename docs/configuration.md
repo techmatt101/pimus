@@ -48,7 +48,8 @@ a gain on that class's own bridge stream, so voice speaks at its set loudness wh
 volume dial and Home Assistant move the music level; `smartamp_startup_volume_percent` is where it starts each boot so
 the device always wakes at a predictable loudness. Because the sink is pinned, the manager also holds any stream that
 plays straight at the output — something not routed through a bus — at the music level rather than letting it play at
-full amplifier gain.
+full amplifier gain once the stream has been discovered. Direct clients can still produce an initial burst before
+reconciliation; use the named buses for normal playback.
 
 Each music input also carries a trim of its own — `smartamp_sendspin_volume_percent`, `smartamp_usb_volume_percent`,
 and `smartamp_aux_volume_percent` — the share of the music level that input plays at, for bringing inputs in line with
@@ -101,10 +102,9 @@ directions (an `alsactl monitor` stream wakes it on host changes; sink changes i
 the computer and the amp follows, turn the amp's dial and the computer's slider follows. Whichever side moved since
 they last agreed wins, and when a computer first plugs in the amp's current volume seeds its slider.
 
-The aux bridge is loaded muted whether or not the route is on; the toggle fades the bridge stream between silent and
-full over ~200 ms. Connecting the stream on demand used to land any DC offset on the line input as a step on the
-speakers — at full amplifier gain, since the volume dial only scales PipeWire — so the pop-prone connect always
-happens silent: a fresh bridge stream is snapped to 0% before it is audible and only then faded up if the route is on.
+The manager protects a new aux connection with the output mute, sets the bridge stream to 0%, and fades up if the
+route is on. Later toggles fade the existing stream over ~200 ms. These are stepped control writes, not a sample-level
+ramp; their audible behavior and analogue DC offsets still need the checks in [audio reliability](audio-reliability-actions.md).
 Stream Deck route toggles last until the next reboot; every boot starts from these inventory defaults.
 
 `smartamp_idle_teardown_seconds` (default 180, 0 to disable) is the power saver: the persistent loopbacks are what
@@ -114,11 +114,10 @@ voice session, no enabled analogue route — the audio manager unloads the backg
 reference, and the muted aux bridge, and the devices suspend. The null sinks stay loaded so Sendspin and LVA keep
 their PULSE_SINK targets, and the wake-word capture path is untouched. Everything rebuilds within about a second of a
 client stream appearing, a voice session opening (the controller's duck/meter request arrives before the first TTS
-audio), the USB host starting to stream, or a route being toggled on. The rebuild pass holds the output sink muted
-until every bridge gain is in place — a fresh loopback stream plays at full volume until its gain lands, which would
-otherwise pop the first instant of audio through the amp at full level — so the first moment of music after a long
-quiet spell arrives a beat late rather than loud. There is no echo to cancel in silence, so the AEC reference being
-down while idle costs the DSP nothing. The teardown is also tied to the deck's own resting states (see
+audio), the USB host starting to stream, or a route being toggled on. Startup and manager-controlled loopback loads
+hold the output muted until playback gains are applied. A missing stream or failed setup keeps it muted for retry;
+readiness status is withdrawn on failure. The first audio can be delayed, and idle-wake cancellation still needs
+measurement. The teardown is also tied to the deck's own resting states (see
 [Standby and sleep](controls.md#standby-and-sleep)): the moment the panel dims into standby or switches off asleep,
 the controller reports standby over the control socket and the teardown happens at once instead of waiting out the
 timeout (audio still playing keeps the bridges up regardless); when the panel relights, the bridges rebuild
@@ -334,8 +333,8 @@ the adapter says so once in the journal and leaves the timing to Home Assistant.
 
 The XVF3800 already performs AEC, beamforming, dereverberation, noise suppression and gain control
 ([xvf3800](xvf3800.md)). Leave LVA software noise suppression disabled: it is single-channel suppression of steady
-noise and only smears speech. Its auto-gain is the exception — the measured reason the wake word misses over music is
-that conversational speech arrives too quietly for the model, and that setting is the lever aimed at it; see
+noise and can affect speech. Keep software gain unchanged until the hardware reference, clipping and capture channel
+have been checked; then compare gain and sensitivity against repeatable wake and false-wake measurements. See
 [wake word over music](xvf3800.md#wake-word-over-music).
 
 `respeaker_board` names the microphone array — `xvf3800` (the default) or `lite` — and it is the one array setting a
@@ -352,7 +351,8 @@ ASR channel) tells the audio manager which channel to publish as the mono defaul
 a device unmapped (a genuinely mono microphone). The voice assistant's capture is hardcoded to one channel in its systemd unit
 because that mono source is the entire capture either way — a second LVA channel would be forwarded to Home Assistant
 labelled as a far-end echo reference for server-side AEC, and on the XVF3800 that channel carries the voice, not an echo
-reference.
+reference. If the selected channel is missing or its remap is not published yet, startup waits rather than silently
+recording a different output. Channel indices must be non-negative integers (or `null` for explicit unmapped capture).
 
 ## ReSpeaker effects
 

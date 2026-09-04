@@ -1,5 +1,5 @@
 #!/bin/sh
-set -u
+set -eu
 
 # Configuration is injected by the smartamp-hifiberry.service unit's
 # Environment= lines, generated from inventory. Fail loudly if any is missing.

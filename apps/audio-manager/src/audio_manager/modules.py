@@ -31,8 +31,11 @@ class ModuleRegistry:
     module goes away so whatever cached its stream can forget it.
     """
 
-    def __init__(self, view: Graph) -> None:
+    def __init__(
+        self, view: Graph, before_loopback: Callable[[], None] | None = None
+    ) -> None:
         self._graph = view
+        self._before_loopback = before_loopback
         self._ids: dict[str, int] = {}
         self._bindings: dict[str, Binding] = {}
         self._listeners: list[Callable[[str], None]] = []
@@ -50,6 +53,8 @@ class ModuleRegistry:
         return list(self._ids)
 
     def load(self, role: str, module: str, *arguments: str) -> int:
+        if module == "module-loopback" and self._before_loopback is not None:
+            self._before_loopback()
         module_id = pactl.load_module(module, *arguments)
         self._ids[role] = module_id
         self._graph.invalidate()

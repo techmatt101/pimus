@@ -23,7 +23,7 @@ def pin_volume(sink: Node | None) -> None:
     if sink is None:
         return
     state = graph.volume_state(sink)
-    if state is None or state[0] == 100:
+    if state is None or graph.volume_is(sink, 100):
         return
     pactl.set_sink_volume(sink["name"], 100)
     LOG.info("Pinned the output sink to 100%%")
@@ -65,8 +65,31 @@ def hold_client_streams(view: Graph, sink: Node | None, level: int) -> None:
         media = str((stream.get("properties") or {}).get("media.name", ""))
         if media.startswith(STREAM_PREFIX):
             continue
-        state = graph.volume_state(stream)
-        if state is not None and state[0] == level:
+        if graph.volume_is(stream, level):
             continue
         pactl.set_sink_input_volume(int(stream["index"]), level)
         LOG.info("Holding client stream %s at %s%%", stream.get("index"), level)
+
+
+class RebuildGuard:
+    """Keep newly connected playback muted until every gain has been applied."""
+
+    def __init__(self) -> None:
+        self._sink: tuple[str, object] | None = None
+
+    @staticmethod
+    def identity(sink: Node) -> tuple[str, object]:
+        return sink["name"], sink.get("index")
+
+    def holds(self, sink: Node | None) -> bool:
+        return sink is not None and self._sink == self.identity(sink)
+
+    def protect(self, sink: Node | None) -> None:
+        if sink is not None and not self.holds(sink):
+            set_mute(sink, True)
+            self._sink = self.identity(sink)
+
+    def release(self, sink: Node | None, muted: bool) -> None:
+        if self.holds(sink):
+            set_mute(sink, muted)
+            self._sink = None

@@ -84,11 +84,18 @@ class AudioBus:
             self._modules.id_of(self.bridge_role),
             stream_media_name(self.bridge_role),
         )
-        self._track_stream(int(bridge["index"]) if bridge is not None else None)
+        if bridge is None:
+            self._track_stream(None)
+            raise RuntimeError(f"Waiting for {self.prefix} playback bridge")
+        self._track_stream(int(bridge["index"]))
         # Reconcile against the graph, not only our last successful write. A
         # stream can be recreated or changed underneath the module that owns it.
-        live_gain = graph.volume_state(bridge) if bridge is not None else None
-        self.gain_applied = live_gain[0] if live_gain is not None else None
+        live_gain = graph.volume_state(bridge)
+        self.gain_applied = (
+            live_gain[0]
+            if live_gain is not None and graph.volume_is(bridge, live_gain[0])
+            else None
+        )
         return self.sink
 
     def release(self) -> None:

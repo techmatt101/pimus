@@ -89,10 +89,14 @@ class AudioConfig:
         background = _section(raw, "background")
         voice_bus = _section(raw, "voice_bus")
         channel = raw.get("voice_capture_channel")
+        if channel is not None and (
+            isinstance(channel, bool) or not isinstance(channel, int) or channel < 0
+        ):
+            raise ValueError("voice_capture_channel must be a non-negative integer or null")
         return cls(
             output_match=str(raw.get("output_match", "")),
             voice_input_match=str(raw.get("voice_input_match", "")),
-            voice_capture_channel=None if channel is None else int(channel),
+            voice_capture_channel=channel,
             startup_volume_percent=volume.clamp(raw.get("startup_volume_percent", 100)),
             resync_seconds=float(raw.get("resync_seconds", DEFAULT_RESYNC_SECONDS)),
             idle_teardown_seconds=max(

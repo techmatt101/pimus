@@ -33,6 +33,7 @@ from linux_voice_assistant.entity import MediaPlayerEntity
 from linux_voice_assistant.models import ServerState
 from linux_voice_assistant.peripheral_api import LVACommand, LVAEvent, PeripheralAPIServer
 from linux_voice_assistant.satellite import VoiceSatelliteProtocol
+from smartamp_audio_recovery import exit_on_capture_failure
 
 _LOGGER = logging.getLogger("smartamp")
 
@@ -635,6 +636,7 @@ def install_local_endpoint_adapter() -> None:
 
 
 if __name__ == "__main__":
+    lva_main.process_audio = exit_on_capture_failure(lva_main.process_audio)
     install_media_event_adapters()
     install_pipeline_cancel_adapter()
     install_stop_word_sensitivity_adapter()

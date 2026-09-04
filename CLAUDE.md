@@ -598,15 +598,14 @@ controller opens whichever USB ids it is given.
   device it is not.
 - The XVF3800 playback endpoint carries the far-end AEC reference even though
   its physical speaker jack is unused. Do not remove that route as "unused."
-  The DSP uses only the left channel of it, needs it at the level the room
-  hears, and can absorb up to 500 ms of reference lag; the audio manager pins
-  the whole path at 100% on every reconcile.
-- The echo canceller is verified working at stock settings: it converges in
-  under three seconds on broadband noise. Do not tune `AUDIO_MGR_SYS_DELAY`,
-  `smartamp_loopback_latency_ms`, or the reference gain from a PipeWire-side
-  correlation measurement; that measures capture latency the DSP never sees.
-  The wake word missing over music is a level problem at the wake model, and
-  the lever is the satellite's mic auto gain.
+  The DSP uses only the left channel; the reference must precede the acoustic
+  echo, and stereo coverage is an open validation item. The audio manager pins
+  the whole path at 100% when active.
+- `AEC_AECCONVERGED` is latched, not proof of present cancellation quality.
+  Validate stereo reference coverage, clipping, and DSP-side causality before
+  changing wake-word gain. Do not tune `AUDIO_MGR_SYS_DELAY`, loopback latency,
+  or reference gain from independently recorded PipeWire streams: those include
+  capture latency the DSP never sees. Follow `docs/audio-reliability-actions.md`.
 - Values written with `xvf_host` are volatile. Never run `save_configuration`
   on this firmware; a setting that proves out is applied from the repository
   at start-up instead.

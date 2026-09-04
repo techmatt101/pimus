@@ -65,13 +65,15 @@ share of it) and the voice level on the voice bridge. Music at 5% with voice at 
 with voice at 30% plays voice at 30%. `set-music-volume` and `set-voice-volume` on the control socket move them; the
 sink itself carries only mute, so muting silences everything at once — `set-output-mute` moves it, and the manager
 reads the sink's mute back on every pass, so a mute made by any other client reaches the deck without the controller
-polling for one. Because the gains sit on the persistent bridges
-rather than on clients' short-lived streams, a fresh TTS stream cannot play a syllable at the wrong level, and any
-stray client that plays straight at the pinned sink is snapped to the music level on the next reconcile. Its bridge stream carries the voice volume, set over the control socket with
-`set-voice-volume` and held as an absolute level: the manager divides the target by the output sink's volume on every
-reconcile, so voice speaks at the same loudness whether the music is loud or quiet (it can never exceed the master).
-Because the gain sits on the persistent bridge rather than on LVA's short-lived playback streams, a fresh TTS stream
-cannot play a syllable at the wrong level. The bus is never ducked — it is the thing everything else ducks for.
+polling for one. A ready bridge gives new client streams an already-applied gain. Direct clients on the hardware
+sink follow the music level both on a volume command and on reconciliation, but can still start playing before the
+manager sees them. The voice bus is never ducked.
+
+The rebuild guard mutes a newly discovered output before pinning its software volume and mutes before the manager
+loads any new loopback. It releases only after reconciliation applies the playback gains; an unpublished stream or
+failed command keeps the guard held for retry. The requested mute remains separate, including USB-host mute changes.
+This prevents manager-controlled connections from opening at their initial full gain; it is not a sample ramp or a
+guarantee against driver, amplifier, or independently recreated stream transients.
 
 It also mirrors the HiFiBerry output monitor into the XVF3800 USB playback endpoint. Nothing is connected to the
 ReSpeaker speaker jack; the stream exists to give the XMOS DSP the far-end reference required for acoustic echo
@@ -84,7 +86,13 @@ the wake word keeps hearing; the next client stream, voice session, or route tog
 second.
 
 The initialisation service selects the DAC2 ADC Pro unbalanced line inputs, sets ADC gain, and limits the initial
-hardware output level. Both are adjustable in the Ansible variables.
+hardware output level. These are adjustable in the Ansible variables. A failed mixer command fails that service,
+which the audio manager requires. Ansible restarts its dependent playback services after restarting the manager.
+
+Voice startup waits for the configured mono capture source and the voice bus, allowing an intentionally unbridged
+idle bus. A missing configured capture channel never falls back to a different DSP output. A microphone-worker
+failure terminates LVA through the small `smartamp_audio_recovery.py` adapter, allowing its existing systemd restart
+policy and readiness gate to reopen the device. Silent or blocked capture without an exception still needs diagnosis.
 
 ## Service boundaries
 

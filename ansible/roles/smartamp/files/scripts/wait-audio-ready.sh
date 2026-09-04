@@ -11,7 +11,12 @@ elapsed=0
 while [ "$elapsed" -lt "$timeout_seconds" ]; do
   if [ -r "$status_file" ] && jq -e \
     '(.sink | type == "string" and length > 0) and
-     (.voice_input | type == "string" and length > 0)' \
+     (.voice_input | type == "string" and length > 0) and
+     (.voice_capture.channel == null or
+      (.voice_capture.source | type == "string" and length > 0)) and
+     (.voice_bus.enabled == false or
+      ((.voice_bus.sink | type == "string" and length > 0) and
+       (.idle == true or .voice_bus.available == true)))' \
     "$status_file" >/dev/null 2>&1; then
     exit 0
   fi

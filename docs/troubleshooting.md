@@ -78,39 +78,31 @@ loaded.
 
 The XVF3800's acoustic echo cancellation requires the far-end playback reference. The audio manager mirrors the
 HiFiBerry output monitor into the XVF3800 USB playback endpoint for this purpose, and pins that whole path — the
-XVF3800 playback sink and the reference bridge stream — at 100% and unmuted on every reconcile, so the DSP receives the
-reference at the level the room hears. Check the `aec_reference` section in `/run/user/*/smartamp-audio-status.json`,
-and plug headphones into the ReSpeaker's speaker jack: it plays exactly the reference stream, so it should carry the
-music and follow the volume dial.
+XVF3800 playback sink and the reference bridge stream — at 100% and unmuted while active. Check `aec_reference` in
+`/run/user/*/smartamp-audio-status.json`: `endpoints_available` means the sink and output monitor exist; `available`
+also requires a published reference stream with its gain and mute applied. Neither measures acoustic cancellation.
+An idle graph deliberately has no reference stream, which the doctor now treats as expected.
 
-Then ask the DSP whether it has converged, using broadband noise rather than music — music is self-correlated and the
-convergence flag often reads 0 on it while suppression is still working. The music volume applies and nothing needs
-restoring afterwards:
+The XVF3800 uses only the left playback channel as its reference. The current stereo loopback therefore needs a
+left-only/right-only coverage test before blaming wake-word sensitivity. Read the
+[AEC action checklist](audio-reliability-actions.md#aec-and-microphone-validation) before changing routing or gains.
 
-```sh
-sudo -u smartamp XDG_RUNTIME_DIR=/run/user/$(id -u smartamp) \
-  paplay --raw --format=s16le --rate=48000 --channels=2 /dev/urandom &
-sudo xvf_host AEC_AECCONVERGED    # expect 1 within a few seconds
-kill %1
-```
+`AEC_AECCONVERGED` is latched: 1 records an earlier convergence, not proof that today's path, level or timing is
+correct. A 0 is not specific to timing either. Use the flag alongside controlled reference/microphone recordings,
+as described in the [XMOS tuning guide](https://www.xmos.com/documentation/XM-014888-PC/html/modules/fwk_xvf/doc/user_guide/04_tuning_the_application.html).
 
-A 1 means the reference path, levels, endpoint, and timing are all right; on office-amp the stock settings converge in
-under three seconds. What sounds like "AEC off" under music is usually a working canceller meeting its worst-case
-signal at close range: the residual it leaves is about −41 dBFS in the speech band, which is quiet enough that the
-music is not what drowns the wake word. See [It does not wake over music](#it-does-not-wake-over-music) below.
-
-If the flag stays 0 on noise with the reference path healthy, the cause is timing: the reference crosses a PipeWire
-loopback (`smartamp_loopback_latency_ms`) and USB before reaching the DSP, while the sound reaches the mics almost
-immediately. `xvf_host` (installed with the voice assistant and on the PATH) shifts the reference against the mics:
+Start with read-only parameter checks:
 
 ```sh
 sudo xvf_host VERSION                    # confirms the device responds
 sudo xvf_host AUDIO_MGR_SYS_DELAY        # read the current system delay, in 16 kHz samples
-sudo xvf_host AUDIO_MGR_SYS_DELAY 30     # try a larger delay, then repeat the noise test
+sudo xvf_host AEC_AECCONVERGED           # historical convergence, not a live health verdict
 sudo xvf_host AUDIO_MGR_REF_GAIN         # far-end reference gain
 ```
 
-Values set this way are volatile and revert at the next power cycle, which makes experimenting safe. Do **not** run
+Do not stream full-scale `/dev/urandom` into the default sink. Use a bounded, attenuated stimulus through an explicitly
+selected, verified bus; direct playback can precede the manager's gain correction. Delay or gain writes are volatile,
+but can still degrade cancellation or cause loud output. Do **not** run
 `save_configuration` to persist them: on this firmware it can stop the device enumerating over USB outside safe mode
 ([upstream issue #8](https://github.com/respeaker/reSpeaker_XVF3800_USB_4MIC_ARRAY/issues/8)). Before measuring
 anything more elaborate, read the measurement traps in [the XVF3800 guide](xvf3800.md#measurement-traps): correlating
@@ -121,12 +113,10 @@ Do not enable LVA's software gain/noise processing until the hardware DSP path i
 
 ## It does not wake over music
 
-If the noise test above converges, the echo canceller is not the problem. Measured on office-amp, conversational
-speech reaches the ASR output at −27 to −35 dBFS and the `okay_nabu` wake model needs about −25 dBFS here, so the word
-is too quiet for the model rather than buried by the music. Work through the levers in
-[the XVF3800 guide](xvf3800.md#wake-word-over-music): the satellite's **mic auto gain** first, then **wake word
-sensitivity**, and leave its noise suppression at 0. All three are live preferences on the satellite device in Home
-Assistant and need no deploy.
+A convergence flag cannot rule out echo leakage. First verify the ASR mux, reference coverage, clipping and microphone
+placement. The previous office-amp level measurements in [the XVF3800 guide](xvf3800.md#wake-word-over-music) are
+historical observations, not universal wake thresholds. Once cancellation is measured, compare gain and sensitivity
+changes against repeatable wake/miss/false-wake results. Leave software noise processing unchanged during that baseline.
 
 To hear what the model hears, record both capture channels and listen on headphones — left ear is the Conference
 stream, right ear the ASR stream the assistant actually gets:

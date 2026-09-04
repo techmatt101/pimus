@@ -1,8 +1,7 @@
 [Unit]
 Description=Smart Amp PipeWire source router
 After=user@{{ smartamp_uid }}.service smartamp-hifiberry.service
-Requires=user@{{ smartamp_uid }}.service
-Wants=smartamp-hifiberry.service
+Requires=user@{{ smartamp_uid }}.service smartamp-hifiberry.service
 
 [Service]
 Type=simple

@@ -64,6 +64,10 @@ def set_sink_input_volume(stream_index: int, percent: int) -> None:
     process.run("pactl", "set-sink-input-volume", str(stream_index), f"{percent}%")
 
 
+def set_sink_input_mute(stream_index: int, muted: bool) -> None:
+    process.run("pactl", "set-sink-input-mute", str(stream_index), "1" if muted else "0")
+
+
 def default_sink() -> str:
     return process.run("pactl", "get-default-sink", check=False).stdout.strip()
 

@@ -78,6 +78,7 @@ this computer and draws the deck in a browser 🕹️.
 | [Architecture](docs/architecture.md) | Services, audio graph, who owns what |
 | [Playground](docs/playground.md) | Develop the control surface without hardware |
 | [Troubleshooting](docs/troubleshooting.md) | When it does not make a sound |
+| [Audio reliability actions](docs/audio-reliability-actions.md) | Implemented fixes and the hardware/AEC checks still to complete |
 
 ## 🗂️ Layout
 

@@ -113,7 +113,7 @@ class ControlServer:
     def _handle(self, connection: socket.socket, line: bytes) -> None:
         try:
             message = json.loads(line)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, UnicodeDecodeError, RecursionError):
             self.send(connection, {"event": "error", "error": "invalid JSON"})
             return
         reply, needs_reconcile = self._commands.apply(connection, message)

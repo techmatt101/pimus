@@ -5,8 +5,7 @@ from __future__ import annotations
 import logging
 
 from .. import volume
-from ..system import pactl, usb_gadget
-from ..graph import Node
+from ..system import usb_gadget
 
 
 LOG = logging.getLogger(__name__)
@@ -33,28 +32,26 @@ class UsbVolumeSync:
         """Drop the agreement so the amp's level seeds the gadget again."""
         self._agreed = None
 
-    def sync(self, sink: Node | None, music_volume: int) -> int:
-        """Returns the music level after whichever side moved has won."""
-        if sink is None or not usb_gadget.card_present():
-            return music_volume
+    def sync(self, amp: VolumeState) -> VolumeState:
+        if not usb_gadget.card_present():
+            return amp
         gadget = usb_gadget.read_mixer()
         if gadget is None:
-            return music_volume
-        amp: VolumeState = (music_volume, bool(sink.get("mute", False)))
+            return amp
         if self._agreed is not None and not usb_gadget.volumes_match(
             gadget, self._agreed[0]
         ):
-            return self._follow_host(sink, gadget)
+            return self._follow_host(gadget)
         if self._agreed is None or not usb_gadget.volumes_match(amp, self._agreed[1]):
             self._seed_host(amp)
-        return music_volume
+        return amp
 
-    def _follow_host(self, sink: Node, gadget: VolumeState) -> int:
+    def _follow_host(self, gadget: VolumeState) -> VolumeState:
         music_volume = volume.clamp(gadget[0])
-        pactl.set_sink_mute(sink["name"], gadget[1])
-        self._agreed = (gadget, (music_volume, gadget[1]))
+        amp = (music_volume, gadget[1])
+        self._agreed = (gadget, amp)
         LOG.info("USB host set volume %d%%%s", gadget[0], " muted" if gadget[1] else "")
-        return music_volume
+        return amp
 
     def _seed_host(self, amp: VolumeState) -> None:
         usb_gadget.write_mixer(*amp)

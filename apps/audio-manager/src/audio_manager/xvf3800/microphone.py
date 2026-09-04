@@ -86,7 +86,7 @@ class Microphone:
         if master_channel is None:
             self._modules.unload(CAPTURE_ROLE)
             self._master_index = None
-            return device, status
+            return None, status
         # A remap module can outlive its master: after a USB power cycle the
         # device node is recreated under the same name, and the surviving
         # module keeps publishing silence from the node that no longer exists.
@@ -111,7 +111,7 @@ class Microphone:
             )
         capture = self._graph.source_named(SOURCE_NAME)
         status["source"] = capture.get("name") if capture else None
-        return capture or device, status
+        return capture, status
 
     def _channel_label(self, device: Node) -> str | None:
         labels = [
@@ -119,10 +119,10 @@ class Microphone:
             for label in str(device.get("channel_map", "")).split(",")
             if label.strip()
         ]
-        if self.channel is not None and self.channel < len(labels):
+        if self.channel is not None and 0 <= self.channel < len(labels):
             return labels[self.channel]
         LOG.warning(
-            "Voice capture channel %s is outside %s channel map %r; capturing unmapped",
+            "Voice capture channel %s is outside %s channel map %r; capture unavailable",
             self.channel,
             device.get("name"),
             device.get("channel_map"),

@@ -119,13 +119,16 @@
 # peripheral events needed for a reliable physical play/pause control, the
 # pipeline abort the upstream stop_pipeline command only half performs, and the
 # local decision that the speaker has finished talking.
-- name: Install Smart Amp voice media event adapter
+- name: Install Smart Amp voice adapters
   ansible.builtin.copy:
-    src: smartamp_lva.py
-    dest: "{{ smartamp_app_dir }}/smartamp_lva.py"
+    src: "{{ item }}"
+    dest: "{{ smartamp_app_dir }}/{{ item }}"
     owner: root
     group: root
     mode: "0755"
+  loop:
+    - smartamp_lva.py
+    - smartamp_audio_recovery.py
   notify: Restart voice assistant
 
 # LVA must start after the audio manager has found both required devices. This

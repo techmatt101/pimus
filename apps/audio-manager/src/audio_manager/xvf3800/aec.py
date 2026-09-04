@@ -31,23 +31,16 @@ class AecReference:
         self._modules = registry
 
     def reconcile(self, output: Node | None, *, wanted: bool = True) -> dict[str, Any]:
-        # With nothing playing there is no echo to subtract, so an idle
-        # teardown (wanted=False) can release the reference and let the
-        # XVF3800 playback endpoint suspend without costing the DSP anything.
         reference_sink = self._graph.find_sink(self.config.sink_match)
         monitor = (
             self._graph.source_named(graph.monitor_name(output["name"]))
             if output
             else None
         )
-        available = bool(reference_sink and monitor)
+        endpoints_available = bool(reference_sink and monitor)
+        available = False
         if self.config.enabled and wanted and reference_sink and monitor:
-            # The DSP models the echo as this reference at the level the room
-            # hears, so the whole path must be unity gain: WirePlumber restores
-            # whatever the reference sink last had, and nothing else owns it. A
-            # quiet or muted reference makes the XVF3800 under-subtract, which
-            # sounds like a mic that cannot hear over the music.
-            self._pin_sink(reference_sink)
+            sink_ready = self._pin_sink(reference_sink)
             created = self._modules.ensure_loopback(
                 REFERENCE_ROLE,
                 monitor["name"],
@@ -56,37 +49,44 @@ class AecReference:
             )
             if created:
                 LOG.info("Enabled XVF3800 AEC far-end reference")
-            self._pin_stream()
+            available = self._pin_stream() and sink_ready
         else:
             self._modules.unload(REFERENCE_ROLE)
         return {
             "enabled": self.config.enabled,
             "available": available,
+            "endpoints_available": endpoints_available,
             "sink": reference_sink.get("name") if reference_sink else None,
         }
 
-    def _pin_sink(self, sink: Node) -> None:
+    def _pin_sink(self, sink: Node) -> bool:
         state = graph.volume_state(sink)
         if state is None:
-            return
-        level, muted = state
-        if level != 100:
+            return False
+        if not graph.volume_is(sink, 100):
             pactl.set_sink_volume(sink["name"], 100)
             LOG.info("Pinned the AEC reference sink to 100%%")
-        if muted:
+        if state[1]:
             pactl.set_sink_mute(sink["name"], False)
             LOG.info("Unmuted the AEC reference sink")
+        return True
 
-    def _pin_stream(self) -> None:
+    def _pin_stream(self) -> bool:
         stream = graph.find_owned_stream(
             self._graph.sink_inputs,
             self._modules.id_of(REFERENCE_ROLE),
             stream_media_name(REFERENCE_ROLE),
         )
         if stream is None:
-            return
+            return False
         state = graph.volume_state(stream)
-        if state is None or state[0] == 100:
-            return
-        pactl.set_sink_input_volume(int(stream["index"]), 100)
-        LOG.info("Pinned the AEC reference stream to 100%%")
+        if state is None:
+            return False
+        index = int(stream["index"])
+        if not graph.volume_is(stream, 100):
+            pactl.set_sink_input_volume(index, 100)
+            LOG.info("Pinned the AEC reference stream to 100%%")
+        if state[1]:
+            pactl.set_sink_input_mute(index, False)
+            LOG.info("Unmuted the AEC reference stream")
+        return True

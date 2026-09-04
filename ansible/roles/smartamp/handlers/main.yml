@@ -52,6 +52,9 @@
     name: "user@{{ smartamp_uid }}.service"
     state: restarted
     daemon_reload: true
+  notify:
+    - Restart audio manager
+    - Restart controller
 
 # Re-run the one-shot mixer setup whenever its script or unit changes. This
 # applies new ADC routing and amplifier gain immediately instead of waiting for
@@ -60,11 +63,15 @@
   ansible.builtin.systemd_service:
     name: smartamp-hifiberry.service
     state: restarted
+  notify: Restart audio manager
 
 - name: Restart audio manager
   ansible.builtin.systemd_service:
     name: smartamp-audio-manager.service
     state: restarted
+  notify:
+    - Restart voice assistant
+    - Restart Sendspin
 
 - name: Restart voice assistant
   ansible.builtin.systemd_service:

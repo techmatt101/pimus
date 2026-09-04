@@ -67,9 +67,12 @@ class CommandHandler:
         if not isinstance(message, dict):
             return _error("message must be a JSON object")
         LOG.debug("socket command: %s", json.dumps(message))
-        handler = self._handlers.get(message.get("command"))
+        command = message.get("command")
+        if not isinstance(command, str):
+            return _error("command must be a string")
+        handler = self._handlers.get(command)
         if handler is None:
-            return _error(f"unknown command {message.get('command')!r}")
+            return _error(f"unknown command {command!r}")
         return handler(connection, message)
 
     def client_gone(self, connection: socket.socket) -> None:

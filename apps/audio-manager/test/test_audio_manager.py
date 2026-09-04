@@ -537,6 +537,7 @@ class ReconcileTests(ManagerTestCase):
 
         def load_module(module: str, *arguments: str) -> int:
             loaded.append(module)
+            listings["sink-inputs"].append({"index": 51, "owner_module": 50})
             return 50
 
         def run(*args: str, check: bool = True) -> Any:
@@ -646,6 +647,7 @@ class ReconcileTests(ManagerTestCase):
         gadget.update(volume=55, muted=True)
         reconcile()
         self.assertEqual(manager.music_volume, 55)
+        self.assertTrue(manager.output_muted)
         self.assertIn(("pactl", "set-sink-mute", "hifiberry", "1"), commands)
         self.assertNotIn(("pactl", "set-sink-volume", "hifiberry", "55%"), commands)
 
@@ -871,7 +873,7 @@ class ReconcileTests(ManagerTestCase):
         status = status_write.call_args.args[1]
         self.assertEqual(
             status["aec_reference"],
-            {"enabled": True, "available": True, "sink": "xvf_playback"},
+            {"enabled": True, "available": True, "endpoints_available": True, "sink": "xvf_playback"},
         )
 
         # The reference must reach the DSP at the level the room hears: the
@@ -912,7 +914,7 @@ class ReconcileTests(ManagerTestCase):
         status = status_write.call_args.args[1]
         self.assertEqual(
             status["aec_reference"],
-            {"enabled": True, "available": False, "sink": None},
+            {"enabled": True, "available": False, "endpoints_available": False, "sink": None},
         )
 
     def test_voice_capture_publishes_the_asr_channel_as_the_default_source(
@@ -975,7 +977,7 @@ class ReconcileTests(ManagerTestCase):
             status["voice_capture"], {"channel": 1, "source": "smartamp_voice_capture"}
         )
 
-    def test_voice_capture_falls_back_to_the_device_without_that_channel(self) -> None:
+    def test_voice_capture_waits_instead_of_using_the_wrong_channel(self) -> None:
         manager = self.make_manager({"voice_capture_channel": 1})
         listings = {
             "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
@@ -997,7 +999,7 @@ class ReconcileTests(ManagerTestCase):
             manager.reconcile()
 
         load_module.assert_not_called()
-        self.assertIn(
+        self.assertNotIn(
             ("pactl", "set-default-source", "mono_mic"),
             [call.args for call in run.call_args_list],
         )
@@ -1268,13 +1270,16 @@ class IdleTeardownTests(ManagerTestCase):
         # clients pointed at it by PULSE_SINK keep their target. Nothing is
         # playing, so the teardown needs no protective mute.
         clock["now"] = 90.0
+        before_teardown = len(commands)
         status = reconcile()
         self.assertTrue(status["idle"])
         for role in ("_background_bridge", "_aec", "aux"):
             self.assertNotIn(role, manager.modules)
         self.assertIn("_background_sink", manager.modules)
         self.assertIsNone(manager.idle.deadline())
-        self.assertNotIn("set-sink-mute", {arg for args in commands for arg in args})
+        self.assertNotIn(
+            "set-sink-mute", {arg for args in commands[before_teardown:] for arg in args}
+        )
 
         # A client starts playing again: everything rebuilds on the next pass,
         # behind a mute held on the output sink, because the fresh bridge
@@ -1661,7 +1666,10 @@ class BusTests(ManagerTestCase):
         self.assertIn(
             "sink_input_properties=media.name=SmartAmp.voice_bridge", loaded[0][1]
         )
-        run.assert_called_once_with("pactl", "set-sink-input-volume", "27", "40%")
+        self.assertEqual(run.call_args_list, [
+            mock.call("pactl", "set-sink-mute", "hifiberry", "1"),
+            mock.call("pactl", "set-sink-input-volume", "27", "40%"),
+        ])
         listings["sink-inputs"][0]["volume"] = {
             "mono": {"value_percent": "40%"}
         }

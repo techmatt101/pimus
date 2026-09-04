@@ -105,18 +105,21 @@ if [ -r "$STATUS_FILE" ] && jq -e 'type == "object"' "$STATUS_FILE" >/dev/null 2
     jq -e '.voice_input | type == "string" and length > 0' "$STATUS_FILE" >/dev/null 2>&1 \
         && pass 'ReSpeaker is selected as the voice input' \
         || fail 'Audio status has no selected voice input'
-    jq -e '.voice_bus.available == true and (.voice_bus.sink | type == "string" and length > 0)' "$STATUS_FILE" >/dev/null 2>&1 \
+    jq -e '.voice_capture.channel == null or (.voice_capture.source | type == "string" and length > 0)' "$STATUS_FILE" >/dev/null 2>&1 \
+        && pass 'Configured voice capture channel is ready' \
+        || fail 'Configured voice capture channel is unavailable'
+    jq -e '(.idle == true or .voice_bus.available == true) and (.voice_bus.sink | type == "string" and length > 0)' "$STATUS_FILE" >/dev/null 2>&1 \
         && pass 'Voice playback bus is available' \
         || fail 'Voice playback bus is unavailable'
 {% endif %}
 {% if voice_assistant_enabled and smartamp_voice_ducking_enabled %}
-    jq -e '.background.available == true and (.background.sink | type == "string" and length > 0)' "$STATUS_FILE" >/dev/null 2>&1 \
+    jq -e '(.idle == true or .background.available == true) and (.background.sink | type == "string" and length > 0)' "$STATUS_FILE" >/dev/null 2>&1 \
         && pass 'Background ducking path is available' \
         || fail 'Background ducking path is unavailable'
 {% endif %}
 {% if smartamp_aec_reference_enabled %}
-    jq -e '.aec_reference.available == true and (.aec_reference.sink | type == "string" and length > 0)' "$STATUS_FILE" >/dev/null 2>&1 \
-        && pass 'ReSpeaker AEC reference path is available' \
+    jq -e '(.aec_reference.available == true or (.idle == true and .aec_reference.endpoints_available == true)) and (.aec_reference.sink | type == "string" and length > 0)' "$STATUS_FILE" >/dev/null 2>&1 \
+        && pass 'ReSpeaker AEC routing is ready or intentionally idle (cancellation not measured)' \
         || fail 'ReSpeaker AEC reference path is unavailable'
 {% endif %}
 {% if smartamp_aux_enabled %}

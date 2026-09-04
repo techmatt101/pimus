@@ -94,15 +94,24 @@ def find_loaded_module(
     )
 
 
-def volume_state(node: Node) -> tuple[int, bool] | None:
-    """A sink's or stream's (loudest channel percent, muted), if it reports one."""
+def channel_volumes(node: Node) -> list[int]:
     channels = node.get("volume") or {}
-    percents = [
+    return [
         int(match.group(1))
         for channel in channels.values()
         if isinstance(channel, dict)
         and (match := re.match(r"(\d+)%", str(channel.get("value_percent", ""))))
     ]
+
+
+def volume_is(node: Node, percent: int) -> bool:
+    levels = channel_volumes(node)
+    return bool(levels) and all(level == percent for level in levels)
+
+
+def volume_state(node: Node) -> tuple[int, bool] | None:
+    """A sink's or stream's (loudest channel percent, muted), if it reports one."""
+    percents = channel_volumes(node)
     if not percents:
         return None
     return max(percents), bool(node.get("mute", False))

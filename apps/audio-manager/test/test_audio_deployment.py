@@ -1,0 +1,233 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[3]
+ROLE = ROOT / "ansible/roles/smartamp"
+FILES = ROLE / "files"
+
+
+class AudioDeploymentTests(unittest.TestCase):
+    def test_wireplumber_strings_have_valid_escapes_and_match_only_platform_outputs(
+        self,
+    ) -> None:
+        config = (FILES / "wireplumber/51-smartamp-soft-mixer.conf").read_text()
+        strings = [
+            json.loads(match[0]) for match in re.finditer(r'"(?:\\.|[^"\\])*"', config)
+        ]
+        pattern = next(
+            value[1:] for value in strings if value.startswith("~alsa_output")
+        )
+        self.assertIsNotNone(
+            re.fullmatch(pattern, "alsa_output.platform-sound.stereo-fallback")
+        )
+        self.assertIsNone(
+            re.fullmatch(pattern, "alsa_output.usb-XVF3800.stereo-fallback")
+        )
+        self.assertIsNone(
+            re.fullmatch(pattern, "alsa_outputXplatform-sound.stereo-fallback")
+        )
+
+    def test_hardware_init_stops_at_each_failed_mixer_control(self) -> None:
+        script = (FILES / "scripts/hifiberry-init.sh").read_text()
+        script = script.replace("/usr/bin/aplay", "probe").replace(
+            "/usr/bin/arecord", "probe"
+        )
+        script = script.replace("/usr/bin/amixer", "mixer").replace(
+            "/usr/sbin/alsactl", "store"
+        )
+        harness = """
+probe() { echo sndrpihifiberry; }
+mixer() { printf '%s\n' "$5"; [ "$5" != "$FAIL_CONTROL" ]; }
+store() { echo stored; return "$STORE_EXIT"; }
+"""
+        environment = {
+            **os.environ,
+            "HIFIBERRY_CARD_NAME": "sndrpihifiberry",
+            "HIFIBERRY_AUX_INPUT_LEFT": "VINL1[SE]",
+            "HIFIBERRY_AUX_INPUT_RIGHT": "VINR1[SE]",
+            "HIFIBERRY_AUX_GAIN_DB": "0",
+            "HIFIBERRY_OUTPUT_VOLUME_PERCENT": "90",
+            "HIFIBERRY_HAS_AUX": "1",
+            "STORE_EXIT": "0",
+        }
+        for control in ("ADC Left Input", "ADC Right Input", "ADC", "Digital"):
+            with self.subTest(control=control):
+                result = subprocess.run(
+                    ["sh", "-c", harness + script],
+                    env={**environment, "FAIL_CONTROL": control},
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout.splitlines()[-1], control)
+                self.assertNotIn("stored", result.stdout)
+        for has_aux in ("0", "1"):
+            with self.subTest(has_aux=has_aux):
+                result = subprocess.run(
+                    ["sh", "-c", harness + script],
+                    env={
+                        **environment,
+                        "FAIL_CONTROL": "",
+                        "HIFIBERRY_HAS_AUX": has_aux,
+                    },
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.splitlines()[-2:], ["Digital", "stored"])
+
+    def test_manager_requires_successful_hardware_initialisation(self) -> None:
+        service = (ROLE / "templates/smartamp-audio-manager.service.j2").read_text()
+        requires = next(
+            line for line in service.splitlines() if line.startswith("Requires=")
+        )
+        self.assertIn("smartamp-hifiberry.service", requires)
+        self.assertIn(
+            "smartamp-hifiberry.service",
+            next(line for line in service.splitlines() if line.startswith("After=")),
+        )
+
+    @staticmethod
+    def ready_status() -> dict:
+        return {
+            "sink": "hifi",
+            "voice_input": "xvf",
+            "idle": False,
+            "voice_capture": {"channel": 1, "source": "smartamp_voice_capture"},
+            "voice_bus": {"enabled": True, "sink": "voice", "available": True},
+            "background": {"sink": "background", "available": True},
+            "aec_reference": {
+                "sink": "xvf",
+                "available": True,
+                "endpoints_available": True,
+            },
+        }
+
+    def test_voice_startup_waits_for_capture_and_accepts_intentionally_idle_bus(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path / "sleep").write_text("#!/bin/sh\nexit 0\n")
+            (path / "sleep").chmod(0o755)
+            status_file = path / "status.json"
+            for scenario, expected in (
+                ("ready", 0),
+                ("missing_capture", 1),
+                ("missing_bus", 1),
+                ("unbridged", 1),
+                ("idle", 0),
+                ("unmapped", 0),
+            ):
+                with self.subTest(scenario=scenario):
+                    status = self.ready_status()
+                    if scenario == "missing_capture":
+                        status["voice_capture"]["source"] = None
+                    elif scenario == "missing_bus":
+                        status["voice_bus"]["sink"] = None
+                    elif scenario in ("unbridged", "idle"):
+                        status["voice_bus"]["available"] = False
+                        status["idle"] = scenario == "idle"
+                    elif scenario == "unmapped":
+                        status["voice_capture"] = {"channel": None, "source": None}
+                    status_file.write_text(json.dumps(status))
+                    result = subprocess.run(
+                        [
+                            "sh",
+                            str(FILES / "scripts/wait-audio-ready.sh"),
+                            str(status_file),
+                            "1",
+                        ],
+                        env={**os.environ, "PATH": f"{path}:{os.environ['PATH']}"},
+                        capture_output=True,
+                        timeout=5,
+                    )
+                    self.assertEqual(result.returncode, expected, result.stderr)
+
+    def test_doctor_distinguishes_idle_routes_from_missing_endpoints(self) -> None:
+        template = (ROLE / "templates/smartamp-doctor.sh.j2").read_text()
+        expressions = re.findall(r"jq -e '([^']+)' \"\$STATUS_FILE\"", template)
+        for section in ("voice_bus", "background", "aec_reference"):
+            expression = next(
+                value for value in expressions if f".{section}.available" in value
+            )
+            for scenario, expected in (
+                ("ready", 0),
+                ("missing_stream", 1),
+                ("idle", 0),
+                ("missing_endpoint", 1),
+            ):
+                with self.subTest(section=section, scenario=scenario):
+                    status = self.ready_status()
+                    if scenario != "ready":
+                        status[section]["available"] = False
+                    if scenario in ("idle", "missing_endpoint"):
+                        status["idle"] = True
+                    if scenario == "missing_endpoint":
+                        status[section]["sink"] = None
+                        status[section]["endpoints_available"] = False
+                    result = subprocess.run(
+                        ["jq", "-e", expression],
+                        input=json.dumps(status),
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                    self.assertEqual(result.returncode, expected, result.stderr)
+
+
+class CaptureRecoveryTests(unittest.TestCase):
+    def test_capture_thread_failure_exits_the_whole_process(self) -> None:
+        for failure in (
+            "raise SystemExit(1)",
+            "raise RuntimeError('capture disconnected')",
+        ):
+            with self.subTest(failure=failure):
+                program = f"""
+import sys
+import threading
+sys.path.insert(0, {str(FILES)!r})
+from smartamp_audio_recovery import exit_on_capture_failure
+def capture():
+    {failure}
+thread = threading.Thread(target=exit_on_capture_failure(capture))
+thread.start()
+thread.join()
+print("incorrectly still running")
+"""
+                result = subprocess.run(
+                    [sys.executable, "-c", program],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertNotIn("incorrectly still running", result.stdout)
+                self.assertIn("restarting voice assistant", result.stderr)
+
+    def test_normal_completion_and_clean_exit_are_preserved(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "smartamp_audio_recovery", FILES / "smartamp_audio_recovery.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        self.assertEqual(module.exit_on_capture_failure(lambda value: value)(42), 42)
+
+        def clean_exit():
+            raise SystemExit(0)
+
+        with self.assertRaises(SystemExit) as raised:
+            module.exit_on_capture_failure(clean_exit)()
+        self.assertEqual(raised.exception.code, 0)
