@@ -93,13 +93,21 @@ class AudioManager:
 
         self.pending_reconcile: float | None = None
         self.next_resync = 0.0
-        self._last_broadcast = self._broadcast_signature()
+        self._last_broadcast = self.state_event()
 
     def stop(self, *_args: object) -> None:
         self.running = False
 
     def execute(self) -> int:
+        try:
+            return self._run()
+        finally:
+            self._close()
+
+    def _run(self) -> int:
         self.wait_for_pulse()
+        if not self.running:
+            return 0
         self.control.start()
         self.graph_events.start()
         self.safe_reconcile()
@@ -117,17 +125,26 @@ class AudioManager:
             # change so the controller's icon and readout update without
             # waiting for a command.
             self._broadcast_changes()
-        self.graph_events.stop()
-        self.mixer_events.stop()
-        self.voice_meter.close()
-        self.control.close()
-        self.selector.close()
+        return 0
+
+    def _close(self) -> None:
+        self.running = False
+        self._guard(
+            "Withdrawing audio status", lambda: self.status_path.unlink(missing_ok=True)
+        )
+        for description, close in (
+            ("Stopping graph events", self.graph_events.stop),
+            ("Stopping mixer events", self.mixer_events.stop),
+            ("Closing control socket", self.control.close),
+            ("Closing voice meter", self.voice_meter.close),
+            ("Closing selector", self.selector.close),
+        ):
+            self._guard(description, close)
         for role in reversed(self.modules.roles()):
             self._guard(
                 f"Releasing {role}",
                 lambda role=role: self.modules.unload(role),
             )
-        return 0
 
     def wait_for_pulse(self) -> None:
         while self.running:
@@ -299,8 +316,8 @@ class AudioManager:
         self.schedule_reconcile(0.0)
 
     def broadcast_state(self) -> None:
-        self._last_broadcast = self._broadcast_signature()
-        self.control.broadcast(self.state_event())
+        self._last_broadcast = self.state_event()
+        self.control.broadcast(self._last_broadcast)
 
     # Levels arrive many times a second and interest only whoever asked for
     # them, so they are addressed to the requesting connections rather than
@@ -309,9 +326,6 @@ class AudioManager:
         event = {"event": "voice_level", "level": round(level, 3)}
         for connection in self.commands.meter_listeners:
             self.control.send(connection, event)
-
-    def _broadcast_signature(self) -> tuple[object, ...]:
-        return (self.usb.streaming, self.music_volume, self.output.muted)
 
     def _apply_music_volume(self) -> None:
         self.graph.invalidate()
@@ -367,7 +381,7 @@ class AudioManager:
             self.safe_reconcile()
 
     def _broadcast_changes(self) -> None:
-        if self._broadcast_signature() != self._last_broadcast:
+        if self.state_event() != self._last_broadcast:
             self.broadcast_state()
 
     def _reconcile_and_broadcast(self) -> None:

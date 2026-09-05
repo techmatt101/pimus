@@ -801,7 +801,9 @@ class ReconcileTests(ManagerTestCase):
             index=62, volume={"mono": {"value_percent": "100%"}}
         )
         self.assertEqual(reconcile(), ["0%"])
-        self.assertEqual(manager.routes.stream_indices["aux"], 62)
+        self.assertEqual(
+            listings["sink-inputs"][0]["volume"], {"mono": {"value_percent": "0%"}}
+        )
 
     def test_aec_reference_bridges_output_monitor_into_the_xvf3800(self) -> None:
         manager = self.make_manager(
@@ -1519,8 +1521,6 @@ class VolumeTests(ManagerTestCase):
         )
         manager.modules.adopt("aux", 60)
         manager.routes.enabled["aux"] = True
-        manager.routes.unmuted = {"aux": True}
-        manager.routes.stream_indices = {"aux": 61}
         manager.background.stream_index = 42
         manager.background.ducked = False
         manager.background.gain_applied = 100
@@ -1537,6 +1537,8 @@ class VolumeTests(ManagerTestCase):
         ), mock.patch.object(process, "run") as run, mock.patch(
             "audio_manager.volume.time.sleep"
         ):
+            manager.routes.apply_music_volume(100)
+            run.reset_mock()
             reply, reconcile = manager.commands.apply(
                 mock.Mock(), {"command": "set-music-volume", "percent": 30}
             )
@@ -1570,8 +1572,6 @@ class VolumeTests(ManagerTestCase):
             }
         )
         manager.routes.enabled = {"aux": True, "usb": True}
-        manager.routes.unmuted = {"aux": True}
-        manager.routes.stream_indices = {"aux": 61}
         manager.modules.adopt("aux", 60)
         manager.modules.adopt("usb", 50)
         output_sink = {"name": "hifiberry", "index": 1}
@@ -1610,7 +1610,11 @@ class VolumeTests(ManagerTestCase):
             ],
         }
 
-        with self._patched_graph(listings, fake_run) as run:
+        with self._patched_graph(listings, fake_run) as run, mock.patch(
+            "audio_manager.volume.time.sleep"
+        ):
+            manager.routes.apply_music_volume(100)
+            run.reset_mock()
             manager.routes.reconcile(
                 output=output_sink,
                 background_sink=background_sink,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from . import graph, volume
@@ -16,6 +17,14 @@ LOG = logging.getLogger(__name__)
 
 # Control-rate fade duration; this is not a sample-level de-clicking ramp.
 ROUTE_FADE_MS = 200
+
+
+@dataclass(frozen=True)
+class AppliedRoute:
+    """The toggle successfully applied to one particular playback stream."""
+
+    stream_index: int
+    enabled: bool
 
 
 def activate_parked_card(view: Graph, pattern: str) -> None:
@@ -60,8 +69,7 @@ class SourceRoutes:
         self._graph = view
         self._modules = registry
         self.enabled = {name: source.enabled for name, source in sources.items()}
-        self.unmuted: dict[str, bool] = {}
-        self.stream_indices: dict[str, int] = {}
+        self._applied: dict[str, AppliedRoute] = {}
         self.settled = True
         registry.on_released(self._role_released)
 
@@ -173,14 +181,7 @@ class SourceRoutes:
             self.settled = False
             LOG.info("Waiting for the %s playback stream", name)
             return status
-        # A route bridging into the background bus already gets the music level
-        # from the bus bridge, so its stream carries only the input's own trim;
-        # a route straight to the pinned output sink carries the trimmed music
-        # level on its own stream instead.
-        if source.bridges_into_background:
-            self._track_level(stream, source.volume_percent)
-        else:
-            self._apply_stream_level(name, source, stream, enabled, music_volume)
+        self._apply_stream_level(name, source, stream, enabled, music_volume)
         return status
 
     def _apply_stream_level(
@@ -192,17 +193,23 @@ class SourceRoutes:
         music_volume: int,
     ) -> None:
         stream_index = int(stream["index"])
-        level = volume.scale(music_volume, source.volume_percent)
+        # Background routes inherit the bus's music gain; both targets share
+        # the same off/on handling and carry the input's own trim.
+        level = (
+            source.volume_percent
+            if source.bridges_into_background
+            else volume.scale(music_volume, source.volume_percent)
+        )
         if not source.mute_when_off:
             self._track_level(stream, level)
             return
-        if self.stream_indices.get(name) != stream_index:
-            # PipeWire can recreate a stream while its loopback module survives.
-            # Treat that stream as unsettled so an off route cannot start at
-            # full volume.
-            self.stream_indices[name] = stream_index
-            self.unmuted.pop(name, None)
-        was_enabled = self.unmuted.get(name)
+        # A recreated stream has no applied toggle, even if its module survived.
+        applied = self._applied.get(name)
+        was_enabled = (
+            applied.enabled
+            if applied is not None and applied.stream_index == stream_index
+            else None
+        )
         if was_enabled == enabled:
             # Verify both sides of a settled toggle against the live graph.
             self._track_level(stream, level if enabled else 0)
@@ -220,7 +227,7 @@ class SourceRoutes:
                 ROUTE_FADE_MS,
             )
             LOG.info("%s %s input monitor", "Enabled" if enabled else "Muted", name)
-        self.unmuted[name] = enabled
+        self._applied[name] = AppliedRoute(stream_index, enabled)
 
     def _track_level(self, stream: Node, level: int) -> None:
         if not graph.volume_is(stream, level):
@@ -229,8 +236,7 @@ class SourceRoutes:
     def _role_released(self, role: str) -> None:
         # A rebuilt bridge is a fresh stream at full volume, so the next
         # reconcile must snap it to the toggle rather than assume it settled.
-        self.unmuted.pop(role, None)
-        self.stream_indices.pop(role, None)
+        self._applied.pop(role, None)
 
     def _stream_of(self, name: str) -> Node | None:
         return graph.find_owned_stream(

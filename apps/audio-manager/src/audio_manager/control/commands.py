@@ -78,7 +78,8 @@ class CommandHandler:
     def client_gone(self, connection: socket.socket) -> None:
         if connection in self._meter_requests:
             self._meter_requests.discard(connection)
-            self._manager.request_voice_meter(bool(self._meter_requests))
+            if self._manager.running:
+                self._manager.request_voice_meter(bool(self._meter_requests))
         if connection in self._standby_requests:
             # Releasing on disconnect rebuilds the bridges, which is the safe
             # side: a crashed controller reconnects and re-asserts within

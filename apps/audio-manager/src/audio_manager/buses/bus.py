@@ -125,6 +125,9 @@ class PlaybackBus:
         if self.stream_index is None:
             return
         start = self.gain_applied if self.gain_applied is not None else target
+        # A failed fade may already have changed the stream. Only cache a
+        # gain once every write succeeds, including when reversing that fade.
+        self.gain_applied = None
         volume.fade_stream(self.stream_index, start, target, fade_ms)
         self.gain_applied = target
 

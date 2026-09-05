@@ -95,6 +95,9 @@ a folder: `system/` (`process.py`, `pactl.py`, `usb_gadget.py`, `parec.py`,
 state and volume kept agreed with a plugged-in computer). It runs as
 `python3 -m audio_manager`.
 
+The [structure review](../docs/audio-manager-review.md) records the design
+comparisons, state invariants, and regression coverage.
+
 ## `playground`
 
 A local debug environment for the controller, run with `make dev` or

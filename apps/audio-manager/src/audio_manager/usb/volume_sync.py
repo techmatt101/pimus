@@ -34,6 +34,7 @@ class UsbVolumeSync:
 
     def sync(self, amp: VolumeState) -> VolumeState:
         if not usb_gadget.card_present():
+            self.forget()
             return amp
         gadget = usb_gadget.read_mixer()
         if gadget is None:
