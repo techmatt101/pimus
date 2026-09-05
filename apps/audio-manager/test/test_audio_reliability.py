@@ -22,13 +22,21 @@ def stereo(left: int, right: int) -> dict:
 
 
 class AudioReliabilityTests(ManagerTestCase):
-    def test_all_output_channels_are_pinned_to_unity(self) -> None:
-        sink = {"name": "hifi", **stereo(0, 100)}
+    def test_all_output_channels_are_pinned_to_unity_behind_the_guard(self) -> None:
+        sink = {"name": "hifi", "description": "HiFiBerry", "index": 1, **stereo(0, 100)}
         self.assertEqual(graph.volume_state(sink), (100, False))
         self.assertFalse(graph.volume_is(sink, 100))
-        with mock.patch.object(pactl, "set_sink_volume") as write:
-            output.pin_volume(sink)
-        write.assert_called_once_with("hifi", 100)
+        manager = self.make_manager({})
+        with self._patched_graph({"sinks": [sink]}, fake_run) as run:
+            manager.output.prepare()
+        self.assertEqual(
+            [call.args for call in run.call_args_list],
+            [
+                ("pactl", "set-sink-mute", "hifi", "1"),
+                ("pactl", "set-sink-volume", "hifi", "100%"),
+            ],
+        )
+        self.assertTrue(manager.output.guarded)
 
     def test_music_command_updates_direct_clients_immediately(self) -> None:
         manager = self.make_manager({})
@@ -231,31 +239,44 @@ class RebuildSafetyTests(ManagerTestCase):
         self,
     ) -> None:
         for desired_mute in (False, True):
-            with self.subTest(
-                desired_mute=desired_mute
-            ), tempfile.TemporaryDirectory() as directory:
-                self.manager.status_path = Path(directory) / "status.json"
-                self.manager.status_path.write_text('{"sink":"stale"}')
+            with self.subTest(desired_mute=desired_mute):
                 self.fail_gain = True
                 self.stream.update(stereo(100, 100))
-                self.manager.output_guard.protect(self.sink)
+                self.manager.output.find()
+                self.manager.output.guard()
                 with self.assertLogs("audio_manager.daemon", level="WARNING"):
                     self.assertFalse(self.manager.safe_reconcile())
-                self.assertFalse(self.manager.status_path.exists())
                 self.assertTrue(self.sink["mute"])
                 self.manager.set_output_mute(desired_mute)
                 self.assertTrue(self.sink["mute"])
                 self.fail_gain = False
                 self.assertTrue(self.manager.safe_reconcile())
                 self.assertEqual(self.sink["mute"], desired_mute)
-                self.assertEqual(self.manager.output_muted, desired_mute)
+                self.assertEqual(self.manager.output.muted, desired_mute)
 
-    def test_unpublished_route_stays_muted_until_its_gain_can_be_written(self) -> None:
+    def test_unpublished_route_keeps_the_guard_and_the_rest_of_the_pass(self) -> None:
+        # The stream not being listed yet is not a failure: the pass completes,
+        # publishes, and books a retry, with the output held muted meanwhile.
         self.publish_stream = False
-        with self.assertLogs("audio_manager.daemon", level="WARNING"):
-            self.assertFalse(self.manager.safe_reconcile())
+        with mock.patch("audio_manager.daemon.time.monotonic", return_value=100.0):
+            self.assertTrue(self.manager.safe_reconcile())
         self.assertTrue(self.sink["mute"])
+        self.assertEqual(self.manager.pending_reconcile, 101.0)
         self.listings["sink-inputs"].append(self.stream)
         self.assertTrue(self.manager.safe_reconcile())
         self.assertFalse(self.sink["mute"])
         self.assertTrue(graph.volume_is(self.stream, 10))
+
+    def test_a_mute_found_at_startup_is_cleared_but_one_made_later_is_adopted(
+        self,
+    ) -> None:
+        # WirePlumber restores mute across restarts, so a guard a previous
+        # process died holding would otherwise become a mute nobody asked for.
+        self.sink["mute"] = True
+        self.manager.reconcile()
+        self.assertFalse(self.sink["mute"])
+        self.assertFalse(self.manager.output.muted)
+        self.sink["mute"] = True
+        self.manager.reconcile()
+        self.assertTrue(self.sink["mute"])
+        self.assertTrue(self.manager.output.muted)

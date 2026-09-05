@@ -6,16 +6,21 @@ loopback latency have deliberately not been retuned.
 
 ## Implemented
 
-- [x] Fixed the invalid SPA-JSON escape in the WirePlumber soft-mixer rule.
-  Validated the fragment with the PipeWire 1.4.2 SPA-JSON parser; added a
-  regression check for quoted escapes and the platform-output match.
+- [x] The WirePlumber soft-mixer rule now matches the ALSA card
+  (`device.name`), which is the object `api.alsa.soft-mixer` belongs to; the
+  earlier node-scoped rule was ignored, so the hardware ceiling was very likely
+  not holding at all. The doctor reads `Digital` back against the ceiling.
+  Confirm on each unit after re-provisioning.
 - [x] Hardware initialization now fails on a failed mixer command instead of
   continuing to `alsactl store`. The manager requires successful initialization;
   Ansible restart notifications bring dependent audio services back afterward.
-- [x] Mute a newly discovered output before raising its software volume to
-  unity, and mute before manager-controlled loopback loads. Keep the guard held
-  if gain application fails or a playback stream has not appeared. Release it
-  only after a successful reconciliation, restoring the requested mute.
+- [x] Mute the output before raising its software volume to unity and before
+  any loopback into it loads. A bridge stream that has not appeared keeps the
+  guard held and books a retry without failing the pass, so the rest of the
+  graph (voice capture, defaults, AEC reference, routes) is still reconciled
+  and published. A mute found on the sink the first time a manager process
+  sees it is cleared rather than adopted, so a guard a killed process left
+  behind cannot become a permanent mute.
 - [x] Separated USB volume/mute agreement from writes to the output sink. A
   host unmute cannot release the rebuild guard; host mute is reflected in the
   manager's state in the same pass.
@@ -30,8 +35,7 @@ loopback latency have deliberately not been retuned.
   remap is unavailable. Validate channel indices and gate voice startup on the
   intended capture source and playback bus.
 - [x] Doctor accepts deliberately unbridged idle buses/reference paths, but
-  still rejects missing endpoints or capture. Failed reconciliation removes
-  stale readiness status.
+  still rejects missing endpoints or capture.
 - [x] Added a small LVA capture-failure adapter. The pinned upstream calls
   `sys.exit(1)` inside its microphone thread, leaving the server alive; the
   adapter exits the process so systemd can restart it through the readiness
@@ -75,9 +79,8 @@ loopback latency have deliberately not been retuned.
   remaining clicks separately from overload pops.
 - [ ] **P0 — Check the safety-mute tradeoffs.** The guard is a mute switch,
   not a waveform ramp. Check for clicks and missing first syllables on release.
-  If the manager is killed while the guard is held, a replacement process
-  cannot distinguish that mute from a user mute: it preserves it. Confirm an
-  explicit unmute after successful recovery restores playback.
+  Kill the manager mid-rebuild and confirm the replacement process comes up
+  unmuted.
 - [ ] **P1 — Close the remaining first-stream race.** Direct clients, and
   streams recreated independently by PipeWire, can play before the manager
   observes them. Evaluate a permanent music bus independent of ducking,

@@ -44,6 +44,19 @@ printf 'HiFiBerry board: %s\n' '{{ smartamp_hifiberry_caps.label }}'
 aplay -l || true
 arecord -l || true
 aplay -l 2>/dev/null | grep -q {{ hifiberry_card_name | quote }} && pass '{{ smartamp_hifiberry_caps.label }} playback found' || fail '{{ smartamp_hifiberry_caps.label }} playback missing'
+{# The hardware ceiling is the speaker protection: every software gain lives in
+   PipeWire, so a transient that escapes them reaches the amplifier through
+   this control. The init script sets it at boot and the WirePlumber soft-mixer
+   rule is meant to keep PipeWire from moving it; reading it back is the only
+   proof that rule took, because a rule that fails to apply says nothing. #}
+DIGITAL=$(amixer -c {{ hifiberry_card_name | quote }} sget Digital 2>/dev/null | grep -m1 -o '\[[0-9]*%\]' | tr -d '[]%')
+if [ -z "$DIGITAL" ]; then
+    fail 'HiFiBerry Digital control could not be read'
+elif [ "$DIGITAL" -eq {{ hifiberry_output_volume_percent | int }} ]; then
+    pass "HiFiBerry hardware ceiling is holding at ${DIGITAL}%"
+else
+    fail "HiFiBerry hardware ceiling is ${DIGITAL}%, not the {{ hifiberry_output_volume_percent | int }}% configured; PipeWire is moving the Digital control (soft-mixer rule not applied?)"
+fi
 {% if smartamp_hifiberry_caps.aux_input | bool %}
 arecord -l 2>/dev/null | grep -q {{ hifiberry_card_name | quote }} && pass 'HiFiBerry aux capture found' || fail 'HiFiBerry aux capture missing'
 {% else %}

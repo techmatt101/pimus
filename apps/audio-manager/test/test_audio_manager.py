@@ -647,7 +647,7 @@ class ReconcileTests(ManagerTestCase):
         gadget.update(volume=55, muted=True)
         reconcile()
         self.assertEqual(manager.music_volume, 55)
-        self.assertTrue(manager.output_muted)
+        self.assertTrue(manager.output.muted)
         self.assertIn(("pactl", "set-sink-mute", "hifiberry", "1"), commands)
         self.assertNotIn(("pactl", "set-sink-volume", "hifiberry", "55%"), commands)
 
@@ -1347,22 +1347,40 @@ class IdleTeardownTests(ManagerTestCase):
 
 class VolumeTests(ManagerTestCase):
     def test_output_sink_is_pinned_to_full_scale(self) -> None:
-        with mock.patch.object(process, "run") as run:
-            output.pin_volume(None)
+        manager = self.make_manager({})
+        with mock.patch.object(process, "run") as run, mock.patch.object(
+            manager.graph, "find_sink", return_value=None
+        ):
+            manager.output.prepare()
             run.assert_not_called()
 
-            # WirePlumber restored an old dial level: pin it back to 100.
-            output.pin_volume(
-                {"name": "hifi", "volume": {"mono": {"value_percent": "20%"}}}
+        # WirePlumber restored an old dial level: pin it back to 100, muted
+        # while the level jumps.
+        sink = {"name": "hifi", "volume": {"mono": {"value_percent": "20%"}}}
+        with mock.patch.object(process, "run") as run, mock.patch.object(
+            manager.graph, "find_sink", return_value=sink
+        ):
+            manager.output.prepare()
+            self.assertEqual(
+                [call.args for call in run.call_args_list],
+                [
+                    ("pactl", "set-sink-mute", "hifi", "1"),
+                    ("pactl", "set-sink-volume", "hifi", "100%"),
+                ],
             )
-            run.assert_called_once_with("pactl", "set-sink-volume", "hifi", "100%")
 
-            # An already pinned sink writes nothing, so the pin can never echo
-            # itself into another reconcile.
-            output.pin_volume(
-                {"name": "hifi", "volume": {"mono": {"value_percent": "100%"}}}
-            )
-            run.assert_called_once()
+        # An already pinned sink writes nothing once the guard has let go, so
+        # the pin can never echo itself into another reconcile.
+        sink["volume"] = {"mono": {"value_percent": "100%"}}
+        with mock.patch.object(process, "run") as run:
+            manager.output.settle(True)
+            run.assert_called_once_with("pactl", "set-sink-mute", "hifi", "0")
+        with mock.patch.object(process, "run") as run, mock.patch.object(
+            manager.graph, "find_sink", return_value=sink
+        ):
+            manager.output.prepare()
+            manager.output.settle(True)
+            run.assert_not_called()
 
     def test_output_mute_is_commanded_and_read_back_from_the_sink(self) -> None:
         manager = self.make_manager({"sources": {}})
@@ -1666,10 +1684,7 @@ class BusTests(ManagerTestCase):
         self.assertIn(
             "sink_input_properties=media.name=SmartAmp.voice_bridge", loaded[0][1]
         )
-        self.assertEqual(run.call_args_list, [
-            mock.call("pactl", "set-sink-mute", "hifiberry", "1"),
-            mock.call("pactl", "set-sink-input-volume", "27", "40%"),
-        ])
+        run.assert_called_once_with("pactl", "set-sink-input-volume", "27", "40%")
         listings["sink-inputs"][0]["volume"] = {
             "mono": {"value_percent": "40%"}
         }

@@ -38,6 +38,11 @@ class AudioBus:
         self.sink: Node | None = None
         self.stream_index: int | None = None
         self.gain_applied: int | None = None
+        # Whether every bridge this bus wants has a stream to carry its gain.
+        # A loopback's stream can be listed a moment after the module loads;
+        # until it is, the output must stay guarded, since the stream will
+        # start at full volume.
+        self.settled = True
         self._graph = view
         self._modules = registry
         registry.on_released(self._role_released)
@@ -62,6 +67,7 @@ class AudioBus:
         wanted. An unbridged bus still accepts client streams — they just play
         into the retained null sink — so an idle teardown never breaks the
         clients pointed at it by PULSE_SINK."""
+        self.settled = True
         if not self.config.enabled:
             self.release()
             self.sink = None
@@ -86,7 +92,9 @@ class AudioBus:
         )
         if bridge is None:
             self._track_stream(None)
-            raise RuntimeError(f"Waiting for {self.prefix} playback bridge")
+            self.settled = False
+            LOG.info("Waiting for the %s playback bridge stream", self.prefix)
+            return self.sink
         self._track_stream(int(bridge["index"]))
         # Reconcile against the graph, not only our last successful write. A
         # stream can be recreated or changed underneath the module that owns it.

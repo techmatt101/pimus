@@ -39,7 +39,15 @@ class AecReference:
         )
         endpoints_available = bool(reference_sink and monitor)
         available = False
+        # With nothing playing there is no echo to subtract, so an idle
+        # teardown (wanted=False) can release the reference and let the
+        # XVF3800 playback endpoint suspend without costing the DSP anything.
         if self.config.enabled and wanted and reference_sink and monitor:
+            # The DSP models the echo as this reference at the level the room
+            # hears, so the whole path must be unity gain: WirePlumber restores
+            # whatever the reference sink last had, and nothing else owns it. A
+            # quiet or muted reference makes the XVF3800 under-subtract, which
+            # sounds like a mic that cannot hear over the music.
             sink_ready = self._pin_sink(reference_sink)
             created = self._modules.ensure_loopback(
                 REFERENCE_ROLE,

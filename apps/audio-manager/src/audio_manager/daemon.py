@@ -65,14 +65,17 @@ class AudioManager:
         self.config = config
         self.status_path = status_path
         self.running = True
+        # The output sink stays pinned at full scale; loudness lives on the two
+        # bus gains instead, so music and voice are truly independent. Both
+        # levels are seeded from configuration each daemon start; the controller
+        # owns them through the control socket and re-asserts its own cached
+        # values after either process restarts, like the routes.
         self.music_volume = config.startup_volume_percent
         self.voice_volume = config.voice_bus.volume_percent
-        self.output_muted = False
-        self._output_identity: tuple[str, object] | None = None
-        self.output_guard = output.RebuildGuard()
 
         self.graph = Graph()
-        self.modules = ModuleRegistry(self.graph, self._protect_output)
+        self.output = output.OutputSink(config.output_match, self.graph)
+        self.modules = ModuleRegistry(self.graph, self._guard_output)
         self.background = BackgroundBus(config.background, self.graph, self.modules)
         self.voice_bus = VoiceBus(config.voice_bus, self.graph, self.modules)
         self.microphone = Microphone(
@@ -152,7 +155,7 @@ class AudioManager:
             "usb_playback": self.usb.streaming,
             "music_volume": self.music_volume,
             "voice_volume": self.voice_volume,
-            "output_muted": self.output_muted,
+            "output_muted": self.output.muted,
         }
 
     def desired_ducking(self) -> bool:
@@ -177,8 +180,7 @@ class AudioManager:
         )
 
     def set_output_mute(self, muted: bool) -> None:
-        self.output_muted = muted
-        self._apply_or_retry("Output mute", self._apply_output_mute)
+        self._apply_or_retry("Output mute", lambda: self.output.request_mute(muted))
 
     def set_music_volume(self, percent: float) -> None:
         self.music_volume = volume.clamp(percent)
@@ -194,13 +196,10 @@ class AudioManager:
             self.pending_reconcile = deadline
 
     def safe_reconcile(self) -> bool:
-        succeeded = self._guard("Audio reconciliation", self.reconcile)
-        if not succeeded:
-            self._guard(
-                "Clearing stale audio status",
-                lambda: self.status_path.unlink(missing_ok=True),
-            )
+        # Cleared first, so a pass that finds a bridge unsettled can book its
+        # own follow-up.
         self.pending_reconcile = None
+        succeeded = self._guard("Audio reconciliation", self.reconcile)
         delay = (
             self.config.resync_seconds if succeeded else RECONCILE_RETRY_SECONDS
         )
@@ -210,40 +209,33 @@ class AudioManager:
     def reconcile(self) -> None:
         self.graph.invalidate()
         self.modules.drop_released()
-        sink = self.graph.find_sink(self.config.output_match)
-        self._prepare_output(sink)
+        sink = self.output.prepare()
+        # A host volume change may move the music level, so sync before the bus
+        # and route gains below are applied against it; a host mute is a
+        # request like the controller's, applied as the pass settles.
+        self.music_volume, self.output.muted = self.usb_volume.sync(
+            (self.music_volume, self.output.muted)
+        )
+        # USB state is read before the buses so idle can be judged from it;
+        # the routes below gate on the same values.
         self.usb.refresh()
         idle = self.idle.update(self._audio_active())
         found = self._reconcile_graph(sink, idle)
-        self.output_guard.release(sink, self.output_muted)
+        settled = self.background.settled and self.voice_bus.settled and self.routes.settled
+        if not settled:
+            # A bridge whose stream is not listed yet cannot carry its gain, so
+            # the output stays guarded and the pass is repeated shortly; the
+            # rest of the graph is left reconciled rather than failed.
+            self.schedule_reconcile(RECONCILE_RETRY_SECONDS)
+        self.output.settle(settled)
         self._publish(sink, found)
 
-    def _prepare_output(self, sink: Node | None) -> None:
-        if sink is None:
-            self._output_identity = None
-            return
-        observed_mute = output.mute_state(sink)
-        if self.output_guard.holds(sink) and observed_mute is False:
-            output.set_mute(sink, True)
-        if observed_mute is not None and not self.output_guard.holds(sink):
-            self.output_muted = observed_mute
-        identity = self.output_guard.identity(sink)
-        if identity != self._output_identity:
-            self.output_guard.protect(sink)
-            self._output_identity = identity
-        output.pin_volume(sink)
-        self.music_volume, self.output_muted = self.usb_volume.sync(
-            (self.music_volume, self.output_muted)
-        )
-        if (
-            not self.output_guard.holds(sink)
-            and observed_mute is not None
-            and self.output_muted != observed_mute
-        ):
-            output.set_mute(sink, self.output_muted)
-
-    def _protect_output(self) -> None:
-        self.output_guard.protect(self.graph.find_sink(self.config.output_match))
+    def _guard_output(self, sink_name: str) -> None:
+        # Only a loopback into the output can pop the amplifier; one into a
+        # bus plays through that bus's bridge at its gain, and the AEC
+        # reference is never heard.
+        if sink_name == self.output.name:
+            self.output.guard()
 
     def _reconcile_graph(self, sink: Node | None, idle: bool) -> GraphStatus:
         """Put the buses, capture, reference and routes back where they belong."""
@@ -310,7 +302,7 @@ class AudioManager:
             "sources": found.sources,
             "usb_host": self.usb.attached,
             "usb_playback": self.usb.streaming,
-            "output_muted": self.output_muted,
+            "output_muted": self.output.muted,
             "idle": self.idle.idle,
             "standby": self.idle.standby,
         }
@@ -358,20 +350,13 @@ class AudioManager:
             self.control.send(connection, event)
 
     def _broadcast_signature(self) -> tuple[object, ...]:
-        return (self.usb.streaming, self.music_volume, self.output_muted)
-
-    def _apply_output_mute(self) -> None:
-        self.graph.invalidate()
-        sink = self.graph.find_sink(self.config.output_match)
-        output.set_mute(sink, self.output_muted or self.output_guard.holds(sink))
+        return (self.usb.streaming, self.music_volume, self.output.muted)
 
     def _apply_music_volume(self) -> None:
         self.graph.invalidate()
         self.apply_ducking()
         self.routes.apply_music_volume(self.music_volume)
-        output.hold_client_streams(
-            self.graph, self.graph.find_sink(self.config.output_match), self.music_volume
-        )
+        output.hold_client_streams(self.graph, self.output.find(), self.music_volume)
 
     def _adopt_defaults(self, sink: Node | None, voice_source: Node | None) -> None:
         # Only set defaults that are wrong: an unconditional set-default emits a

@@ -40,7 +40,9 @@ graph glitch — otherwise reaches the amplifier at full scale as a genuinely lo
 rarely-used maximum loudness for a hard cap on that worst case; raise it only if music at 100% is truly not loud
 enough. A WirePlumber soft-mixer rule (deployed by `tasks/audio.yml`) keeps PipeWire's volume handling in software on
 the HiFiBerry: without it WirePlumber maps sink volume onto the same `Digital` control, and the audio manager pinning
-the output sink at 100% would quietly push the ceiling back to 0 dB.
+the output sink at 100% would quietly push the ceiling back to 0 dB. The rule is a property of the ALSA card, not of
+its output node, and a rule that fails to apply says nothing, so `smartamp-doctor` reads `Digital` back and fails if it
+is not at the configured ceiling.
 
 Loudness itself is two independent levels held by the audio manager: the **music level** (Sendspin, USB computer audio,
 and aux) and the **voice level** (everything the assistant plays). The output sink is pinned at 100% and each level is
@@ -102,9 +104,11 @@ directions (an `alsactl monitor` stream wakes it on host changes; sink changes i
 the computer and the amp follows, turn the amp's dial and the computer's slider follows. Whichever side moved since
 they last agreed wins, and when a computer first plugs in the amp's current volume seeds its slider.
 
-The manager protects a new aux connection with the output mute, sets the bridge stream to 0%, and fades up if the
-route is on. Later toggles fade the existing stream over ~200 ms. These are stepped control writes, not a sample-level
-ramp; their audible behavior and analogue DC offsets still need the checks in [audio reliability](audio-reliability-actions.md).
+The aux bridge is loaded muted whether or not the route is on; the toggle fades the bridge stream between silent and
+full over ~200 ms. Connecting the stream on demand used to land any DC offset on the line input as a step on the
+speakers — at full amplifier gain, since the volume dial only scales PipeWire — so the pop-prone connect always
+happens silent: the output is guarded while the bridge loads, and a fresh bridge stream is snapped to 0% before it is
+audible and only then faded up if the route is on. The fade is a run of volume writes rather than a sample-level ramp.
 Stream Deck route toggles last until the next reboot; every boot starts from these inventory defaults.
 
 `smartamp_idle_teardown_seconds` (default 180, 0 to disable) is the power saver: the persistent loopbacks are what
@@ -114,10 +118,12 @@ voice session, no enabled analogue route — the audio manager unloads the backg
 reference, and the muted aux bridge, and the devices suspend. The null sinks stay loaded so Sendspin and LVA keep
 their PULSE_SINK targets, and the wake-word capture path is untouched. Everything rebuilds within about a second of a
 client stream appearing, a voice session opening (the controller's duck/meter request arrives before the first TTS
-audio), the USB host starting to stream, or a route being toggled on. Startup and manager-controlled loopback loads
-hold the output muted until playback gains are applied. A missing stream or failed setup keeps it muted for retry;
-readiness status is withdrawn on failure. The first audio can be delayed, and idle-wake cancellation still needs
-measurement. The teardown is also tied to the deck's own resting states (see
+audio), the USB host starting to stream, or a route being toggled on. The rebuild happens behind a mute on the output sink,
+held until every fresh bridge stream carries its gain — a fresh loopback stream plays at full volume until its gain
+lands, which would otherwise pop the first instant of audio through the amp — so the first moment of music after a
+long quiet spell arrives a beat late rather than loud. There is no echo to cancel in silence, so the AEC reference
+being down while idle costs the DSP nothing, though it does re-converge on the first seconds of playback after each
+wake. The teardown is also tied to the deck's own resting states (see
 [Standby and sleep](controls.md#standby-and-sleep)): the moment the panel dims into standby or switches off asleep,
 the controller reports standby over the control socket and the teardown happens at once instead of waiting out the
 timeout (audio still playing keeps the bridges up regardless); when the panel relights, the bridges rebuild

@@ -60,8 +60,14 @@ class SourceRoutes:
         self._graph = view
         self._modules = registry
         self.enabled = {name: source.enabled for name, source in sources.items()}
+        # The applied toggle state and stream identity of each mute_when_off
+        # route. A new stream is snapped to the toggle before it can play at its
+        # default full volume; an existing stream only fades on a state change.
         self.unmuted: dict[str, bool] = {}
         self.stream_indices: dict[str, int] = {}
+        # Whether every bridged route has a stream carrying its level; see
+        # AudioBus.settled.
+        self.settled = True
         registry.on_released(self._role_released)
 
     def knows(self, name: str) -> bool:
@@ -82,6 +88,7 @@ class SourceRoutes:
         usb_playback: bool,
         idle: bool = False,
     ) -> dict[str, dict[str, Any]]:
+        self.settled = True
         return {
             name: self._reconcile_source(
                 name,
@@ -147,8 +154,13 @@ class SourceRoutes:
         # route's enabled flag but only build the loopback while audio is
         # actually arriving.
         attached = not source.requires_usb_host or usb_playback
-        # Keep analogue routes connected while awake to avoid reconnecting an
-        # input with DC offset on every toggle.
+        # Connecting an analogue route's stream pops: any DC offset on the
+        # input lands as a step on the speakers, at full amp gain because only
+        # PipeWire volume sits in the path. A mute_when_off route therefore
+        # keeps its bridge loaded while awake and toggles by fading the stream
+        # volume, so the connect happens muted. An idle teardown drops the
+        # muted bridge — the loopback is what keeps the ADC capture running —
+        # and the rebuild arrives silent through the same snap-then-fade path.
         wanted = enabled or (source.mute_when_off and not idle)
         if node is None and wanted:
             activate_parked_card(self._graph, source.match)
@@ -168,7 +180,9 @@ class SourceRoutes:
             LOG.info("Enabled %s input monitor", name)
         stream = self._stream_of(name)
         if stream is None:
-            raise RuntimeError(f"Waiting for {name} playback stream")
+            self.settled = False
+            LOG.info("Waiting for the %s playback stream", name)
+            return status
         # A route bridging into the background bus already gets the music level
         # from the bus bridge, so its stream carries only the input's own trim;
         # a route straight to the pinned output sink carries the trimmed music
@@ -204,6 +218,9 @@ class SourceRoutes:
             self._track_level(stream, level if enabled else 0)
             return
         if was_enabled is None:
+            # A new stream starts at full volume; snap it silent before it is
+            # audible so the pop-prone connect never plays, then fade up if the
+            # route is on.
             pactl.set_sink_input_volume(stream_index, 0)
             if enabled:
                 volume.fade_stream(stream_index, 0, level, ROUTE_FADE_MS)

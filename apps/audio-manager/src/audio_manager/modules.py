@@ -32,10 +32,12 @@ class ModuleRegistry:
     """
 
     def __init__(
-        self, view: Graph, before_loopback: Callable[[], None] | None = None
+        self, view: Graph, on_bridging: Callable[[str], None] | None = None
     ) -> None:
+        """`on_bridging` is told the sink a new loopback is about to play
+        into, before the module is loaded, so the output can be guarded."""
         self._graph = view
-        self._before_loopback = before_loopback
+        self._on_bridging = on_bridging
         self._ids: dict[str, int] = {}
         self._bindings: dict[str, Binding] = {}
         self._listeners: list[Callable[[str], None]] = []
@@ -53,8 +55,6 @@ class ModuleRegistry:
         return list(self._ids)
 
     def load(self, role: str, module: str, *arguments: str) -> int:
-        if module == "module-loopback" and self._before_loopback is not None:
-            self._before_loopback()
         module_id = pactl.load_module(module, *arguments)
         self._ids[role] = module_id
         self._graph.invalidate()
@@ -106,6 +106,7 @@ class ModuleRegistry:
                 "sink_dont_move=true",
                 f"sink_input_properties=media.name={stream_media_name(role)}",
             ),
+            before_load=lambda: self._announce_bridging(sink),
         )
 
     def ensure_remap_source(
@@ -138,6 +139,7 @@ class ModuleRegistry:
         binding: Binding,
         adopt_arguments: Binding,
         arguments: Binding,
+        before_load: Callable[[], None] | None = None,
     ) -> bool:
         """Load the module for a role unless an equivalent one already runs."""
         if self._bindings.get(role) not in (None, binding):
@@ -150,6 +152,8 @@ class ModuleRegistry:
                 self.adopt(role, int(existing["index"]), binding)
         if role in self._ids:
             return False
+        if before_load is not None:
+            before_load()
         self.load(role, module, *arguments)
         self._bindings[role] = binding
         return True
@@ -157,3 +161,7 @@ class ModuleRegistry:
     def _announce(self, role: str) -> None:
         for listener in self._listeners:
             listener(role)
+
+    def _announce_bridging(self, sink: str) -> None:
+        if self._on_bridging is not None:
+            self._on_bridging(sink)

@@ -17,25 +17,23 @@ FILES = ROLE / "files"
 
 
 class AudioDeploymentTests(unittest.TestCase):
-    def test_wireplumber_strings_have_valid_escapes_and_match_only_platform_outputs(
-        self,
-    ) -> None:
+    def test_soft_mixer_rule_targets_the_platform_card_device(self) -> None:
+        # api.alsa.soft-mixer is a device property: a rule matching the output
+        # node instead is ignored without a word, and the hardware ceiling
+        # silently stops holding.
         config = (FILES / "wireplumber/51-smartamp-soft-mixer.conf").read_text()
+        self.assertIn("device.name", config)
+        self.assertNotIn("node.name", config)
         strings = [
             json.loads(match[0]) for match in re.finditer(r'"(?:\\.|[^"\\])*"', config)
         ]
-        pattern = next(
-            value[1:] for value in strings if value.startswith("~alsa_output")
-        )
-        self.assertIsNotNone(
-            re.fullmatch(pattern, "alsa_output.platform-sound.stereo-fallback")
-        )
-        self.assertIsNone(
-            re.fullmatch(pattern, "alsa_output.usb-XVF3800.stereo-fallback")
-        )
-        self.assertIsNone(
-            re.fullmatch(pattern, "alsa_outputXplatform-sound.stereo-fallback")
-        )
+        pattern = next(value[1:] for value in strings if value.startswith("~alsa_card"))
+        self.assertIsNotNone(re.fullmatch(pattern, "alsa_card.platform-soc_sound"))
+        self.assertIsNone(re.fullmatch(pattern, "alsa_card.usb-XMOS_XVF3800-00"))
+        self.assertIsNone(re.fullmatch(pattern, "alsa_cardXplatform-soc_sound"))
+        lua = (FILES / "wireplumber/51-smartamp-soft-mixer.lua").read_text()
+        self.assertIn('"device.name", "matches", "alsa_card.platform-*"', lua)
+        self.assertNotIn("node.name", lua)
 
     def test_hardware_init_stops_at_each_failed_mixer_control(self) -> None:
         script = (FILES / "scripts/hifiberry-init.sh").read_text()

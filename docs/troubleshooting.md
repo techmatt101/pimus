@@ -236,7 +236,17 @@ grep -r soft-mixer /etc/wireplumber/          # the smartamp rule keeping PipeWi
 ```
 
 If `Digital` reads 100% with a lower ceiling configured, PipeWire has folded the pinned sink volume back into the
-hardware control — re-provision so the soft-mixer rule above is installed, and restart the session.
+hardware control — re-provision so the soft-mixer rule above is installed, and restart the session. `smartamp-doctor`
+makes the same check. The rule has to match the ALSA *card* (`alsa_card.platform-…`), because `api.alsa.soft-mixer` is
+a device property: an earlier version matched the output node instead, which WirePlumber ignores without a word, and
+would have left the amp playing about 10 dB above its ceiling with no cap on transients. Read `Digital` back on each
+unit after re-provisioning to confirm.
+
+A related symptom is an amp that comes up silent after the audio manager restarts: the guard the manager holds on the
+output sink while a bridge is rebuilt is an ordinary sink mute, which WirePlumber persists, so a manager killed
+mid-rebuild used to leave that mute behind for the next process to adopt as if the deck had asked for it. The manager
+now clears any mute it finds on the sink the first time it sees it and only adopts a mute that appears later; if a
+unit still comes up silent, `pactl set-sink-mute @DEFAULT_SINK@ 0` as the service account is the manual version.
 
 To catch the culprit rather than just cap it, note the clock time of the next pop and read what the graph was doing:
 

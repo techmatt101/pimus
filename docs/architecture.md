@@ -69,11 +69,17 @@ polling for one. A ready bridge gives new client streams an already-applied gain
 sink follow the music level both on a volume command and on reconciliation, but can still start playing before the
 manager sees them. The voice bus is never ducked.
 
-The rebuild guard mutes a newly discovered output before pinning its software volume and mutes before the manager
-loads any new loopback. It releases only after reconciliation applies the playback gains; an unpublished stream or
-failed command keeps the guard held for retry. The requested mute remains separate, including USB-host mute changes.
-This prevents manager-controlled connections from opening at their initial full gain; it is not a sample ramp or a
-guarantee against driver, amplifier, or independently recreated stream transients.
+A fresh loopback stream plays at full volume until its gain lands, so the manager guards the output: it mutes the sink
+before loading any loopback into it (and before raising a sink WirePlumber restored below full scale), and releases the
+guard at the end of the pass once every bridge has a stream carrying its gain. A stream that is not listed yet does
+not fail the pass — the rest of the graph is reconciled and published as usual — it keeps the guard held and books
+another look a second later. The guard is separate from the requested mute (the deck's key, or a USB host's slider),
+which is applied as the guard lets go. A mute found on the sink the first time a manager process sees it is cleared
+rather than adopted, because WirePlumber restores mute across restarts and reboots and a guard a previous process
+died holding must not become a mute nobody asked for; a mute appearing on a sink the manager already knows is
+another client's and is adopted. The guard is a mute switch, not a sample ramp, and covers only the streams the
+manager loads: a direct client can still play before the manager sees it, and driver or amplifier transients are the
+hardware ceiling's job.
 
 It also mirrors the HiFiBerry output monitor into the XVF3800 USB playback endpoint. Nothing is connected to the
 ReSpeaker speaker jack; the stream exists to give the XMOS DSP the far-end reference required for acoustic echo
