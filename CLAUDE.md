@@ -109,14 +109,19 @@ apps/
     tsconfig.json
   audio-manager/
     src/audio_manager/   PipeWire reconciliation daemon, run as a package
+      buses/             The named sinks the players play into: the generic
+                         PlaybackBus, the duckable background bus, the voice
+                         bus, and the meter the ring pulses to
       control/           The Unix socket the controller drives it through:
                          the transport, and the command vocabulary
+      microphone/        The assistant's hearing, as strategies composed by
+                         microphone.py: finding the device, the capture
+                         published for it to record, the echo reference it
+                         is sent
       system/            The command-line boundary: process, pactl, amixer,
                          parec, and the monitors that read a child's lines
       usb/               What the daemon keeps agreed with a computer plugged
                          into the audio gadget: its state, and its volume
-      xvf3800/           The two paths serving the ReSpeaker's DSP rather than
-                         the speakers: its ASR capture, and its echo reference
     test/                Python unit tests
   playground/            Development-only debug environment; never deployed
     src/                 Fake deck, LVA, audio manager, wpctl, LEDs, web server
@@ -393,6 +398,18 @@ runtime validation, and relevant documentation together.
   `roles/smartamp/tasks/audio.yml` automatically — it globs `*.py` beneath the
   package root and deploys each one at its relative path — but a new top-level
   package would need its own task.
+- The daemon names no product. A player is whichever client its systemd unit
+  points at a bus in `buses/` (Sendspin by `PULSE_SINK`, the voice assistant by
+  mpv's output device), so swapping one is an Ansible change and nothing here.
+  The microphone is assembled in `microphone/microphone.py` from a `Capture`
+  and an `EchoReference` chosen by the `microphone` section of `audio.json`;
+  both ReSpeaker arrays are the same `ChannelCapture` and
+  `PlaybackEchoReference` with different settings, and a new array or a plain
+  microphone is a new strategy class there plus a row in `boards.yml`, never a
+  branch on the device elsewhere. The status file keys (`voice_input`,
+  `voice_capture`, `aec_reference`) are read by the doctor and the voice
+  assistant's start-up wait, so they keep their names whatever the module
+  behind them is called.
 
 ### Ansible
 

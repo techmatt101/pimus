@@ -37,8 +37,8 @@ def hold_client_streams(view: Graph, sink: Node | None, level: int) -> None:
     """Hold every stream on the sink that is not one of our bridges at a level.
 
     On the pinned output sink this stops a client that plays straight at the
-    output landing at full amplifier level; on the background bus it holds the
-    Sendspin player's stream at its configured trim.
+    output landing at full amplifier level; on a bus it holds each player's
+    stream at the bus's configured client trim.
     """
     if sink is None or sink.get("index") is None:
         return

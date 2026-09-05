@@ -31,8 +31,8 @@ class BusConfig:
 class BackgroundConfig(BusConfig):
     duck_volume_percent: int
     fade_ms: int
-    # The trim held on client streams playing into the bus (Sendspin), as a
-    # percent of the music level the bridge already carries.
+    # The trim held on the players' own streams into the bus, as a percent of
+    # the music level the bridge already carries.
     client_volume_percent: int
 
 
@@ -42,10 +42,23 @@ class VoiceBusConfig(BusConfig):
 
 
 @dataclass(frozen=True)
-class AecConfig:
+class EchoReferenceConfig:
     enabled: bool
     sink_match: str
     latency_ms: int
+
+
+@dataclass(frozen=True)
+class MicrophoneConfig:
+    # Matched against the capture device's node name, description and
+    # properties; the array's row in boards.yml is the usual source.
+    match: str
+    # The device channel published as the mono source the assistant records,
+    # or None to record the device as it is. A DSP array's channels are
+    # separate outputs, not a stereo pair, so this picks the one meant for
+    # recognition.
+    capture_channel: int | None
+    echo_reference: EchoReferenceConfig
 
 
 @dataclass(frozen=True)
@@ -67,14 +80,12 @@ class SourceConfig:
 @dataclass(frozen=True)
 class AudioConfig:
     output_match: str
-    voice_input_match: str
-    voice_capture_channel: int | None
+    microphone: MicrophoneConfig
     startup_volume_percent: int
     resync_seconds: float
     # Seconds of silence before the persistent bridges are released so the
     # audio devices can suspend; 0 keeps every bridge loaded permanently.
     idle_teardown_seconds: float
-    aec_reference: AecConfig
     background: BackgroundConfig
     voice_bus: VoiceBusConfig
     sources: dict[str, SourceConfig]
@@ -85,29 +96,15 @@ class AudioConfig:
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> AudioConfig:
-        aec = _section(raw, "aec_reference")
         background = _section(raw, "background")
         voice_bus = _section(raw, "voice_bus")
-        channel = raw.get("voice_capture_channel")
-        if channel is not None and (
-            isinstance(channel, bool) or not isinstance(channel, int) or channel < 0
-        ):
-            raise ValueError("voice_capture_channel must be a non-negative integer or null")
         return cls(
             output_match=str(raw.get("output_match", "")),
-            voice_input_match=str(raw.get("voice_input_match", "")),
-            voice_capture_channel=channel,
+            microphone=_microphone(_section(raw, "microphone")),
             startup_volume_percent=volume.clamp(raw.get("startup_volume_percent", 100)),
             resync_seconds=float(raw.get("resync_seconds", DEFAULT_RESYNC_SECONDS)),
             idle_teardown_seconds=max(
                 0.0, float(raw.get("idle_teardown_seconds", 0))
-            ),
-            aec_reference=AecConfig(
-                enabled=bool(aec.get("enabled", False)),
-                # A pattern that can never match, so a disabled reference also
-                # reports no candidate sink.
-                sink_match=str(aec.get("sink_match", "a^")),
-                latency_ms=int(aec.get("latency_ms", DEFAULT_LATENCY_MS)),
             ),
             background=BackgroundConfig(
                 enabled=bool(background.get("enabled", False)),
@@ -140,6 +137,28 @@ class AudioConfig:
                 for name, source in _section(raw, "sources").items()
             },
         )
+
+
+def _microphone(raw: Mapping[str, Any]) -> MicrophoneConfig:
+    channel = raw.get("capture_channel")
+    if channel is not None and (
+        isinstance(channel, bool) or not isinstance(channel, int) or channel < 0
+    ):
+        raise ValueError(
+            "microphone.capture_channel must be a non-negative integer or null"
+        )
+    reference = _section(raw, "echo_reference")
+    return MicrophoneConfig(
+        match=str(raw.get("match", "")),
+        capture_channel=channel,
+        echo_reference=EchoReferenceConfig(
+            enabled=bool(reference.get("enabled", False)),
+            # A pattern that can never match, so a disabled reference also
+            # reports no candidate sink.
+            sink_match=str(reference.get("sink_match", "a^")),
+            latency_ms=int(reference.get("latency_ms", DEFAULT_LATENCY_MS)),
+        ),
+    )
 
 
 def _section(raw: Mapping[str, Any], key: str) -> Mapping[str, Any]:

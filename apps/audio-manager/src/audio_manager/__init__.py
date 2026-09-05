@@ -1,21 +1,24 @@
 """Smart Amp audio manager: PipeWire defaults, routes, and voice ducking.
 
-Five modules shape the graph, one audio path each. Three carry sound to the
-amplifier:
+Four things shape the graph. Three carry sound to the amplifier:
 
     routes      aux and the USB gadget, bridged in as switchable inputs
-    buses       the background and voice null sinks, each bridged in
+    buses/      the named sinks the players play into - background music and
+                the assistant's voice - each bridged in at its own gain
     output      where all of that lands: the pinned HiFiBerry sink
 
-and two serve the ReSpeaker's DSP instead, in `xvf3800`:
+and one serves the assistant's hearing instead:
 
-    microphone  its ASR channel, published as the source the assistant records
-    aec         the output's monitor, sent back to it as the echo reference
+    microphone/ the capture device, the source published for the assistant to
+                record, and the echo reference the device is sent
 
 Each owns both its endpoint and the link into it, because the gain held on
-that link is state belonging to the pair. `graph` is the cached read of what
-is really there, `modules` owns every PipeWire module loaded to build the
-above, and `volume` is the shared level arithmetic.
+that link is state belonging to the pair. Neither package names a product: a
+player is whatever client its unit points at a bus, and a microphone is
+assembled from the capture and echo-reference strategies its configuration
+calls for. `graph` is the cached read of what is really there, `modules` owns
+every PipeWire module loaded to build the above, and `volume` is the shared
+level arithmetic.
 
 `daemon` drives them in one reconcile order and nothing else, and `idle`
 decides when the links may be released. Everything crossing a boundary is in a

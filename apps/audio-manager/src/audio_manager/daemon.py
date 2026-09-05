@@ -13,8 +13,9 @@ from typing import Any, Callable
 
 from . import output, status, volume
 from .system import monitors, pactl
-from .xvf3800 import microphone
-from .buses import BackgroundBus, VoiceBus
+from .buses.background import BackgroundBus
+from .buses.voice import VoiceBus
+from .buses.voice_meter import VoiceLevelMeter
 from .config import AudioConfig
 from .control.commands import CommandHandler
 from .control.server import ControlServer
@@ -24,9 +25,7 @@ from .modules import ModuleRegistry
 from .routes import SourceRoutes
 from .usb.host import UsbHost
 from .usb.volume_sync import UsbVolumeSync
-from .voice_meter import VoiceLevelMeter
-from .xvf3800.aec import AecReference
-from .xvf3800.microphone import Microphone
+from .microphone.microphone import MicrophoneStatus, build as build_microphone
 
 
 LOG = logging.getLogger(__name__)
@@ -49,12 +48,10 @@ class GraphStatus:
     """What one pass over the graph found, as the status file describes it.
 
     The rest of the document is manager state that outlives a pass, so only
-    these four have to be carried out of the rebuild.
+    these have to be carried out of the rebuild.
     """
 
-    voice_input: str | None
-    voice_capture: dict[str, Any]
-    aec_reference: dict[str, Any]
+    microphone: MicrophoneStatus
     sources: dict[str, dict[str, Any]]
 
 
@@ -72,21 +69,18 @@ class AudioManager:
         self.output = output.OutputSink(config.output_match, self.graph, mute_path)
         self.modules = ModuleRegistry(self.graph, self._guard_output)
         self.background = BackgroundBus(config.background, self.graph, self.modules)
-        self.voice_bus = VoiceBus(config.voice_bus, self.graph, self.modules)
-        self.microphone = Microphone(
-            config.voice_capture_channel, self.graph, self.modules
+        self.selector = selectors.DefaultSelector()
+        self.voice_meter = VoiceLevelMeter(self.selector, self._publish_voice_level)
+        self.voice_bus = VoiceBus(
+            config.voice_bus, self.graph, self.modules, self.voice_meter
         )
-        self.aec_reference = AecReference(
-            config.aec_reference, self.graph, self.modules
-        )
+        self.microphone = build_microphone(config.microphone, self.graph, self.modules)
         self.routes = SourceRoutes(config.sources, self.graph, self.modules)
         self.usb = UsbHost()
         self.usb_volume = UsbVolumeSync()
         self.idle = IdleTracker(config.idle_teardown_seconds)
 
-        self.selector = selectors.DefaultSelector()
         self.commands = CommandHandler(self)
-        self.voice_meter = VoiceLevelMeter(self.selector, self._publish_voice_level)
         self.control = ControlServer(
             socket_path, self.selector, self.commands, self._reconcile_and_broadcast
         )
@@ -227,24 +221,19 @@ class AudioManager:
     def _guard_output(self, sink_name: str) -> None:
         if sink_name in (
             self.output.name,
-            self.config.background.sink_name,
-            self.config.voice_bus.sink_name,
+            self.background.sink_name,
+            self.voice_bus.sink_name,
         ):
             self.output.guard()
 
     def _reconcile_graph(self, sink: Node | None, idle: bool) -> GraphStatus:
-        """Put the buses, capture, reference and routes back where they belong."""
+        """Put the buses, microphone and routes back where they belong."""
         background_sink = self.background.reconcile(sink, bridged=not idle)
         self.voice_bus.reconcile(sink, bridged=not idle)
         self.voice_bus.apply_gain(self.voice_volume)
-        self.voice_meter.set_source(
-            self.voice_bus.monitor_name if self.voice_bus.available else None
-        )
-        voice_device = self._find_voice_device()
-        voice_source, capture_status = self.microphone.reconcile(voice_device)
+        microphone = self.microphone.reconcile(sink, awake=not idle)
         self.apply_ducking()
-        self._adopt_defaults(sink, voice_source)
-        aec_status = self.aec_reference.reconcile(sink, wanted=not idle)
+        self._adopt_defaults(sink, microphone.source)
         source_status = self.routes.reconcile(
             output=sink,
             background_sink=background_sink,
@@ -253,37 +242,14 @@ class AudioManager:
             idle=idle,
         )
         output.hold_client_streams(self.graph, sink, self.music_volume)
-        # Sendspin plays into the bus as an ordinary Pulse client; the bridge
-        # carries the music level, so its stream holds only the input's trim.
-        output.hold_client_streams(
-            self.graph, background_sink, self.config.background.client_volume_percent
-        )
-        return GraphStatus(
-            voice_input=voice_device.get("name") if voice_device else None,
-            voice_capture=capture_status,
-            aec_reference=aec_status,
-            sources=source_status,
-        )
-
-    def _find_voice_device(self) -> Node | None:
-        # The remap source's properties name its master device, so it would
-        # match voice_input_match itself; exclude it or it becomes its own
-        # master on the next reconcile.
-        device = self.graph.find_source(
-            self.config.voice_input_match, excluding=microphone.SOURCE_NAME
-        )
-        if device is None:
-            microphone.activate_capture_card(
-                self.graph, self.config.voice_input_match
-            )
-        return device
+        return GraphStatus(microphone=microphone, sources=source_status)
 
     def _publish(self, sink: Node | None, found: GraphStatus) -> None:
         published = {
             "sink": sink.get("name") if sink else None,
             "music_volume": self.music_volume,
-            "voice_input": found.voice_input,
-            "voice_capture": found.voice_capture,
+            "voice_input": found.microphone.device,
+            "voice_capture": found.microphone.capture,
             "background": {
                 **self.background.status(),
                 "ducked": self.desired_ducking(),
@@ -293,7 +259,7 @@ class AudioManager:
                 **self.voice_bus.status(),
                 "volume_percent": self.voice_volume,
             },
-            "aec_reference": found.aec_reference,
+            "aec_reference": found.microphone.echo_reference,
             "sources": found.sources,
             "usb_host": self.usb.attached,
             "usb_playback": self.usb.streaming,

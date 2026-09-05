@@ -1,13 +1,19 @@
 {% set voice_ducking_enabled = (voice_assistant_enabled | bool) and (smartamp_voice_ducking_enabled | bool) %}
 {
   "output_match": {{ smartamp_output_match | to_json }},
-  "voice_input_match": {{ smartamp_voice_input_match | to_json }},
-  "voice_capture_channel": {{ smartamp_voice_capture_channel | to_json }},
   "startup_volume_percent": {{ smartamp_startup_volume_percent | int }},
-  "aec_reference": {
-    "enabled": {{ smartamp_aec_reference_enabled | bool | to_json }},
-    "sink_match": {{ smartamp_aec_reference_match | to_json }},
-    "latency_ms": {{ smartamp_loopback_latency_ms | int }}
+{# The microphone the assistant hears through, as one section: the device, the
+     channel published for it to record, and the echo reference the device is
+     sent. Both ReSpeaker arrays fill all three from their boards.yml row; a
+     plain microphone would set the channel null and the reference off. #}
+  "microphone": {
+    "match": {{ smartamp_voice_input_match | to_json }},
+    "capture_channel": {{ smartamp_voice_capture_channel | to_json }},
+    "echo_reference": {
+      "enabled": {{ smartamp_aec_reference_enabled | bool | to_json }},
+      "sink_match": {{ smartamp_aec_reference_match | to_json }},
+      "latency_ms": {{ smartamp_loopback_latency_ms | int }}
+    }
   },
   "background": {
     "enabled": {{ voice_ducking_enabled | to_json }},

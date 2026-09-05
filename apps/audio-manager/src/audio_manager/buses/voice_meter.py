@@ -19,7 +19,7 @@ import sys
 import time
 from typing import Callable
 
-from .system import parec
+from ..system import parec
 
 
 LOG = logging.getLogger(__name__)

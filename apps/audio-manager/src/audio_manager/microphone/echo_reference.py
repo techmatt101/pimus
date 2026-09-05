@@ -1,18 +1,20 @@
-"""The XVF3800's far-end acoustic-echo-cancellation reference.
+"""What the microphone is sent so it can subtract the room's own playback.
 
-The reference is what the room hears: the output sink's monitor looped into
-the XVF3800 playback endpoint. That endpoint's physical speaker jack is unused,
-but the route is what lets the device subtract our own output from the mic.
+A device that cancels echo in its own DSP needs the far-end reference: what the
+speakers are playing, delivered ahead of the acoustic echo. On the ReSpeaker
+arrays that is the output sink's monitor looped into the array's USB playback
+endpoint - its physical speaker jack is unused, but the route is what lets the
+device subtract our own output from the microphones.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Protocol
 
 from .. import graph
 from ..system import pactl
-from ..config import AecConfig
+from ..config import EchoReferenceConfig
 from ..graph import Graph, Node
 from ..modules import ModuleRegistry, stream_media_name
 
@@ -22,9 +24,29 @@ LOG = logging.getLogger(__name__)
 REFERENCE_ROLE = "_aec"
 
 
-class AecReference:
+class EchoReference(Protocol):
+    def reconcile(self, output: Node | None, *, wanted: bool = True) -> dict[str, Any]:
+        """Keep the reference flowing while wanted; answers with the status
+        file's `aec_reference` section."""
+
+
+class NoEchoReference:
+    """A microphone that is sent nothing: it cancels no echo, or hears its own."""
+
+    def reconcile(self, output: Node | None, *, wanted: bool = True) -> dict[str, Any]:
+        return {
+            "enabled": False,
+            "available": False,
+            "endpoints_available": False,
+            "sink": None,
+        }
+
+
+class PlaybackEchoReference:
+    """The output's monitor, looped into the device's own playback endpoint."""
+
     def __init__(
-        self, config: AecConfig, view: Graph, registry: ModuleRegistry
+        self, config: EchoReferenceConfig, view: Graph, registry: ModuleRegistry
     ) -> None:
         self.config = config
         self._graph = view
@@ -50,7 +72,7 @@ class AecReference:
                 self.config.latency_ms,
             )
             if created:
-                LOG.info("Enabled XVF3800 AEC far-end reference")
+                LOG.info("Enabled the echo-cancellation far-end reference")
             available = self._pin_stream() and sink_ready
         else:
             self._modules.unload(REFERENCE_ROLE)
@@ -67,10 +89,10 @@ class AecReference:
             return False
         if not graph.volume_is(sink, 100):
             pactl.set_sink_volume(sink["name"], 100)
-            LOG.info("Pinned the AEC reference sink to 100%%")
+            LOG.info("Pinned the echo reference sink to 100%%")
         if state[1]:
             pactl.set_sink_mute(sink["name"], False)
-            LOG.info("Unmuted the AEC reference sink")
+            LOG.info("Unmuted the echo reference sink")
         return True
 
     def _pin_stream(self) -> bool:
@@ -87,8 +109,8 @@ class AecReference:
         index = int(stream["index"])
         if not graph.volume_is(stream, 100):
             pactl.set_sink_input_volume(index, 100)
-            LOG.info("Pinned the AEC reference stream to 100%%")
+            LOG.info("Pinned the echo reference stream to 100%%")
         if state[1]:
             pactl.set_sink_input_mute(index, False)
-            LOG.info("Unmuted the AEC reference stream")
+            LOG.info("Unmuted the echo reference stream")
         return True

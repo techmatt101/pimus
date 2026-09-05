@@ -2,7 +2,7 @@
 
 Every bridge this daemon keeps loaded holds an ALSA device running: the bus
 bridges and the muted aux route keep the HiFiBerry path clocked, and the AEC
-reference keeps the XVF3800 playback endpoint awake. With nothing playing that
+reference keeps the microphone's playback endpoint awake. With nothing playing that
 is roughly a watt spent on silence, so after a quiet spell the bridges are
 unloaded and the devices suspend; the next client stream, voice session, or
 route toggle rebuilds them within a second. The null sinks stay loaded so the

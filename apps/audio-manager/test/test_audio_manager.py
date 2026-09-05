@@ -17,12 +17,8 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
-from audio_manager import (  # noqa: E402
-    graph,
-    output,
-    voice_meter,
-    volume,
-)
+from audio_manager import graph, output, volume  # noqa: E402
+from audio_manager.buses import voice_meter  # noqa: E402
 from audio_manager.control import server as control_server  # noqa: E402
 from audio_manager.system import (  # noqa: E402
     monitors,
@@ -57,16 +53,13 @@ class ManagerTestCase(unittest.TestCase):
     def make_manager(
         self, raw_config: dict[str, Any], *, mute_path: Path | None = None
     ) -> AudioManager:
-        base = {
-            "output_match": "HiFiBerry",
-            "voice_input_match": "XVF3800",
-            "sources": {},
-        }
+        microphone = {"match": "XVF3800", **raw_config.get("microphone", {})}
+        base = {"output_match": "HiFiBerry", "sources": {}}
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         path = Path(directory.name)
         manager = AudioManager(
-            AudioConfig.from_mapping({**base, **raw_config}),
+            AudioConfig.from_mapping({**base, **raw_config, "microphone": microphone}),
             path / "control.sock",
             path / "status.json",
             mute_path if mute_path is not None else path / "mute.json",
@@ -813,10 +806,12 @@ class ReconcileTests(ManagerTestCase):
     def test_aec_reference_bridges_output_monitor_into_the_xvf3800(self) -> None:
         manager = self.make_manager(
             {
-                "aec_reference": {
-                    "enabled": True,
-                    "sink_match": "XVF3800",
-                    "latency_ms": 40,
+                "microphone": {
+                    "echo_reference": {
+                        "enabled": True,
+                        "sink_match": "XVF3800",
+                        "latency_ms": 40,
+                    }
                 }
             }
         )
@@ -892,10 +887,12 @@ class ReconcileTests(ManagerTestCase):
     def test_aec_reference_is_released_when_the_xvf3800_disappears(self) -> None:
         manager = self.make_manager(
             {
-                "aec_reference": {
-                    "enabled": True,
-                    "sink_match": "XVF3800",
-                    "latency_ms": 40,
+                "microphone": {
+                    "echo_reference": {
+                        "enabled": True,
+                        "sink_match": "XVF3800",
+                        "latency_ms": 40,
+                    }
                 }
             }
         )
@@ -926,7 +923,7 @@ class ReconcileTests(ManagerTestCase):
     def test_voice_capture_publishes_the_asr_channel_as_the_default_source(
         self,
     ) -> None:
-        manager = self.make_manager({"voice_capture_channel": 1})
+        manager = self.make_manager({"microphone": {"capture_channel": 1}})
         loaded: list[tuple[str, tuple[str, ...]]] = []
         listings = {
             "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
@@ -984,7 +981,7 @@ class ReconcileTests(ManagerTestCase):
         )
 
     def test_voice_capture_waits_instead_of_using_the_wrong_channel(self) -> None:
-        manager = self.make_manager({"voice_capture_channel": 1})
+        manager = self.make_manager({"microphone": {"capture_channel": 1}})
         listings = {
             "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
             "sources": [
@@ -1013,7 +1010,7 @@ class ReconcileTests(ManagerTestCase):
         self.assertEqual(status["voice_capture"], {"channel": 1, "source": None})
 
     def test_voice_capture_remap_is_rebuilt_when_the_master_is_recreated(self) -> None:
-        manager = self.make_manager({"voice_capture_channel": 1})
+        manager = self.make_manager({"microphone": {"capture_channel": 1}})
         manager.modules.adopt("_voice_capture", 40, ("xvf_mic", "front-right"))
         device = {
             "index": 10,
@@ -1070,7 +1067,7 @@ class ReconcileTests(ManagerTestCase):
         self.assertEqual(manager.modules.id_of("_voice_capture"), 41)
 
     def test_voice_card_without_an_input_profile_is_repaired(self) -> None:
-        manager = self.make_manager({"voice_capture_channel": 1})
+        manager = self.make_manager({"microphone": {"capture_channel": 1}})
         # A USB power cycle re-enumerated the XVF3800 before its capture side
         # was ready: WirePlumber restored an output-only profile, so no voice
         # source exists even though the card is present.
@@ -1109,7 +1106,7 @@ class ReconcileTests(ManagerTestCase):
         )
 
     def test_voice_capture_is_released_when_the_xvf3800_disappears(self) -> None:
-        manager = self.make_manager({"voice_capture_channel": 1})
+        manager = self.make_manager({"microphone": {"capture_channel": 1}})
         manager.modules.adopt("_voice_capture", 40, ("xvf_mic", "front-right"))
         listings = {
             "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
@@ -1145,10 +1142,12 @@ class IdleTeardownTests(ManagerTestCase):
         manager = self.make_manager(
             {
                 "idle_teardown_seconds": 60,
-                "aec_reference": {
-                    "enabled": True,
-                    "sink_match": "XVF3800",
-                    "latency_ms": 40,
+                "microphone": {
+                    "echo_reference": {
+                        "enabled": True,
+                        "sink_match": "XVF3800",
+                        "latency_ms": 40,
+                    }
                 },
                 "background": {
                     "enabled": True,

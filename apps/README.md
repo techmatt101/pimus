@@ -72,17 +72,24 @@ acoustic-echo-reference PipeWire routes. Its unit tests are colocated in
 `audio-manager/test/`.
 
 `daemon.py` holds the reconcile order and owns one object per concern. Three
-modules carry sound to the amplifier: `routes.py` (the switchable inputs),
-`buses.py` (the background and voice null sinks and their bridge gains), and
-`output.py` (the pinned output sink everything lands on). Two serve the
-ReSpeaker's DSP instead, in `xvf3800/`: `microphone.py` (its ASR channel,
-published as the source the assistant records) and `aec.py` (the output's
-monitor, sent back as the echo reference). `idle.py` decides when the bridges
-may be torn down, `volume.py` holds the two levels, `voice_meter.py` meters the
-voice bus for the ring, `status.py` writes the JSON snapshot, `modules.py` owns
-every PipeWire module they loaded, and `graph.py` is the cached view of the
-graph they all read. Everything crossing a boundary sits in a folder:
-`system/` (`process.py`, `pactl.py`, `usb_gadget.py`, `parec.py`,
+things carry sound to the amplifier: `routes.py` (the switchable inputs),
+`buses/` (the named sinks the players play into — `bus.py` is the generic
+`PlaybackBus`, `background.py` the music players' duckable bus, `voice.py` the
+assistant's, and `voice_meter.py` the level the ring pulses to), and
+`output.py` (the pinned output sink everything lands on). The daemon never
+names a player: Sendspin and the voice assistant are clients their own units
+point at a bus. `microphone/` serves the assistant's hearing instead, as three
+strategies composed by `microphone.py`: `device.py` finds the capture node and
+repairs its card, `capture.py` publishes the source the assistant records (one
+channel of a DSP array, or the device as it is), and `echo_reference.py` sends
+the device what it needs to cancel the room's own playback (the output's
+monitor into its playback endpoint, or nothing). Both ReSpeaker arrays are the
+same two strategies with different settings; another microphone is another
+choice per part. `idle.py` decides when the bridges may be torn down,
+`volume.py` holds the two levels, `status.py` writes the JSON snapshot,
+`modules.py` owns every PipeWire module they loaded, and `graph.py` is the
+cached view of the graph they all read. Everything crossing a boundary sits in
+a folder: `system/` (`process.py`, `pactl.py`, `usb_gadget.py`, `parec.py`,
 `monitors.py` — the only place a binary is run), `control/` (`server.py` and
 `commands.py`, the Unix socket the controller speaks to), and `usb/` (the
 state and volume kept agreed with a plugged-in computer). It runs as

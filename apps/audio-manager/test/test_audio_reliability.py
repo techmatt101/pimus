@@ -89,17 +89,17 @@ class AudioReliabilityTests(ManagerTestCase):
     def test_invalid_capture_channels_are_rejected(self) -> None:
         for channel in (-1, True, 1.5, "1"):
             with self.subTest(channel=channel), self.assertRaisesRegex(
-                ValueError, "voice_capture_channel"
+                ValueError, "capture_channel"
             ):
-                AudioConfig.from_mapping({"voice_capture_channel": channel})
+                AudioConfig.from_mapping({"microphone": {"capture_channel": channel}})
 
     def test_unpublished_capture_remap_does_not_fall_back_to_stereo(self) -> None:
-        manager = self.make_manager({"voice_capture_channel": 1})
+        manager = self.make_manager({"microphone": {"capture_channel": 1}})
         device = {"name": "xvf", "channel_map": "front-left,front-right"}
         with self._patched_graph({}, fake_run), mock.patch.object(
             pactl, "load_module", return_value=1
         ):
-            source, status = manager.microphone.reconcile(device)
+            source, status = manager.microphone.capture.reconcile(device)
         self.assertIsNone(source)
         self.assertEqual(status, {"channel": 1, "source": None})
 
@@ -107,7 +107,7 @@ class AudioReliabilityTests(ManagerTestCase):
         self,
     ) -> None:
         manager = self.make_manager(
-            {"aec_reference": {"enabled": True, "sink_match": "XVF"}}
+            {"microphone": {"echo_reference": {"enabled": True, "sink_match": "XVF"}}}
         )
         sink = {"name": "xvf", **stereo(0, 100), "mute": False}
         listings = {
@@ -123,7 +123,7 @@ class AudioReliabilityTests(ManagerTestCase):
             "sink-inputs": [],
         }
         with self._patched_graph(listings, fake_run) as run:
-            status = manager.aec_reference.reconcile({"name": "hifi"})
+            status = manager.microphone.echo_reference.reconcile({"name": "hifi"})
         self.assertTrue(status["endpoints_available"])
         self.assertFalse(status["available"])
         self.assertIn(
@@ -135,7 +135,7 @@ class AudioReliabilityTests(ManagerTestCase):
         ]
         manager.graph.invalidate()
         with self._patched_graph(listings, fake_run) as run:
-            status = manager.aec_reference.reconcile({"name": "hifi"})
+            status = manager.microphone.echo_reference.reconcile({"name": "hifi"})
         self.assertTrue(status["available"])
         self.assertIn(
             mock.call("pactl", "set-sink-input-volume", "5", "100%"), run.call_args_list
@@ -145,7 +145,7 @@ class AudioReliabilityTests(ManagerTestCase):
         )
 
         with self._patched_graph(listings, fake_run):
-            status = manager.aec_reference.reconcile({"name": "hifi"}, wanted=False)
+            status = manager.microphone.echo_reference.reconcile({"name": "hifi"}, wanted=False)
         self.assertTrue(status["endpoints_available"])
         self.assertFalse(status["available"])
 

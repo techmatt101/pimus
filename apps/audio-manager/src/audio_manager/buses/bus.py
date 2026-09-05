@@ -1,10 +1,9 @@
-"""Named null sinks bridged into the output, each carrying its own gain.
+"""A named null sink bridged into the output, carrying its own gain.
 
-A bus exists so a whole class of playback (background music, voice) lands on
-one persistent loopback stream whose volume this daemon owns; clients are
-pointed at the null sink by their unit's PULSE_SINK. Holding the gain on that
-long-lived bridge is what stops a fresh stream playing a syllable at full
-level before its volume applies.
+A bus exists so a whole class of playback lands on one persistent loopback
+stream whose volume this daemon owns. Holding the gain on that long-lived
+bridge is what stops a fresh client stream playing a syllable at full level
+before its volume applies.
 """
 
 from __future__ import annotations
@@ -12,16 +11,17 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from . import graph, volume
-from .config import BackgroundConfig, BusConfig, VoiceBusConfig
-from .graph import Graph, Node
-from .modules import ModuleRegistry, stream_media_name
+from .. import graph, volume
+from ..config import BusConfig
+from ..graph import Graph, Node
+from ..modules import ModuleRegistry, stream_media_name
+from ..output import hold_client_streams
 
 
 LOG = logging.getLogger(__name__)
 
 
-class AudioBus:
+class PlaybackBus:
     def __init__(
         self,
         prefix: str,
@@ -43,6 +43,10 @@ class AudioBus:
         self._graph = view
         self._modules = registry
         registry.on_released(self._role_released)
+
+    @property
+    def sink_name(self) -> str:
+        return self.config.sink_name
 
     @property
     def available(self) -> bool:
@@ -103,6 +107,11 @@ class AudioBus:
         )
         return self.sink
 
+    def hold_clients(self, level: int) -> None:
+        """Hold every player's stream on this bus at a level; the bridge
+        carries the class's gain, so a client stream holds only its trim."""
+        hold_client_streams(self._graph, self.sink, level)
+
     def release(self) -> None:
         self._modules.unload(self.bridge_role)
         self._modules.unload(self.sink_role)
@@ -156,58 +165,3 @@ class AudioBus:
         if role == self.bridge_role:
             self.stream_index = None
             self._forget_gain()
-
-
-class BackgroundBus(AudioBus):
-    """The Sendspin/USB bus, dipped while the voice assistant is talking."""
-
-    config: BackgroundConfig
-    ducked: bool | None = None
-
-    def __init__(
-        self, config: BackgroundConfig, view: Graph, registry: ModuleRegistry
-    ) -> None:
-        super().__init__(
-            "background", config, "SmartAmp_Background_Audio", view, registry
-        )
-
-    def target_gain(self, music_volume: int, ducked: bool) -> int:
-        """The bridge gain for the music level, dipped by the duck share."""
-        if not ducked:
-            return music_volume
-        return volume.scale(music_volume, self.config.duck_volume_percent)
-
-    def apply_ducking(self, music_volume: int, ducked: bool) -> None:
-        if self.stream_index is None:
-            return
-        target = self.target_gain(music_volume, ducked)
-        if self.ducked == ducked and self.gain_applied == target:
-            return
-        # A duck transition fades; the music level moving just snaps the gain,
-        # tracking the detent that moved it.
-        changed_duck = self.ducked != ducked
-        fade_ms = self.config.fade_ms if changed_duck and self.ducked is not None else 0
-        self._write_gain(target, fade_ms)
-        self.ducked = ducked
-        if changed_duck:
-            LOG.info("%s background audio", "Ducked" if ducked else "Restored")
-
-    def _forget_gain(self) -> None:
-        super()._forget_gain()
-        self.ducked = None
-
-
-class VoiceBus(AudioBus):
-    """Voice playback's own bus, so TTS has a level independent of the music.
-
-    The voice assistant plays TTS, timers, and announcements straight to the
-    default sink, which is also where music plays; putting its playback on a
-    bus of its own is what lets a voice level be held independently.
-    """
-
-    config: VoiceBusConfig
-
-    def __init__(
-        self, config: VoiceBusConfig, view: Graph, registry: ModuleRegistry
-    ) -> None:
-        super().__init__("voice", config, "SmartAmp_Voice_Audio", view, registry)
