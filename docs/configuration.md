@@ -41,8 +41,8 @@ rarely-used maximum loudness for a hard cap on that worst case; raise it only if
 enough. A WirePlumber soft-mixer rule (deployed by `tasks/audio.yml`) keeps PipeWire's volume handling in software on
 the HiFiBerry: without it WirePlumber maps sink volume onto the same `Digital` control, and the audio manager pinning
 the output sink at 100% would quietly push the ceiling back to 0 dB. The rule is a property of the ALSA card, not of
-its output node, and a rule that fails to apply says nothing, so `smartamp-doctor` reads `Digital` back and fails if it
-is not at the configured ceiling.
+its output node, and a rule that fails to apply says nothing, so `smartamp-doctor` reads every `Digital` playback
+channel back and fails if any level is unreadable or differs from the configured ceiling.
 
 Loudness itself is two independent levels held by the audio manager: the **music level** (Sendspin, USB computer audio,
 and aux) and the **voice level** (everything the assistant plays). The output sink is pinned at 100% and each level is
@@ -121,9 +121,12 @@ client stream appearing, a voice session opening (the controller's duck/meter re
 audio), the USB host starting to stream, or a route being toggled on. The rebuild happens behind a mute on the output sink,
 held until every fresh bridge stream carries its gain — a fresh loopback stream plays at full volume until its gain
 lands, which would otherwise pop the first instant of audio through the amp — so the first moment of music after a
-long quiet spell arrives a beat late rather than loud. There is no echo to cancel in silence, so the AEC reference
-being down while idle costs the DSP nothing, though it does re-converge on the first seconds of playback after each
-wake. The teardown is also tied to the deck's own resting states (see
+long quiet spell can be delayed. Connections into the background bus are also guarded until their input trims apply.
+Failed reconciliation withdraws readiness; delayed streams keep the output guarded for a retry. Requested mute is
+saved separately from this guard in `/var/lib/smartamp-audio-manager/mute.json` and survives restarts and reboots.
+With no saved request, the manager preserves the sink's existing mute. Idle-wake AEC timing and cancellation recovery
+still need measurement; a silent reference during idle does not establish how well cancellation resumes.
+The teardown is also tied to the deck's own resting states (see
 [Standby and sleep](controls.md#standby-and-sleep)): the moment the panel dims into standby or switches off asleep,
 the controller reports standby over the control socket and the teardown happens at once instead of waiting out the
 timeout (audio still playing keeps the bridges up regardless); when the panel relights, the bridges rebuild

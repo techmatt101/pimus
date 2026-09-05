@@ -38,10 +38,7 @@ class AudioBus:
         self.sink: Node | None = None
         self.stream_index: int | None = None
         self.gain_applied: int | None = None
-        # Whether every bridge this bus wants has a stream to carry its gain.
-        # A loopback's stream can be listed a moment after the module loads;
-        # until it is, the output must stay guarded, since the stream will
-        # start at full volume.
+        # A module can finish loading before its stream appears.
         self.settled = True
         self._graph = view
         self._modules = registry

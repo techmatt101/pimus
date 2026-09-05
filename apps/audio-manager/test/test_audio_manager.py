@@ -54,16 +54,22 @@ def volume_writes(run: mock.Mock) -> list[tuple[str, str]]:
 
 
 class ManagerTestCase(unittest.TestCase):
-    def make_manager(self, raw_config: dict[str, Any]) -> AudioManager:
+    def make_manager(
+        self, raw_config: dict[str, Any], *, mute_path: Path | None = None
+    ) -> AudioManager:
         base = {
             "output_match": "HiFiBerry",
             "voice_input_match": "XVF3800",
             "sources": {},
         }
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        path = Path(directory.name)
         manager = AudioManager(
             AudioConfig.from_mapping({**base, **raw_config}),
-            Path("/unused/control.sock"),
-            Path("/unused/status.json"),
+            path / "control.sock",
+            path / "status.json",
+            mute_path if mute_path is not None else path / "mute.json",
         )
         self.addCleanup(manager.selector.close)
         return manager
@@ -1423,6 +1429,7 @@ class VolumeTests(ManagerTestCase):
                 AudioConfig.load(config),
                 Path(base) / "control.sock",
                 Path(base) / "status.json",
+                Path(base) / "mute.json",
             )
             self.addCleanup(manager.selector.close)
         self.assertEqual(manager.music_volume, 20)

@@ -9,18 +9,23 @@ loopback latency have deliberately not been retuned.
 - [x] The WirePlumber soft-mixer rule now matches the ALSA card
   (`device.name`), which is the object `api.alsa.soft-mixer` belongs to; the
   earlier node-scoped rule was ignored, so the hardware ceiling was very likely
-  not holding at all. The doctor reads `Digital` back against the ceiling.
+  not holding at all. The doctor checks every `Digital` playback channel
+  against the ceiling and rejects unreadable channels or a failed mixer read.
   Confirm on each unit after re-provisioning.
 - [x] Hardware initialization now fails on a failed mixer command instead of
   continuing to `alsactl store`. The manager requires successful initialization;
   Ansible restart notifications bring dependent audio services back afterward.
 - [x] Mute the output before raising its software volume to unity and before
-  any loopback into it loads. A bridge stream that has not appeared keeps the
+  any loopback into it or either playback bus loads, including a USB route
+  whose trim is lower than 100%. A bridge stream that has not appeared keeps the
   guard held and books a retry without failing the pass, so the rest of the
   graph (voice capture, defaults, AEC reference, routes) is still reconciled
-  and published. A mute found on the sink the first time a manager process
-  sees it is cleared rather than adopted, so a guard a killed process left
-  behind cannot become a permanent mute.
+  and published. A failed unmute retains guard ownership until a retry succeeds.
+- [x] Save requested mute separately in
+  `/var/lib/smartamp-audio-manager/mute.json`, so restarts preserve intentional
+  mutes and can recover abandoned guards. Without saved state, preserve the
+  existing sink mute. Failed user unmute commands retry without treating the
+  old sink mute as a new request.
 - [x] Separated USB volume/mute agreement from writes to the output sink. A
   host unmute cannot release the rebuild guard; host mute is reflected in the
   manager's state in the same pass.
@@ -35,7 +40,8 @@ loopback latency have deliberately not been retuned.
   remap is unavailable. Validate channel indices and gate voice startup on the
   intended capture source and playback bus.
 - [x] Doctor accepts deliberately unbridged idle buses/reference paths, but
-  still rejects missing endpoints or capture.
+  still rejects missing endpoints or capture. Hard reconciliation failures
+  remove stale readiness status; successful recovery publishes it again.
 - [x] Added a small LVA capture-failure adapter. The pinned upstream calls
   `sys.exit(1)` inside its microphone thread, leaving the server alive; the
   adapter exits the process so systemd can restart it through the readiness
@@ -49,12 +55,14 @@ loopback latency have deliberately not been retuned.
 
 ## Local verification
 
-- Passed `make test`: 73 Python tests and 32 controller tests, controller
+- Passed `make test`: Python and controller tests, controller
   compilation/bundle checks, Python compilation, ShellCheck and Ansible syntax.
   No tests were skipped. Also passed `git diff --check`.
 - Python regression tests cover gain/mute ordering, failed and delayed graph
-  setup, direct-client volume, channel imbalance, microphone readiness,
-  malformed socket input, deployment script behavior and idle diagnostics.
+  setup, trimmed USB connections through an active bus, mute-state persistence,
+  failed mute writes, stale readiness, direct-client volume, channel imbalance,
+  microphone readiness, malformed socket input, deployment script behavior
+  and idle diagnostics.
 - Separate subprocess tests verify that a failed capture worker terminates the
   whole process, not just its thread. The complete upstream LVA environment
   and physical disconnect/reconnect behavior still require a Pi test.
@@ -79,8 +87,10 @@ loopback latency have deliberately not been retuned.
   remaining clicks separately from overload pops.
 - [ ] **P0 — Check the safety-mute tradeoffs.** The guard is a mute switch,
   not a waveform ramp. Check for clicks and missing first syllables on release.
-  Kill the manager mid-rebuild and confirm the replacement process comes up
-  unmuted.
+  Kill the manager mid-rebuild and confirm recovery restores the requested
+  mute for both muted and unmuted starting states. Repeat across reboot and
+  with an attenuated USB input trim. On first deployment without saved mute
+  state, confirm an existing mute is preserved until explicitly changed.
 - [ ] **P1 — Close the remaining first-stream race.** Direct clients, and
   streams recreated independently by PipeWire, can play before the manager
   observes them. Evaluate a permanent music bus independent of ducking,

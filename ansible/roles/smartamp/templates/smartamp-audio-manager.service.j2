@@ -7,6 +7,8 @@ Requires=user@{{ smartamp_uid }}.service smartamp-hifiberry.service
 Type=simple
 User={{ smartamp_service_user }}
 Group={{ smartamp_service_user }}
+StateDirectory=smartamp-audio-manager
+StateDirectoryMode=0700
 Environment=XDG_RUNTIME_DIR=/run/user/{{ smartamp_uid }}
 Environment=PULSE_SERVER=/run/user/{{ smartamp_uid }}/pulse/native
 # The manager parses English `pactl subscribe` lines; a localized pactl would
@@ -19,7 +21,7 @@ Environment=PYTHONPATH={{ smartamp_app_dir }}/audio-manager
 # Remove the previous process's readiness file before starting. Consumers must
 # wait for a fresh hardware scan instead of trusting stale device names.
 ExecStartPre=/usr/bin/rm -f /run/user/{{ smartamp_uid }}/smartamp-audio-status.json
-ExecStart=/usr/bin/python3 -m audio_manager --config {{ smartamp_config_dir }}/audio.json --socket /run/user/{{ smartamp_uid }}/smartamp-audio.sock --status /run/user/{{ smartamp_uid }}/smartamp-audio-status.json
+ExecStart=/usr/bin/python3 -m audio_manager --config {{ smartamp_config_dir }}/audio.json --socket /run/user/{{ smartamp_uid }}/smartamp-audio.sock --status /run/user/{{ smartamp_uid }}/smartamp-audio-status.json --mute-state /var/lib/smartamp-audio-manager/mute.json
 Restart=always
 RestartSec=3
 # Apply a small, predictable isolation baseline without restricting the local

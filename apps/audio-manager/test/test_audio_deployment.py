@@ -97,6 +97,46 @@ store() { echo stored; return "$STORE_EXIT"; }
             next(line for line in service.splitlines() if line.startswith("After=")),
         )
 
+    def test_manager_has_persistent_writable_mute_state(self) -> None:
+        service = (ROLE / "templates/smartamp-audio-manager.service.j2").read_text()
+        self.assertIn("StateDirectory=smartamp-audio-manager\n", service)
+        self.assertIn("StateDirectoryMode=0700\n", service)
+        self.assertIn("--mute-state /var/lib/smartamp-audio-manager/mute.json", service)
+
+    def test_doctor_checks_every_digital_playback_channel(self) -> None:
+        template = (ROLE / "templates/smartamp-doctor.sh.j2").read_text()
+        start = template.index("if ! DIGITAL=")
+        end = template.index("{% if smartamp_hifiberry_caps.aux_input", start)
+        script = template[start:end].replace(
+            "{{ hifiberry_card_name | quote }}", "sndrpihifiberry"
+        ).replace("{{ hifiberry_output_volume_percent | int }}", "90")
+        harness = """
+amixer() { printf '%s\\n' "$MIXER_OUTPUT"; return "$MIXER_EXIT"; }
+pass() { printf 'PASS %s\\n' "$1"; }
+fail() { printf 'FAIL %s\\n' "$1"; FAILED=1; }
+FAILED=0
+"""
+        left = "  Front Left: Playback 186 [90%] [-10.50dB] [on]"
+        right = "  Front Right: Playback 186 [90%] [-10.50dB] [on]"
+        for output, mixer_exit, expected in (
+            (left + "\n" + right, 0, 0),
+            ("  Mono: Playback 186 [90%] [-10.50dB] [on]", 0, 0),
+            (left + "\n" + right.replace("[90%]", "[100%]"), 0, 1),
+            (left.replace("[90%]", "[80%]") + "\n" + right, 0, 1),
+            (left + "\n" + right.replace("[90%]", "[unknown]"), 0, 1),
+            ("", 0, 1),
+            (left + "\n" + right, 1, 1),
+        ):
+            with self.subTest(output=output, mixer_exit=mixer_exit):
+                result = subprocess.run(
+                    ["sh", "-c", harness + script + '\nexit "$FAILED"\n'],
+                    env={**os.environ, "MIXER_OUTPUT": output, "MIXER_EXIT": str(mixer_exit)},
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+
     @staticmethod
     def ready_status() -> dict:
         return {

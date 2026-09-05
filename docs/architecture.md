@@ -69,17 +69,20 @@ polling for one. A ready bridge gives new client streams an already-applied gain
 sink follow the music level both on a volume command and on reconciliation, but can still start playing before the
 manager sees them. The voice bus is never ducked.
 
-A fresh loopback stream plays at full volume until its gain lands, so the manager guards the output: it mutes the sink
-before loading any loopback into it (and before raising a sink WirePlumber restored below full scale), and releases the
-guard at the end of the pass once every bridge has a stream carrying its gain. A stream that is not listed yet does
-not fail the pass — the rest of the graph is reconciled and published as usual — it keeps the guard held and books
-another look a second later. The guard is separate from the requested mute (the deck's key, or a USB host's slider),
-which is applied as the guard lets go. A mute found on the sink the first time a manager process sees it is cleared
-rather than adopted, because WirePlumber restores mute across restarts and reboots and a guard a previous process
-died holding must not become a mute nobody asked for; a mute appearing on a sink the manager already knows is
-another client's and is adopted. The guard is a mute switch, not a sample ramp, and covers only the streams the
-manager loads: a direct client can still play before the manager sees it, and driver or amplifier transients are the
-hardware ceiling's job.
+A fresh loopback stream plays at full volume until its gain lands. The manager mutes a newly discovered output before
+adjusting gains, and guards every new loopback into the output or either playback bus. This includes the USB route's
+input trim even when the background bridge is already running. An AEC-only connection does not need the speaker guard.
+An unpublished playback stream keeps the guard held and schedules another pass a second later while the rest of the
+graph is reconciled and published. A failed command removes readiness status. The guard releases only after playback
+gains are applied and the requested mute is successfully written; failed writes retain the guard for retry.
+
+The requested mute is saved atomically in `/var/lib/smartamp-audio-manager/mute.json`, before any guard can change the
+sink. The service's `StateDirectory` creates that private writable directory; `--mute-state` passes the file to the
+daemon. Restarts and reboots restore this request, so a user mute survives while an abandoned guard can be released
+after recovery. With no saved request, the existing sink mute is preserved. Mute changes observed during normal
+operation and requests from the controller or USB host update the saved request. The guard is a mute switch, not a
+sample ramp. Direct clients and independently recreated streams can still play before the manager sees them;
+driver and amplifier transients still need hardware validation.
 
 It also mirrors the HiFiBerry output monitor into the XVF3800 USB playback endpoint. Nothing is connected to the
 ReSpeaker speaker jack; the stream exists to give the XMOS DSP the far-end reference required for acoustic echo

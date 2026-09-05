@@ -242,11 +242,16 @@ a device property: an earlier version matched the output node instead, which Wir
 would have left the amp playing about 10 dB above its ceiling with no cap on transients. Read `Digital` back on each
 unit after re-provisioning to confirm.
 
-A related symptom is an amp that comes up silent after the audio manager restarts: the guard the manager holds on the
-output sink while a bridge is rebuilt is an ordinary sink mute, which WirePlumber persists, so a manager killed
-mid-rebuild used to leave that mute behind for the next process to adopt as if the deck had asked for it. The manager
-now clears any mute it finds on the sink the first time it sees it and only adopts a mute that appears later; if a
-unit still comes up silent, `pactl set-sink-mute @DEFAULT_SINK@ 0` as the service account is the manual version.
+A related symptom is an amp that comes up silent after the audio manager restarts. Its temporary rebuild guard uses
+an ordinary sink mute, which WirePlumber persists. The manager now saves the requested mute separately in
+`/var/lib/smartamp-audio-manager/mute.json`; it restores that request only after playback gains settle. A failed unmute
+keeps the guard held for retry. An intentional mute therefore survives both manager restarts and reboot.
+
+On the first deployment without saved mute state, the existing sink mute is preserved. A mute left by an older
+manager cannot be distinguished from a user mute at that point. After routing has recovered, explicitly unmute using
+the controller if playback should resume. Check the journal for state-file errors or repeated gain/mute failures if
+the output remains silent. Hard reconciliation failures remove readiness status, so a missing status file can also
+indicate active recovery rather than a stopped manager.
 
 To catch the culprit rather than just cap it, note the clock time of the next pop and read what the graph was doing:
 

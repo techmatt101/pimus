@@ -60,21 +60,16 @@ class GraphStatus:
 
 class AudioManager:
     def __init__(
-        self, config: AudioConfig, socket_path: Path, status_path: Path
+        self, config: AudioConfig, socket_path: Path, status_path: Path, mute_path: Path
     ) -> None:
         self.config = config
         self.status_path = status_path
         self.running = True
-        # The output sink stays pinned at full scale; loudness lives on the two
-        # bus gains instead, so music and voice are truly independent. Both
-        # levels are seeded from configuration each daemon start; the controller
-        # owns them through the control socket and re-asserts its own cached
-        # values after either process restarts, like the routes.
         self.music_volume = config.startup_volume_percent
         self.voice_volume = config.voice_bus.volume_percent
 
         self.graph = Graph()
-        self.output = output.OutputSink(config.output_match, self.graph)
+        self.output = output.OutputSink(config.output_match, self.graph, mute_path)
         self.modules = ModuleRegistry(self.graph, self._guard_output)
         self.background = BackgroundBus(config.background, self.graph, self.modules)
         self.voice_bus = VoiceBus(config.voice_bus, self.graph, self.modules)
@@ -200,6 +195,11 @@ class AudioManager:
         # own follow-up.
         self.pending_reconcile = None
         succeeded = self._guard("Audio reconciliation", self.reconcile)
+        if not succeeded:
+            self._guard(
+                "Clearing stale audio status",
+                lambda: self.status_path.unlink(missing_ok=True),
+            )
         delay = (
             self.config.resync_seconds if succeeded else RECONCILE_RETRY_SECONDS
         )
@@ -210,31 +210,26 @@ class AudioManager:
         self.graph.invalidate()
         self.modules.drop_released()
         sink = self.output.prepare()
-        # A host volume change may move the music level, so sync before the bus
-        # and route gains below are applied against it; a host mute is a
-        # request like the controller's, applied as the pass settles.
-        self.music_volume, self.output.muted = self.usb_volume.sync(
+        self.music_volume, muted = self.usb_volume.sync(
             (self.music_volume, self.output.muted)
         )
-        # USB state is read before the buses so idle can be judged from it;
-        # the routes below gate on the same values.
+        if muted != self.output.muted:
+            self.output.remember_mute(muted)
         self.usb.refresh()
         idle = self.idle.update(self._audio_active())
         found = self._reconcile_graph(sink, idle)
         settled = self.background.settled and self.voice_bus.settled and self.routes.settled
         if not settled:
-            # A bridge whose stream is not listed yet cannot carry its gain, so
-            # the output stays guarded and the pass is repeated shortly; the
-            # rest of the graph is left reconciled rather than failed.
             self.schedule_reconcile(RECONCILE_RETRY_SECONDS)
         self.output.settle(settled)
         self._publish(sink, found)
 
     def _guard_output(self, sink_name: str) -> None:
-        # Only a loopback into the output can pop the amplifier; one into a
-        # bus plays through that bus's bridge at its gain, and the AEC
-        # reference is never heard.
-        if sink_name == self.output.name:
+        if sink_name in (
+            self.output.name,
+            self.config.background.sink_name,
+            self.config.voice_bus.sink_name,
+        ):
             self.output.guard()
 
     def _reconcile_graph(self, sink: Node | None, idle: bool) -> GraphStatus:

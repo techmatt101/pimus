@@ -1,25 +1,20 @@
-"""The output sink: pinned at full scale, muted on request, and guarded while a
-bridge is rebuilt so nothing plays through the amplifier before its gain lands.
-
-The sink is not the volume control — music and voice each carry their own
-bridge gain — so it stays pinned at 100% (WirePlumber restores whatever it last
-had) and the HiFiBerry hardware ceiling is the only cap above the bus gains.
-"""
+"""Output unity gain, saved user mute, and temporary protection during rebuilds."""
 
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 
 from . import graph
 from .system import pactl
 from .graph import Graph, Node
 from .modules import STREAM_PREFIX
+from .status import write as write_state
 
 
 LOG = logging.getLogger(__name__)
 
-# A sink's name plus its index: the index changes when PipeWire recreates the
-# node, which is what tells a fresh device apart from the one last seen.
 Identity = tuple[str, object]
 
 
@@ -60,28 +55,36 @@ def hold_client_streams(view: Graph, sink: Node | None, level: int) -> None:
 
 
 class OutputSink:
-    """The output sink as one pass finds it, its requested mute, and the guard.
+    """Keep requested mute independent of WirePlumber's restored guard mute."""
 
-    Mute is the one part of output loudness that does not live on a bus gain:
-    silencing the sink silences music and voice together, which is what the
-    controller's mute key means. `muted` is the requested state. A mute made by
-    any other client rides in on the same subscribe event that scheduled the
-    pass, and is adopted here, so the controller never has to poll for it.
-
-    The guard is a second, temporary mute. A fresh loopback stream plays at
-    full volume until its gain lands, which would pop the first instant of
-    audio through the amplifier, so the sink is muted before any loopback into
-    it is loaded and released only once every bridge carries its gain.
-    """
-
-    def __init__(self, match: str, view: Graph) -> None:
+    def __init__(self, match: str, view: Graph, mute_path: Path) -> None:
         self.match = match
-        self.muted = False
         self.node: Node | None = None
         self._graph = view
+        self._mute_path = mute_path
+        self._muted = self._load_mute()
         self._guarded: Identity | None = None
         self._known: Identity | None = None
         self._observed: bool | None = None
+
+    @property
+    def muted(self) -> bool:
+        return self._muted is True
+
+    def remember_mute(self, muted: bool) -> None:
+        if muted == self._muted:
+            return
+        write_state(self._mute_path, {"muted": muted})
+        self._muted = muted
+
+    def _load_mute(self) -> bool | None:
+        try:
+            saved = json.loads(self._mute_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return None
+        if not isinstance(saved, dict) or not isinstance(saved.get("muted"), bool):
+            raise ValueError(f"Invalid output mute state: {self._mute_path}")
+        return saved["muted"]
 
     @property
     def name(self) -> str | None:
@@ -96,25 +99,25 @@ class OutputSink:
         return self.node
 
     def prepare(self) -> Node | None:
-        """Start of a pass: adopt a mute made elsewhere, and pin the volume."""
         sink = self.find()
         if sink is None:
             self._known = None
+            self._guarded = None
             self._observed = None
             return None
-        self._observed = mute_state(sink)
+        observed = mute_state(sink)
         if self.guarded:
-            if self._observed is False:
-                set_mute(sink, True)
-        else:
-            self._guarded = None
-            # Only a sink met on an earlier pass can carry a mute made since by
-            # another client. A sink this process sees for the first time gets
-            # the requested state instead: WirePlumber restores mute across
-            # restarts and reboots, so a guard a previous process died holding
-            # would otherwise become a mute nobody asked for.
-            if self._observed is not None and self._known == identity(sink):
-                self.muted = self._observed
+            if observed is False:
+                self._apply_mute(True)
+                observed = True
+        elif observed is not None and (
+            self._muted is None
+            or (self._known == identity(sink) and observed != self._observed)
+        ):
+            self.remember_mute(observed)
+        self._observed = observed
+        if self._known != identity(sink):
+            self.guard()
         self._known = identity(sink)
         if graph.channel_volumes(sink) and not graph.volume_is(sink, 100):
             self.guard()
@@ -123,30 +126,38 @@ class OutputSink:
         return sink
 
     def guard(self) -> None:
-        """Hold the sink muted until settle() is told every gain is in place."""
         sink = self.node
         if sink is None or self.guarded:
             return
-        set_mute(sink, True)
+        # Save intent before muting: a killed process leaves only this record
+        # to distinguish the guard from a user mute on the next start.
+        self.remember_mute(self.muted)
+        self._apply_mute(True)
         self._guarded = identity(sink)
 
     def settle(self, settled: bool) -> None:
-        """End of a pass: release the guard once settled, then apply the request."""
         sink = self.node
         if sink is None:
             return
         if self.guarded:
             if settled:
+                self._apply_mute(self.muted)
                 self._guarded = None
-                set_mute(sink, self.muted)
             return
         if self._observed is not None and self._observed != self.muted:
-            set_mute(sink, self.muted)
+            self._apply_mute(self.muted)
 
     def request_mute(self, muted: bool) -> None:
-        self.muted = muted
+        self.remember_mute(muted)
         self._graph.invalidate()
         sink = self.find()
         if sink is None:
             raise RuntimeError("no output sink to mute")
-        set_mute(sink, muted or self.guarded)
+        self._observed = mute_state(sink)
+        self._apply_mute(muted or self.guarded)
+
+    def _apply_mute(self, muted: bool) -> None:
+        if self.node is None:
+            raise RuntimeError("no output sink to mute")
+        set_mute(self.node, muted)
+        self._observed = muted

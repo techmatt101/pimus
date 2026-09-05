@@ -158,6 +158,7 @@ class RebuildSafetyTests(ManagerTestCase):
                 "sources": {"aux": {"enabled": True, "match": "ADC"}},
             }
         )
+        self.mute_path = self.manager.status_path.with_name("mute.json")
         self.sink = {
             "name": "hifiberry",
             "description": "HiFiBerry",
@@ -180,6 +181,7 @@ class RebuildSafetyTests(ManagerTestCase):
         self.calls = []
         self.publish_stream = True
         self.fail_gain = False
+        self.fail_unmute = False
         patches = [
             self._patched_graph(self.listings, self.run_command),
             mock.patch.object(usb_gadget, "card_present", return_value=False),
@@ -201,6 +203,8 @@ class RebuildSafetyTests(ManagerTestCase):
                 self.listings["sink-inputs"].append(self.stream)
             return completed(*args, stdout="50\n")
         if command == "set-sink-mute":
+            if self.fail_unmute and args[3] == "0":
+                raise RuntimeError("unmute write failed")
             self.sink["mute"] = args[3] == "1"
         if command == "set-sink-volume":
             self.sink.update(stereo(int(args[3][:-1]), int(args[3][:-1])))
@@ -267,16 +271,166 @@ class RebuildSafetyTests(ManagerTestCase):
         self.assertFalse(self.sink["mute"])
         self.assertTrue(graph.volume_is(self.stream, 10))
 
-    def test_a_mute_found_at_startup_is_cleared_but_one_made_later_is_adopted(
+    def test_initial_and_external_mutes_are_saved_and_survive_restart(
         self,
     ) -> None:
-        # WirePlumber restores mute across restarts, so a guard a previous
-        # process died holding would otherwise become a mute nobody asked for.
-        self.sink["mute"] = True
-        self.manager.reconcile()
-        self.assertFalse(self.sink["mute"])
-        self.assertFalse(self.manager.output.muted)
         self.sink["mute"] = True
         self.manager.reconcile()
         self.assertTrue(self.sink["mute"])
         self.assertTrue(self.manager.output.muted)
+        self._restart_manager()
+        self.assertTrue(self.sink["mute"])
+        self.sink["mute"] = False
+        self.manager.reconcile()
+        self.assertFalse(self.manager.output.muted)
+        self._restart_manager()
+        self.assertFalse(self.sink["mute"])
+
+    def test_restart_during_guard_restores_the_requested_mute(self) -> None:
+        for muted in (False, True):
+            with self.subTest(muted=muted):
+                self.manager.reconcile()
+                self.manager.output.guard()
+                self.manager.set_output_mute(muted)
+                self.assertTrue(self.sink["mute"])
+                self._restart_manager()
+                self.assertEqual(self.sink["mute"], muted)
+                self.assertEqual(self.manager.output.muted, muted)
+
+    def test_failed_unmute_retains_guard_until_the_write_succeeds(self) -> None:
+        self.fail_unmute = True
+        with self.assertLogs("audio_manager.daemon", level="WARNING"):
+            self.assertFalse(self.manager.safe_reconcile())
+        self.assertTrue(self.manager.output.guarded)
+        self.assertTrue(self.sink["mute"])
+        self.assertFalse(self.manager.output.muted)
+        self.fail_unmute = False
+        self.assertTrue(self.manager.safe_reconcile())
+        self.assertFalse(self.manager.output.guarded)
+        self.assertFalse(self.sink["mute"])
+
+    def test_failed_user_unmute_is_retried_without_readopting_the_old_mute(self) -> None:
+        self.manager.reconcile()
+        self.manager.set_output_mute(True)
+        self.fail_unmute = True
+        with self.assertLogs("audio_manager.daemon", level="WARNING"):
+            self.manager.set_output_mute(False)
+        self.assertTrue(self.sink["mute"])
+        self.fail_unmute = False
+        self.manager.reconcile()
+        self.assertFalse(self.sink["mute"])
+        self.assertFalse(self.manager.output.muted)
+
+    def test_failed_pass_withdraws_status_and_recovery_publishes_again(self) -> None:
+        with mock.patch("audio_manager.status.write", wraps=output.write_state):
+            self.assertTrue(self.manager.safe_reconcile())
+            self.assertTrue(self.manager.status_path.exists())
+            self.fail_gain = True
+            self.stream.update(stereo(100, 100))
+            with self.assertLogs("audio_manager.daemon", level="WARNING"):
+                self.assertFalse(self.manager.safe_reconcile())
+            self.assertFalse(self.manager.status_path.exists())
+            self.fail_gain = False
+            self.assertTrue(self.manager.safe_reconcile())
+            self.assertEqual(
+                json.loads(self.manager.status_path.read_text())["sink"], "hifiberry"
+            )
+
+    def test_unwritable_mute_state_prevents_guard_and_gain_changes(self) -> None:
+        with mock.patch.object(output, "write_state", side_effect=OSError("disk full")):
+            with self.assertLogs("audio_manager.daemon", level="WARNING"):
+                self.assertFalse(self.manager.safe_reconcile())
+        self.assertFalse(self.sink["mute"])
+        self.assertTrue(graph.volume_is(self.sink, 80))
+        self.assertFalse(any(call[1] == "load-module" for call in self.calls))
+
+    def _restart_manager(self) -> None:
+        self.manager = self.make_manager(
+            {
+                "startup_volume_percent": 10,
+                "sources": {"aux": {"enabled": True, "match": "ADC"}},
+            },
+            mute_path=self.mute_path,
+        )
+        with mock.patch.object(self.manager.usb, "refresh"):
+            self.manager.reconcile()
+
+
+class BackgroundRouteSafetyTests(ManagerTestCase):
+    def test_delayed_usb_stream_is_guarded_until_its_trim_applies(self) -> None:
+        manager = self.make_manager(
+            {
+                "startup_volume_percent": 40,
+                "background": {"enabled": True},
+                "sources": {
+                    "usb": {
+                        "enabled": False,
+                        "match": "USB source",
+                        "target": "background",
+                        "requires_usb_host": True,
+                        "volume_percent": 25,
+                    }
+                },
+            }
+        )
+        sink = {
+            "name": "hifiberry", "description": "HiFiBerry", "index": 1,
+            "mute": False, **stereo(100, 100),
+        }
+        stream = {
+            "index": 51, "owner_module": 50, "sink": 2,
+            "properties": {"media.name": "SmartAmp.usb"},
+            **stereo(100, 100),
+        }
+        listings = {
+            "sinks": [
+                sink,
+                {"name": "smartamp_background", "index": 2, "owner_module": 20},
+            ],
+            "sources": [
+                {"name": "smartamp_background.monitor"},
+                {"name": "usb", "description": "USB source"},
+            ],
+            "modules": [
+                {"index": 20, "name": "module-null-sink"},
+                {
+                    "index": 30, "name": "module-loopback",
+                    "argument": "source=smartamp_background.monitor sink=hifiberry",
+                },
+            ],
+            "sink-inputs": [
+                {"index": 31, "owner_module": 30, "sink": 1, **stereo(40, 40)},
+            ],
+        }
+
+        def run(*args, check=True):
+            if args[1] == "load-module":
+                self.assertTrue(sink["mute"])
+                listings["modules"].append(
+                    {"index": 50, "name": args[2], "argument": " ".join(args[3:])}
+                )
+                return completed(*args, stdout="50\n")
+            if args[1] == "set-sink-mute":
+                sink["mute"] = args[3] == "1"
+            if args[1] == "set-sink-input-volume" and args[2] == "51":
+                self.assertTrue(sink["mute"])
+                level = int(args[3][:-1])
+                stream.update(stereo(level, level))
+            return fake_run(*args, check=check)
+
+        with self._patched_graph(listings, run), mock.patch.object(
+            usb_gadget, "card_present", return_value=False
+        ), mock.patch.object(manager.usb, "refresh"):
+            manager.reconcile()
+            manager.usb.streaming = True
+            manager.routes.enabled["usb"] = True
+            self.assertTrue(manager.safe_reconcile())
+            self.assertFalse(manager.routes.settled)
+            self.assertTrue(sink["mute"])
+            self.assertIsNotNone(manager.pending_reconcile)
+            self.assertTrue(manager.status_path.exists())
+            listings["sink-inputs"].append(stream)
+            self.assertTrue(manager.safe_reconcile())
+            self.assertTrue(graph.volume_is(stream, 25))
+            self.assertTrue(manager.routes.settled)
+            self.assertFalse(sink["mute"])
