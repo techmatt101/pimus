@@ -463,8 +463,15 @@ did not rename its node: compare the ALSA name in `pactl list sources short`
 against the rule's pattern, and check the card is on a profile with an input
 (`pactl list cards`), which the rule asks for but a stored profile can
 override; `pactl set-card-profile <card> output:analog-stereo+input:analog-stereo`
-puts it right. If `smartamp_voice_capture` exists but the assistant hears
-silence, the loopback is not linked to the node: `pw-link -l` shows whether
+puts it right. If `smartamp_voice_input` is there but `smartamp_voice_capture`
+is not, check that PipeWire still has the loopback loaded: `pw-cli ls Module`
+as the `smartamp` user should list `libpipewire-module-loopback`. The loopback
+loads when PipeWire starts, before WirePlumber has enumerated the array, and
+WirePlumber destroys a stream whose named target is missing unless the stream
+also sets `node.linger`; a loopback whose stream is destroyed unloads itself,
+so a drop-in without that line leaves no module and no source, with nothing
+in the journal at the default log level. If `smartamp_voice_capture` exists
+but the assistant hears silence, the loopback is not linked to the node: `pw-link -l` shows whether
 `smartamp_voice_capture.input` has a link from `smartamp_voice_input`, and the
 node's channel positions (`pactl list sources`, Channel Map) must include the
 one the drop-in names, front-left for channel 0 or front-right for channel 1.

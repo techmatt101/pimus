@@ -15,7 +15,13 @@
 # another source: with the array unplugged, or dark while the panel sleeps,
 # the assistant hears silence and the link re-forms as soon as the node is
 # back, which a USB power cycle used to defeat when the remap was a
-# PulseAudio module. Passive, so the array can suspend when nothing records.
+# PulseAudio module. node.linger is what makes that waiting possible: without
+# it WirePlumber answers a dont-fallback stream whose target is missing by
+# destroying the stream (linking/find-defined-target.lua), and a loopback
+# whose stream is destroyed unloads itself. The loopback loads when PipeWire
+# starts, before WirePlumber has enumerated the array, so without linger this
+# source never appeared at all. Passive, so the array can suspend when nothing
+# records.
 context.modules = [
   {
     name = libpipewire-module-loopback
@@ -28,6 +34,7 @@ context.modules = [
         stream.dont-remix = true
         node.passive = true
         node.dont-fallback = true
+        node.linger = true
       }
       playback.props = {
         node.name = "{{ smartamp_voice_capture_name }}"
