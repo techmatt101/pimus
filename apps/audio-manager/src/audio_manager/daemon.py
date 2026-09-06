@@ -24,7 +24,7 @@ from .echo_reference import EchoReference
 from smartamp_audio.server import ControlServer
 from smartamp_audio.graph import Graph, Node
 from .idle import IdleTracker, playing_clients
-from .modules import STREAM_PREFIX, ModuleRegistry
+from .modules import ModuleRegistry
 from .sources import SourceMixer
 
 
@@ -87,7 +87,6 @@ class AudioManager:
 
         self.pending_reconcile: float | None = None
         self.next_resync = 0.0
-        self._legacy_routes_released = False
         self._last_broadcast = self.state_event()
 
     def stop(self, *_args: object) -> None:
@@ -268,7 +267,6 @@ class AudioManager:
     def reconcile(self) -> None:
         self.graph.invalidate()
         self.modules.drop_released()
-        self._release_legacy_routes()
         sink = self.output.prepare()
         self._read_output_volume()
         idle = self.idle.update(self._audio_active())
@@ -311,27 +309,6 @@ class AudioManager:
         self._adopt_default_sink(sink, music_sink)
         self.mixer.reconcile(music_sink)
         output.hold_client_streams(self.graph, sink, self.music_level)
-
-    def _release_legacy_routes(self) -> None:
-        """Retire the aux and USB loopbacks an older manager built itself.
-
-        Those were server modules, so they outlive the daemon that loaded
-        them; left in place they would play untagged into the bus at whatever
-        level they were last held. Only a loopback tagged with a configured
-        source's old media name is this daemon's to unload.
-        """
-        if self._legacy_routes_released:
-            return
-        tags = {f"media.name={STREAM_PREFIX}{name}" for name in self.config.sources}
-        for module in self.graph.modules:
-            if module.get("name") != "module-loopback":
-                continue
-            arguments = str(module.get("argument", "")).split()
-            if any(argument.endswith(tag) for argument in arguments for tag in tags):
-                pactl.unload_module(int(module["index"]))
-                self.graph.invalidate()
-                LOG.info("Released a route loopback an older manager left behind")
-        self._legacy_routes_released = True
 
     def _publish(self) -> None:
         published = self.document()

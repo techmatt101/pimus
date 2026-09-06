@@ -317,25 +317,6 @@ class RebuildSafetyTests(ManagerTestCase):
                 json.loads(self.manager.status_path.read_text())["sink"], "hifiberry"
             )
 
-    def test_a_route_loopback_an_older_manager_left_is_released_once(self) -> None:
-        # Before the inputs app, the manager bridged aux itself with a server
-        # module, which outlives it. Left alone it would play untagged into
-        # the bus at whatever level it was last held.
-        self.manager = self.make_manager(
-            {"music_bus": {"enabled": True, "sink_name": "background"},
-             "sources": {"aux": {"enabled": False}, "usb": {"enabled": False}}}
-        )
-        self.listings["modules"] = [
-            {"index": 7, "name": "module-loopback",
-             "argument": "source=adc sink=background sink_input_properties=media.name=SmartAmp.aux"},
-            {"index": 8, "name": "module-loopback",
-             "argument": "source=hifi.monitor sink=xvf sink_input_properties=media.name=SmartAmp.aec"},
-        ]
-        self.manager.reconcile()
-        self.manager.reconcile()
-        unloads = [call for call in self.calls if call[1] == "unload-module"]
-        self.assertEqual(unloads, [("pactl", "unload-module", "7")])
-
     def _restart_manager(self) -> None:
         self.manager = self._make_manager()
         self.manager.reconcile()
