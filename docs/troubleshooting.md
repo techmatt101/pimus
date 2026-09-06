@@ -195,8 +195,8 @@ controller is connected to the socket in the `smartamp-controller` log, then loo
 
 ## Music Assistant's volume does nothing, or fights the dial
 
-With `sendspin_volume_sets_music_level` on, Music Assistant's slider for this player runs the volume hook, which sends
-`set-music-volume` to the audio manager; the player applies no gain of its own. Confirm the wiring first:
+Music Assistant's slider for this player runs the volume hook, which sends `set-music-volume` to the audio manager;
+the player applies no gain of its own. Confirm the wiring first:
 
 ```sh
 systemctl cat smartamp-sendspin | grep -E 'hook-set-volume|SMARTAMP_AUDIO_SOCKET'
@@ -219,8 +219,11 @@ sudo -u smartamp SMARTAMP_AUDIO_SOCKET=/run/user/$(id -u smartamp)/smartamp-audi
 
 The link is one-way. Turning the volume dial moves the music level without telling Music Assistant, so its slider can
 read stale until it next commands a volume; and if Music Assistant re-asserts a remembered volume when the player
-reconnects, that will land on the music level as a jump at reconnect. If that proves annoying, set
-`sendspin_volume_sets_music_level: false` and the player goes back to scaling its own samples.
+reconnects, that will land on the music level as a jump at reconnect. If that proves annoying, guard it in the hook
+rather than reverting: appending `--hook-set-volume '' --hardware-volume false` to `sendspin_extra_args` puts the
+player back to scaling its own samples, which is the hidden second gain this replaced. Both halves are needed — with
+the hook emptied and nothing else said, the client looks for an ALSA or PulseAudio control to drive instead of leaving
+the level alone.
 
 ## Music crackles or pops every few seconds
 

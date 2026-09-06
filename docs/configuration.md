@@ -62,14 +62,16 @@ enabled; the aux and USB trims always apply. All three can be moved live from th
 [LEVELS page](controls.md#the-levels-page), which is the way to find a balance by ear; the audio manager holds that
 only in memory, so bring the number that works back to inventory.
 
-`sendspin_volume_sets_music_level` decides what Music Assistant's volume for this player means. On — the default — the
-client is given a volume hook and applies no gain of its own, so its slider hands the commanded percent to the audio
-manager exactly as the volume dial does: one loudness for the room, and the only way to set it at all on a unit with no
-Stream Deck. Off, the player scales its own samples, and its slider becomes a second gain underneath the music level
-that nothing else can see. The hook is told the effective volume only, so a mute in Music Assistant arrives as a plain
-zero rather than the amp's own volume mute, and unmuting lands on whatever it sends next. It is one-way: the volume
-dial moves the music level without Music Assistant hearing about it, so its slider can read stale until it next
-commands one.
+Music Assistant's volume for this player is the music level. The Sendspin client is given a volume hook
+(`--hook-set-volume`, which outranks its own `--hardware-volume` and turns its software gain off), so the slider hands
+the commanded percent to the audio manager exactly as the volume dial does: one loudness for the room, and the only way
+to set it at all on a unit with no Stream Deck. The hook is told the effective volume only, so a mute in Music
+Assistant arrives as a plain zero rather than the amp's own volume mute, and unmuting lands on whatever it sends next.
+It is one-way: the volume dial moves the music level without Music Assistant hearing about it, so its slider can read
+stale until it next commands one. Appending `--hook-set-volume '' --hardware-volume false` to `sendspin_extra_args` is
+the way back to the player scaling its own samples, at the cost of a gain beneath the music level that nothing else can
+see. Emptying the hook alone is not that: with no hook and no explicit answer the client goes looking for an ALSA or
+PulseAudio control to drive instead, which on this stack is a mixer the audio manager owns.
 
 Device match expressions search every PipeWire/Pulse node property. Use `pactl list sinks` and `pactl list sources` on
 the Pi if your firmware exposes different names.

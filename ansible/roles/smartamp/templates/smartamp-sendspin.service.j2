@@ -16,14 +16,13 @@ Environment=XDG_CONFIG_HOME={{ smartamp_state_dir }}/sendspin
    duckable background bus the audio manager maintains. #}
 Environment=PULSE_SINK={{ smartamp_background_sink_name }}
 {% endif %}
-{% if sendspin_volume_sets_music_level | bool %}
-{# The hook script reaches the audio manager through its control socket. #}
+{# The volume hook reaches the audio manager through its control socket. #}
 Environment=SMARTAMP_AUDIO_SOCKET=/run/user/{{ smartamp_uid }}/smartamp-audio.sock
-{% endif %}
 {# --hook-set-volume outranks --hardware-volume in the client and turns its own
    software gain off, so Music Assistant's slider becomes the amp's music level
-   rather than a second gain underneath it. #}
-ExecStart={{ smartamp_app_dir }}/sendspin/bin/sendspin daemon --name {{ sendspin_name | quote }} --audio-device pulse {{ ('--hook-set-volume ' + smartamp_app_dir + '/smartamp_set_music_volume.py') if (sendspin_volume_sets_music_level | bool) else '' }} {{ ('--url ' + sendspin_server_url) if sendspin_server_url else '' }} {{ sendspin_extra_args }}
+   rather than a second gain underneath it. Passing it last would let
+   sendspin_extra_args override the hook, which is the one way back. #}
+ExecStart={{ smartamp_app_dir }}/sendspin/bin/sendspin daemon --name {{ sendspin_name | quote }} --audio-device pulse --hook-set-volume {{ smartamp_app_dir }}/smartamp_set_music_volume.py {{ ('--url ' + sendspin_server_url) if sendspin_server_url else '' }} {{ sendspin_extra_args }}
 Restart=on-failure
 RestartSec=3
 # Apply a small, predictable isolation baseline without restricting the network

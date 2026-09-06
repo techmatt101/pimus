@@ -242,18 +242,6 @@
       from 0 to 100 percent, and a non-negative fade time.
   when: smartamp_voice_ducking_enabled | bool
 
-# The volume hook is an argument to the player's own command line, so with no
-# player there is nothing to hand it to and Music Assistant's volume would
-# silently keep meaning nothing here.
-- name: Require the Sendspin player for its volume hook
-  ansible.builtin.assert:
-    that: sendspin_enabled | bool
-    fail_msg: >-
-      sendspin_volume_sets_music_level is on but sendspin_enabled is off, so
-      there is no player whose volume could move the music level. Set
-      sendspin_volume_sets_music_level: false for this unit.
-  when: sendspin_volume_sets_music_level | bool
-
 # Invalid regular expressions otherwise leave the audio manager restarting in
 # a loop. Compile every hardware matcher before any configuration is changed.
 - name: Validate PipeWire device matching expressions

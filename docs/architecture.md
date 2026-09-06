@@ -115,9 +115,9 @@ policy and readiness gate to reopen the device. Silent or blocked capture withou
 - `smartamp-usb-audio-gadget`: creates the stereo UAC2 peripheral on the board's USB-C controller.
 - `smartamp-audio-manager`: maintains PipeWire defaults, switchable routes, the background bus and its ducking gain,
   the voice bus and its volume, and the volume mute, driven by `pactl subscribe` events and a Unix control socket.
-- `smartamp-sendspin`: runs the Sendspin player that Music Assistant discovers and streams to. With
-  `sendspin_volume_sets_music_level` on it is given a volume hook (`smartamp_set_music_volume.py`) instead of a gain of
-  its own, so Music Assistant's slider for this player moves the audio manager's music level.
+- `smartamp-sendspin`: runs the Sendspin player that Music Assistant discovers and streams to. It is given a volume
+  hook (`smartamp_set_music_volume.py`) instead of a gain of its own, so Music Assistant's slider for this player moves
+  the audio manager's music level.
 - `smartamp-voice-assistant`: pinned OHF Linux Voice Assistant checkout and Python virtual environment.
 - `smartamp-controller`: maps Assist events to background ducking and XVF3800 effects, and renders/handles Stream Deck+
   controls without Elgato desktop software. The deck half is an addon behind one dynamic import
