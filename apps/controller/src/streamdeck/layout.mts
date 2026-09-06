@@ -94,7 +94,7 @@ const CLOCK_FORMAT: ClockFormat = '12h'
 
 export const SLEEP = {
     presence: HA.presence,
-    /** How long without a touch or a live pipeline before the panel dims and the amp suspends. */
+    /** How long without a touch or a live pipeline before the panel dims. */
     standbyMilliseconds: 3 * 60_000,
     /** How long the room must read empty before the panel and USB power switch off. */
     sleepMilliseconds: 5 * 60_000,

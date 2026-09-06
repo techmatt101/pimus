@@ -166,7 +166,6 @@ class AudioManager:
             "aec_reference": self.aec_reference,
             "sources": self.sources(),
             "idle": self.idle.idle,
-            "standby": self.idle.standby,
         }
 
     def state_event(self) -> dict[str, Any]:
@@ -361,13 +360,11 @@ class AudioManager:
         if self.idle.idle:
             self.schedule_reconcile(0.0)
 
-    def sync_standby(self) -> None:
-        if not self.idle.set_standby(self.commands.standby_requested):
-            return
-        # A waking panel means someone is back in the room: rebuild now, so
-        # the first thing they play or say opens on ready bridges.
-        if not self.idle.standby:
-            self.idle.touch()
+    def force_idle(self) -> None:
+        """Release the bridges now if nothing is playing, to test the idle
+        state without waiting out the quiet spell."""
+        LOG.info("Idle forced from the control socket")
+        self.idle.expire()
         self.schedule_reconcile(0.0)
 
     def broadcast_state(self) -> None:

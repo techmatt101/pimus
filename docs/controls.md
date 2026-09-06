@@ -657,9 +657,9 @@ by one field — `state.panel`, one of `lit`, `dim`, and `off`:
 **Standby** is about your hands, not the room. Three minutes after the last key
 press, dial turn, strip tap, or live Assist pipeline, the panel dims to a
 quarter of its brightness — music can still be playing; the strip stays
-readable — and the audio manager is told to release its idle bridges, so the
-DAC path and the XVF3800 playback endpoint suspend. The amp rebuilds its
-bridges the moment anything plays or a voice session opens.
+readable. It is a display state only: the audio manager is not told, and its
+[idle teardown](configuration.md#audio) follows the
+quiet spell on its own, on this unit as on one with no deck.
 
 A dimmed panel holds still. Every animation pauses where it stood — the
 scrolling title, the fan's spin, the voice pulse, a flashing fault icon — so
@@ -704,15 +704,15 @@ in `apps/controller/src/streamdeck/layout.mts`:
 ```ts
 export const SLEEP = {
   presence: HA.presence,             // clear this to keep the deck lit permanently
-  standbyMilliseconds: 3 * 60_000,   // idle time before dim + amp suspend
+  standbyMilliseconds: 3 * 60_000,   // idle time before dim
   sleepMilliseconds: 5 * 60_000,     // empty-room time before panel + USB power off
   dimPercent: 25,                    // dimmed brightness, as a percentage of the lit level
 } as const
 ```
 
 The policy itself is `streamdeck/sleep.mts`; the renderer follows `state.panel`
-exactly as it follows a deck being unplugged, and `index.mts` maps the same
-field onto the audio manager's standby signal and the USB power switch. To
+exactly as it follows a deck being unplugged, and `control-surface.mts` maps the
+same field onto the USB power switch. To
 watch it without a Pi, run `make playground` and use the **leave room** and
 **enter room** buttons in the Home Assistant panel.
 

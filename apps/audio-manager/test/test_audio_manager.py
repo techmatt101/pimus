@@ -243,7 +243,6 @@ class ControlSocketTests(ManagerTestCase):
                     "line_in": {"trim": 100, "enabled": True, "available": False},
                 },
                 "idle": False,
-                "standby": False,
             },
         )
         self.assertTrue(reconcile)
@@ -883,34 +882,28 @@ class IdleTeardownTests(ManagerTestCase):
         manager.commands.apply(mock.Mock(), {"command": "set-duck", "active": True})
         self.assertIsNotNone(manager.pending_reconcile)
 
-    def test_a_sleeping_panel_skips_the_silence_timeout(self) -> None:
+    def test_a_forced_idle_skips_the_silence_timeout(self) -> None:
         manager = self.make_manager(
             {"idle_teardown_seconds": 60, "music_bus": {"enabled": True}}
         )
-        connection = mock.Mock()
-        manager.control.clients[connection] = b""
+        self.assertFalse(manager.idle.update(False))
 
-        # The panel going dark means the room is empty: teardown is immediate
-        # rather than waiting out the timeout.
-        manager.commands.apply(connection, {"command": "set-standby", "active": True})
+        # Forcing it releases on the next pass instead of waiting out the
+        # timeout, so the idle state can be looked at without the wait.
+        manager.commands.apply(mock.Mock(), {"command": "force-idle"})
         self.assertIsNotNone(manager.pending_reconcile)
         self.assertTrue(manager.idle.update(False))
 
-        # Something still playing keeps the bridges up, empty room or not.
+        # Something playing wins, and the request is forgotten rather than
+        # held: the next quiet spell waits out the timeout again.
+        manager.commands.apply(mock.Mock(), {"command": "force-idle"})
         self.assertFalse(manager.idle.update(True))
-
-        # The panel waking rebuilds proactively, so the first thing played or
-        # said after walking in opens on ready bridges.
-        manager.idle.update(False)
-        manager.pending_reconcile = None
-        manager.commands.apply(connection, {"command": "set-standby", "active": False})
-        self.assertIsNotNone(manager.pending_reconcile)
         self.assertFalse(manager.idle.update(False))
 
-        # Losing the socket releases standby, exactly as it releases a duck.
-        manager.commands.apply(connection, {"command": "set-standby", "active": True})
-        manager.control.drop(connection)
-        self.assertFalse(manager.idle.standby)
+        # With the teardown switched off there is nothing to force.
+        disabled = self.make_manager({"music_bus": {"enabled": True}})
+        disabled.commands.apply(mock.Mock(), {"command": "force-idle"})
+        self.assertFalse(disabled.idle.update(False))
 
     def test_teardown_stays_off_by_default(self) -> None:
         manager = self.make_manager({})

@@ -11,9 +11,9 @@ import type {ControlModel} from '../state.mjs'
 
 const FORMAT = {format: 'rgba'} as const
 
-// A dimmed panel is standby - the amp is suspended but somebody may well be
-// in the room - so it has to stay readable rather than fade to something
-// indistinguishable from off.
+// A dimmed panel is standby - somebody may well be in the room, and music
+// may well be playing - so it has to stay readable rather than fade to
+// something indistinguishable from off.
 const DEFAULT_DIM_PERCENT = 25
 
 export interface DeckRendererOptions {

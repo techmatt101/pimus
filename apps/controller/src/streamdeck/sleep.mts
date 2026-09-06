@@ -19,8 +19,8 @@ export interface SleepControllerOptions {
  * Standby dims the panel after a spell without interaction — music can still
  * be playing — and sleep switches it off once the room has read empty long
  * enough, or at once when forced from the POWER key or the power button.
- * Whoever watches `panel` acts on the same states: dim suspends the amp
- * bridges, off also cuts USB power. Only sleep needs the presence sensor, and
+ * Whoever watches `panel` acts on the same states: the renderer dims and
+ * darkens, and off also cuts USB power. Only sleep needs the presence sensor, and
  * it fails open: an unreachable Home Assistant or an unknown reading means
  * the panel never switches off, though it still dims.
  */

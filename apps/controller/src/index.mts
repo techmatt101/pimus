@@ -116,7 +116,6 @@ const surface = config.streamdeck?.enabled
         ha: homeAssistant,
         notifications,
         postNotification: (data) => notifications.post(data),
-        setStandby: (suspended) => audio.setStandby(suspended),
         shutdown: () => systemPower.shutdown(),
         reboot: () => systemPower.reboot(),
         reattachRespeaker: () => void respeaker?.reattach(),

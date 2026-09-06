@@ -216,7 +216,7 @@ export interface TimerState {
     ringing: boolean
 }
 
-/** Lit, dimmed in standby with the amp suspended, then dark asleep. */
+/** Lit, dimmed in standby, then dark asleep. */
 export type PanelState = 'lit' | 'dim' | 'off'
 
 export interface ControlState {

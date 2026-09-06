@@ -41,10 +41,8 @@ class CommandHandler:
         self._manager = manager
         self._duck_requests: set[socket.socket] = set()
         self._meter_requests: set[socket.socket] = set()
-        self._standby_requests: set[socket.socket] = set()
         self._handlers: dict[str, Callable[[socket.socket, dict[str, Any]], Reply]] = {
             "set-duck": self._set_duck,
-            "set-standby": self._set_standby,
             "set-voice-meter": self._set_voice_meter,
             "set-voice-volume": self._set_voice_volume,
             "set-music-volume": self._set_music_volume,
@@ -53,16 +51,13 @@ class CommandHandler:
             "set-source-trim": self._set_source_trim,
             "set-source-state": self._set_source_state,
             "get-state": self._get_state,
+            "force-idle": self._force_idle,
             "resync": self._resync,
         }
 
     @property
     def duck_requested(self) -> bool:
         return bool(self._duck_requests)
-
-    @property
-    def standby_requested(self) -> bool:
-        return bool(self._standby_requests)
 
     @property
     def meter_listeners(self) -> frozenset[socket.socket]:
@@ -86,13 +81,6 @@ class CommandHandler:
             self._meter_requests.discard(connection)
             if self._manager.running:
                 self._manager.request_voice_meter(bool(self._meter_requests))
-        if connection in self._standby_requests:
-            # Releasing on disconnect rebuilds the bridges, which is the safe
-            # side: a crashed controller reconnects and re-asserts within
-            # seconds, exactly as it re-asserts a duck.
-            self._standby_requests.discard(connection)
-            if self._manager.running:
-                self._manager.sync_standby()
         if connection not in self._duck_requests:
             return
         self._duck_requests.discard(connection)
@@ -116,17 +104,9 @@ class CommandHandler:
         self._manager.safe_apply_ducking()
         return self._state()
 
-    def _set_standby(
-        self, connection: socket.socket, message: dict[str, Any]
-    ) -> Reply:
-        active = message.get("active")
-        if not isinstance(active, bool):
-            return _error("set-standby needs a boolean active")
-        if active:
-            self._standby_requests.add(connection)
-        else:
-            self._standby_requests.discard(connection)
-        self._manager.sync_standby()
+    def _force_idle(self, connection: socket.socket, message: dict[str, Any]) -> Reply:
+        # A one-shot, not a lease: nothing to release when the socket closes.
+        self._manager.force_idle()
         return self._state()
 
     def _set_voice_meter(

@@ -50,7 +50,6 @@ export class AudioClient {
     voiceLevel = 0
 
     #duckActive = false
-    #standbyActive = false
     #voiceMeterActive = false
     #buffer = ''
     #lastErrorMessage: string | null = null
@@ -114,7 +113,6 @@ export class AudioClient {
             // connection that made it, so a reconnect during a conversation has
             // to ask again.
             if (this.#duckActive) this.#write({command: 'set-duck', active: true})
-            if (this.#standbyActive) this.#write({command: 'set-standby', active: true})
             if (this.#voiceMeterActive) this.#write({command: 'set-voice-meter', active: true})
             this.#onStateChange()
         })
@@ -230,17 +228,6 @@ export class AudioClient {
         if (this.#duckActive === active) return
         this.#duckActive = active
         this.#write({command: 'set-duck', active})
-    }
-
-    /**
-     * Reports the panel asleep, letting the manager's idle teardown skip its
-     * silence timeout. Held against this socket exactly as a duck request is,
-     * so a crash releases it and the bridges rebuild.
-     */
-    setStandby(active: boolean): void {
-        if (this.#standbyActive === active) return
-        this.#standbyActive = active
-        this.#write({command: 'set-standby', active})
     }
 
     /**

@@ -24,7 +24,6 @@ export interface ControlSurfaceServices {
     ha: HomeAssistantService
     notifications: NotificationFeed
     postNotification(data: Record<string, unknown>): void
-    setStandby(suspended: boolean): void
     shutdown(): void
     reboot(): void
     /** Hand a ReSpeaker back that lost its USB power while the panel was off. */
@@ -56,7 +55,6 @@ export function createControlSurface({
     ha,
     notifications,
     postNotification,
-    setStandby,
     shutdown,
     reboot,
     reattachRespeaker,
@@ -121,17 +119,15 @@ export function createControlSurface({
             remote?.start()
             sleep.start()
             brightness.start()
-            // Standby (dim) suspends the amp bridges; sleep (off) also cuts USB
-            // power, and leaving it hands a rebooted ReSpeaker back to the controller.
+            // Sleep (off) cuts USB power, and leaving it hands a rebooted
+            // ReSpeaker back to the controller.
             let lastPanel = model.state.panel
             model.subscribe(() => {
                 const panel = model.state.panel
-                setStandby(panel !== 'lit')
                 usbPower.set(panel !== 'off')
                 if (lastPanel === 'off' && panel !== 'off') reattachRespeaker()
                 lastPanel = panel
             })
-            setStandby(model.state.panel !== 'lit')
             usbPower.set(model.state.panel !== 'off')
             new PowerButton({onPress: () => sleep.pressPowerButton()}).start()
             return runDeckLoop({layout, renderer, onActivity: () => sleep.touch()})

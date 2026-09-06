@@ -46,9 +46,6 @@ class IdleTracker:
     ) -> None:
         self.timeout_seconds = timeout_seconds
         self.idle = False
-        # The control surface reporting its panel asleep: the room is empty,
-        # so silence needs no further proving and the timeout is skipped.
-        self.standby = False
         self._clock = clock
         self._last_active = clock()
 
@@ -56,45 +53,39 @@ class IdleTracker:
     def enabled(self) -> bool:
         return self.timeout_seconds > 0
 
-    def set_standby(self, active: bool) -> bool:
-        """Record the panel state; returns whether it changed."""
-        if self.standby == active:
-            return False
-        self.standby = active
-        return True
-
     def update(self, active: bool) -> bool:
         """Record this reconcile's activity; returns whether to be torn down.
 
         Derived, not latched: a touch() moving the activity instant forward is
-        enough to clear an applied idle on the next pass, which is how a
-        waking panel rebuilds before any stream exists.
+        enough to clear an applied idle on the next pass, which is how a voice
+        session opening rebuilds before any stream exists, and an expire()
+        moving it back is enough to apply one.
         """
         now = self._clock()
         if active:
             self._last_active = now
         was_idle = self.idle
+        quiet_seconds = now - self._last_active
         self.idle = (
-            self.enabled
-            and not active
-            and (self.standby or now - self._last_active >= self.timeout_seconds)
+            self.enabled and not active and quiet_seconds >= self.timeout_seconds
         )
         if was_idle and not self.idle:
             LOG.info("Rebuilding the idle bridges")
         elif self.idle and not was_idle:
-            if self.standby:
-                LOG.info("Panel asleep; releasing the idle bridges")
-            else:
-                LOG.info(
-                    "No playback for %.0fs; releasing the idle bridges",
-                    self.timeout_seconds,
-                )
+            LOG.info("No playback for %.0fs; releasing the idle bridges", quiet_seconds)
         return self.idle
 
     def touch(self) -> None:
         """An early hint of activity (a voice session opening) before any
         stream exists, so the rebuild starts ahead of the first audio."""
         self._last_active = self._clock()
+
+    def expire(self) -> None:
+        """Deem the quiet spell served, so the next pass releases the bridges
+        if nothing is playing. Anything still playing resets the instant and
+        the request is forgotten rather than held: it is a way to see the idle
+        state without waiting for it, not a second reason to be idle."""
+        self._last_active = self._clock() - self.timeout_seconds
 
     def deadline(self) -> float | None:
         """When the bridges fall due for release, if they still are loaded."""

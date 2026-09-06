@@ -158,12 +158,21 @@ Failed reconciliation withdraws readiness; delayed streams keep the output guard
 only thing that mutes the sink — the volume mute is a gain on the music paths, not a sink property — so a sink found
 muted is simply released once the graph settles. Idle-wake AEC timing and cancellation recovery
 still need measurement; a silent reference during idle does not establish how well cancellation resumes.
-The teardown is also tied to the deck's own resting states (see
-[Standby and sleep](controls.md#standby-and-sleep)): the moment the panel dims into standby or switches off asleep,
-the controller reports standby over the control socket and the teardown happens at once instead of waiting out the
-timeout (audio still playing keeps the bridges up regardless); when the panel relights, the bridges rebuild
-proactively so the first thing played or said after walking in opens on a ready graph. Standby is held against the
-controller's socket connection, exactly as a duck request is, so a controller crash releases it. In full sleep,
+The teardown knows nothing of the deck's resting states (see
+[Standby and sleep](controls.md#standby-and-sleep)): a dimmed or dark panel changes nothing on the audio side, and
+the quiet spell alone earns the release, on a unit with a deck exactly as on one without. To look at the idle state
+without waiting it out, send `force-idle` over the control socket: it deems the quiet spell served, so the next
+reconcile releases the bridges if nothing is playing, and is simply forgotten if something is. It is a one-shot, not a
+held request, and does nothing when the teardown is disabled.
+
+```sh
+sudo -u smartamp python3 -c 'import socket; s = socket.socket(socket.AF_UNIX); s.connect("/run/user/'"$(id -u smartamp)"'/smartamp-audio.sock"); s.sendall(b"{\"command\":\"force-idle\"}\n"); print(s.recv(65536).decode())'
+```
+
+The socket lives in the service account's private runtime directory, hence `sudo -u smartamp`; watch for
+`releasing the idle bridges` in the `smartamp-audio-manager` log, or `"idle": true` in the status file.
+
+In full sleep,
 `smartamp_sleep_usb_power_off` additionally powers off the Pi's USB-A ports through the kernel's per-port `disable`
 attribute — which both cuts VBUS and forbids re-enumeration; a bare power-off is undone by the hub driver within a
 second — taking the Stream Deck and ReSpeaker down entirely. Provisioning installs a systemd-tmpfiles entry that
