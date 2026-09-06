@@ -14,6 +14,9 @@ importers:
       esbuild:
         specifier: 0.28.1
         version: 0.28.1
+      pyright:
+        specifier: 1.1.413
+        version: 1.1.413
 
   apps/controller:
     dependencies:
@@ -411,6 +414,11 @@ packages:
     resolution: {integrity: sha512-w8ZNZr2mKIc7qeNaQ9AVPT1+iFaI+Avd4xudVOvdDJ8VytREi1Ft5Ih7hd9jjehod8vAM5GMsfQ/TpPf4EyoEA==}
     engines: {node: '>=14.14'}
 
+  fsevents@2.3.3:
+    resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
+    engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
+    os: [darwin]
+
   get-caller-file@2.0.5:
     resolution: {integrity: sha512-DyFP3BM/3YHTQOCUL/w0OZHR0lpKeGrxotcHWcqNEdnltqFwXVfhEBQ94eIo34AfQpo0rGki4cyIiftY06h2Fg==}
     engines: {node: 6.* || 8.* || >= 10.*}
@@ -480,6 +488,11 @@ packages:
   pkg-prebuilds@1.1.0:
     resolution: {integrity: sha512-jyai+KTQ2OwbN6iRYw88XbYOMgtpoSYJpjYebx7d9ihqz3txNi3ucsBt3va0iVWe6svSlaqpijMHFF/eJCMZzg==}
     engines: {node: '>= 14.15.0'}
+    hasBin: true
+
+  pyright@1.1.413:
+    resolution: {integrity: sha512-1lpxKrh0DHHpfAQOfciZo2ojua2jase3wwO9at8kldc+F/p1PBscxA5CQ3G1qg5lMOMhXo6ZaiMLMXEAqADIAg==}
+    engines: {node: '>=14.0.0'}
     hasBin: true
 
   rc@1.2.8:
@@ -826,6 +839,9 @@ snapshots:
       jsonfile: 6.2.1
       universalify: 2.0.1
 
+  fsevents@2.3.3:
+    optional: true
+
   get-caller-file@2.0.5: {}
 
   graceful-fs@4.2.11: {}
@@ -877,6 +893,10 @@ snapshots:
       p-finally: 1.0.0
 
   pkg-prebuilds@1.1.0: {}
+
+  pyright@1.1.413:
+    optionalDependencies:
+      fsevents: 2.3.3
 
   rc@1.2.8:
     dependencies:

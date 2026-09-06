@@ -28,6 +28,7 @@ class EchoReference(Protocol):
     def reconcile(self, output: Node | None, *, wanted: bool = True) -> dict[str, Any]:
         """Keep the reference flowing while wanted; answers with the status
         file's `aec_reference` section."""
+        ...
 
 
 class NoEchoReference:

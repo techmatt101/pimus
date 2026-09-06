@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from ..system import pactl
-from ..graph import Graph, Node
+from ..graph import Graph, Node, profiles_of
 
 
 LOG = logging.getLogger(__name__)
@@ -35,14 +35,14 @@ def repair_capture_profile(view: Graph, pattern: str) -> None:
     card = view.find_card(pattern)
     if card is None:
         return
-    profiles = card.get("profiles") or {}
+    profiles = profiles_of(card)
     active = profiles.get(str(card.get("active_profile", "")))
-    if isinstance(active, dict) and int(active.get("sources", 0) or 0) > 0:
+    if active is not None and int(active.get("sources", 0) or 0) > 0:
         return
     candidates = [
         (name, profile)
         for name, profile in profiles.items()
-        if isinstance(profile, dict) and int(profile.get("sources", 0) or 0) > 0
+        if int(profile.get("sources", 0) or 0) > 0
     ]
     if not candidates:
         return

@@ -461,10 +461,18 @@ finished:
 make test
 ```
 
-This compiles Python, type-checks and compiles the TypeScript controller,
-bundles it, runs Python and Node tests, checks the bundles, and performs an
-Ansible syntax check without contacting the Pi. A type error fails the build
-before any test runs, and so does a bundle that crossed a deployment boundary.
+This compiles Python and type-checks the audio manager with pyright in strict
+mode, type-checks and compiles the TypeScript controller, bundles it, runs
+Python and Node tests, checks the bundles, and performs an Ansible syntax check
+without contacting the Pi. A type error in either language fails the run
+before any test does, and so does a bundle that crossed a deployment boundary.
+The audio manager's source and tests are both held to strict pyright
+(`apps/audio-manager/pyrightconfig.json`, checked against Bookworm's Python
+3.11): a JSON value is narrowed at the boundary that parses it (`pactl.py`,
+`config.py`, the helpers in `graph.py`), so a reader never walks an untyped
+dict; the `Node` alias stays `dict[str, Any]` deliberately, because pactl's
+listings have no fixed shape. Pyright is a pinned devDependency of the
+workspace root, so `pnpm install` is what provides it.
 
 The tests import the `dist/src` modules; the Pi runs the bundles, so those are
 checked as their own artifact. The entry is only parsed — importing it would

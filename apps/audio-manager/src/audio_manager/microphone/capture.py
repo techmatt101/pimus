@@ -24,6 +24,7 @@ class Capture(Protocol):
 
     def reconcile(self, device: Node | None) -> tuple[Node | None, dict[str, Any]]:
         """The source to make the default, and the status file's `voice_capture`."""
+        ...
 
 
 class DirectCapture:

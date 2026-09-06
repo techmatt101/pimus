@@ -66,8 +66,8 @@ loopback latency have deliberately not been retuned.
 - Separate subprocess tests verify that a failed capture worker terminates the
   whole process, not just its thread. The complete upstream LVA environment
   and physical disconnect/reconnect behavior still require a Pi test.
-- `make test` covers the Python suite, controller tests/build/bundles, shell
-  lint and Ansible syntax. CI now also checks the recovery adapter and shell
+- `make test` covers the Python suite and its strict pyright check, controller
+  tests/build/bundles, shell lint and Ansible syntax. CI now also checks the recovery adapter and shell
   scripts. The escape regression test is not a complete SPA-JSON parser.
 
 ## Remaining actions, in order

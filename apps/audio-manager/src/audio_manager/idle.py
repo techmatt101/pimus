@@ -16,7 +16,7 @@ import logging
 import time
 from typing import Callable
 
-from .graph import Node
+from .graph import Node, media_name
 from .modules import STREAM_PREFIX
 
 
@@ -33,9 +33,7 @@ def playing_clients(sink_inputs: list[Node], owned_module_ids: set[str]) -> bool
     return any(
         not stream.get("corked", False)
         and str(stream.get("owner_module")) not in owned_module_ids
-        and not str((stream.get("properties") or {}).get("media.name", "")).startswith(
-            STREAM_PREFIX
-        )
+        and not media_name(stream).startswith(STREAM_PREFIX)
         for stream in sink_inputs
     )
 

@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+# These tests drive a few private daemon methods directly, standing where a
+# selector callback or the shutdown path would.
+# pyright: reportPrivateUsage=false
+
 import json
 import selectors
 import socket
 from typing import Any
 from unittest import mock
 
-from test_audio_manager import ManagerTestCase, fake_run, volume_writes
+from test_audio_manager import Listings, ManagerTestCase, fake_run, volume_writes
+from audio_manager import graph
 from audio_manager.daemon import AudioManager
 from audio_manager.system import pactl, usb_gadget
 from audio_manager.usb.volume_sync import UsbVolumeSync
@@ -24,8 +29,8 @@ class RouteStateTests(ManagerTestCase):
                 "volume_percent": 50,
             }}}
         )
-        stream = {"index": 61, "owner_module": 60}
-        listings = {
+        stream: graph.Node = {"index": 61, "owner_module": 60}
+        listings: Listings = {
             "sources": [{"name": "ADC"}],
             "sink-inputs": [stream],
         }

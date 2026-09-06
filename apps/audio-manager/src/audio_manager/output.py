@@ -42,8 +42,7 @@ def hold_client_streams(view: Graph, sink: Node | None, level: int) -> None:
     for stream in view.sink_inputs:
         if str(stream.get("sink")) != str(sink.get("index")):
             continue
-        media = str((stream.get("properties") or {}).get("media.name", ""))
-        if media.startswith(STREAM_PREFIX):
+        if graph.media_name(stream).startswith(STREAM_PREFIX):
             continue
         if graph.volume_is(stream, level):
             continue

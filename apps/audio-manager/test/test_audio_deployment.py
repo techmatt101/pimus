@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -139,7 +140,7 @@ FAILED=0
                 self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
 
     @staticmethod
-    def ready_status() -> dict:
+    def ready_status() -> dict[str, Any]:
         return {
             "sink": "hifi",
             "voice_input": "xvf",
@@ -260,9 +261,14 @@ print("incorrectly still running")
         spec = importlib.util.spec_from_file_location(
             "smartamp_audio_recovery", FILES / "smartamp_audio_recovery.py"
         )
+        assert spec is not None and spec.loader is not None
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        self.assertEqual(module.exit_on_capture_failure(lambda value: value)(42), 42)
+
+        def identity(value: int) -> int:
+            return value
+
+        self.assertEqual(module.exit_on_capture_failure(identity)(42), 42)
 
         def clean_exit():
             raise SystemExit(0)

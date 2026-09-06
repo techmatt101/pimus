@@ -3,25 +3,45 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, cast
 
 from .system import pactl
 
 
 Node = dict[str, Any]
+Properties = dict[str, Any]
 
 # pactl reports "no monitor" as an unsigned -1.
 NOT_A_MONITOR = (None, 4294967295, "4294967295")
 
 
+def properties_of(node: Node) -> Properties:
+    properties = node.get("properties")
+    return cast(Properties, properties) if isinstance(properties, dict) else {}
+
+
+def media_name(stream: Node) -> str:
+    return str(properties_of(stream).get("media.name", ""))
+
+
+def profiles_of(card: Node) -> dict[str, Properties]:
+    profiles = card.get("profiles")
+    if not isinstance(profiles, dict):
+        return {}
+    return {
+        str(name): profile
+        for name, profile in cast(dict[object, object], profiles).items()
+        if isinstance(profile, dict)
+    }
+
+
 def searchable(node: Node) -> str:
-    properties = node.get("properties") or {}
     return " ".join(
         str(value)
         for value in (
             node.get("name", ""),
             node.get("description", ""),
-            *properties.values(),
+            *properties_of(node).values(),
         )
     )
 
@@ -68,10 +88,7 @@ def find_owned_stream(
                 module_id is not None
                 and str(stream.get("owner_module")) == str(module_id)
             )
-            or (
-                media_name
-                and (stream.get("properties") or {}).get("media.name") == media_name
-            )
+            or (media_name and properties_of(stream).get("media.name") == media_name)
         ),
         None,
     )
@@ -95,12 +112,18 @@ def find_loaded_module(
 
 
 def channel_volumes(node: Node) -> list[int]:
-    channels = node.get("volume") or {}
+    channels = node.get("volume")
+    if not isinstance(channels, dict):
+        return []
     return [
         int(match.group(1))
-        for channel in channels.values()
+        for channel in cast(dict[object, object], channels).values()
         if isinstance(channel, dict)
-        and (match := re.match(r"(\d+)%", str(channel.get("value_percent", ""))))
+        and (
+            match := re.match(
+                r"(\d+)%", str(cast(Properties, channel).get("value_percent", ""))
+            )
+        )
     ]
 
 

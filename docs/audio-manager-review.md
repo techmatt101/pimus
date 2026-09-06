@@ -50,8 +50,8 @@ defects before the fixes. The resulting suite has 91 tests, including route
 recreation, failed-write recovery, multiple real socket connections, and
 cleanup after a helper fails.
 
-`make test` checks the Python tests and compilation, controller tests/build and
-bundles, ShellCheck, and Ansible syntax. Physical PipeWire timing, playback pops,
+`make test` checks the Python tests, compilation, and strict pyright type
+check, controller tests/build and bundles, ShellCheck, and Ansible syntax. Physical PipeWire timing, playback pops,
 AEC performance, and unobserved hardware resets cannot be certified by these
 tests. Existing measurement work remains in
 [audio reliability actions](audio-reliability-actions.md); in particular,

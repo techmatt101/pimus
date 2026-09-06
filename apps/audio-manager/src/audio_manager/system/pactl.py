@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from typing import Any
+from typing import Any, cast
 
 from . import process
 
@@ -18,10 +18,13 @@ def server_ready() -> bool:
 
 def list_json(kind: str) -> list[dict[str, Any]]:
     result = process.run("pactl", "--format=json", "list", kind)
-    value = json.loads(result.stdout)
+    value: object = json.loads(result.stdout)
     if not isinstance(value, list):
         raise RuntimeError(f"Unexpected pactl result for {kind}")
-    return value
+    entries = cast(list[object], value)
+    if not all(isinstance(entry, dict) for entry in entries):
+        raise RuntimeError(f"Unexpected pactl result for {kind}")
+    return cast(list[dict[str, Any]], entries)
 
 
 def list_modules() -> list[dict[str, Any]]:

@@ -1,0 +1,8 @@
+{
+    "include": ["src", "test"],
+    "typeCheckingMode": "strict",
+    "pythonVersion": "3.11",
+    "pythonPlatform": "Linux",
+    "extraPaths": ["src"],
+    "reportMissingModuleSource": false
+}

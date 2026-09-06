@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+# These tests drive a few private daemon methods directly, standing where a
+# selector callback or the shutdown path would.
+# pyright: reportPrivateUsage=false
+
 import array
 import contextlib
 import json
@@ -11,7 +15,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from unittest import mock
 
 
@@ -29,6 +33,13 @@ from audio_manager.system import (  # noqa: E402
 from audio_manager.config import AudioConfig  # noqa: E402
 from audio_manager.daemon import AudioManager  # noqa: E402
 from audio_manager.idle import IdleTracker  # noqa: E402
+
+
+Listings = dict[str, list[graph.Node]]
+
+
+def listing(listings: Listings) -> Callable[[str], list[graph.Node]]:
+    return lambda kind: listings.get(kind, [])
 
 
 def completed(*args: str, returncode: int = 0, stdout: str = "") -> Any:
@@ -52,7 +63,7 @@ def volume_writes(run: mock.Mock) -> list[tuple[str, str]]:
 class ManagerTestCase(unittest.TestCase):
     def make_manager(self, raw_config: dict[str, Any]) -> AudioManager:
         microphone = {"match": "XVF3800", **raw_config.get("microphone", {})}
-        base = {"output_match": "HiFiBerry", "sources": {}}
+        base: dict[str, Any] = {"output_match": "HiFiBerry", "sources": {}}
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         path = Path(directory.name)
@@ -66,10 +77,10 @@ class ManagerTestCase(unittest.TestCase):
 
     @staticmethod
     @contextlib.contextmanager
-    def _patched_graph(listings: dict[str, Any], run: Any) -> Any:
+    def _patched_graph(listings: Listings, run: Any) -> Any:
         """Answer every graph listing from a dict, and every command from run."""
         with mock.patch.object(
-            pactl, "list_json", side_effect=lambda kind: listings.get(kind, [])
+            pactl, "list_json", side_effect=listing(listings)
         ), mock.patch.object(
             pactl, "list_modules", side_effect=lambda: listings.get("modules", [])
         ), mock.patch.object(process, "run", side_effect=run) as run_mock:
@@ -91,6 +102,7 @@ class GraphMatchingTests(unittest.TestCase):
             },
         ]
         selected = graph.find_node(nodes, "XVF3800")
+        assert selected is not None
         self.assertEqual(selected["name"], "alsa_input.usb-XVF3800")
 
     def test_device_match_searches_properties(self) -> None:
@@ -101,6 +113,7 @@ class GraphMatchingTests(unittest.TestCase):
             }
         ]
         selected = graph.find_node(nodes, "HiFiBerry")
+        assert selected is not None
         self.assertEqual(selected["name"], "source.1")
 
     def test_owned_stream_matches_numeric_or_string_module_id(self) -> None:
@@ -108,16 +121,17 @@ class GraphMatchingTests(unittest.TestCase):
             {"index": 10, "owner_module": 7},
             {"index": 11, "owner_module": "8"},
         ]
-        self.assertEqual(graph.find_owned_stream(streams, 8)["index"], 11)
+        owned = graph.find_owned_stream(streams, 8)
+        assert owned is not None
+        self.assertEqual(owned["index"], 11)
         self.assertIsNone(graph.find_owned_stream(streams, 9))
 
         tagged = [
             {"index": 12, "properties": {"media.name": "SmartAmp.background_bridge"}}
         ]
-        self.assertEqual(
-            graph.find_owned_stream(tagged, 8, "SmartAmp.background_bridge")["index"],
-            12,
-        )
+        tagged_stream = graph.find_owned_stream(tagged, 8, "SmartAmp.background_bridge")
+        assert tagged_stream is not None
+        self.assertEqual(tagged_stream["index"], 12)
 
     def test_loaded_module_matches_required_route_arguments(self) -> None:
         modules = [
@@ -132,6 +146,7 @@ class GraphMatchingTests(unittest.TestCase):
             "module-loopback",
             ("source=background.monitor", "sink=hifiberry"),
         )
+        assert selected is not None
         self.assertEqual(selected["index"], 12)
 
     def test_module_listing_parses_indices_and_multiline_arguments(self) -> None:
@@ -156,6 +171,7 @@ class GraphMatchingTests(unittest.TestCase):
             "module-loopback",
             ("source=background.monitor", "sink=hifiberry"),
         )
+        assert selected is not None
         self.assertEqual(selected["index"], 536870912)
 
 
@@ -511,12 +527,12 @@ class ReconcileTests(ManagerTestCase):
         )
         manager.routes.enabled = {"usb": True}
         loaded: list[str] = []
-        capture_node = {
+        capture_node: graph.Node = {
             "name": "uac2_capture",
             "description": "UAC2Gadget",
             "monitor_of_sink": 4294967295,
         }
-        listings = {
+        listings: Listings = {
             "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
             "sources": [],
             "sink-inputs": [],
@@ -606,7 +622,7 @@ class ReconcileTests(ManagerTestCase):
                 },
             }
         ]
-        listings = {"sinks": sinks, "sources": [], "sink-inputs": [], "cards": []}
+        listings: Listings = {"sinks": sinks, "sources": [], "sink-inputs": [], "cards": []}
         commands: list[tuple[str, ...]] = []
 
         def run(*args: str, check: bool = True) -> Any:
@@ -686,7 +702,7 @@ class ReconcileTests(ManagerTestCase):
                 },
             }
         ]
-        listings = {"sinks": sinks, "sources": [], "sink-inputs": [], "cards": []}
+        listings: Listings = {"sinks": sinks, "sources": [], "sink-inputs": [], "cards": []}
 
         def run(*args: str, check: bool = True) -> Any:
             if args[0] == "amixer" and "sget" in args:
@@ -735,7 +751,7 @@ class ReconcileTests(ManagerTestCase):
         )
         manager.routes.enabled = {"aux": False}
         loaded: list[str] = []
-        listings = {
+        listings: Listings = {
             "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
             "sources": [
                 {
@@ -824,7 +840,7 @@ class ReconcileTests(ManagerTestCase):
             }
         )
         loaded: list[tuple[str, tuple[str, ...]]] = []
-        listings = {
+        listings: Listings = {
             "sinks": [
                 {"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"},
                 {
@@ -905,7 +921,7 @@ class ReconcileTests(ManagerTestCase):
             }
         )
         manager.modules.adopt("_aec", 30, ("hifiberry.monitor", "xvf_playback"))
-        listings = {
+        listings: Listings = {
             "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
             "sources": [{"name": "hifiberry.monitor", "monitor_of_sink": 0}],
             "sink-inputs": [],
@@ -933,7 +949,7 @@ class ReconcileTests(ManagerTestCase):
     ) -> None:
         manager = self.make_manager({"microphone": {"capture_channel": 1}})
         loaded: list[tuple[str, tuple[str, ...]]] = []
-        listings = {
+        listings: Listings = {
             "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
             "sources": [
                 # Listed first, and naming its master in a property, to prove
@@ -990,7 +1006,7 @@ class ReconcileTests(ManagerTestCase):
 
     def test_voice_capture_waits_instead_of_using_the_wrong_channel(self) -> None:
         manager = self.make_manager({"microphone": {"capture_channel": 1}})
-        listings = {
+        listings: Listings = {
             "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
             "sources": [
                 {
@@ -1079,7 +1095,7 @@ class ReconcileTests(ManagerTestCase):
         # A USB power cycle re-enumerated the XVF3800 before its capture side
         # was ready: WirePlumber restored an output-only profile, so no voice
         # source exists even though the card is present.
-        listings = {
+        listings: Listings = {
             "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
             "sources": [{"name": "hifiberry.monitor", "monitor_of_sink": 0}],
             "sink-inputs": [],
@@ -1116,7 +1132,7 @@ class ReconcileTests(ManagerTestCase):
     def test_voice_capture_is_released_when_the_xvf3800_disappears(self) -> None:
         manager = self.make_manager({"microphone": {"capture_channel": 1}})
         manager.modules.adopt("_voice_capture", 40, ("xvf_mic", "front-right"))
-        listings = {
+        listings: Listings = {
             "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
             "sources": [{"name": "hifiberry.monitor", "monitor_of_sink": 0}],
             "sink-inputs": [],
@@ -1470,7 +1486,7 @@ class VolumeTests(ManagerTestCase):
         manager.voice_bus.stream_index = 43
         manager.voice_bus.gain_applied = 50
         client = {"index": 7, "sink": 1, "properties": {"media.name": "mpv"}}
-        listings = {
+        listings: Listings = {
             "sinks": [{"name": "hifi", "index": 1, "description": "HiFiBerry"}],
             "sink-inputs": [client],
         }
@@ -1643,7 +1659,7 @@ class VolumeTests(ManagerTestCase):
         output_sink = {"name": "hifiberry", "index": 1}
         background_sink = {"name": "background", "index": 2}
         full = {"mono": {"value_percent": "100%"}}
-        listings = {
+        listings: Listings = {
             "sinks": [output_sink, background_sink],
             "sources": [
                 {
@@ -1726,7 +1742,7 @@ class BusTests(ManagerTestCase):
             "volume": {"mono": {"value_percent": "80%"}},
         }
         voice = {"name": "smartamp_voice", "owner_module": 12}
-        listings = {
+        listings: Listings = {
             "sinks": [output_sink, voice],
             "sources": [{"name": "smartamp_voice.monitor"}],
             "sink-inputs": [
@@ -1745,7 +1761,7 @@ class BusTests(ManagerTestCase):
             return 13
 
         with mock.patch.object(
-            pactl, "list_json", side_effect=lambda kind: listings.get(kind, [])
+            pactl, "list_json", side_effect=listing(listings)
         ), mock.patch.object(pactl, "list_modules", return_value=[]), mock.patch.object(
             pactl, "load_module", side_effect=load_module
         ), mock.patch.object(process, "run") as run:
@@ -1767,7 +1783,7 @@ class BusTests(ManagerTestCase):
 
         # A settled bus writes nothing on the next pass.
         with mock.patch.object(
-            pactl, "list_json", side_effect=lambda kind: listings.get(kind, [])
+            pactl, "list_json", side_effect=listing(listings)
         ), mock.patch.object(pactl, "list_modules", return_value=[]), mock.patch.object(
             process, "run"
         ) as run:
@@ -1780,7 +1796,7 @@ class BusTests(ManagerTestCase):
             "mono": {"value_percent": "75%"}
         }
         with mock.patch.object(
-            pactl, "list_json", side_effect=lambda kind: listings.get(kind, [])
+            pactl, "list_json", side_effect=listing(listings)
         ), mock.patch.object(pactl, "list_modules", return_value=[]), mock.patch.object(
             process, "run"
         ) as run:
@@ -1800,9 +1816,9 @@ class BusTests(ManagerTestCase):
                 }
             }
         )
-        output_sink = {"name": "hifiberry"}
-        background = {"name": "background", "owner_module": 10}
-        listings = {
+        output_sink: graph.Node = {"name": "hifiberry"}
+        background: graph.Node = {"name": "background", "owner_module": 10}
+        listings: Listings = {
             "sinks": [output_sink],
             "sources": [],
             "sink-inputs": [{"index": 21, "owner_module": 11}],
@@ -1820,7 +1836,7 @@ class BusTests(ManagerTestCase):
             return 11
 
         with mock.patch.object(
-            pactl, "list_json", side_effect=lambda kind: listings.get(kind, [])
+            pactl, "list_json", side_effect=listing(listings)
         ), mock.patch.object(pactl, "list_modules", return_value=[]), mock.patch.object(
             pactl, "load_module", side_effect=load_module
         ), mock.patch.object(process, "run"):

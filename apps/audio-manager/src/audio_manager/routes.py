@@ -9,7 +9,7 @@ from typing import Any
 from . import graph, volume
 from .system import pactl
 from .config import SourceConfig
-from .graph import Graph, Node
+from .graph import Graph, Node, profiles_of
 from .modules import ModuleRegistry, stream_media_name
 
 
@@ -36,7 +36,7 @@ def activate_parked_card(view: Graph, pattern: str) -> None:
     card = view.find_card(pattern)
     if card is None or card.get("active_profile") != "off":
         return
-    profiles = card.get("profiles") or {}
+    profiles = profiles_of(card)
     profile = next(
         (
             name

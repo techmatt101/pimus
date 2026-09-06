@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 
 from . import volume
 
@@ -163,4 +163,4 @@ def _microphone(raw: Mapping[str, Any]) -> MicrophoneConfig:
 
 def _section(raw: Mapping[str, Any], key: str) -> Mapping[str, Any]:
     section = raw.get(key)
-    return section if isinstance(section, Mapping) else {}
+    return cast(Mapping[str, Any], section) if isinstance(section, Mapping) else {}

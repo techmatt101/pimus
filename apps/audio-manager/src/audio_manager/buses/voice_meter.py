@@ -83,7 +83,7 @@ class VoiceLevelMeter:
     ) -> None:
         self._selector = selector
         self._on_level = on_level
-        self._capture = capture or (
+        self._capture: Callable[[str], subprocess.Popen[bytes]] = capture or (
             lambda source: parec.capture_mono(
                 source,
                 rate=SAMPLE_RATE,

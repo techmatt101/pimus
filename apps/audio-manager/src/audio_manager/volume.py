@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .system import pactl
+
+
+if TYPE_CHECKING:
+    # The control computer's Python may predate 3.10; the Pi's does not.
+    from typing import TypeGuard
 
 
 def clamp(percent: Any) -> int:
@@ -17,7 +22,7 @@ def scale(level: int, percent: int) -> int:
     return round(level * percent / 100)
 
 
-def is_percent(value: Any) -> bool:
+def is_percent(value: Any) -> TypeGuard[float]:
     return (
         not isinstance(value, bool)
         and isinstance(value, (int, float))

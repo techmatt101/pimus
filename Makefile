@@ -82,6 +82,9 @@ test: build ## Run local source and Ansible checks without contacting the Pi
 	@# them as plain dependencies and both maps are compared against it.
 	@python3 -c 'import json,sys; m=json.load(open("apps/controller/package.json")); c={**m["dependencies"], **m["optionalDependencies"]}; p=json.load(open("apps/playground/package.json"))["dependencies"]; d=sorted(k for k,v in c.items() if p.get(k)!=v); sys.exit(f"apps/playground pins different versions than apps/controller: {d}" if d else 0)'
 	python3 -m compileall -q apps/audio-manager/src
+	@# Strict pyright is the audio manager's type check; the daemon runs on
+	@# Bookworm's Python 3.11, so that is the version it checks against.
+	pnpm exec pyright --project apps/audio-manager
 	python3 -m compileall -q ansible/roles/smartamp/files/smartamp_lva.py ansible/roles/smartamp/files/smartamp_audio_recovery.py
 	python3 -m unittest discover -s apps/audio-manager/test
 	node --test $$(find apps/controller/dist/test -name '*.test.mjs' | sort)

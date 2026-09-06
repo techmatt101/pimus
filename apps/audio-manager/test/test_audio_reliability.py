@@ -1,19 +1,28 @@
 from __future__ import annotations
 
+# These tests drive a few private daemon methods directly, standing where a
+# selector callback or the shutdown path would.
+# pyright: reportPrivateUsage=false
+
 import json
 import socket
-import tempfile
-from pathlib import Path
+from typing import Any
 from unittest import mock
 
-from test_audio_manager import ManagerTestCase, completed, fake_run, volume_writes
+from test_audio_manager import (
+    Listings,
+    ManagerTestCase,
+    completed,
+    fake_run,
+    volume_writes,
+)
 from audio_manager import graph
 from audio_manager.status import write as write_status
 from audio_manager.config import AudioConfig
 from audio_manager.system import pactl, usb_gadget
 
 
-def stereo(left: int, right: int) -> dict:
+def stereo(left: int, right: int) -> graph.Node:
     return {
         "volume": {
             "front-left": {"value_percent": f"{left}%"},
@@ -24,7 +33,9 @@ def stereo(left: int, right: int) -> dict:
 
 class AudioReliabilityTests(ManagerTestCase):
     def test_all_output_channels_are_pinned_to_unity_behind_the_guard(self) -> None:
-        sink = {"name": "hifi", "description": "HiFiBerry", "index": 1, **stereo(0, 100)}
+        sink: graph.Node = {
+            "name": "hifi", "description": "HiFiBerry", "index": 1, **stereo(0, 100)
+        }
         self.assertEqual(graph.volume_state(sink), (100, False))
         self.assertFalse(graph.volume_is(sink, 100))
         manager = self.make_manager({})
@@ -41,7 +52,7 @@ class AudioReliabilityTests(ManagerTestCase):
 
     def test_music_command_updates_direct_clients_immediately(self) -> None:
         manager = self.make_manager({})
-        listings = {
+        listings: Listings = {
             "sinks": [{"index": 1, "name": "hifi", "description": "HiFiBerry"}],
             "sink-inputs": [
                 {"index": 10, "sink": 1, **stereo(50, 100)},
@@ -110,8 +121,8 @@ class AudioReliabilityTests(ManagerTestCase):
         manager = self.make_manager(
             {"microphone": {"echo_reference": {"enabled": True, "sink_match": "XVF"}}}
         )
-        sink = {"name": "xvf", **stereo(0, 100), "mute": False}
-        listings = {
+        sink: graph.Node = {"name": "xvf", **stereo(0, 100), "mute": False}
+        listings: Listings = {
             "sinks": [sink],
             "sources": [{"name": "hifi.monitor"}],
             "modules": [
@@ -159,26 +170,26 @@ class RebuildSafetyTests(ManagerTestCase):
                 "sources": {"aux": {"enabled": True, "match": "ADC"}},
             }
         )
-        self.sink = {
+        self.sink: graph.Node = {
             "name": "hifiberry",
             "description": "HiFiBerry",
             "index": 1,
             "mute": False,
             **stereo(80, 80),
         }
-        self.stream = {
+        self.stream: graph.Node = {
             "index": 51,
             "owner_module": 50,
             "properties": {"media.name": "SmartAmp.aux"},
             **stereo(100, 100),
         }
-        self.listings = {
+        self.listings: Listings = {
             "sinks": [self.sink],
             "sources": [{"name": "adc", "description": "ADC"}],
             "sink-inputs": [],
             "modules": [],
         }
-        self.calls = []
+        self.calls: list[tuple[str, ...]] = []
         self.publish_stream = True
         self.fail_gain = False
         self.fail_unmute = False
@@ -192,7 +203,7 @@ class RebuildSafetyTests(ManagerTestCase):
             patch.__enter__()
             self.addCleanup(patch.__exit__, None, None, None)
 
-    def run_command(self, *args: str, check: bool = True):
+    def run_command(self, *args: str, check: bool = True) -> Any:
         self.calls.append(args)
         command = args[1]
         if command == "load-module":
@@ -331,16 +342,16 @@ class BackgroundRouteSafetyTests(ManagerTestCase):
                 },
             }
         )
-        sink = {
+        sink: graph.Node = {
             "name": "hifiberry", "description": "HiFiBerry", "index": 1,
             "mute": False, **stereo(100, 100),
         }
-        stream = {
+        stream: graph.Node = {
             "index": 51, "owner_module": 50, "sink": 2,
             "properties": {"media.name": "SmartAmp.usb"},
             **stereo(100, 100),
         }
-        listings = {
+        listings: Listings = {
             "sinks": [
                 sink,
                 {"name": "smartamp_background", "index": 2, "owner_module": 20},
@@ -361,7 +372,7 @@ class BackgroundRouteSafetyTests(ManagerTestCase):
             ],
         }
 
-        def run(*args, check=True):
+        def run(*args: str, check: bool = True) -> Any:
             if args[1] == "load-module":
                 self.assertTrue(sink["mute"])
                 listings["modules"].append(

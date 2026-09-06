@@ -23,6 +23,7 @@ class Commands(Protocol):
         self, connection: socket.socket, message: Any
     ) -> tuple[dict[str, Any], bool]:
         """Applies one command; returns its reply and whether to reconcile."""
+        ...
 
     def client_gone(self, connection: socket.socket) -> None:
         """Releases anything held on behalf of a connection that closed."""

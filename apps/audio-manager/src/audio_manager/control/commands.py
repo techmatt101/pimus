@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import socket
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, cast
 
 from .. import volume
 
@@ -67,13 +67,13 @@ class CommandHandler:
         if not isinstance(message, dict):
             return _error("message must be a JSON object")
         LOG.debug("socket command: %s", json.dumps(message))
-        command = message.get("command")
+        command = cast(dict[str, Any], message).get("command")
         if not isinstance(command, str):
             return _error("command must be a string")
         handler = self._handlers.get(command)
         if handler is None:
             return _error(f"unknown command {command!r}")
-        return handler(connection, message)
+        return handler(connection, cast(dict[str, Any], message))
 
     def client_gone(self, connection: socket.socket) -> None:
         if connection in self._meter_requests:
@@ -187,7 +187,7 @@ class CommandHandler:
         routes = self._manager.routes
         changed = False
         for name in list(routes.enabled):
-            enabled = requested.get(name)
+            enabled = cast(dict[str, Any], requested).get(name)
             # Unknown routes and non-boolean values are ignored, not coerced.
             if isinstance(enabled, bool):
                 changed = routes.set_enabled(name, enabled) or changed
