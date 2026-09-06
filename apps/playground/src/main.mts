@@ -247,8 +247,8 @@ const layout = createLayout({
     notifications,
     ...(remote ? {remote} : {}),
     audio: {
-        setSource: (name, command) => {
-            audio.setSource(name, command)
+        setSourceState: (name, command) => {
+            audio.setSourceState(name, command)
         },
         setVolume: (command) => {
             if (command === 'vol_mute') return audio.setVolMute(audio.state.volMuted !== true)

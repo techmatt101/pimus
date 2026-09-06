@@ -50,7 +50,7 @@ export function volumeBinding(audio: AudioControls, command: VolumeActionName): 
 export function routeBinding(audio: AudioControls, source: string, command: RouteActionName): Binding {
     return {
         action: {type: 'audio', source, command},
-        run: () => audio.setSource(source, command),
+        run: () => audio.setSourceState(source, command),
     }
 }
 

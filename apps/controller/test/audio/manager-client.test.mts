@@ -66,19 +66,20 @@ test('route toggles travel over the audio manager socket and survive reconnects'
     await waitFor(() => client.state.sources.aux === true)
 
     // Toggles update the cache immediately and send an absolute state.
-    client.setSource('usb', 'toggle')
+    client.setSourceState('usb', 'toggle')
     assert.equal(client.state.sources.usb, true)
     await waitFor(() => received.length >= 2)
-    assert.deepEqual(JSON.parse(received[1] ?? ''), {command: 'set-source', name: 'usb', state: 'on'})
+    assert.deepEqual(JSON.parse(received[1] ?? ''), {command: 'set-source-state', name: 'usb', state: 'on'})
 
-    // After a manager restart the client re-asserts its cached toggles.
+    // After a manager restart the client re-asserts its cached toggles, one
+    // route at a time and as absolute states.
     const changesBeforeDrop = changes
     connections[0]?.destroy()
-    await waitFor(() => received.length >= 3)
-    assert.deepEqual(JSON.parse(received[2] ?? ''), {
-        command: 'set-sources',
-        sources: {aux: true, usb: true},
-    })
+    await waitFor(() => received.length >= 4)
+    assert.deepEqual(received.slice(2, 4).map((line) => JSON.parse(line)), [
+        {command: 'set-source-state', name: 'aux', state: 'on'},
+        {command: 'set-source-state', name: 'usb', state: 'on'},
+    ])
     assert.ok(changes > changesBeforeDrop)
 })
 
@@ -98,9 +99,9 @@ test('toggles before the first state sync defer to the manager', () => {
 
     // With no authoritative state yet, an empty cache would resolve any toggle
     // to "on"; the raw command must go to the manager instead.
-    client.setSource('aux', 'toggle')
+    client.setSourceState('aux', 'toggle')
     assert.deepEqual(JSON.parse(fake.written.at(-1) ?? ''), {
-        command: 'set-source',
+        command: 'set-source-state',
         name: 'aux',
         state: 'toggle',
     })
@@ -108,9 +109,9 @@ test('toggles before the first state sync defer to the manager', () => {
 
     // Once synced, toggles resolve locally and travel as absolute states.
     fake.emit('data', '{"event":"state","sources":{"aux":true}}\n')
-    client.setSource('aux', 'toggle')
+    client.setSourceState('aux', 'toggle')
     assert.deepEqual(JSON.parse(fake.written.at(-1) ?? ''), {
-        command: 'set-source',
+        command: 'set-source-state',
         name: 'aux',
         state: 'off',
     })
@@ -227,7 +228,6 @@ test('voice volume updates optimistically and re-asserts after a reconnect', asy
     assert.ok(second)
     second.emit('connect')
     assert.deepEqual(second.written.map((line) => JSON.parse(line)), [
-        {command: 'set-sources', sources: {}},
         {command: 'set-voice-volume', percent: 100},
         {command: 'set-music-volume', percent: 55},
     ])

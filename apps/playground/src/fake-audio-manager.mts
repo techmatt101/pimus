@@ -102,16 +102,8 @@ export class FakeAudioManager {
 
         if (command === 'get-state') {
             this.sendState(socket)
-        } else if (command === 'set-source') {
-            this.setSource(socket, String(message.name ?? ''), String(message.state ?? ''))
-        } else if (command === 'set-sources') {
-            const requested = message.sources
-            if (typeof requested === 'object' && requested !== null && !Array.isArray(requested)) {
-                for (const [name, enabled] of Object.entries(requested as Record<string, unknown>)) {
-                    if (this.knows(name)) this.sources[name] = Boolean(enabled)
-                }
-            }
-            this.broadcastState()
+        } else if (command === 'set-source-state') {
+            this.setSourceState(socket, String(message.name ?? ''), String(message.state ?? ''))
         } else if (command === 'set-voice-volume') {
             const percent = message.percent
             if (typeof percent !== 'number' || percent < 0 || percent > 100) {
@@ -160,7 +152,7 @@ export class FakeAudioManager {
         }
     }
 
-    private setSource(socket: net.Socket, name: string, state: string): void {
+    private setSourceState(socket: net.Socket, name: string, state: string): void {
         if (!this.knows(name)) {
             this.reject(socket, `unknown source "${name}"`)
             return

@@ -211,7 +211,7 @@ class ControlSocketTests(ManagerTestCase):
         connection = mock.Mock()
 
         reply, reconcile = manager.commands.apply(
-            connection, {"command": "set-source", "name": "usb", "state": "toggle"}
+            connection, {"command": "set-source-state", "name": "usb", "state": "toggle"}
         )
         self.assertEqual(
             reply,
@@ -229,29 +229,15 @@ class ControlSocketTests(ManagerTestCase):
 
         # Re-applying the current state must not trigger graph work.
         _, reconcile = manager.commands.apply(
-            connection, {"command": "set-source", "name": "usb", "state": "on"}
+            connection, {"command": "set-source-state", "name": "usb", "state": "on"}
         )
         self.assertFalse(reconcile)
 
         reply, reconcile = manager.commands.apply(
-            connection, {"command": "set-source", "name": "phono", "state": "on"}
+            connection, {"command": "set-source-state", "name": "phono", "state": "on"}
         )
         self.assertEqual(reply["event"], "error")
         self.assertFalse(reconcile)
-
-    def test_reconnect_sync_adopts_only_configured_boolean_sources(self) -> None:
-        manager = self._duckable_manager()
-        manager.routes.enabled = {"aux": True, "usb": False}
-        reply, reconcile = manager.commands.apply(
-            mock.Mock(),
-            {
-                "command": "set-sources",
-                "sources": {"aux": False, "usb": "yes", "bogus": True},
-            },
-        )
-        # Unknown routes and non-boolean values are ignored, not coerced.
-        self.assertEqual(reply["sources"], {"aux": False, "usb": False})
-        self.assertTrue(reconcile)
 
     def test_socket_commands_reconcile_and_answer_with_live_state(self) -> None:
         manager = self._duckable_manager()
@@ -264,7 +250,7 @@ class ControlSocketTests(ManagerTestCase):
         manager.control.clients = {left: b""}
         manager.selector.register(left, selectors.EVENT_READ, lambda: None)
 
-        right.sendall(b'{"command": "set-source", "name": "aux", "state": "on"}\n')
+        right.sendall(b'{"command": "set-source-state", "name": "aux", "state": "on"}\n')
         manager.control.read(left)
 
         self.assertEqual(

@@ -70,7 +70,7 @@ export class ActionTile implements Tile {
     }
 
     press(): void {
-        // Not merely cosmetic: setSource writes the name into the cached route
+        // Not merely cosmetic: setSourceState writes the name into the cached route
         // list, so a pressable unavailable key would light itself up.
         if (!this.#appearance().available) return
         this.#config.binding?.run()

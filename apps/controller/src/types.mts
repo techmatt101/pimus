@@ -173,7 +173,7 @@ export interface LvaSender {
 export interface AudioControls {
     setVolume(command: string): unknown
 
-    setSource(name: string, command: string): unknown
+    setSourceState(name: string, command: string): unknown
 
     setVoiceVolume(percent: number): unknown
 }

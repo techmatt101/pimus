@@ -44,8 +44,7 @@ class CommandHandler:
             "set-voice-volume": self._set_voice_volume,
             "set-music-volume": self._set_music_volume,
             "set-vol-mute": self._set_vol_mute,
-            "set-source": self._set_source,
-            "set-sources": self._set_sources,
+            "set-source-state": self._set_source_state,
             "get-state": self._get_state,
             "resync": self._resync,
         }
@@ -167,7 +166,7 @@ class CommandHandler:
         self._manager.set_vol_mute(muted)
         return self._state()
 
-    def _set_source(self, _: socket.socket, message: dict[str, Any]) -> Reply:
+    def _set_source_state(self, _: socket.socket, message: dict[str, Any]) -> Reply:
         routes = self._manager.routes
         name = message.get("name")
         requested = message.get("state")
@@ -179,19 +178,6 @@ class CommandHandler:
             not routes.enabled[name] if requested == "toggle" else requested == "on"
         )
         return self._state(changed=routes.set_enabled(name, enabled))
-
-    def _set_sources(self, _: socket.socket, message: dict[str, Any]) -> Reply:
-        requested = message.get("sources")
-        if not isinstance(requested, dict):
-            return _error("set-sources needs a sources object")
-        routes = self._manager.routes
-        changed = False
-        for name in list(routes.enabled):
-            enabled = cast(dict[str, Any], requested).get(name)
-            # Unknown routes and non-boolean values are ignored, not coerced.
-            if isinstance(enabled, bool):
-                changed = routes.set_enabled(name, enabled) or changed
-        return self._state(changed=changed)
 
     def _get_state(self, _: socket.socket, __: dict[str, Any]) -> Reply:
         return self._state()

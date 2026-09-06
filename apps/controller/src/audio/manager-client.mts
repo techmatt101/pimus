@@ -89,7 +89,9 @@ export class AudioManagerClient {
             // A manager restart resets its routes to configured defaults, so
             // re-assert the cache; with no cache yet, adopt what the manager has.
             if (this.state.routesKnown) {
-                this.#write({command: 'set-sources', sources: this.state.sources})
+                for (const [name, enabled] of Object.entries(this.state.sources)) {
+                    this.#write({command: 'set-source-state', name, state: enabled ? 'on' : 'off'})
+                }
                 if (this.state.voiceVolume !== undefined) this.setVoiceVolume(this.state.voiceVolume)
                 if (this.state.musicVolume !== undefined) this.setMusicVolume(this.state.musicVolume)
                 if (this.state.volMuted !== undefined) this.setVolMute(this.state.volMuted)
@@ -134,9 +136,9 @@ export class AudioManagerClient {
      * Before the first authoritative state arrives the raw command is forwarded
      * for the manager to resolve against its own live state.
      */
-    setSource(name: string, command: string): void {
+    setSourceState(name: string, command: string): void {
         if (!this.state.routesKnown) {
-            this.#write({command: 'set-source', name, state: command})
+            this.#write({command: 'set-source-state', name, state: command})
             return
         }
         const enabled = command === 'toggle' ? !this.state.sources[name] : command === 'on'
@@ -144,7 +146,7 @@ export class AudioManagerClient {
             this.state = {...this.state, sources: {...this.state.sources, [name]: enabled}}
             this.#onStateChange()
         }
-        this.#write({command: 'set-source', name, state: enabled ? 'on' : 'off'})
+        this.#write({command: 'set-source-state', name, state: enabled ? 'on' : 'off'})
     }
 
     setVoiceVolume(percent: number): void {

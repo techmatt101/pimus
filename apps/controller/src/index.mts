@@ -89,8 +89,8 @@ const surface = config.streamdeck?.enabled
         clock: Date.now,
         lva,
         audio: {
-            setSource: (name, command) => {
-                audio.setSource(name, command)
+            setSourceState: (name, command) => {
+                audio.setSourceState(name, command)
             },
             // The output sink stays pinned at 100%: loudness lives on the audio
             // manager's music and voice gains, and the mute beside the music one.
