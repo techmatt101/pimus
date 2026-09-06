@@ -9,7 +9,7 @@
 //
 // Home Assistant is the one boundary that is NOT faked: the playground runs the
 // real WebSocket client against a real instance (HOME_ASSISTANT_URL /
-// HOME_ASSISTANT_TOKEN, from the shell or apps/playground/.env), so the deck
+// HOME_ASSISTANT_TOKEN, from the shell or tools/playground/.env), so the deck
 // follows a real house. The browser's notification buttons still stand in for an
 // automation firing `smartamp_notify`.
 //
@@ -31,20 +31,20 @@ import {FakeLvaServer} from './fake-lva.mjs'
 import {FakeVoiceSensor} from './fake-voice-sensor.mjs'
 import {type PlaygroundInput, PlaygroundServer} from './server.mjs'
 
-import {VoiceDucker} from '../../controller/src/audio/ducking.mjs'
-import {AudioSystem} from '../../controller/src/audio/system.mjs'
-import {loadConfig} from '../../controller/src/config.mjs'
-import {HomeAssistantClient} from '../../controller/src/home-assistant/client.mjs'
-import {NotificationCenter} from '../../controller/src/home-assistant/notifications.mjs'
-import {RemoteTileServer} from '../../controller/src/remote/server.mjs'
-import {ControlModel, createState} from '../../controller/src/state.mjs'
-import {AutoBrightness} from '../../controller/src/streamdeck/auto-brightness.mjs'
-import {runDeckLoop} from '../../controller/src/streamdeck/deck.mjs'
-import {BRIGHTNESS, createLayout, SLEEP} from '../../controller/src/streamdeck/layout.mjs'
-import {DeckRenderer} from '../../controller/src/streamdeck/renderer.mjs'
-import {SleepController} from '../../controller/src/streamdeck/sleep.mjs'
-import {LvaClient} from '../../controller/src/voice/lva-client.mjs'
-import {ReSpeakerController} from '../../controller/src/voice/respeaker.mjs'
+import {VoiceDucker} from '../../../apps/controller/src/audio/ducking.mjs'
+import {AudioSystem} from '../../../apps/controller/src/audio/system.mjs'
+import {loadConfig} from '../../../apps/controller/src/config.mjs'
+import {HomeAssistantClient} from '../../../apps/controller/src/home-assistant/client.mjs'
+import {NotificationCenter} from '../../../apps/controller/src/home-assistant/notifications.mjs'
+import {RemoteTileServer} from '../../../apps/controller/src/remote/server.mjs'
+import {ControlModel, createState} from '../../../apps/controller/src/state.mjs'
+import {AutoBrightness} from '../../../apps/controller/src/streamdeck/auto-brightness.mjs'
+import {runDeckLoop} from '../../../apps/controller/src/streamdeck/deck.mjs'
+import {BRIGHTNESS, createLayout, SLEEP} from '../../../apps/controller/src/streamdeck/layout.mjs'
+import {DeckRenderer} from '../../../apps/controller/src/streamdeck/renderer.mjs'
+import {SleepController} from '../../../apps/controller/src/streamdeck/sleep.mjs'
+import {LvaClient} from '../../../apps/controller/src/voice/lva-client.mjs'
+import {ReSpeakerController} from '../../../apps/controller/src/voice/respeaker.mjs'
 
 const argument = (name: string, fallback: string): string => {
     const match = process.argv.find((value) => value.startsWith(`--${name}=`))
@@ -55,7 +55,7 @@ const argument = (name: string, fallback: string): string => {
  * Fold `KEY=VALUE` lines from a `.env` file into `process.env`, without
  * overriding anything already set in the shell. The playground talks to a real
  * Home Assistant, so this is how the two credentials are supplied: drop them in
- * apps/playground/.env (git-ignored) rather than exporting them by hand. A
+ * tools/playground/.env (git-ignored) rather than exporting them by hand. A
  * missing file is fine — the shell environment is then the only source.
  */
 function loadEnvFile(file: string): void {
@@ -78,7 +78,7 @@ function loadEnvFile(file: string): void {
 }
 
 // pnpm runs this script with the package directory as the working directory, so
-// the credentials file sits beside package.json at apps/playground/.env.
+// the credentials file sits beside package.json at tools/playground/.env.
 loadEnvFile(path.join(process.cwd(), '.env'))
 const haUrl = process.env.HOME_ASSISTANT_URL
 const haToken = process.env.HOME_ASSISTANT_TOKEN
@@ -86,7 +86,7 @@ if (!haUrl || !haToken) {
     console.error(
         'The playground drives a real Home Assistant, so it needs one to connect to.\n' +
         'Set HOME_ASSISTANT_URL (e.g. http://homeassistant.local:8123) and a long-lived\n' +
-        'HOME_ASSISTANT_TOKEN — in your shell or in apps/playground/.env (see .env.example).',
+        'HOME_ASSISTANT_TOKEN — in your shell or in tools/playground/.env (see .env.example).',
     )
     process.exit(1)
 }

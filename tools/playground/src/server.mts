@@ -12,8 +12,8 @@ import type {Message, PlaygroundBus} from './bus.mjs'
 
 // The page is read from the source tree on every request rather than copied
 // into dist, so editing ui/index.html only needs a browser refresh. The hops
-// climb out of dist/playground/src/ back to the app root.
-const PAGE_PATH = fileURLToPath(new URL('../../../ui/index.html', import.meta.url))
+// climb out of dist/tools/playground/src/ back to the app root.
+const PAGE_PATH = fileURLToPath(new URL('../../../../ui/index.html', import.meta.url))
 
 /**
  * How long a browser waits before reconnecting a dropped stream. Short, because

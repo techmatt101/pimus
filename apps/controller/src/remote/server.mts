@@ -1,4 +1,4 @@
-// Protocol (see apps/remote-demo for a runnable client):
+// Protocol (see tools/remote-demo for a runnable client):
 //
 //   client -> {"type": "hello", "token": "..."}          must come first
 //   client -> {"type": "tile", "slot": 0, "label": "SLACK",

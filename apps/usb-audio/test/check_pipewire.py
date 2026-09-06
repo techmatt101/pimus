@@ -1,6 +1,6 @@
 """Native playback smoke check using synthetic endpoints in a test PipeWire session.
 
-Run with PYTHONPATH=apps/audio-common/src:apps/usb-audio/src. This is separate
+Run with PYTHONPATH=libs/audio-common/src:apps/usb-audio/src. This is separate
 from unittest discovery because it requires running PipeWire and WirePlumber.
 """
 from __future__ import annotations

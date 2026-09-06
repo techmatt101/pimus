@@ -791,7 +791,7 @@ key, with the caption bar over its foot when a `label` is sent too) or just a
 connection that pushed it — a client that disconnects or crashes takes its keys
 with it, so the page can never show stale tiles.
 
-`apps/remote-demo` is a runnable example client for the control computer:
+`tools/remote-demo` is a runnable example client for the control computer:
 
 ```sh
 pnpm --filter pimus-remote-demo start -- --token=<REMOTE_TILES_TOKEN>

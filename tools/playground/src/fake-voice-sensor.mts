@@ -3,7 +3,7 @@
 // beam holds speech; this synthesises somebody talking and slowly walking around
 // the array, so the ring's listening wave has something to follow.
 
-import type {VoiceSensing, VoiceSensor} from '../../controller/src/types.mjs'
+import type {VoiceSensing, VoiceSensor} from '../../../apps/controller/src/types.mjs'
 
 const TAU = Math.PI * 2
 

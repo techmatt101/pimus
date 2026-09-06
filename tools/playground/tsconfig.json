@@ -12,10 +12,11 @@
         "types": [
             "node"
         ],
-        // rootDir is the apps/ directory so the controller sources this app
+        // rootDir is the repository root so the controller sources this app
         // imports compile alongside it, keeping every relative .mjs specifier
-        // valid in the output: dist/playground/src/ and dist/controller/src/.
-        "rootDir": "..",
+        // valid in the output: dist/tools/playground/src/ and
+        // dist/apps/controller/src/.
+        "rootDir": "../..",
         "outDir": "dist",
         "sourceMap": true,
         "strict": true,
@@ -31,6 +32,6 @@
     },
     "include": [
         "src/**/*.mts",
-        "../controller/src/**/*.mts"
+        "../../apps/controller/src/**/*.mts"
     ]
 }

@@ -49,18 +49,18 @@ update-versions: ## Refresh every upstream version pin and checksum to the lates
 # Development only. Runs the real controller against fake hardware and fake
 # services, with the Stream Deck drawn in a browser; it never contacts the Pi.
 playground: ## Run the controller locally with a fake Stream Deck in a browser
-	[ -d apps/playground/node_modules ] || pnpm install --frozen-lockfile
+	[ -d tools/playground/node_modules ] || pnpm install --frozen-lockfile
 	pnpm --filter pimus-playground start
 
 # The exiting counterpart to "playground": type-checks the fakes against the
 # controller sources without starting the server, so it can follow "make test".
 playground-check: ## Type-check the playground against the controller sources
-	[ -d apps/playground/node_modules ] || pnpm install --frozen-lockfile
+	[ -d tools/playground/node_modules ] || pnpm install --frozen-lockfile
 	pnpm --filter pimus-playground typecheck
 
 # Recompiles on every save, restarts the playground, and reloads the browser.
 dev: ## Run the playground with live reload while you edit the controller
-	[ -d apps/playground/node_modules ] || pnpm install --frozen-lockfile
+	[ -d tools/playground/node_modules ] || pnpm install --frozen-lockfile
 	pnpm --filter pimus-playground dev
 
 provision: build ## Configure every Pi and reboot when boot settings change
@@ -80,8 +80,8 @@ test: build ## Run local source and Ansible checks without contacting the Pi
 	@# The deck-only packages are optional in the controller so a deck-less Pi
 	@# never installs them, but the playground always draws, so it pins all of
 	@# them as plain dependencies and both maps are compared against it.
-	@python3 -c 'import json,sys; m=json.load(open("apps/controller/package.json")); c={**m["dependencies"], **m["optionalDependencies"]}; p=json.load(open("apps/playground/package.json"))["dependencies"]; d=sorted(k for k,v in c.items() if p.get(k)!=v); sys.exit(f"apps/playground pins different versions than apps/controller: {d}" if d else 0)'
-	python3 -m compileall -q apps/audio-manager/src apps/usb-audio/src apps/audio-common/src
+	@python3 -c 'import json,sys; m=json.load(open("apps/controller/package.json")); c={**m["dependencies"], **m["optionalDependencies"]}; p=json.load(open("tools/playground/package.json"))["dependencies"]; d=sorted(k for k,v in c.items() if p.get(k)!=v); sys.exit(f"tools/playground pins different versions than apps/controller: {d}" if d else 0)'
+	python3 -m compileall -q apps/audio-manager/src apps/usb-audio/src libs/audio-common/src
 	@# Strict pyright is the audio manager's type check; the daemon runs on
 	@# Bookworm's Python 3.11, so that is the version it checks against.
 	pnpm exec pyright --project apps/audio-manager

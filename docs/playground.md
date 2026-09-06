@@ -12,7 +12,7 @@ make playground   # build once and run
 The page opens at <http://127.0.0.1:8787/>. Stop it with `Ctrl-C`.
 
 Nothing here touches the Pi, and the playground is never deployed: it is its own
-app under `apps/playground/`, outside the tree Ansible copies.
+app under `tools/playground/`, outside the tree Ansible copies.
 
 ## What is real and what is fake
 
@@ -98,7 +98,7 @@ browser. Pass them through pnpm, e.g.
 playground sources, recompiles on save, restarts the playground, and reloads the
 open page — so a change to `streamdeck/layout.mts`, a tile, or the action
 catalog is on screen a second or two after you save, with no click anywhere.
-Editing `apps/playground/ui/index.html` reloads the page without a restart. A
+Editing `tools/playground/ui/index.html` reloads the page without a restart. A
 mistyped route or volume command still fails to compile, and the error appears
 in the same terminal while the last good build keeps running.
 

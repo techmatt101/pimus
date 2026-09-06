@@ -123,12 +123,25 @@ apps/
       usb/               What the daemon keeps agreed with a computer plugged
                          into the audio gadget: its state, and its volume
     test/                Python unit tests
+  usb-audio/
+    src/usb_audio/       The USB gadget's own daemon: host and stream
+                         detection, card activation, playback into the music
+                         bus, and the volume it keeps agreed with the computer
+    test/                Python unit tests
+libs/                    Code more than one app needs, owned by none of them
+  audio-common/
+    src/smartamp_audio/  Graph queries, pactl, process and event monitors, the
+                         JSON control server, status publication, volume
+                         arithmetic; primitives only, never policy
+tools/                   Development-only; never deployed to a Pi
+  bundle-controller.mjs  The generators make build, make icons, and
+  generate-icons.mjs     make update-versions run
+  update-versions.mjs
   playground/            Development-only debug environment; never deployed
     src/                 Fake deck, LVA, audio manager, wpctl, LEDs, web server
     ui/                  The browser page the fake deck is drawn on
   remote-demo/           Development-only example client for the controller's
                          remote-tile socket; runs on the control computer
-tools/                   Development-only generators and the controller bundler
 ansible/
   inventory/
     hosts.yml            The units, one entry per amp
@@ -166,7 +179,7 @@ tests inside the app that owns them.
   on the control computer only. Every controller dependency is pinned to an
   exact version in `apps/controller/package.json`, because that file is the only
   manifest the Pi receives and it installs with plain `npm install`.
-  `apps/playground` must pin the identical versions; `make test` enforces it.
+  `tools/playground` must pin the identical versions; `make test` enforces it.
 - Service relationships are documented in `docs/architecture.md`.
 - A unit's hostname is its inventory name, set on the Pi by Ansible from
   `smartamp_hostname`; adding a host to `hosts.yml` is what names it.
@@ -481,7 +494,7 @@ bundle is imported outright and its font family asserted. That check is the one
 part of `make test` needing the deck's optional packages installed here.
 
 For controller dependency changes, pin the exact version in both
-`apps/controller/package.json` and `apps/playground/package.json`, then run the
+`apps/controller/package.json` and `tools/playground/package.json`, then run the
 commands below. A package only `streamdeck/` or `remote/` imports belongs in the
 controller's `optionalDependencies`; the playground always draws, so it pins
 every one of them as a plain dependency and `make test` compares both maps
@@ -510,7 +523,7 @@ the strict type check is the guard there. When touching core audio or voice
 behaviour, extend the existing high-level tests rather than adding new
 narrowly-scoped ones.
 
-`apps/playground` is deliberately outside `make test`, which never installs it.
+`tools/playground` is deliberately outside `make test`, which never installs it.
 It compiles `apps/controller/src` with the controller's own strict settings, so
 after changing a controller module's shape also run:
 

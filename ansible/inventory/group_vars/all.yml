@@ -388,7 +388,7 @@ home_assistant_url: "https://home.techmatt101.xyz"
 
 # Remote tiles: a WebSocket server inside the controller that lets another
 # computer on the LAN push key faces onto the deck's REMOTE page and receive
-# the presses back — see apps/remote-demo for a runnable client. Enabling it
+# the presses back — see tools/remote-demo for a runnable client. Enabling it
 # opens this TCP port on the Pi, so it is off by default and requires
 # REMOTE_TILES_TOKEN in the secrets file; the controller refuses to listen
 # without one. Pick a long random value. Requires streamdeck_enabled: what it

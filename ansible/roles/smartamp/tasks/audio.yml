@@ -38,7 +38,7 @@
 - name: Install shared audio primitives
   ansible.builtin.include_tasks: python_package.yml
   vars:
-    python_package_source: "{{ smartamp_source_dir }}/audio-common/src/smartamp_audio"
+    python_package_source: "{{ smartamp_libs_dir }}/audio-common/src/smartamp_audio"
     python_package_dir: "{{ smartamp_app_dir }}/audio-common/smartamp_audio"
     python_package_handlers: [Restart audio manager, Restart USB audio]
 

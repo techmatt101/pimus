@@ -86,14 +86,16 @@ this computer and draws the deck in a browser 🕹️.
 apps/controller      TypeScript daemon: Stream Deck, LED ring, voice state, ducking
 apps/audio-manager   Python daemon: shared PipeWire graph, mixing, ducking gains
 apps/usb-audio       Python client: USB host, playback, volume synchronisation
-apps/audio-common    Shared Python audio primitives
-apps/playground      Development-only fake hardware, never deployed
+libs/audio-common    Shared Python audio primitives both daemons import
+tools/playground     Development-only fake hardware, never deployed
+tools/remote-demo    Development-only example client for the remote-tile socket
 ansible/             Inventory, playbooks, and the smartamp role
 docs/                You are here
 ```
 
 Each app owns its own `src/` and `test/`; see [`apps/README.md`](apps/README.md)
-for the module boundaries. The Node apps are a pnpm workspace on this computer
+for the module boundaries, and [`tools/README.md`](tools/README.md) for what
+runs on this computer only. The Node apps are a pnpm workspace on this computer
 only — the Pi installs the controller's exact pins with plain npm.
 
 ## ⚖️ License

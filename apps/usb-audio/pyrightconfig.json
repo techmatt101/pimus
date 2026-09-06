@@ -1,8 +1,8 @@
 {
-    "include": ["src", "test", "../audio-common/src"],
+    "include": ["src", "test", "../../libs/audio-common/src"],
     "typeCheckingMode": "strict",
     "pythonVersion": "3.11",
     "pythonPlatform": "Linux",
-    "extraPaths": ["src", "../audio-common/src"],
+    "extraPaths": ["src", "../../libs/audio-common/src"],
     "reportMissingModuleSource": false
 }

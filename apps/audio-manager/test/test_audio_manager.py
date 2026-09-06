@@ -20,7 +20,7 @@ from unittest import mock
 
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
-sys.path.insert(0, str(Path(__file__).parents[2] / "audio-common/src"))
+sys.path.insert(0, str(Path(__file__).parents[3] / "libs/audio-common/src"))
 
 from audio_manager import output
 from smartamp_audio import graph, volume  # noqa: E402

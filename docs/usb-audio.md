@@ -86,7 +86,7 @@ muted startup and failed trim, target replacement, child cleanup, volume/mute
 agreement and write recovery, stale legacy bridges, socket replay, independent
 controller reconnects, bus trim ownership and normal idle activity detection.
 
-`PYTHONPATH=apps/audio-common/src:apps/usb-audio/src python3 apps/usb-audio/test/check_pipewire.py`
+`PYTHONPATH=libs/audio-common/src:apps/usb-audio/src python3 apps/usb-audio/test/check_pipewire.py`
 runs against a test PipeWire/WirePlumber session and verifies native muted creation, trim-before-unmute
 ordering, ownership properties and stream removal using synthetic endpoints.
 Physical USB enumeration, unplug/suspend behaviour, playback latency, pops and

@@ -2,8 +2,9 @@
 
 Each deployable program owns its source and tests here. Ansible is responsible
 only for installing these apps, rendering configuration, and managing services.
-`playground` and `remote-demo` are the exceptions: development-only tools that
-are never deployed.
+The code the Python apps share lives in [`libs/`](../libs/README.md), and the
+development-only programs that never leave this computer live in
+[`tools/`](../tools/README.md).
 
 ## `controller`
 
@@ -85,29 +86,3 @@ client and synchronises volume through that bus's public register.
 Its Unix socket serves USB controls and status directly to the controller.
 The separate root gadget setup service still creates the UAC2 peripheral at
 boot. See [USB audio](../docs/usb-audio.md) for lifecycle and validation details.
-
-## `audio-common`
-
-`audio-common/src/smartamp_audio/` contains shared graph queries, `pactl`, process
-and event-monitor helpers, the JSON control server, status publication and
-volume arithmetic. Both Python apps use these primitives; neither imports the
-other app's policy or daemon. Ansible installs an exact package tree and removes
-obsolete modules during an upgrade.
-
-## `playground`
-
-A local debug environment for the controller, run with `make dev` or
-`make playground`. It has its own `package.json` and compiles `controller/src/`
-alongside `playground/src/` so it drives the real modules, replacing only the
-outermost boundaries: the Stream Deck+ becomes a canvas in the browser, the LVA
-and audio-manager sockets become loopback servers speaking the same protocols,
-Home Assistant becomes a house that answers service calls, and the ReSpeaker
-ring and DSP readouts become drawings. `playground/ui/index.html` is the page.
-Nothing here ships to the Pi, and `make test` does not build it — see
-[docs/playground.md](../docs/playground.md).
-
-## `remote-demo`
-
-An example client for the controller's remote-tile socket, run on the control
-computer to push key faces onto a deck's REMOTE page. See
-[docs/controls.md](../docs/controls.md#remote-tiles-from-another-computer).

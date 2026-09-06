@@ -543,7 +543,7 @@ running without Home Assistant simply keeps the deck lit.
 small WebSocket server inside the controller that lets another computer on the
 LAN push key faces onto the deck's REMOTE page and receive the presses back —
 see [controls](controls.md#remote-tiles-from-another-computer) for the protocol
-and `apps/remote-demo` for a runnable client.
+and `tools/remote-demo` for a runnable client.
 
 This is the one inbound port the controller opens, so the feature is off by
 default and never starts without a token: set `remote_tiles_enabled: true` and

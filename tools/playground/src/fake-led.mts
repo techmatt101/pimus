@@ -5,8 +5,8 @@
 // sampled with the rest of the state panel.
 
 import type {LedSnapshot, PlaygroundBus} from './bus.mjs'
-import type {LedDevice, LedFrame} from '../../controller/src/types.mjs'
-import {LedEffect} from '../../controller/src/types.mjs'
+import type {LedDevice, LedFrame} from '../../../apps/controller/src/types.mjs'
+import {LedEffect} from '../../../apps/controller/src/types.mjs'
 
 const hex = (color: number): string => `#${(color & 0xFFFFFF).toString(16).padStart(6, '0')}`
 

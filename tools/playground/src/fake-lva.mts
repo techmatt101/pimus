@@ -9,7 +9,7 @@
 import {type WebSocket, WebSocketServer} from 'ws'
 
 import type {LogCategory, PlaygroundBus} from './bus.mjs'
-import type {LvaEventData} from '../../controller/src/types.mjs'
+import type {LvaEventData} from '../../../apps/controller/src/types.mjs'
 
 /** How the simulated pipeline advances after `start_listening`, in order. */
 const PIPELINE: ReadonlyArray<readonly [delay: number, event: string]> = [

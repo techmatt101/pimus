@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
-sys.path.insert(0, str(Path(__file__).parents[2] / "audio-common/src"))
+sys.path.insert(0, str(Path(__file__).parents[3] / "libs/audio-common/src"))
 from usb_audio import gadget as usb_gadget
 from smartamp_audio import process
 
