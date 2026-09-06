@@ -4,10 +4,14 @@
 # in the same run would silently drop the first one's staged change. Keys this
 # role does not manage are carried through untouched, and a key that drops out of
 # the wanted list is removed, which is what makes the flags reversible.
+# Read-only, so it also runs in check mode: skipped there, the comparison below
+# sees an empty configuration and a dry run predicts a reboot that a real run
+# would not make.
 - name: Read the bootloader configuration
   ansible.builtin.command: rpi-eeprom-config
   register: smartamp_eeprom_config
   changed_when: false
+  check_mode: false
 
 # POWER_OFF_ON_HALT cuts the board's rails on halt (PMIC STANDBY on a Pi 5).
 # WAKE_ON_GPIO is inert on a board with a dedicated power button, which wakes it

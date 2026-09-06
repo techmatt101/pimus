@@ -57,13 +57,20 @@
 
 # A release marker alone does not prove that the virtual environment survived
 # an interrupted setup or later SD-card damage. Import the core runtime modules
-# using the exact interpreter the service will execute.
+# using the exact interpreter the service will execute. soundcard is only
+# located, never imported: importing it connects to a PulseAudio server on the
+# spot and reads sys.argv[1] for a client name, so under `python -c` as root it
+# always failed, and every provision re-ran the setup and restarted the voice
+# assistant for nothing.
 - name: Check native Linux Voice Assistant runtime
   ansible.builtin.command:
     argv:
       - "{{ smartamp_app_dir }}/linux-voice-assistant/.venv/bin/python"
       - -c
-      - "import aioesphomeapi, linux_voice_assistant, mpv, soundcard, websockets"
+      - >-
+        import importlib.util, sys;
+        import aioesphomeapi, linux_voice_assistant, mpv, websockets;
+        sys.exit(importlib.util.find_spec("soundcard") is None)
   args:
     chdir: "{{ smartamp_app_dir }}/linux-voice-assistant"
   register: voice_assistant_runtime
