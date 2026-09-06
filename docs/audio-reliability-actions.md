@@ -21,14 +21,14 @@ loopback latency have deliberately not been retuned.
   guard held and books a retry without failing the pass, so the rest of the
   graph (voice capture, defaults, AEC reference, routes) is still reconciled
   and published. A failed unmute retains guard ownership until a retry succeeds.
-- [x] Save requested mute separately in
-  `/var/lib/smartamp-audio-manager/mute.json`, so restarts preserve intentional
-  mutes and can recover abandoned guards. Without saved state, preserve the
-  existing sink mute. Failed user unmute commands retry without treating the
-  old sink mute as a new request.
-- [x] Separated USB volume/mute agreement from writes to the output sink. A
-  host unmute cannot release the rebuild guard; host mute is reflected in the
-  manager's state in the same pass.
+- [x] Took the user mute off the sink (September 2026): the volume mute is
+  now a boolean beside the music level that plays every music path at 0%, so
+  voice keeps playing and the manager owns the sink's mute outright. A sink
+  found muted is an abandoned guard, released once the pass settles; the
+  saved `mute.json` and its state directory went with it.
+- [x] Separated USB volume and mute agreement from writes to the output sink.
+  A host unmute cannot release the rebuild guard; a host mute is the volume
+  mute, reflected in the manager's state in the same pass.
 - [x] Music-volume commands immediately update direct playback clients, not
   just the background bus and owned input routes.
 - [x] Check every channel when enforcing stream gains/output unity. A loudest
@@ -59,8 +59,8 @@ loopback latency have deliberately not been retuned.
   compilation/bundle checks, Python compilation, ShellCheck and Ansible syntax.
   No tests were skipped. Also passed `git diff --check`.
 - Python regression tests cover gain/mute ordering, failed and delayed graph
-  setup, trimmed USB connections through an active bus, mute-state persistence,
-  failed mute writes, stale readiness, direct-client volume, channel imbalance,
+  setup, trimmed USB connections through an active bus, abandoned-guard
+  release, failed mute writes, stale readiness, direct-client volume, channel imbalance,
   microphone readiness, malformed socket input, deployment script behavior
   and idle diagnostics.
 - Separate subprocess tests verify that a failed capture worker terminates the
@@ -87,10 +87,9 @@ loopback latency have deliberately not been retuned.
   remaining clicks separately from overload pops.
 - [ ] **P0 — Check the safety-mute tradeoffs.** The guard is a mute switch,
   not a waveform ramp. Check for clicks and missing first syllables on release.
-  Kill the manager mid-rebuild and confirm recovery restores the requested
-  mute for both muted and unmuted starting states. Repeat across reboot and
-  with an attenuated USB input trim. On first deployment without saved mute
-  state, confirm an existing mute is preserved until explicitly changed.
+  Kill the manager mid-rebuild and confirm the next start releases the
+  guard it left behind. Repeat across reboot and with an attenuated USB input
+  trim.
 - [ ] **P1 — Close the remaining first-stream race.** Direct clients, and
   streams recreated independently by PipeWire, can play before the manager
   observes them. Evaluate a permanent music bus independent of ducking,

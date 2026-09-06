@@ -243,15 +243,14 @@ would have left the amp playing about 10 dB above its ceiling with no cap on tra
 unit after re-provisioning to confirm.
 
 A related symptom is an amp that comes up silent after the audio manager restarts. Its temporary rebuild guard uses
-an ordinary sink mute, which WirePlumber persists. The manager now saves the requested mute separately in
-`/var/lib/smartamp-audio-manager/mute.json`; it restores that request only after playback gains settle. A failed unmute
-keeps the guard held for retry. An intentional mute therefore survives both manager restarts and reboot.
-
-On the first deployment without saved mute state, the existing sink mute is preserved. A mute left by an older
-manager cannot be distinguished from a user mute at that point. After routing has recovered, explicitly unmute using
-the controller if playback should resume. Check the journal for state-file errors or repeated gain/mute failures if
-the output remains silent. Hard reconciliation failures remove readiness status, so a missing status file can also
-indicate active recovery rather than a stopped manager.
+an ordinary sink mute, which WirePlumber persists. Nothing else is meant to mute the sink — the deck's volume mute is
+a gain on the music paths — so the manager treats any mute it finds as an abandoned guard and releases it once playback
+gains settle; a failed unmute keeps the guard held for retry. If the output stays silent, check the deck's volume
+reading first (`MUTED` means the volume mute, and a press of the dial ends it; a computer on the USB port can set it
+with its mute key too), then the journal for repeated gain or mute failures. Hard
+reconciliation failures remove readiness status, so a missing status file can also indicate active recovery rather
+than a stopped manager. A `mute.json` left in `/var/lib/smartamp-audio-manager` by an older manager is unread and
+harmless.
 
 To catch the culprit rather than just cap it, note the clock time of the next pop and read what the graph was doing:
 

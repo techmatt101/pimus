@@ -40,9 +40,9 @@ export function createState(overrides: Partial<ControlState> = {}): ControlState
     return {
         assist: 'DISCONNECTED',
         timer: null,
-        muted: false,
+        micMuted: false,
         volume: 1,
-        outputMuted: false,
+        volMuted: false,
         media: false,
         panel: 'lit',
         brightness: DEFAULT_BRIGHTNESS,
@@ -126,11 +126,11 @@ export function applyLvaEvent(state: ControlState, message: LvaMessage, now = Da
     }
 
     if (message.event === 'snapshot') {
-        state.muted = Boolean(data.muted)
+        state.micMuted = Boolean(data.muted)
         state.volume = Number(data.volume ?? 1)
         state.assist = data.ha_connected ? 'IDLE' : 'DISCONNECTED'
     } else if (message.event === 'muted') {
-        state.muted = Boolean(data.muted)
+        state.micMuted = Boolean(data.muted)
     } else if (message.event === 'volume_changed') {
         // A malformed payload must not put NaN on the volume dial.
         const volume = Number(data.volume)

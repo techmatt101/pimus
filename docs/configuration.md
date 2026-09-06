@@ -99,10 +99,11 @@ at `2` (16-bit) — the dwc2 gadget controller corrupts 3-byte (24-bit) samples 
 which plays as loud static with the audio faintly underneath.
 
 The gadget advertises a UAC2 mute/volume control, and the connected computer's writes to it land on the gadget card's
-`PCM Capture` ALSA controls. The audio manager keeps those and the music level plus output mute converged in both
-directions (an `alsactl monitor` stream wakes it on host changes; sink changes it already sees): change the volume on
-the computer and the amp follows, turn the amp's dial and the computer's slider follows. Whichever side moved since
-they last agreed wins, and when a computer first plugs in the amp's current volume seeds its slider.
+`PCM Capture` ALSA controls. The audio manager keeps those and the music level plus the volume mute converged in both
+directions (an `alsactl monitor` stream wakes it on host changes): change the volume on the computer and the amp
+follows, turn the amp's dial and the computer's slider follows, and the computer's mute key is the amp's volume mute,
+so it silences every music path and never the assistant. Whichever side moved since they last agreed wins, and when a
+computer first plugs in the amp's current volume and mute seed its controls.
 
 The aux bridge is loaded muted whether or not the route is on; the toggle fades the bridge stream between silent and
 full over ~200 ms. Connecting the stream on demand used to land any DC offset on the line input as a step on the
@@ -122,9 +123,9 @@ audio), the USB host starting to stream, or a route being toggled on. The rebuil
 held until every fresh bridge stream carries its gain — a fresh loopback stream plays at full volume until its gain
 lands, which would otherwise pop the first instant of audio through the amp — so the first moment of music after a
 long quiet spell can be delayed. Connections into the background bus are also guarded until their input trims apply.
-Failed reconciliation withdraws readiness; delayed streams keep the output guarded for a retry. Requested mute is
-saved separately from this guard in `/var/lib/smartamp-audio-manager/mute.json` and survives restarts and reboots.
-With no saved request, the manager preserves the sink's existing mute. Idle-wake AEC timing and cancellation recovery
+Failed reconciliation withdraws readiness; delayed streams keep the output guarded for a retry. That guard is the
+only thing that mutes the sink — the volume mute is a gain on the music paths, not a sink property — so a sink found
+muted is simply released once the graph settles. Idle-wake AEC timing and cancellation recovery
 still need measurement; a silent reference during idle does not establish how well cancellation resumes.
 The teardown is also tied to the deck's own resting states (see
 [Standby and sleep](controls.md#standby-and-sleep)): the moment the panel dims into standby or switches off asleep,
@@ -167,8 +168,11 @@ of the music level: TTS, timer chimes, and announcements play at `smartamp_voice
 music sits at 5% or 80%. From boot onwards the level belongs to the deck: the VOICE VOL key on the INFO page sets it,
 and the volume dial adjusts it live whenever Assist is listening, thinking, speaking, or ringing a timer. Like the
 route toggles both levels survive an audio manager restart (the controller re-asserts them) but return to the
-inventory defaults on reboot. Mute is the exception to the independence: it lands on the output sink itself, silencing
-music and voice alike.
+inventory defaults on reboot. The volume mute keeps that independence: it silences the music paths and leaves the
+voice bus alone, so a muted amp still answers, rings, and announces out loud — provided the announcement is made
+through the assist satellite (`assist_satellite.announce`), which plays on the voice bus. An announcement sent to the
+Music Assistant player travels with the music and is muted with it. Like the levels, the mute is re-asserted by the
+controller after an audio manager restart and clears on reboot.
 
 ## SD-card endurance
 

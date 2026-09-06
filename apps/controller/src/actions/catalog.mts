@@ -69,18 +69,18 @@ export const VOICE_ACTIONS = {
             lva.send(isAssistRunning(state) ? 'stop_pipeline' : 'start_listening')
         },
     },
-    mute_toggle: {
+    mic_mute: {
         summary: 'Toggle the microphone mute. Tracks the mute state reported by LVA.',
-        example: '{ type: lva, command: mute_toggle }',
+        example: '{ type: lva, command: mic_mute }',
         indicator: {
-            isActive: ({state}) => state.muted,
+            isActive: ({state}) => state.micMuted,
             activeColor: '#d50000',
             label: (configured, active) => (active ? 'MIC OFF' : configured),
         },
         run: ({state, lva}) => {
             // LVA has no toggle command; the resulting `muted` event is what
             // updates our state.
-            lva.send(state.muted ? 'unmute_mic' : 'mute_mic')
+            lva.send(state.micMuted ? 'unmute_mic' : 'mute_mic')
         },
     },
     stop_timer_ringing: {
@@ -103,9 +103,9 @@ export const VOLUME_ACTIONS = {
         summary: 'Lower the music level by 5%. Voice keeps its own level.',
         example: '{ type: audio, command: down }',
     },
-    mute: {
-        summary: 'Toggle mute on the output, silencing music and voice alike.',
-        example: '{ type: audio, command: mute }',
+    vol_mute: {
+        summary: 'Toggle the volume mute: every music path silent, voice still playing.',
+        example: '{ type: audio, command: vol_mute }',
     },
 } as const satisfies Record<string, ActionSpec>
 

@@ -34,9 +34,9 @@ export interface PlaygroundSnapshot {
     lvaConnected: boolean
     audioConnected: boolean
     assist: string
-    muted: boolean
+    micMuted: boolean
+    volMuted: boolean
     volume: number
-    outputMuted: boolean
     /** The fake manager's music level, undefined until the controller syncs. */
     musicVolume: number | undefined
     /** The fake manager's voice bus level, undefined until the controller syncs. */

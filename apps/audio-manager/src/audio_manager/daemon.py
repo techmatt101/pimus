@@ -56,17 +56,16 @@ class GraphStatus:
 
 
 class AudioManager:
-    def __init__(
-        self, config: AudioConfig, socket_path: Path, status_path: Path, mute_path: Path
-    ) -> None:
+    def __init__(self, config: AudioConfig, socket_path: Path, status_path: Path) -> None:
         self.config = config
         self.status_path = status_path
         self.running = True
         self.music_volume = config.startup_volume_percent
+        self.vol_muted = False
         self.voice_volume = config.voice_bus.volume_percent
 
         self.graph = Graph()
-        self.output = output.OutputSink(config.output_match, self.graph, mute_path)
+        self.output = output.OutputSink(config.output_match, self.graph)
         self.modules = ModuleRegistry(self.graph, self._guard_output)
         self.background = BackgroundBus(config.background, self.graph, self.modules)
         self.selector = selectors.DefaultSelector()
@@ -160,16 +159,26 @@ class AudioManager:
             "ducked": self.desired_ducking(),
             "usb_playback": self.usb.streaming,
             "music_volume": self.music_volume,
+            "vol_muted": self.vol_muted,
             "voice_volume": self.voice_volume,
-            "output_muted": self.output.muted,
         }
+
+    @property
+    def music_level(self) -> int:
+        """The gain every music path plays at: the music level, or silence.
+
+        The volume mute is this one substitution. The buses and routes never
+        learn of it, the voice bus keeps its own level, and the music level
+        itself is untouched so an unmute lands exactly where the dial was.
+        """
+        return 0 if self.vol_muted else self.music_volume
 
     def desired_ducking(self) -> bool:
         return self.config.background.enabled and self.commands.duck_requested
 
     def apply_ducking(self) -> bool:
         ducked = self.desired_ducking()
-        self.background.apply_ducking(self.music_volume, ducked)
+        self.background.apply_ducking(self.music_level, ducked)
         return ducked
 
     def safe_apply_ducking(self) -> None:
@@ -185,9 +194,6 @@ class AudioManager:
             "Voice volume", lambda: self.voice_bus.apply_gain(self.voice_volume)
         )
 
-    def set_output_mute(self, muted: bool) -> None:
-        self._apply_or_retry("Output mute", lambda: self.output.request_mute(muted))
-
     def set_music_volume(self, percent: float) -> None:
         self.music_volume = volume.clamp(percent)
         # Forget the last USB agreement so the next reconcile seeds the gadget
@@ -195,6 +201,11 @@ class AudioManager:
         # win the sync and claw the volume back.
         self.usb_volume.forget()
         self._apply_or_retry("Music volume", self._apply_music_volume)
+
+    def set_vol_mute(self, muted: bool) -> None:
+        self.vol_muted = muted
+        self.usb_volume.forget()
+        self._apply_or_retry("Volume mute", self._apply_music_volume)
 
     def schedule_reconcile(self, delay: float = EVENT_DEBOUNCE_SECONDS) -> None:
         deadline = time.monotonic() + delay
@@ -221,11 +232,9 @@ class AudioManager:
         self.graph.invalidate()
         self.modules.drop_released()
         sink = self.output.prepare()
-        self.music_volume, muted = self.usb_volume.sync(
-            (self.music_volume, self.output.muted)
+        self.music_volume, self.vol_muted = self.usb_volume.sync(
+            (self.music_volume, self.vol_muted)
         )
-        if muted != self.output.muted:
-            self.output.remember_mute(muted)
         self.usb.refresh()
         idle = self.idle.update(self._audio_active())
         found = self._reconcile_graph(sink, idle)
@@ -254,17 +263,18 @@ class AudioManager:
         source_status = self.routes.reconcile(
             output=sink,
             background_sink=background_sink,
-            music_volume=self.music_volume,
+            music_volume=self.music_level,
             usb_playback=self.usb.streaming,
             idle=idle,
         )
-        output.hold_client_streams(self.graph, sink, self.music_volume)
+        output.hold_client_streams(self.graph, sink, self.music_level)
         return GraphStatus(microphone=microphone, sources=source_status)
 
     def _publish(self, sink: Node | None, found: GraphStatus) -> None:
         published = {
             "sink": sink.get("name") if sink else None,
             "music_volume": self.music_volume,
+            "vol_muted": self.vol_muted,
             "voice_input": found.microphone.device,
             "voice_capture": found.microphone.capture,
             "background": {
@@ -280,7 +290,6 @@ class AudioManager:
             "sources": found.sources,
             "usb_host": self.usb.attached,
             "usb_playback": self.usb.streaming,
-            "output_muted": self.output.muted,
             "idle": self.idle.idle,
             "standby": self.idle.standby,
         }
@@ -330,8 +339,8 @@ class AudioManager:
     def _apply_music_volume(self) -> None:
         self.graph.invalidate()
         self.apply_ducking()
-        self.routes.apply_music_volume(self.music_volume)
-        output.hold_client_streams(self.graph, self.output.find(), self.music_volume)
+        self.routes.apply_music_volume(self.music_level)
+        output.hold_client_streams(self.graph, self.output.find(), self.music_level)
 
     def _adopt_defaults(self, sink: Node | None, voice_source: Node | None) -> None:
         # Only set defaults that are wrong: an unconditional set-default emits a

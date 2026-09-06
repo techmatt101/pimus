@@ -21,9 +21,9 @@ own:
 - `actions/catalog.mts` declares every action a key or dial can be bound to,
   including each voice action's `run` behaviour and its indicator. See
   [docs/controls.md](../docs/controls.md).
-- `audio/` — `manager-client.mts` mirrors route, level, and mute state over the
-  audio manager's Unix socket; `ducking.mts` turns voice events into duck
-  requests on that same socket.
+- `audio/` — `manager-client.mts` mirrors route, level, and volume-mute state
+  over the audio manager's Unix socket; `ducking.mts` turns voice events into
+  duck requests on that same socket.
 - `home-assistant/` — the WebSocket `client.mts`, the compressed entity feed
   and `store.mts` cache behind it, `entity.mts` for reading state, and
   `notifications.mts` for the `smartamp_notify` event automations fire.

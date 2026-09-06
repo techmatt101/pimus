@@ -203,7 +203,7 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
         [
             key('AUX', '#4a148c', route('aux', 'toggle'), 'cable'),
             key('USB', '#0d47a1', route('usb', 'toggle'), 'usb'),
-            key('MUTE', '#7f0000', voice('mute_toggle'), {on: 'micOff', off: 'mic'}),
+            key('MUTE', '#7f0000', voice('mic_mute'), {on: 'micOff', off: 'mic'}),
             null,
         ],
     ]

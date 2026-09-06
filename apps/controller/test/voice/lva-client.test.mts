@@ -98,7 +98,7 @@ test('LVA client sends commands, applies events, and reconnects after close', as
         data: {volume: 0.5},
     })
     first.emit('message', Buffer.from(JSON.stringify({event: 'muted', data: {muted: true}})))
-    assert.equal(state.muted, true)
+    assert.equal(state.micMuted, true)
 
     first.emit('close')
     assert.equal(state.assist, 'DISCONNECTED')

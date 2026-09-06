@@ -10,9 +10,9 @@ test('LVA snapshots and events update shared display state', () => {
         assist: 'IDLE',
         // A connection that replays no timer is one with no timer running.
         timer: null,
-        muted: true,
+        micMuted: true,
         volume: 0.42,
-        outputMuted: false,
+        volMuted: false,
         media: false,
         // A voice event says nothing about whether anybody is in the room.
         panel: 'lit',

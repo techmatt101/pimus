@@ -20,12 +20,12 @@ interface StatusSlot {
 }
 
 function slots(state: ControlState): StatusSlot[] {
-    const {health, muted, outputMuted} = state
+    const {health, micMuted, volMuted} = state
     const row: StatusSlot[] = [
         {icon: 'wifi', color: OK_COLOR, fault: !health.network, muted: false},
         {icon: 'home', color: OK_COLOR, fault: !health.ha, muted: false},
-        {icon: muted ? 'micOff' : 'mic', color: OK_COLOR, fault: false, muted},
-        {icon: outputMuted ? 'volumeMute' : 'volume', color: OK_COLOR, fault: !health.audio, muted: outputMuted},
+        {icon: micMuted ? 'micOff' : 'mic', color: OK_COLOR, fault: false, muted: micMuted},
+        {icon: volMuted ? 'volumeMute' : 'volume', color: OK_COLOR, fault: !health.audio, muted: volMuted},
     ]
     // Informational, never a fault: present only while a computer is actively
     // streaming audio to the USB-C gadget port. Enumeration alone is not

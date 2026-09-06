@@ -17,9 +17,9 @@ class UsbVolumeSync:
     """Whichever side moved since the last agreement wins, the host on a tie.
 
     The host writes volume and mute to the gadget card's mixer; the amp's side
-    is the music level (the sink itself stays pinned) plus the sink mute. At
-    first sight the amp seeds the gadget so a computer plugging in reads the
-    real level.
+    is the music level plus the volume mute, the two the daemon holds beside
+    each other (the sink itself stays pinned). At first sight the amp seeds the
+    gadget so a computer plugging in reads the real level.
     """
 
     def __init__(self) -> None:

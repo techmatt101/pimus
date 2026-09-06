@@ -29,7 +29,7 @@ const state = createState()
 const audio = new AudioManagerClient({
     socketPath: config.audio_socket,
     onStateChange: () => {
-        state.outputMuted = audio.state.outputMuted === true
+        state.volMuted = audio.state.volMuted === true
         model.notify()
     },
 })
@@ -93,11 +93,9 @@ const surface = config.streamdeck?.enabled
                 audio.setSource(name, command)
             },
             // The output sink stays pinned at 100%: loudness lives on the audio
-            // manager's music and voice gains, and mute lives on the sink itself.
+            // manager's music and voice gains, and the mute beside the music one.
             setVolume: (command) => {
-                if (command === 'mute') {
-                    return audio.setOutputMute(audio.state.outputMuted !== true)
-                }
+                if (command === 'vol_mute') return audio.setVolMute(audio.state.volMuted !== true)
                 const current = audio.state.musicVolume
                 if (current === undefined) return
                 return audio.setMusicVolume(current + (command === 'up' ? 5 : -5))

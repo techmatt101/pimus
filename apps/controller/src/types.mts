@@ -207,9 +207,11 @@ export type PanelState = 'lit' | 'dim' | 'off'
 export interface ControlState {
     assist: string
     timer: TimerState | null
-    muted: boolean
+    /** The microphone mute, as LVA reports it. */
+    micMuted: boolean
     volume: number
-    outputMuted: boolean
+    /** The volume mute: every music path silent, voice still playing. */
+    volMuted: boolean
     media: boolean
     /** Only the panel sleeps: the wake word, LED ring, and playback keep running. */
     panel: PanelState
@@ -232,8 +234,8 @@ export interface AudioState {
     musicVolume?: number
     /** The voice bus level in percent; unknown until the manager's first state event. */
     voiceVolume?: number
-    /** Whether the output sink is muted; unknown until the manager's first state event. */
-    outputMuted?: boolean
+    /** Whether the music paths are muted; unknown until the manager's first state event. */
+    volMuted?: boolean
 }
 
 export interface UsbControlDevice {

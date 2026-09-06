@@ -7,7 +7,8 @@ from pathlib import Path
 from unittest import mock
 
 from test_audio_manager import ManagerTestCase, completed, fake_run, volume_writes
-from audio_manager import graph, output
+from audio_manager import graph
+from audio_manager.status import write as write_status
 from audio_manager.config import AudioConfig
 from audio_manager.system import pactl, usb_gadget
 
@@ -158,7 +159,6 @@ class RebuildSafetyTests(ManagerTestCase):
                 "sources": {"aux": {"enabled": True, "match": "ADC"}},
             }
         )
-        self.mute_path = self.manager.status_path.with_name("mute.json")
         self.sink = {
             "name": "hifiberry",
             "description": "HiFiBerry",
@@ -239,24 +239,17 @@ class RebuildSafetyTests(ManagerTestCase):
         self.assertLess(commands.index("set-sink-mute"), commands.index("load-module"))
         self.assertFalse(self.sink["mute"])
 
-    def test_failed_gain_keeps_output_muted_and_recovery_restores_requested_mute(
-        self,
-    ) -> None:
-        for desired_mute in (False, True):
-            with self.subTest(desired_mute=desired_mute):
-                self.fail_gain = True
-                self.stream.update(stereo(100, 100))
-                self.manager.output.find()
-                self.manager.output.guard()
-                with self.assertLogs("audio_manager.daemon", level="WARNING"):
-                    self.assertFalse(self.manager.safe_reconcile())
-                self.assertTrue(self.sink["mute"])
-                self.manager.set_output_mute(desired_mute)
-                self.assertTrue(self.sink["mute"])
-                self.fail_gain = False
-                self.assertTrue(self.manager.safe_reconcile())
-                self.assertEqual(self.sink["mute"], desired_mute)
-                self.assertEqual(self.manager.output.muted, desired_mute)
+    def test_failed_gain_keeps_output_muted_until_recovery(self) -> None:
+        self.fail_gain = True
+        self.stream.update(stereo(100, 100))
+        self.manager.output.find()
+        self.manager.output.guard()
+        with self.assertLogs("audio_manager.daemon", level="WARNING"):
+            self.assertFalse(self.manager.safe_reconcile())
+        self.assertTrue(self.sink["mute"])
+        self.fail_gain = False
+        self.assertTrue(self.manager.safe_reconcile())
+        self.assertFalse(self.sink["mute"])
 
     def test_unpublished_route_keeps_the_guard_and_the_rest_of_the_pass(self) -> None:
         # The stream not being listed yet is not a failure: the pass completes,
@@ -271,31 +264,18 @@ class RebuildSafetyTests(ManagerTestCase):
         self.assertFalse(self.sink["mute"])
         self.assertTrue(graph.volume_is(self.stream, 10))
 
-    def test_initial_and_external_mutes_are_saved_and_survive_restart(
-        self,
-    ) -> None:
+    def test_a_mute_left_on_the_sink_is_released_once_the_pass_settles(self) -> None:
+        # A daemon killed mid-guard, or WirePlumber restoring an old mute,
+        # leaves the sink muted with nobody to unmute it: the next daemon owns
+        # it, so sound always comes back. Silence is a music level, not a mute.
         self.sink["mute"] = True
         self.manager.reconcile()
-        self.assertTrue(self.sink["mute"])
-        self.assertTrue(self.manager.output.muted)
-        self._restart_manager()
-        self.assertTrue(self.sink["mute"])
-        self.sink["mute"] = False
-        self.manager.reconcile()
-        self.assertFalse(self.manager.output.muted)
+        self.assertFalse(self.sink["mute"])
         self._restart_manager()
         self.assertFalse(self.sink["mute"])
-
-    def test_restart_during_guard_restores_the_requested_mute(self) -> None:
-        for muted in (False, True):
-            with self.subTest(muted=muted):
-                self.manager.reconcile()
-                self.manager.output.guard()
-                self.manager.set_output_mute(muted)
-                self.assertTrue(self.sink["mute"])
-                self._restart_manager()
-                self.assertEqual(self.sink["mute"], muted)
-                self.assertEqual(self.manager.output.muted, muted)
+        self.sink["mute"] = True
+        self.manager.reconcile()
+        self.assertFalse(self.sink["mute"])
 
     def test_failed_unmute_retains_guard_until_the_write_succeeds(self) -> None:
         self.fail_unmute = True
@@ -303,26 +283,13 @@ class RebuildSafetyTests(ManagerTestCase):
             self.assertFalse(self.manager.safe_reconcile())
         self.assertTrue(self.manager.output.guarded)
         self.assertTrue(self.sink["mute"])
-        self.assertFalse(self.manager.output.muted)
         self.fail_unmute = False
         self.assertTrue(self.manager.safe_reconcile())
         self.assertFalse(self.manager.output.guarded)
         self.assertFalse(self.sink["mute"])
 
-    def test_failed_user_unmute_is_retried_without_readopting_the_old_mute(self) -> None:
-        self.manager.reconcile()
-        self.manager.set_output_mute(True)
-        self.fail_unmute = True
-        with self.assertLogs("audio_manager.daemon", level="WARNING"):
-            self.manager.set_output_mute(False)
-        self.assertTrue(self.sink["mute"])
-        self.fail_unmute = False
-        self.manager.reconcile()
-        self.assertFalse(self.sink["mute"])
-        self.assertFalse(self.manager.output.muted)
-
     def test_failed_pass_withdraws_status_and_recovery_publishes_again(self) -> None:
-        with mock.patch("audio_manager.status.write", wraps=output.write_state):
+        with mock.patch("audio_manager.status.write", wraps=write_status):
             self.assertTrue(self.manager.safe_reconcile())
             self.assertTrue(self.manager.status_path.exists())
             self.fail_gain = True
@@ -336,21 +303,12 @@ class RebuildSafetyTests(ManagerTestCase):
                 json.loads(self.manager.status_path.read_text())["sink"], "hifiberry"
             )
 
-    def test_unwritable_mute_state_prevents_guard_and_gain_changes(self) -> None:
-        with mock.patch.object(output, "write_state", side_effect=OSError("disk full")):
-            with self.assertLogs("audio_manager.daemon", level="WARNING"):
-                self.assertFalse(self.manager.safe_reconcile())
-        self.assertFalse(self.sink["mute"])
-        self.assertTrue(graph.volume_is(self.sink, 80))
-        self.assertFalse(any(call[1] == "load-module" for call in self.calls))
-
     def _restart_manager(self) -> None:
         self.manager = self.make_manager(
             {
                 "startup_volume_percent": 10,
                 "sources": {"aux": {"enabled": True, "match": "ADC"}},
-            },
-            mute_path=self.mute_path,
+            }
         )
         with mock.patch.object(self.manager.usb, "refresh"):
             self.manager.reconcile()

@@ -135,7 +135,7 @@ const state = createState()
 const audio = new AudioManagerClient({
     socketPath: config.audio_socket,
     onStateChange: () => {
-        state.outputMuted = audio.state.outputMuted === true
+        state.volMuted = audio.state.volMuted === true
         model.notify()
     },
     logger: busLogger(bus, 'audio'),
@@ -251,9 +251,7 @@ const layout = createLayout({
             audio.setSource(name, command)
         },
         setVolume: (command) => {
-            if (command === 'mute') {
-                return audio.setOutputMute(audio.state.outputMuted !== true)
-            }
+            if (command === 'vol_mute') return audio.setVolMute(audio.state.volMuted !== true)
             const current = audio.state.musicVolume
             if (current === undefined) return
             return audio.setMusicVolume(current + (command === 'up' ? 5 : -5))
@@ -327,9 +325,9 @@ const snapshotTimer = setInterval(() => {
         lvaConnected: lvaServer.connected,
         audioConnected: audio.connected,
         assist: state.assist,
-        muted: state.muted,
+        micMuted: state.micMuted,
+        volMuted: state.volMuted,
         volume: state.volume,
-        outputMuted: state.outputMuted,
         musicVolume: audio.state.musicVolume,
         voiceVolume: audio.state.voiceVolume,
         media: state.media,

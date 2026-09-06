@@ -97,11 +97,12 @@ store() { echo stored; return "$STORE_EXIT"; }
             next(line for line in service.splitlines() if line.startswith("After=")),
         )
 
-    def test_manager_has_persistent_writable_mute_state(self) -> None:
+    def test_manager_keeps_no_state_on_disk(self) -> None:
+        # Silence is a music level the controller re-asserts, not a saved mute,
+        # so the daemon has nothing to remember across a restart.
         service = (ROLE / "templates/smartamp-audio-manager.service.j2").read_text()
-        self.assertIn("StateDirectory=smartamp-audio-manager\n", service)
-        self.assertIn("StateDirectoryMode=0700\n", service)
-        self.assertIn("--mute-state /var/lib/smartamp-audio-manager/mute.json", service)
+        self.assertNotIn("StateDirectory", service)
+        self.assertNotIn("--mute-state", service)
 
     def test_doctor_checks_every_digital_playback_channel(self) -> None:
         template = (ROLE / "templates/smartamp-doctor.sh.j2").read_text()

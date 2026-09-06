@@ -152,7 +152,7 @@ test('the manager\'s route list says which routes this unit has at all', () => {
     client.close()
 })
 
-test('output mute travels as an absolute state and follows the manager', () => {
+test('the volume mute travels as an absolute state and follows the manager', () => {
     const fake = new FakeSocket()
     const client = new AudioManagerClient({
         socketPath: '/nowhere/audio.sock',
@@ -165,16 +165,17 @@ test('output mute travels as an absolute state and follows the manager', () => {
     })
     client.connect()
     fake.emit('connect')
-    fake.emit('data', '{"event":"state","sources":{},"output_muted":false}\n')
-    assert.equal(client.state.outputMuted, false)
+    fake.emit('data', '{"event":"state","sources":{},"vol_muted":false}\n')
+    assert.equal(client.state.volMuted, false)
 
-    client.setOutputMute(true)
-    assert.equal(client.state.outputMuted, true)
-    assert.deepEqual(JSON.parse(fake.written.at(-1) ?? ''), {command: 'set-output-mute', muted: true})
+    client.setVolMute(true)
+    assert.equal(client.state.volMuted, true)
+    assert.deepEqual(JSON.parse(fake.written.at(-1) ?? ''), {command: 'set-vol-mute', muted: true})
 
-    // A mute made anywhere else reaches the deck through the same broadcast.
-    fake.emit('data', '{"event":"state","sources":{},"output_muted":false}\n')
-    assert.equal(client.state.outputMuted, false)
+    // A mute made anywhere else, such as a computer's mute key on the USB
+    // gadget, reaches the deck through the same broadcast.
+    fake.emit('data', '{"event":"state","sources":{},"vol_muted":false}\n')
+    assert.equal(client.state.volMuted, false)
     client.close()
 })
 

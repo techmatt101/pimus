@@ -43,7 +43,7 @@ class CommandHandler:
             "set-voice-meter": self._set_voice_meter,
             "set-voice-volume": self._set_voice_volume,
             "set-music-volume": self._set_music_volume,
-            "set-output-mute": self._set_output_mute,
+            "set-vol-mute": self._set_vol_mute,
             "set-source": self._set_source,
             "set-sources": self._set_sources,
             "get-state": self._get_state,
@@ -159,13 +159,12 @@ class CommandHandler:
         self._manager.set_music_volume(percent)
         return self._state()
 
-    def _set_output_mute(self, _: socket.socket, message: dict[str, Any]) -> Reply:
+    def _set_vol_mute(self, _: socket.socket, message: dict[str, Any]) -> Reply:
         muted = message.get("muted")
         if not isinstance(muted, bool):
-            return _error("set-output-mute needs a boolean muted")
-        # One property on the sink itself, so it applies directly rather than
-        # asking for a full graph reconcile.
-        self._manager.set_output_mute(muted)
+            return _error("set-vol-mute needs a boolean muted")
+        # The same stream gains a music volume moves, so it applies directly too.
+        self._manager.set_vol_mute(muted)
         return self._state()
 
     def _set_source(self, _: socket.socket, message: dict[str, Any]) -> Reply:

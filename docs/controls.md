@@ -73,7 +73,7 @@ central dispatcher:
   `key('LABEL', '#colour', binding)` in the layout. A fourth argument gives it
   an icon above the caption — one name, or an `{on, off}` pair it swaps as the
   indicator reads active, which is how MUTE strikes its microphone through:
-  `key('MUTE', '#7f0000', voice('mute_toggle'), {on: 'micOff', off: 'mic'})`.
+  `key('MUTE', '#7f0000', voice('mic_mute'), {on: 'micOff', off: 'mic'})`.
   The glyph is tinted white while active, slate while not, and the unavailable
   grey when the unit has no such route.
 - A key that needs richer behaviour or stateful rendering is its own `Tile`
@@ -163,7 +163,7 @@ Sent to the Linux Voice Assistant peripheral socket.
 | Command              | Effect                                                                                        |
 |----------------------|-----------------------------------------------------------------------------------------------|
 | `start_listening`    | Start a voice pipeline, the same as speaking the wake word.                                   |
-| `mute_toggle`        | Toggle the microphone mute. Tracks the mute state reported by LVA.                            |
+| `mic_mute`           | Toggle the microphone mute. Tracks the mute state reported by LVA.                            |
 | `listen_toggle`      | Start a voice pipeline, or cancel the one already running.                                    |
 | `stop_timer_ringing` | Silence a ringing timer, leaving media playback alone.                                        |
 
@@ -212,18 +212,21 @@ assistant something.
 
 Drives the audio manager's music level — the gain every non-voice path (music,
 USB computer audio, aux) plays at; the output sink itself stays pinned at 100%
-and voice keeps its own level. `mute` is the exception: it toggles the sink
-itself through the audio manager's `set-output-mute`, silencing music and voice
-alike, and a mute made anywhere else shows on the deck. While a computer is on the
-USB-C gadget port, the audio manager keeps the music level and the computer's
-volume control for the device converged in both directions: the computer's
-volume keys move the amp, and the dial moves the computer's slider.
+and voice keeps its own level. `vol_mute` is no exception: it silences every
+path that follows the music level (Sendspin, the USB computer, aux) and leaves
+the voice bus alone, so the assistant still answers, rings, and announces out
+loud while the music is muted; the level itself is kept, so unmuting lands
+where the dial was. The microphone has its own mute, `mic_mute`, on the voice
+side. While a computer is on the USB-C gadget port, the audio manager keeps the
+music level and mute and the computer's controls for the device converged in
+both directions: the computer's volume keys move the amp, its mute key is the
+amp's `vol_mute`, and the dial moves the computer's slider.
 
 | Command | Effect                                                     |
 |---------|------------------------------------------------------------|
 | `up`    | Raise the music level by 5%, capped at 100%.               |
 | `down`  | Lower the music level by 5%.                               |
-| `mute`  | Toggle mute on the output, silencing music and voice alike.|
+| `vol_mute` | Toggle the volume mute: every music path silent, voice still playing. |
 
 ```ts
 {
@@ -233,7 +236,7 @@ volume keys move the amp, and the dial moves the computer's slider.
 :
     volume('up'), press
 :
-    volume('mute')
+    volume('vol_mute')
 }
 ```
 
@@ -355,7 +358,7 @@ configuration. Everything else keeps the label and colour you configured.
 
 | Bound action                        | While active                                                           |
 |-------------------------------------|------------------------------------------------------------------------|
-| `lva` / `mute_toggle`               | Label becomes `MIC OFF`, background red.                               |
+| `lva` / `mic_mute`                  | Label becomes `MIC OFF`, background red.                               |
 | `lva` / `start_listening`           | Background cyan while the pipeline is running.                         |
 | `lva` / `listen_toggle`             | Label becomes `CANCEL`, background cyan while the pipeline is running. |
 | `audio` route (`on`/`off`/`toggle`) | Label gains ` ON` or ` OFF`, background green when on.                 |
@@ -488,7 +491,7 @@ indistinguishable. Healthy icons sit dim. A failed subsystem turns its icon red
 and pulses it, and the loss also posts a strip banner ("HOME ASSISTANT LOST");
 recovery is silent, the icon simply stops flashing. A mute is red too but
 steady, since it is deliberate rather than a failure: the mic and volume icons
-are drawn crossed out while the microphone or the output is muted. The
+are drawn crossed out while the microphone or the volume is muted. The
 now-playing face has no room for the full row and shows only the red icons,
 tucked under the clock. A deployment without Home Assistant configured keeps
 that icon healthy rather than flagging an integration that was never set up.

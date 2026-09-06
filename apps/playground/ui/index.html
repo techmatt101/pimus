@@ -742,9 +742,9 @@
             .map(([name, on]) => `<div class="cell"><div class="k">route ${name}</div>${flag(on)}</div>`).join('')
         stateEl.innerHTML = `
     <div class="cell"><div class="k">assist</div><div class="v">${state.assist}</div></div>
-    <div class="cell"><div class="k">music volume</div><div class="v">${state.outputMuted ? 'muted' : state.musicVolume === undefined ? '?' : state.musicVolume + '%'}</div></div>
+    <div class="cell"><div class="k">music volume</div><div class="v">${state.volMuted ? 'muted' : state.musicVolume === undefined ? '?' : state.musicVolume + '%'}</div></div>
     <div class="cell"><div class="k">voice volume</div><div class="v">${state.voiceVolume === undefined ? '?' : state.voiceVolume + '%'}</div></div>
-    <div class="cell"><div class="k">mic muted</div>${flag(state.muted)}</div>
+    <div class="cell"><div class="k">mic muted</div>${flag(state.micMuted)}</div>
     <div class="cell"><div class="k">media</div>${flag(state.media)}</div>
     <div class="cell"><div class="k">ducked</div>${flag(state.ducked)}</div>
     <div class="cell"><div class="k">home assistant</div>${flag(state.homeAssistant)}</div>

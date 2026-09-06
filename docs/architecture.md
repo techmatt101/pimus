@@ -62,10 +62,13 @@ path, which is why the background bus can be selected by environment).
 Loudness is two independent gains on those bridges, not the sink volume: the manager pins the output sink at 100% and
 holds the music level on the background bridge (with aux and any direct route following it, and ducking dipping to a
 share of it) and the voice level on the voice bridge. Music at 5% with voice at 50% plays voice at 50%; music at 80%
-with voice at 30% plays voice at 30%. `set-music-volume` and `set-voice-volume` on the control socket move them; the
-sink itself carries only mute, so muting silences everything at once — `set-output-mute` moves it, and the manager
-reads the sink's mute back on every pass, so a mute made by any other client reaches the deck without the controller
-polling for one. A ready bridge gives new client streams an already-applied gain. Direct clients on the hardware
+with voice at 30% plays voice at 30%. `set-music-volume` and `set-voice-volume` on the control socket move them.
+The volume mute (`set-vol-mute`, `vol_muted` in the state event) sits beside the music level as one boolean: while it
+is on, every path that follows the music level plays at 0% and the level itself is untouched, so an unmute lands
+where the dial was. The voice bus is not a music path, so the assistant's replies, timers, and announcements made
+through the satellite still play; an announcement sent to the Music Assistant player is music and is muted with it.
+The mute is not a sink mute: the sink's own mute belongs to the manager alone, as the rebuild guard below. A ready
+bridge gives new client streams an already-applied gain. Direct clients on the hardware
 sink follow the music level both on a volume command and on reconciliation, but can still start playing before the
 manager sees them. The voice bus is never ducked.
 
@@ -74,15 +77,15 @@ adjusting gains, and guards every new loopback into the output or either playbac
 input trim even when the background bridge is already running. An AEC-only connection does not need the speaker guard.
 An unpublished playback stream keeps the guard held and schedules another pass a second later while the rest of the
 graph is reconciled and published. A failed command removes readiness status. The guard releases only after playback
-gains are applied and the requested mute is successfully written; failed writes retain the guard for retry.
+gains are applied and the unmute is successfully written; failed writes retain the guard for retry.
 
-The requested mute is saved atomically in `/var/lib/smartamp-audio-manager/mute.json`, before any guard can change the
-sink. The service's `StateDirectory` creates that private writable directory; `--mute-state` passes the file to the
-daemon. Restarts and reboots restore this request, so a user mute survives while an abandoned guard can be released
-after recovery. With no saved request, the existing sink mute is preserved. Mute changes observed during normal
-operation and requests from the controller or USB host update the saved request. The guard is a mute switch, not a
-sample ramp. Direct clients and independently recreated streams can still play before the manager sees them;
-driver and amplifier transients still need hardware validation.
+Because nothing but the guard is meant to mute the sink — the volume mute is a gain, never a sink property — the
+manager keeps no state about it: a sink found muted at
+start-up — by a daemon killed mid-rebuild, or by WirePlumber restoring that mute across a reboot — is guarded again
+and released once the first pass settles, and a mute another client leaves during normal operation is undone on the
+next pass. Sound always comes back. The guard is a mute switch, not a sample ramp. Direct clients and independently
+recreated streams can still play before the manager sees them; driver and amplifier transients still need hardware
+validation.
 
 It also mirrors the HiFiBerry output monitor into the XVF3800 USB playback endpoint. Nothing is connected to the
 ReSpeaker speaker jack; the stream exists to give the XMOS DSP the far-end reference required for acoustic echo
@@ -108,7 +111,7 @@ policy and readiness gate to reopen the device. Silent or blocked capture withou
 - `smartamp-hifiberry`: applies hardware mixer settings after ALSA detects the HAT.
 - `smartamp-usb-audio-gadget`: creates the stereo UAC2 peripheral on the board's USB-C controller.
 - `smartamp-audio-manager`: maintains PipeWire defaults, switchable routes, the background bus and its ducking gain,
-  the voice bus and its volume, and the output sink's mute, driven by `pactl subscribe` events and a Unix control socket.
+  the voice bus and its volume, and the volume mute, driven by `pactl subscribe` events and a Unix control socket.
 - `smartamp-sendspin`: runs the Sendspin player that Music Assistant discovers and streams to.
 - `smartamp-voice-assistant`: pinned OHF Linux Voice Assistant checkout and Python virtual environment.
 - `smartamp-controller`: maps Assist events to background ducking and XVF3800 effects, and renders/handles Stream Deck+

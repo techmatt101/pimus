@@ -50,9 +50,7 @@ def volume_writes(run: mock.Mock) -> list[tuple[str, str]]:
 
 
 class ManagerTestCase(unittest.TestCase):
-    def make_manager(
-        self, raw_config: dict[str, Any], *, mute_path: Path | None = None
-    ) -> AudioManager:
+    def make_manager(self, raw_config: dict[str, Any]) -> AudioManager:
         microphone = {"match": "XVF3800", **raw_config.get("microphone", {})}
         base = {"output_match": "HiFiBerry", "sources": {}}
         directory = tempfile.TemporaryDirectory()
@@ -62,7 +60,6 @@ class ManagerTestCase(unittest.TestCase):
             AudioConfig.from_mapping({**base, **raw_config, "microphone": microphone}),
             path / "control.sock",
             path / "status.json",
-            mute_path if mute_path is not None else path / "mute.json",
         )
         self.addCleanup(manager.selector.close)
         return manager
@@ -208,8 +205,8 @@ class ControlSocketTests(ManagerTestCase):
                 "ducked": False,
                 "usb_playback": False,
                 "music_volume": 100,
+                "vol_muted": False,
                 "voice_volume": 100,
-                "output_muted": False,
             },
         )
         self.assertTrue(reconcile)
@@ -262,8 +259,8 @@ class ControlSocketTests(ManagerTestCase):
                 "ducked": False,
                 "usb_playback": False,
                 "music_volume": 100,
+                "vol_muted": False,
                 "voice_volume": 100,
-                "output_muted": False,
             },
         )
         manager.safe_reconcile.assert_called_once()
@@ -641,29 +638,38 @@ class ReconcileTests(ManagerTestCase):
         reconcile()
         self.assertEqual(gadget, {"volume": 40, "muted": False})
 
-        # The computer moves its slider and mutes: the music level and the
-        # sink mute follow; the sink volume itself stays pinned.
-        gadget.update(volume=55, muted=True)
+        # The computer moves its slider: the music level follows; the sink
+        # volume itself stays pinned.
+        gadget.update(volume=55)
         reconcile()
         self.assertEqual(manager.music_volume, 55)
-        self.assertTrue(manager.output.muted)
-        self.assertIn(("pactl", "set-sink-mute", "hifiberry", "1"), commands)
         self.assertNotIn(("pactl", "set-sink-volume", "hifiberry", "55%"), commands)
 
         # A settled graph stays quiet: no further writes on the next pass.
         writes = len(commands)
         reconcile()
-        self.assertEqual(
-            [c for c in commands[writes:] if "sset" in c or "set-sink-mute" in c],
-            [],
-        )
+        self.assertEqual([c for c in commands[writes:] if "sset" in c], [])
 
-        # The amp dial moves the music level and unmutes: the gadget follows,
-        # so the computer's slider tracks the amp.
-        manager.music_volume = 70
-        sinks[0]["mute"] = False
+        # The computer mutes: that is the volume mute, so the music paths go
+        # silent while the level itself and the output sink are untouched, and
+        # the host's unmute brings the music back at the same level.
+        gadget.update(muted=True)
         reconcile()
-        self.assertEqual(gadget, {"volume": 70, "muted": False})
+        self.assertTrue(manager.vol_muted)
+        self.assertEqual(manager.music_volume, 55)
+        self.assertEqual(manager.music_level, 0)
+        self.assertFalse(sinks[0]["mute"])
+        gadget.update(muted=False)
+        reconcile()
+        self.assertFalse(manager.vol_muted)
+        self.assertEqual(manager.music_level, 55)
+
+        # The amp dial moves the music level and the deck mutes: the gadget
+        # follows both, so the computer's controls track the amp.
+        manager.music_volume = 70
+        manager.vol_muted = True
+        reconcile()
+        self.assertEqual(gadget, {"volume": 70, "muted": True})
 
     def test_commanded_music_volume_survives_a_stale_gadget_reading(self) -> None:
         manager = self.make_manager({})
@@ -1389,29 +1395,28 @@ class VolumeTests(ManagerTestCase):
             manager.output.settle(True)
             run.assert_not_called()
 
-    def test_output_mute_is_commanded_and_read_back_from_the_sink(self) -> None:
+    def test_output_sink_mute_belongs_to_the_daemon(self) -> None:
         manager = self.make_manager({"sources": {}})
-        sink = {"name": "hifi", "volume": {"mono": {"value_percent": "100%"}}}
-
+        sink = {"name": "hifi", "mute": False, "volume": {"mono": {"value_percent": "100%"}}}
         with mock.patch.object(process, "run") as run, mock.patch.object(
             manager.graph, "find_sink", return_value=sink
         ):
-            reply, _ = manager.commands.apply(
-                mock.Mock(), {"command": "set-output-mute", "muted": True}
-            )
-            self.assertTrue(reply["output_muted"])
-            run.assert_called_once_with("pactl", "set-sink-mute", "hifi", "1")
-
-        # A mute made elsewhere arrives on the next pass rather than by polling.
-        self.assertIs(output.mute_state({**sink, "mute": True}), True)
-        self.assertIs(output.mute_state({**sink, "mute": False}), False)
-        # A sink that reports no volume leaves the last known answer alone.
-        self.assertIsNone(output.mute_state({"name": "hifi"}))
-
-        reply, _ = manager.commands.apply(
-            mock.Mock(), {"command": "set-output-mute", "muted": "yes"}
+            manager.output.prepare()
+            manager.output.settle(True)
+        self.assertEqual(
+            [call.args for call in run.call_args_list],
+            [("pactl", "set-sink-mute", "hifi", "1"), ("pactl", "set-sink-mute", "hifi", "0")],
         )
-        self.assertEqual(reply["event"], "error")
+
+        # There is no user mute to keep: a mute WirePlumber restored or another
+        # client left is undone, so sound always comes back after a rebuild.
+        sink["mute"] = True
+        with mock.patch.object(process, "run") as run, mock.patch.object(
+            manager.graph, "find_sink", return_value=sink
+        ):
+            manager.output.prepare()
+            manager.output.settle(True)
+            run.assert_called_once_with("pactl", "set-sink-mute", "hifi", "0")
 
     def test_startup_config_seeds_the_music_and_voice_levels(self) -> None:
         with tempfile.TemporaryDirectory() as base:
@@ -1430,7 +1435,6 @@ class VolumeTests(ManagerTestCase):
                 AudioConfig.load(config),
                 Path(base) / "control.sock",
                 Path(base) / "status.json",
-                Path(base) / "mute.json",
             )
             self.addCleanup(manager.selector.close)
         self.assertEqual(manager.music_volume, 20)
@@ -1451,6 +1455,68 @@ class VolumeTests(ManagerTestCase):
 
         self.assertEqual([call.args[-1] for call in run.call_args_list], ["58%", "15%"])
         self.assertTrue(manager.background.ducked)
+
+    def test_vol_mute_silences_every_music_path_and_nothing_else(self) -> None:
+        manager = self.make_manager(
+            {
+                "background": {"enabled": True, "duck_volume_percent": 15},
+                "voice_bus": {"enabled": True, "volume_percent": 50},
+            }
+        )
+        manager.music_volume = 60
+        manager.background.stream_index = 42
+        manager.background.ducked = False
+        manager.background.gain_applied = 60
+        manager.voice_bus.stream_index = 43
+        manager.voice_bus.gain_applied = 50
+        client = {"index": 7, "sink": 1, "properties": {"media.name": "mpv"}}
+        listings = {
+            "sinks": [{"name": "hifi", "index": 1, "description": "HiFiBerry"}],
+            "sink-inputs": [client],
+        }
+
+        def gains(action: Any) -> list[tuple[str, str]]:
+            with self._patched_graph(listings, fake_run) as run:
+                action()
+            return volume_writes(run)
+
+        # Muting drops the background bus and the direct client to silence;
+        # the voice bus is not written at all, and the music level itself is
+        # untouched.
+        writes = gains(
+            lambda: manager.commands.apply(
+                mock.Mock(), {"command": "set-vol-mute", "muted": True}
+            )
+        )
+        self.assertIn(("42", "0%"), writes)
+        self.assertIn(("7", "0%"), writes)
+        self.assertNotIn("43", [stream for stream, _ in writes])
+        self.assertTrue(manager.vol_muted)
+        self.assertEqual(manager.music_volume, 60)
+        self.assertEqual(manager.music_level, 0)
+        self.assertTrue(manager.state_event()["vol_muted"])
+
+        # Ducking a muted amp stays silent, and unmuting lands back on the
+        # dial's level, ducked or not.
+        gains(
+            lambda: manager.commands.apply(
+                mock.Mock(), {"command": "set-duck", "active": True}
+            )
+        )
+        self.assertEqual(manager.background.target_gain(manager.music_level, True), 0)
+        writes = gains(
+            lambda: manager.commands.apply(
+                mock.Mock(), {"command": "set-vol-mute", "muted": False}
+            )
+        )
+        self.assertIn(("42", "9%"), writes)
+        self.assertIn(("7", "60%"), writes)
+        self.assertFalse(manager.vol_muted)
+
+        reply, _ = manager.commands.apply(
+            mock.Mock(), {"command": "set-vol-mute", "muted": "yes"}
+        )
+        self.assertEqual(reply["event"], "error")
 
     def test_ducked_music_dips_by_the_duck_share_of_the_music_level(self) -> None:
         manager = self.make_manager(

@@ -20,7 +20,7 @@ export class VolumeDial implements Dial {
         this.#masterLabel = label
         this.left = this.#stepped(volumeBinding(audio, 'down'), -1)
         this.right = this.#stepped(volumeBinding(audio, 'up'), 1)
-        this.press = volumeBinding(audio, 'mute')
+        this.press = volumeBinding(audio, 'vol_mute')
     }
 
     get label(): string {
@@ -53,14 +53,14 @@ export class VolumeDial implements Dial {
     }
 
     detail(): string {
-        if (!this.#voiceHolds() && this.#model.state.outputMuted) return 'MUTED'
+        if (!this.#voiceHolds() && this.#model.state.volMuted) return 'MUTED'
         const reading = this.#reading()
         return reading === undefined ? '?' : percent(reading / 100)
     }
 
     /** A muted bar reads as empty, which is what muted sounds like. */
     level(): number | undefined {
-        if (!this.#voiceHolds() && this.#model.state.outputMuted) return 0
+        if (!this.#voiceHolds() && this.#model.state.volMuted) return 0
         const reading = this.#reading()
         return reading === undefined ? undefined : reading / 100
     }

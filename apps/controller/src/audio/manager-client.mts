@@ -19,7 +19,7 @@ interface ManagerEvent {
     usb_playback?: unknown
     music_volume?: unknown
     voice_volume?: unknown
-    output_muted?: unknown
+    vol_muted?: unknown
     level?: unknown
 }
 
@@ -92,6 +92,7 @@ export class AudioManagerClient {
                 this.#write({command: 'set-sources', sources: this.state.sources})
                 if (this.state.voiceVolume !== undefined) this.setVoiceVolume(this.state.voiceVolume)
                 if (this.state.musicVolume !== undefined) this.setMusicVolume(this.state.musicVolume)
+                if (this.state.volMuted !== undefined) this.setVolMute(this.state.volMuted)
             } else {
                 this.#write({command: 'get-state'})
             }
@@ -157,12 +158,12 @@ export class AudioManagerClient {
     }
 
     /** Forwards the resolved absolute state, so a replayed message cannot invert a toggle. */
-    setOutputMute(muted: boolean): void {
-        if (this.state.outputMuted !== muted) {
-            this.state = {...this.state, outputMuted: muted}
+    setVolMute(muted: boolean): void {
+        if (this.state.volMuted !== muted) {
+            this.state = {...this.state, volMuted: muted}
             this.#onStateChange()
         }
-        this.#write({command: 'set-output-mute', muted})
+        this.#write({command: 'set-vol-mute', muted})
     }
 
     setMusicVolume(percent: number): void {
@@ -263,9 +264,7 @@ export class AudioManagerClient {
                     usbPlayback: message.usb_playback === true,
                     ...(music.level !== undefined ? {musicVolume: music.level} : {}),
                     ...(voice.level !== undefined ? {voiceVolume: voice.level} : {}),
-                    ...(typeof message.output_muted === 'boolean'
-                        ? {outputMuted: message.output_muted}
-                        : {}),
+                    ...(typeof message.vol_muted === 'boolean' ? {volMuted: message.vol_muted} : {}),
                 }
                 this.#onStateChange()
             } else if (message.event === 'voice_level' && typeof message.level === 'number') {
