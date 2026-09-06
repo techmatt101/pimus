@@ -18,7 +18,8 @@
   loop: >-
     {{
       ['smartamp-hifiberry.service', 'smartamp-audio-manager.service']
-      + (['smartamp-usb-audio-gadget.service', 'smartamp-usb-audio.service'] if usb_audio_gadget_enabled else [])
+      + (['smartamp-usb-audio-gadget.service'] if usb_audio_gadget_enabled else [])
+      + (['smartamp-audio-inputs.service'] if (smartamp_audio_inputs_enabled | bool) else [])
       + (['smartamp-sendspin.service'] if sendspin_enabled else [])
       + (['smartamp-voice-assistant.service'] if voice_assistant_enabled else [])
       + (['smartamp-controller.service'] if (smartamp_controller_enabled | bool) else [])
