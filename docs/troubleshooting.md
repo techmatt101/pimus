@@ -341,8 +341,8 @@ The USB audio app gates playback and reports the Stream Deck's USB status from t
 playback rather than enumeration.
 
 If the computer is playing but no sound arrives, check `journalctl -u smartamp-usb-audio` and
-`/run/user/<smartamp UID>/smartamp-usb-audio-status.json`: `available` should be true,
-`source` should name the capture node, and `playing` should be true when the USB toggle is on.
+`/run/user/<smartamp UID>/smartamp-usb-audio-status.json`: under `sources.usb`, `available` should be true
+and `node` should name the capture node; `playing` should be true when the USB toggle is on.
 The USB app activates the gadget card's
 pro-audio profile itself when the card is parked off; an older deployment without that logic needs
 `pactl set-card-profile alsa_card.platform-1000480000.usb pro-audio` once.

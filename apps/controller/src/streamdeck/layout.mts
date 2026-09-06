@@ -227,8 +227,8 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
             new PowerTile(power, dynamic, clock)
         ],
         [
-            new SourceRouteTile(model, audio, dynamic, {faces: SOURCE_FACES}),
             key('MUTE', '#7f0000', voice('mic_mute'), {on: 'micOff', off: 'mic'}),
+            null,
             null,
             null,
         ],
@@ -256,7 +256,10 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
             }, dynamic),
             null,
         ],
-        [new SourceTrimTile(model, audio, dynamic, {faces: SOURCE_FACES}), null, null, null],
+        [
+            new SourceTrimTile(model, audio, dynamic, {faces: SOURCE_FACES}), 
+            new SourceRouteTile(model, audio, dynamic, {faces: SOURCE_FACES}),
+            null, null],
     ]
 
     const remoteGrid: PageGrid | null = remote

@@ -174,7 +174,7 @@ fi
 {% if usb_audio_gadget_enabled %}
 heading 'USB audio client'
 USB_STATUS_FILE=/run/user/{{ smartamp_uid }}/smartamp-usb-audio-status.json
-jq -e '.source | type == "string" and length > 0' "$USB_STATUS_FILE" >/dev/null 2>&1 \
+jq -e '.sources.usb.node | type == "string" and length > 0' "$USB_STATUS_FILE" >/dev/null 2>&1 \
     && pass 'USB gadget capture node is present' \
     || fail 'USB audio status or capture node is missing'
 {% endif %}
