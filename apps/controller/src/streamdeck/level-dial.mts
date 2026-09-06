@@ -17,20 +17,25 @@ export interface LevelDialHandlers {
  * shared dial.
  */
 export class LevelDial implements Dial {
-    readonly label: string
     readonly left: Binding
     readonly right: Binding
     readonly press: Binding
+    readonly #label: string | (() => string)
     readonly #step: number
     readonly #handlers: LevelDialHandlers
 
-    constructor(label: string, handlers: LevelDialHandlers, step = 5) {
-        this.label = label
+    /** A label given as a function is read each frame, for a knob whose value moves between levels. */
+    constructor(label: string | (() => string), handlers: LevelDialHandlers, step = 5) {
+        this.#label = label
         this.#handlers = handlers
         this.#step = step
         this.left = {action: {type: 'noop'}, run: () => this.#turn(-1)}
         this.right = {action: {type: 'noop'}, run: () => this.#turn(1)}
         this.press = {action: {type: 'noop'}, run: () => this.#handlers.onConfirm()}
+    }
+
+    get label(): string {
+        return typeof this.#label === 'string' ? this.#label : this.#label()
     }
 
     #turn(direction: number): void {

@@ -81,7 +81,7 @@ the socket as the `state` event with `event` in front. Each bus section carries 
 with its own `trim` — the players that play straight into the bus first, under the name inventory gives them
 (`sendspin`), then each route with its `enabled` toggle and the capture node it was found on. A source with no
 `enabled` has nothing to switch. The USB audio app publishes its one source in the same shape, and the controller
-merges the two lists, so a key that shows a trim needs only the list and a slot in it.
+merges the two lists, so the key that shows the trims needs nothing but the list.
 
 The USB audio app owns gadget discovery, host stream detection, its playback client,
 and USB controls/status. The controller combines its socket state with the audio

@@ -1,6 +1,5 @@
-import type {RouteActionName} from '../actions/catalog.mjs'
 import {isEntityOn, numericAttribute} from '../home-assistant/entity.mjs'
-import {type Binding, routeBinding, voiceBinding} from './bindings.mjs'
+import {type Binding, voiceBinding} from './bindings.mjs'
 import type {Dial} from './dial.mjs'
 import {DynamicDial} from './dials/dynamic-dial.mjs'
 import {MediaDial} from './dials/media-dial.mjs'
@@ -20,7 +19,9 @@ import {PlaylistTile} from './tiles/playlist-tile.mjs'
 import {PowerTile} from './tiles/power-tile.mjs'
 import {RemoteTile} from './tiles/remote-tile.mjs'
 import {SceneTile} from './tiles/scene-tile.mjs'
-import {type SourceFace, SourceTrimTile} from './tiles/source-trim-tile.mjs'
+import {SourceRouteTile} from './tiles/source-route-tile.mjs'
+import {SourceTrimTile} from './tiles/source-trim-tile.mjs'
+import type {SourceFaces} from './source-face.mjs'
 import {TemperatureTile} from './tiles/temperature-tile.mjs'
 import {TimerTile} from './tiles/timer-tile.mjs'
 import type {Tile} from './tile.mjs'
@@ -65,7 +66,8 @@ const HA = {
  * ceiling the manager only reads, then the two levels the dials move. Each
  * input's trim — the share of the music level it plays at, for balancing the
  * inputs so switching between them does not change how loud the room is —
- * follows on the LEVELS page, one key per source the audio services list.
+ * follows on the LEVELS page, on one key that walks the sources the audio
+ * services list.
  */
 const LEVELS = {
     music: {label: 'MUSIC', icon: 'note', color: '#004d40'},
@@ -76,9 +78,9 @@ const LEVELS = {
 /**
  * How each source the audio services can publish is drawn, keyed by the name
  * they give it (inventory names the players' source in `audio.json`). A
- * source missing here still gets a key, in the plain face with its name.
+ * source missing here still comes up, in the plain face with its name.
  */
-const SOURCE_FACES: Partial<Record<string, SourceFace>> = {
+const SOURCE_FACES: SourceFaces = {
     sendspin: {icon: 'playlist', color: '#311b92'},
     aux: {icon: 'cable', color: '#4a148c'},
     usb: {icon: 'usb', color: '#0d47a1'},
@@ -131,7 +133,6 @@ export interface ControllerServices {
 export function createLayout(services: ControllerServices): StreamDeckLayout {
     const {model, clock, lva, audio, ha, power, brightness, notifications, remote} = services
     const voice = (command: string): Binding => voiceBinding(lva, model, command)
-    const route = (source: string, command: RouteActionName): Binding => routeBinding(audio, source, command)
     const key = (label: string, color: string, binding: Binding, icon?: ActionTileConfig['icon']): Tile =>
         new ActionTile(model, {label, color, binding, ...(icon ? {icon} : {})})
 
@@ -221,24 +222,17 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
     const settingsGrid: PageGrid = [
         [
             new BrightnessTile(model, brightness, dynamic),
-            new LevelTile({
-                ...LEVELS.voice,
-                label: 'VOICE VOL',
-                read: () => model.audio.voiceVolume,
-                apply: (percent) => audio.setVoiceVolume(percent),
-            }, dynamic),
+            null,
             null,
             new PowerTile(power, dynamic, clock)
         ],
         [
-            key('AUX', '#4a148c', route('aux', 'toggle'), 'cable'),
-            key('USB', '#0d47a1', route('usb', 'toggle'), 'usb'),
+            new SourceRouteTile(model, audio, dynamic, {faces: SOURCE_FACES}),
             key('MUTE', '#7f0000', voice('mic_mute'), {on: 'micOff', off: 'mic'}),
+            null,
             null,
         ],
     ]
-
-    const sourceTrim = (slot: number): Tile => new SourceTrimTile(model, audio, dynamic, {slot, faces: SOURCE_FACES})
 
     const levelsGrid: PageGrid = [
         [
@@ -262,7 +256,7 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
             }, dynamic),
             null,
         ],
-        [sourceTrim(0), sourceTrim(1), sourceTrim(2), sourceTrim(3)],
+        [new SourceTrimTile(model, audio, dynamic, {faces: SOURCE_FACES}), null, null, null],
     ]
 
     const remoteGrid: PageGrid | null = remote

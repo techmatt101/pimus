@@ -1,102 +1,107 @@
 import {ArmedControl} from '../armed-control.mjs'
 import {DynamicDial} from '../dials/dynamic-dial.mjs'
-import type {IconName} from '../icon-set.mjs'
 import {LevelDial} from '../level-dial.mjs'
+import {faceOf, labelOf, type SourceFaces} from '../source-face.mjs'
 import type {Surface} from '../surface.mjs'
-import {drawBackground, type Tile} from '../tile.mjs'
+import {drawDots, type Tile, type TileHost} from '../tile.mjs'
 import {drawLevelFace} from './level-tile.mjs'
 import type {ControlModel} from '../../state.mjs'
 import type {AudioControls} from '../../types.mjs'
 
-export interface SourceFace {
-    /** Defaults to the source's name, upper-cased. */
-    label?: string
-    icon: IconName
-    color: string
-}
-
 export interface SourceTrimTileConfig {
-    /** Which source this key shows, counting through the list the audio services publish. */
-    slot: number
     /** How a source of each name is drawn; one the layout has not heard of gets the plain face. */
-    faces?: Partial<Record<string, SourceFace>>
+    faces?: SourceFaces
 }
 
-const PLAIN_FACE: SourceFace = {icon: 'note', color: '#37474f'}
-const EMPTY_SLOT_COLOR = '#0a0d10'
+const WAITING_LABEL = 'TRIM'
+const DOTS_Y = 8
 
 /**
- * One input's trim — the share of the music level it plays at — for whichever
- * source occupies this slot of the audio services' own list, so a unit shows
- * exactly the inputs it has and the layout never names them. Press to arm the
- * shared dial to that trim, as `LevelTile` does; the slot may hold a different
- * source after a manager restart, so the armed control is looked up by name.
+ * Every input's trim — the share of the music level it plays at — on one key
+ * that walks the list the audio services publish, so a unit offers exactly the
+ * inputs it has and the layout never names them. Press to arm the shared dial
+ * to the source showing; while armed, press the key again to move to the next
+ * source, and press the knob to finish. Nothing is shown until the list arrives.
  */
 export class SourceTrimTile implements Tile {
     readonly #model: ControlModel
-    readonly #audio: AudioControls
-    readonly #dial: DynamicDial
-    readonly #slot: number
-    readonly #faces: Partial<Record<string, SourceFace>>
-    readonly #controls = new Map<string, ArmedControl>()
+    readonly #faces: SourceFaces
+    readonly #armed: ArmedControl
+    #cursor: string | null = null
+    #host: TileHost | null = null
 
-    constructor(model: ControlModel, audio: AudioControls, dial: DynamicDial, {slot, faces = {}}: SourceTrimTileConfig) {
+    constructor(model: ControlModel, audio: AudioControls, dial: DynamicDial, {faces = {}}: SourceTrimTileConfig = {}) {
         this.#model = model
-        this.#audio = audio
-        this.#dial = dial
-        this.#slot = slot
         this.#faces = faces
+        const level = new LevelDial(() => this.#label(), {
+            read: () => this.#trim(),
+            apply: (percent) => {
+                const name = this.#name()
+                if (name !== undefined) audio.setSourceTrim(name, percent)
+            },
+            onConfirm: () => this.#armed.release(),
+        })
+        this.#armed = new ArmedControl(dial, level, () => this.#next())
     }
 
     press(): void {
-        const name = this.#name()
-        if (name !== undefined) this.#control(name).press()
+        if (this.#name() !== undefined) this.#armed.press()
     }
 
     holdsDial(): boolean {
-        for (const control of this.#controls.values()) if (control.armed) return true
-        return false
+        return this.#armed.armed
+    }
+
+    mount(host: TileHost): void {
+        this.#host = host
     }
 
     unmount(): void {
-        for (const control of this.#controls.values()) control.release()
+        this.#host = null
+        this.#armed.release()
     }
 
     draw(surface: Surface): void {
+        const names = this.#names()
         const name = this.#name()
-        if (name === undefined) {
-            drawBackground(surface, EMPTY_SLOT_COLOR)
-            return
-        }
-        const face = this.#faces[name] ?? PLAIN_FACE
+        const face = faceOf(this.#faces, name)
         drawLevelFace(surface, {
-            label: face.label ?? name.toUpperCase(),
+            label: this.#label(),
             icon: face.icon,
             color: face.color,
-            level: this.#trim(name),
-            adjustable: true,
-            armed: this.#controls.get(name)?.armed === true,
+            level: this.#trim(),
+            adjustable: name !== undefined,
+            armed: this.#armed.armed,
         })
+        if (name !== undefined && names.length > 1) {
+            drawDots(surface, names.length, names.indexOf(name), DOTS_Y, '#ffffff')
+        }
+    }
+
+    #names(): string[] {
+        return Object.keys(this.#model.audio.sources)
     }
 
     #name(): string | undefined {
-        return Object.keys(this.#model.audio.sources)[this.#slot]
+        const names = this.#names()
+        return this.#cursor !== null && names.includes(this.#cursor) ? this.#cursor : names[0]
     }
 
-    #trim(name: string): number | undefined {
-        return this.#model.audio.sources[name]?.trim
+    #label(): string {
+        const name = this.#name()
+        return name === undefined ? WAITING_LABEL : labelOf(this.#faces, name)
     }
 
-    #control(name: string): ArmedControl {
-        let control = this.#controls.get(name)
-        if (control) return control
-        const level = new LevelDial(this.#faces[name]?.label ?? name.toUpperCase(), {
-            read: () => this.#trim(name),
-            apply: (percent) => this.#audio.setSourceTrim(name, percent),
-            onConfirm: () => control?.release(),
-        })
-        control = new ArmedControl(this.#dial, level, () => control?.release())
-        this.#controls.set(name, control)
-        return control
+    #trim(): number | undefined {
+        const name = this.#name()
+        return name === undefined ? undefined : this.#model.audio.sources[name]?.trim
+    }
+
+    #next(): void {
+        const names = this.#names()
+        const name = this.#name()
+        if (name === undefined) return
+        this.#cursor = names[(names.indexOf(name) + 1) % names.length] ?? null
+        this.#host?.invalidate()
     }
 }
