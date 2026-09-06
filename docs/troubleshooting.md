@@ -193,6 +193,35 @@ returns to full volume; there is no lease file to inspect or expire. If the gain
 controller is connected to the socket in the `smartamp-controller` log, then look for `Ducked`/`Restored` lines in
 `smartamp-audio-manager`.
 
+## Music Assistant's volume does nothing, or fights the dial
+
+With `sendspin_volume_sets_music_level` on, Music Assistant's slider for this player runs the volume hook, which sends
+`set-music-volume` to the audio manager; the player applies no gain of its own. Confirm the wiring first:
+
+```sh
+systemctl cat smartamp-sendspin | grep -E 'hook-set-volume|SMARTAMP_AUDIO_SOCKET'
+journalctl -u smartamp-sendspin -n 50 | grep -i 'volume hook'
+```
+
+Move the slider and watch the level follow, on the deck's LEVELS page or in the status file:
+
+```sh
+jq '{music_volume, trims, output_ceiling}' /run/user/*/smartamp-audio-status.json
+```
+
+A hook that runs but changes nothing means the manager refused the command; look for `audio manager rejected a
+command` in `smartamp-controller`, or run the hook by hand:
+
+```sh
+sudo -u smartamp SMARTAMP_AUDIO_SOCKET=/run/user/$(id -u smartamp)/smartamp-audio.sock \
+  /opt/smartamp/smartamp_set_music_volume.py 40
+```
+
+The link is one-way. Turning the volume dial moves the music level without telling Music Assistant, so its slider can
+read stale until it next commands a volume; and if Music Assistant re-asserts a remembered volume when the player
+reconnects, that will land on the music level as a jump at reconnect. If that proves annoying, set
+`sendspin_volume_sets_music_level: false` and the player goes back to scaling its own samples.
+
 ## Music crackles or pops every few seconds
 
 Steady, quiet crackling through the speakers — with `vcgencmd get_throttled` reading `0x0` and low CPU load — is the

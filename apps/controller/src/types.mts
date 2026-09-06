@@ -176,6 +176,11 @@ export interface AudioControls {
     setSourceState(name: string, command: string): unknown
 
     setVoiceVolume(percent: number): unknown
+
+    /** The music level as an absolute percent, where `setVolume` steps it. */
+    setMusicVolume(percent: number): unknown
+
+    setInputTrim(name: string, percent: number): unknown
 }
 
 export interface HealthState {
@@ -236,6 +241,18 @@ export interface AudioState {
     voiceVolume?: number
     /** Whether the music paths are muted; unknown until the manager's first state event. */
     volMuted?: boolean
+    /**
+     * Each input's own trim, as the share of the music level it plays at. Holds
+     * exactly the inputs this deployment has, on the same terms as `sources`:
+     * a name missing from a known list is a trim this hardware does not have.
+     */
+    trims: Record<string, number | undefined>
+    /**
+     * The amplifier's hardware ceiling in percent, which the manager reads and
+     * never writes. Undefined until its first state event, and on a unit whose
+     * mixer cannot be read.
+     */
+    ampCeiling?: number
 }
 
 export interface UsbControlDevice {

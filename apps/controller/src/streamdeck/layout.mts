@@ -15,6 +15,7 @@ import {TouchStrip} from './strip.mjs'
 import {ActionTile, type ActionTileConfig} from './tiles/action-tile.mjs'
 import {BrightnessTile} from './tiles/brightness-tile.mjs'
 import {EntityToggleTile} from './tiles/entity-toggle-tile.mjs'
+import {LevelTile} from './tiles/level-tile.mjs'
 import {PlaylistTile} from './tiles/playlist-tile.mjs'
 import {PowerTile} from './tiles/power-tile.mjs'
 import {RemoteTile} from './tiles/remote-tile.mjs'
@@ -23,7 +24,6 @@ import {TemperatureTile} from './tiles/temperature-tile.mjs'
 import {TimerTile} from './tiles/timer-tile.mjs'
 import type {Tile} from './tile.mjs'
 import {VoiceTile} from './tiles/voice-tile.mjs'
-import {VoiceVolumeTile} from './tiles/voice-volume-tile.mjs'
 import type {ControlModel} from '../state.mjs'
 import type {
     AudioControls,
@@ -56,6 +56,25 @@ const HA = {
         {label: 'MELLOW', media: {media_content_id: 'library://playlist/1', media_content_type: 'playlist'}},
         {label: 'ROCK', media: {media_content_id: 'library://playlist/2', media_content_type: 'playlist'}},
         {label: 'FOCUS', media: {media_content_id: 'library://playlist/3', media_content_type: 'playlist'}},
+    ],
+} as const
+
+/**
+ * The gains on the amp's path, in the order sound crosses them: the hardware
+ * ceiling the manager only reads, the two levels the dials move, then each
+ * input's trim — the share of the music level that input plays at, for
+ * balancing them so switching input does not change how loud the room is.
+ * `input` names the trim as the audio manager publishes it; a unit whose
+ * hardware has no such input reports none and the key draws unknown.
+ */
+const LEVELS = {
+    music: {label: 'MUSIC', icon: 'note', color: '#004d40'},
+    voice: {label: 'VOICE', icon: 'voice', color: '#00565e'},
+    ceiling: {label: 'AMP CEILING', icon: 'volume', color: '#263238'},
+    trims: [
+        {label: 'SENDSPIN', input: 'background', icon: 'playlist', color: '#311b92'},
+        {label: 'AUX', input: 'aux', icon: 'cable', color: '#4a148c'},
+        {label: 'USB', input: 'usb', icon: 'usb', color: '#0d47a1'},
     ],
 } as const
 
@@ -196,7 +215,12 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
     const settingsGrid: PageGrid = [
         [
             new BrightnessTile(model, brightness, dynamic),
-            new VoiceVolumeTile(model, audio, dynamic),
+            new LevelTile({
+                ...LEVELS.voice,
+                label: 'VOICE VOL',
+                read: () => model.audio.voiceVolume,
+                apply: (percent) => audio.setVoiceVolume(percent),
+            }, dynamic),
             null,
             new PowerTile(power, dynamic, clock)
         ],
@@ -204,6 +228,45 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
             key('AUX', '#4a148c', route('aux', 'toggle'), 'cable'),
             key('USB', '#0d47a1', route('usb', 'toggle'), 'usb'),
             key('MUTE', '#7f0000', voice('mic_mute'), {on: 'micOff', off: 'mic'}),
+            null,
+        ],
+    ]
+
+    const trimTile = ({label, input, icon, color}: (typeof LEVELS.trims)[number]): Tile =>
+        new LevelTile({
+            label,
+            icon,
+            color,
+            read: () => model.audio.trims[input],
+            apply: (percent) => audio.setInputTrim(input, percent),
+        }, dynamic)
+
+    const levelsGrid: PageGrid = [
+        [
+            new LevelTile({
+                ...LEVELS.ceiling,
+                read: () => model.audio.ampCeiling,
+            }),
+            new LevelTile({
+                ...LEVELS.music,
+                read: () => model.audio.musicVolume,
+                apply: (percent) => audio.setMusicVolume(percent),
+                // The mute is a gain beside the level, so the level itself
+                // still reads where the dial left it while everything is
+                // silent; say which of the two is showing.
+                caption: () => (model.audio.volMuted === true ? 'MUSIC MUTED' : LEVELS.music.label),
+            }, dynamic),
+            new LevelTile({
+                ...LEVELS.voice,
+                read: () => model.audio.voiceVolume,
+                apply: (percent) => audio.setVoiceVolume(percent),
+            }, dynamic),
+            null,
+        ],
+        [
+            trimTile(LEVELS.trims[0]),
+            trimTile(LEVELS.trims[1]),
+            trimTile(LEVELS.trims[2]),
             null,
         ],
     ]
@@ -229,6 +292,7 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
         {name: 'HOME', grid: mainGrid},
         {name: 'INFO', grid: infoGrid},
         {name: 'SETTINGS', grid: settingsGrid},
+        {name: 'LEVELS', grid: levelsGrid},
         ...(remoteGrid ? [{name: 'REMOTE', grid: remoteGrid}] : []),
     ]
 

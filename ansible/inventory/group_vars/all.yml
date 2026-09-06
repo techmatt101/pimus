@@ -280,6 +280,15 @@ sendspin_server_url: ""
 # Upstream sendspin-cli release installed into the player's virtual environment.
 sendspin_version: "7.5.0"
 sendspin_extra_args: ""
+# Whether Music Assistant's volume for this player moves the amp's music level
+# rather than the player's own gain. On, the client's volume hook hands the
+# commanded percent to the audio manager, exactly as the volume dial does, and
+# the client applies no gain of its own; the room then has one loudness, and a
+# unit with no Stream Deck gains a way to set it at all. Off, the player scales
+# its own samples and Music Assistant's slider becomes a second, invisible gain
+# beneath the music level. A mute arrives as a plain zero, because the hook is
+# told the effective volume only.
+sendspin_volume_sets_music_level: true
 
 # Lightweight Home Assistant voice satellite (ESPHome protocol). This is a
 # native client only; Home Assistant and its Assist pipeline run elsewhere.

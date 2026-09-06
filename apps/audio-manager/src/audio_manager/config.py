@@ -62,6 +62,24 @@ class MicrophoneConfig:
 
 
 @dataclass(frozen=True)
+class OutputCeilingConfig:
+    """The card's hardware playback ceiling, which this daemon only reads.
+
+    Every day-to-day gain lives in the graph; the ceiling is the amplifier's
+    protection and is set once at boot from inventory. Reading it is what lets
+    a control surface show the level the speakers are actually driven at
+    beside the ones it can move.
+    """
+
+    card: str
+    control: str
+
+    @property
+    def readable(self) -> bool:
+        return bool(self.card and self.control)
+
+
+@dataclass(frozen=True)
 class SourceConfig:
     match: str
     enabled: bool
@@ -88,6 +106,7 @@ class AudioConfig:
     idle_teardown_seconds: float
     background: BackgroundConfig
     voice_bus: VoiceBusConfig
+    output_ceiling: OutputCeilingConfig
     sources: dict[str, SourceConfig]
 
     @classmethod
@@ -123,6 +142,10 @@ class AudioConfig:
                 sink_name=str(voice_bus.get("sink_name", "smartamp_voice")),
                 latency_ms=int(voice_bus.get("latency_ms", DEFAULT_LATENCY_MS)),
                 volume_percent=volume.clamp(voice_bus.get("volume_percent", 100)),
+            ),
+            output_ceiling=OutputCeilingConfig(
+                card=str(_section(raw, "output_ceiling").get("card", "")),
+                control=str(_section(raw, "output_ceiling").get("control", "")),
             ),
             sources={
                 name: SourceConfig(

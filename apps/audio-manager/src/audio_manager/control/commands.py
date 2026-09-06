@@ -43,7 +43,8 @@ class CommandHandler:
             "set-voice-meter": self._set_voice_meter,
             "set-voice-volume": self._set_voice_volume,
             "set-music-volume": self._set_music_volume,
-            "set-vol-mute": self._set_vol_mute,
+            "set-music-mute": self._set_music_mute,
+            "set-input-trim": self._set_input_trim,
             "set-source-state": self._set_source_state,
             "get-state": self._get_state,
             "resync": self._resync,
@@ -158,12 +159,24 @@ class CommandHandler:
         self._manager.set_music_volume(percent)
         return self._state()
 
-    def _set_vol_mute(self, _: socket.socket, message: dict[str, Any]) -> Reply:
+    def _set_music_mute(self, _: socket.socket, message: dict[str, Any]) -> Reply:
         muted = message.get("muted")
         if not isinstance(muted, bool):
-            return _error("set-vol-mute needs a boolean muted")
+            return _error("set-music-mute needs a boolean muted")
         # The same stream gains a music volume moves, so it applies directly too.
-        self._manager.set_vol_mute(muted)
+        self._manager.set_music_mute(muted)
+        return self._state()
+
+    def _set_input_trim(self, _: socket.socket, message: dict[str, Any]) -> Reply:
+        name = message.get("name")
+        percent = message.get("percent")
+        if not isinstance(name, str) or not self._manager.knows_trim(name):
+            return _error("unknown input trim")
+        if not volume.is_percent(percent):
+            return _error("set-input-trim needs a percent between 0 and 100")
+        # One stream's own gain, exactly as a music level move is, so it
+        # applies directly rather than asking for a full reconcile.
+        self._manager.set_input_trim(name, percent)
         return self._state()
 
     def _set_source_state(self, _: socket.socket, message: dict[str, Any]) -> Reply:

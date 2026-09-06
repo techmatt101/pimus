@@ -95,13 +95,19 @@ const surface = config.streamdeck?.enabled
             // The output sink stays pinned at 100%: loudness lives on the audio
             // manager's music and voice gains, and the mute beside the music one.
             setVolume: (command) => {
-                if (command === 'vol_mute') return audio.setVolMute(audio.state.volMuted !== true)
+                if (command === 'vol_mute') return audio.setMusicMute(audio.state.volMuted !== true)
                 const current = audio.state.musicVolume
                 if (current === undefined) return
                 return audio.setMusicVolume(current + (command === 'up' ? 5 : -5))
             },
             setVoiceVolume: (percent) => {
                 audio.setVoiceVolume(percent)
+            },
+            setMusicVolume: (percent) => {
+                audio.setMusicVolume(percent)
+            },
+            setInputTrim: (name, percent) => {
+                audio.setInputTrim(name, percent)
             },
         },
         ha: homeAssistant,

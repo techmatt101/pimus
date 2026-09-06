@@ -89,8 +89,8 @@ choice per part. `idle.py` decides when the bridges may be torn down,
 `volume.py` holds the two levels, `status.py` writes the JSON snapshot,
 `modules.py` owns every PipeWire module they loaded, and `graph.py` is the
 cached view of the graph they all read. Everything crossing a boundary sits in
-a folder: `system/` (`process.py`, `pactl.py`, `usb_gadget.py`, `parec.py`,
-`monitors.py` — the only place a binary is run), `control/` (`server.py` and
+a folder: `system/` (`process.py`, `pactl.py`, `amixer.py`, `usb_gadget.py`,
+`parec.py`, `monitors.py` — the only place a binary is run), `control/` (`server.py` and
 `commands.py`, the Unix socket the controller speaks to), and `usb/` (the
 state and volume kept agreed with a plugged-in computer). It runs as
 `python3 -m audio_manager`.

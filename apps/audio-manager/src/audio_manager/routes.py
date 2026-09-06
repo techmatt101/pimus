@@ -69,6 +69,10 @@ class SourceRoutes:
         self._graph = view
         self._modules = registry
         self.enabled = {name: source.enabled for name, source in sources.items()}
+        # Each input's trim starts where inventory put it and can be moved
+        # live to balance the inputs against each other; a restart comes back
+        # to the configured share.
+        self.trims = {name: source.volume_percent for name, source in sources.items()}
         self._applied: dict[str, AppliedRoute] = {}
         self.settled = True
         registry.on_released(self._role_released)
@@ -81,6 +85,9 @@ class SourceRoutes:
         changed = self.enabled[name] != enabled
         self.enabled[name] = enabled
         return changed
+
+    def set_trim(self, name: str, percent: int) -> None:
+        self.trims[name] = percent
 
     def reconcile(
         self,
@@ -116,6 +123,23 @@ class SourceRoutes:
         return any(
             self.enabled.get(name, False) and not source.requires_usb_host
             for name, source in self._sources.items()
+        )
+
+    def apply_trim(self, name: str, music_volume: int) -> None:
+        """Move one route's stream to its trim, without reconciling.
+
+        Unlike a music level move this includes a route bridged into the
+        background bus: the bus carries the music gain for it, but the trim is
+        held on the route's own stream either way.
+        """
+        source = self._sources.get(name)
+        if source is None:
+            return
+        stream = self._stream_of(name)
+        if stream is None:
+            return
+        self._apply_stream_level(
+            name, source, stream, self.enabled.get(name, False), music_volume
         )
 
     def apply_music_volume(self, music_volume: int) -> None:
@@ -195,10 +219,11 @@ class SourceRoutes:
         stream_index = int(stream["index"])
         # Background routes inherit the bus's music gain; both targets share
         # the same off/on handling and carry the input's own trim.
+        trim = self.trims.get(name, source.volume_percent)
         level = (
-            source.volume_percent
+            trim
             if source.bridges_into_background
-            else volume.scale(music_volume, source.volume_percent)
+            else volume.scale(music_volume, trim)
         )
         if not source.mute_when_off:
             self._track_level(stream, level)

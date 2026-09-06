@@ -105,7 +105,7 @@ test('toggles before the first state sync defer to the manager', () => {
         name: 'aux',
         state: 'toggle',
     })
-    assert.deepEqual(client.state, {sources: {}, routesKnown: false})
+    assert.deepEqual(client.state, {sources: {}, routesKnown: false, trims: {}})
 
     // Once synced, toggles resolve locally and travel as absolute states.
     fake.emit('data', '{"event":"state","sources":{"aux":true}}\n')
@@ -115,7 +115,7 @@ test('toggles before the first state sync defer to the manager', () => {
         name: 'aux',
         state: 'off',
     })
-    assert.deepEqual(client.state, {sources: {aux: false}, routesKnown: true, usbPlayback: false})
+    assert.deepEqual(client.state, {sources: {aux: false}, routesKnown: true, usbPlayback: false, trims: {}})
     client.close()
 })
 
@@ -169,9 +169,9 @@ test('the volume mute travels as an absolute state and follows the manager', () 
     fake.emit('data', '{"event":"state","sources":{},"vol_muted":false}\n')
     assert.equal(client.state.volMuted, false)
 
-    client.setVolMute(true)
+    client.setMusicMute(true)
     assert.equal(client.state.volMuted, true)
-    assert.deepEqual(JSON.parse(fake.written.at(-1) ?? ''), {command: 'set-vol-mute', muted: true})
+    assert.deepEqual(JSON.parse(fake.written.at(-1) ?? ''), {command: 'set-music-mute', muted: true})
 
     // A mute made anywhere else, such as a computer's mute key on the USB
     // gadget, reaches the deck through the same broadcast.
@@ -204,9 +204,12 @@ test('voice volume updates optimistically and re-asserts after a reconnect', asy
     // Until the manager reports a level the client has nothing to show or send.
     assert.equal(client.state.voiceVolume, undefined)
     assert.equal(client.state.musicVolume, undefined)
-    first.emit('data', '{"event":"state","sources":{},"voice_volume":60,"music_volume":25}\n')
+    first.emit('data', '{"event":"state","sources":{},"voice_volume":60,"music_volume":25,"trims":{"aux":100},"output_ceiling":90}\n')
     assert.equal(client.state.voiceVolume, 60)
     assert.equal(client.state.musicVolume, 25)
+    // The hardware ceiling is reported and never set from here.
+    assert.equal(client.state.ampCeiling, 90)
+    assert.deepEqual(client.state.trims, {aux: 100})
 
     // Sets clamp and round locally, update the cache immediately, and travel
     // as absolute percentages.
@@ -220,6 +223,11 @@ test('voice volume updates optimistically and re-asserts after a reconnect', asy
     assert.equal(client.state.musicVolume, 55)
     assert.deepEqual(JSON.parse(first.written.at(-1) ?? ''), {command: 'set-music-volume', percent: 55})
 
+    // An input trim is one more level held only in the manager's memory.
+    client.setInputTrim('aux', 80)
+    assert.deepEqual(client.state.trims, {aux: 80})
+    assert.deepEqual(JSON.parse(first.written.at(-1) ?? ''), {command: 'set-input-trim', name: 'aux', percent: 80})
+
     // A manager restart resets its levels to the configured defaults, so the
     // client re-asserts the cached ones alongside its route toggles.
     first.emit('close')
@@ -230,6 +238,7 @@ test('voice volume updates optimistically and re-asserts after a reconnect', asy
     assert.deepEqual(second.written.map((line) => JSON.parse(line)), [
         {command: 'set-voice-volume', percent: 100},
         {command: 'set-music-volume', percent: 55},
+        {command: 'set-input-trim', name: 'aux', percent: 80},
     ])
     client.close()
 })
@@ -383,6 +392,6 @@ test('malformed audio manager events are ignored', () => {
     client.connect()
     fake.emit('connect')
     fake.emit('data', 'garbage\n{"event":"state","sources":{"aux":true}}\n{"event":"state","sources":null}\n')
-    assert.deepEqual(client.state, {sources: {aux: true}, routesKnown: true, usbPlayback: false})
+    assert.deepEqual(client.state, {sources: {aux: true}, routesKnown: true, usbPlayback: false, trims: {}})
     client.close()
 })

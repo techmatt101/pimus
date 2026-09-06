@@ -20,6 +20,8 @@ interface ManagerEvent {
     music_volume?: unknown
     voice_volume?: unknown
     vol_muted?: unknown
+    trims?: unknown
+    output_ceiling?: unknown
     level?: unknown
 }
 
@@ -39,7 +41,7 @@ export interface AudioManagerClientOptions {
  * toggles so user choices survive a manager restart within a boot.
  */
 export class AudioManagerClient {
-    state: AudioState = {sources: {}, routesKnown: false}
+    state: AudioState = {sources: {}, routesKnown: false, trims: {}}
     connected = false
     /** The metered voice-playback level, 0..1, and zero unless metering is on. */
     voiceLevel = 0
@@ -54,6 +56,7 @@ export class AudioManagerClient {
     #reconnectTimer: NodeJS.Timeout | null = null
     #pendingMusic: PendingLevel | null = null
     #pendingVoice: PendingLevel | null = null
+    readonly #pendingTrims = new Map<string, PendingLevel>()
     readonly #socketPath: string
     readonly #onStateChange: () => void
     readonly #reconnectMilliseconds: number
@@ -94,7 +97,10 @@ export class AudioManagerClient {
                 }
                 if (this.state.voiceVolume !== undefined) this.setVoiceVolume(this.state.voiceVolume)
                 if (this.state.musicVolume !== undefined) this.setMusicVolume(this.state.musicVolume)
-                if (this.state.volMuted !== undefined) this.setVolMute(this.state.volMuted)
+                if (this.state.volMuted !== undefined) this.setMusicMute(this.state.volMuted)
+                for (const [name, percent] of Object.entries(this.state.trims)) {
+                    if (percent !== undefined) this.setInputTrim(name, percent)
+                }
             } else {
                 this.#write({command: 'get-state'})
             }
@@ -160,12 +166,12 @@ export class AudioManagerClient {
     }
 
     /** Forwards the resolved absolute state, so a replayed message cannot invert a toggle. */
-    setVolMute(muted: boolean): void {
+    setMusicMute(muted: boolean): void {
         if (this.state.volMuted !== muted) {
             this.state = {...this.state, volMuted: muted}
             this.#onStateChange()
         }
-        this.#write({command: 'set-vol-mute', muted})
+        this.#write({command: 'set-music-mute', muted})
     }
 
     setMusicVolume(percent: number): void {
@@ -176,6 +182,21 @@ export class AudioManagerClient {
         }
         this.#pendingMusic = {level, until: this.#clock() + ECHO_HOLD_MILLISECONDS}
         this.#write({command: 'set-music-volume', percent: level})
+    }
+
+    /**
+     * Balances one input against the others, as a share of the music level.
+     * Held only in the manager's memory, so a restart there comes back to the
+     * configured trim and this cache re-asserts what was set since.
+     */
+    setInputTrim(name: string, percent: number): void {
+        const level = Math.round(Math.max(0, Math.min(100, percent)))
+        if (this.state.trims[name] !== level) {
+            this.state = {...this.state, trims: {...this.state.trims, [name]: level}}
+            this.#onStateChange()
+        }
+        this.#pendingTrims.set(name, {level, until: this.#clock() + ECHO_HOLD_MILLISECONDS})
+        this.#write({command: 'set-input-trim', name, percent: level})
     }
 
     /**
@@ -236,6 +257,25 @@ export class AudioManagerClient {
         return {level: reported, pending: null}
     }
 
+    /**
+     * The manager's trims, each held at what was just asked for until its own
+     * echo comes back, so a dial turn is not dragged backwards by a state
+     * event that was already in flight.
+     */
+    #settleTrims(reported: unknown): AudioState['trims'] {
+        if (typeof reported !== 'object' || reported === null || Array.isArray(reported)) {
+            return this.state.trims
+        }
+        const trims: AudioState['trims'] = {}
+        for (const [name, value] of Object.entries(reported as Record<string, unknown>)) {
+            const settled = this.#settleLevel(this.#pendingTrims.get(name) ?? null, value, this.state.trims[name])
+            if (settled.pending) this.#pendingTrims.set(name, settled.pending)
+            else this.#pendingTrims.delete(name)
+            if (settled.level !== undefined) trims[name] = settled.level
+        }
+        return trims
+    }
+
     #write(message: Record<string, unknown>): void {
         if (!this.connected || !this.#socket) return
         log.debug('send', JSON.stringify(message))
@@ -264,9 +304,11 @@ export class AudioManagerClient {
                     sources: {...(message.sources as AudioState['sources'])},
                     routesKnown: true,
                     usbPlayback: message.usb_playback === true,
+                    trims: this.#settleTrims(message.trims),
                     ...(music.level !== undefined ? {musicVolume: music.level} : {}),
                     ...(voice.level !== undefined ? {voiceVolume: voice.level} : {}),
                     ...(typeof message.vol_muted === 'boolean' ? {volMuted: message.vol_muted} : {}),
+                    ...(typeof message.output_ceiling === 'number' ? {ampCeiling: message.output_ceiling} : {}),
                 }
                 this.#onStateChange()
             } else if (message.event === 'voice_level' && typeof message.level === 'number') {

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import output, status, volume
-from .system import monitors, pactl
+from .system import amixer, monitors, pactl
 from .buses.background import BackgroundBus
 from .buses.voice import VoiceBus
 from .buses.voice_meter import VoiceLevelMeter
@@ -63,6 +63,11 @@ class AudioManager:
         self.music_volume = config.startup_volume_percent
         self.vol_muted = False
         self.voice_volume = config.voice_bus.volume_percent
+        # The amplifier's hardware ceiling, refreshed by each reconcile rather
+        # than read per query: it is set once at boot and only a hand at the
+        # mixer moves it. None until the first pass, and on a unit whose card
+        # cannot be read at all.
+        self.output_ceiling: int | None = None
 
         self.graph = Graph()
         self.output = output.OutputSink(config.output_match, self.graph)
@@ -161,7 +166,36 @@ class AudioManager:
             "music_volume": self.music_volume,
             "vol_muted": self.vol_muted,
             "voice_volume": self.voice_volume,
+            "trims": self.trims(),
+            "output_ceiling": self.output_ceiling,
         }
+
+    def trims(self) -> dict[str, int]:
+        """Every input trim this unit has, as the levels page reads them.
+
+        The background bus only carries a trim of its own while it exists, so
+        a unit with ducking off publishes none for it rather than one that
+        would change nothing.
+        """
+        trims = dict(self.routes.trims)
+        if self.config.background.enabled:
+            trims["background"] = self.background.client_trim
+        return trims
+
+    def set_input_trim(self, name: str, percent: float) -> None:
+        level = volume.clamp(percent)
+        if name == "background":
+            self._apply_or_retry(
+                "Background trim", lambda: self._apply_background_trim(level)
+            )
+            return
+        self.routes.set_trim(name, level)
+        self._apply_or_retry(
+            "Input trim", lambda: self._apply_route_trim(name)
+        )
+
+    def knows_trim(self, name: str) -> bool:
+        return name in self.trims()
 
     @property
     def music_level(self) -> int:
@@ -202,7 +236,7 @@ class AudioManager:
         self.usb_volume.forget()
         self._apply_or_retry("Music volume", self._apply_music_volume)
 
-    def set_vol_mute(self, muted: bool) -> None:
+    def set_music_mute(self, muted: bool) -> None:
         self.vol_muted = muted
         self.usb_volume.forget()
         self._apply_or_retry("Volume mute", self._apply_music_volume)
@@ -236,6 +270,7 @@ class AudioManager:
             (self.music_volume, self.vol_muted)
         )
         self.usb.refresh()
+        self._read_output_ceiling()
         idle = self.idle.update(self._audio_active())
         found = self._reconcile_graph(sink, idle)
         settled = self.background.settled and self.voice_bus.settled and self.routes.settled
@@ -243,6 +278,12 @@ class AudioManager:
             self.schedule_reconcile(RECONCILE_RETRY_SECONDS)
         self.output.settle(settled)
         self._publish(sink, found)
+
+    def _read_output_ceiling(self) -> None:
+        ceiling = self.config.output_ceiling
+        if not ceiling.readable:
+            return
+        self.output_ceiling = amixer.playback_percent(ceiling.card, ceiling.control)
 
     def _guard_output(self, sink_name: str) -> None:
         if sink_name in (
@@ -275,6 +316,8 @@ class AudioManager:
             "sink": sink.get("name") if sink else None,
             "music_volume": self.music_volume,
             "vol_muted": self.vol_muted,
+            "output_ceiling": self.output_ceiling,
+            "trims": self.trims(),
             "voice_input": found.microphone.device,
             "voice_capture": found.microphone.capture,
             "background": {
@@ -341,6 +384,14 @@ class AudioManager:
         self.apply_ducking()
         self.routes.apply_music_volume(self.music_level)
         output.hold_client_streams(self.graph, self.output.find(), self.music_level)
+
+    def _apply_background_trim(self, level: int) -> None:
+        self.graph.invalidate()
+        self.background.set_client_trim(level)
+
+    def _apply_route_trim(self, name: str) -> None:
+        self.graph.invalidate()
+        self.routes.apply_trim(name, self.music_level)
 
     def _adopt_defaults(self, sink: Node | None, voice_source: Node | None) -> None:
         # Only set defaults that are wrong: an unconditional set-default emits a

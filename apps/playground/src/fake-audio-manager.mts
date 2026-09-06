@@ -13,6 +13,9 @@ import type {PlaygroundBus} from './bus.mjs'
 /** The routes the real manager owns; anything else is rejected the same way. */
 const ROUTES = ['aux', 'usb'] as const
 
+/** The input trims the real manager publishes: its two routes, plus the players' bus. */
+const TRIMS = ['background', ...ROUTES] as const
+
 export interface FakeAudioManagerOptions {
     bus: PlaygroundBus
     socketPath: string
@@ -24,6 +27,9 @@ export class FakeAudioManager {
     musicVolume = 40
     voiceVolume = 60
     volMuted = false
+    trims: Record<string, number> = {background: 100, aux: 100, usb: 100}
+    /** Read from the card on the Pi; a fixed reading here, as inventory sets it. */
+    outputCeiling = 90
 
     private readonly bus: PlaygroundBus
     private readonly server: net.Server
@@ -122,10 +128,24 @@ export class FakeAudioManager {
             this.musicVolume = Math.round(percent)
             this.bus.log('audio', 'note', `music volume set to ${this.musicVolume}%`)
             this.broadcastState()
-        } else if (command === 'set-vol-mute') {
+        } else if (command === 'set-input-trim') {
+            const name = String(message.name ?? '')
+            const percent = message.percent
+            if (!(TRIMS as readonly string[]).includes(name)) {
+                this.reject(socket, 'unknown input trim')
+                return
+            }
+            if (typeof percent !== 'number' || percent < 0 || percent > 100) {
+                this.reject(socket, 'set-input-trim needs a percent between 0 and 100')
+                return
+            }
+            this.trims[name] = Math.round(percent)
+            this.bus.log('audio', 'note', `${name} trim set to ${this.trims[name]}%`)
+            this.broadcastState()
+        } else if (command === 'set-music-mute') {
             const muted = message.muted
             if (typeof muted !== 'boolean') {
-                this.reject(socket, 'set-vol-mute needs a boolean muted')
+                this.reject(socket, 'set-music-mute needs a boolean muted')
                 return
             }
             this.volMuted = muted
@@ -203,6 +223,8 @@ export class FakeAudioManager {
             music_volume: this.musicVolume,
             voice_volume: this.voiceVolume,
             vol_muted: this.volMuted,
+            trims: this.trims,
+            output_ceiling: this.outputCeiling,
         })}\n`)
     }
 

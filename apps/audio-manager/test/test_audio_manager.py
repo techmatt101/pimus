@@ -223,6 +223,8 @@ class ControlSocketTests(ManagerTestCase):
                 "music_volume": 100,
                 "vol_muted": False,
                 "voice_volume": 100,
+                "trims": {"background": 100},
+                "output_ceiling": None,
             },
         )
         self.assertTrue(reconcile)
@@ -238,6 +240,20 @@ class ControlSocketTests(ManagerTestCase):
         )
         self.assertEqual(reply["event"], "error")
         self.assertFalse(reconcile)
+
+    def test_trim_commands_are_refused_for_inputs_this_unit_does_not_have(self) -> None:
+        manager = self.make_manager({"sources": {"aux": {"volume_percent": 90}}})
+        # No background bus without ducking, so no trim of its own to move.
+        self.assertEqual(manager.trims(), {"aux": 90})
+
+        for message in (
+            {"command": "set-input-trim", "name": "background", "percent": 50},
+            {"command": "set-input-trim", "name": "aux", "percent": 120},
+        ):
+            reply, reconcile = manager.commands.apply(mock.Mock(), message)
+            self.assertEqual(reply["event"], "error")
+            self.assertFalse(reconcile)
+        self.assertEqual(manager.trims(), {"aux": 90})
 
     def test_socket_commands_reconcile_and_answer_with_live_state(self) -> None:
         manager = self._duckable_manager()
@@ -263,6 +279,8 @@ class ControlSocketTests(ManagerTestCase):
                 "music_volume": 100,
                 "vol_muted": False,
                 "voice_volume": 100,
+                "trims": {"background": 100},
+                "output_ceiling": None,
             },
         )
         manager.safe_reconcile.assert_called_once()
@@ -1487,7 +1505,7 @@ class VolumeTests(ManagerTestCase):
         # untouched.
         writes = gains(
             lambda: manager.commands.apply(
-                mock.Mock(), {"command": "set-vol-mute", "muted": True}
+                mock.Mock(), {"command": "set-music-mute", "muted": True}
             )
         )
         self.assertIn(("42", "0%"), writes)
@@ -1508,7 +1526,7 @@ class VolumeTests(ManagerTestCase):
         self.assertEqual(manager.background.target_gain(manager.music_level, True), 0)
         writes = gains(
             lambda: manager.commands.apply(
-                mock.Mock(), {"command": "set-vol-mute", "muted": False}
+                mock.Mock(), {"command": "set-music-mute", "muted": False}
             )
         )
         self.assertIn(("42", "9%"), writes)
@@ -1516,7 +1534,7 @@ class VolumeTests(ManagerTestCase):
         self.assertFalse(manager.vol_muted)
 
         reply, _ = manager.commands.apply(
-            mock.Mock(), {"command": "set-vol-mute", "muted": "yes"}
+            mock.Mock(), {"command": "set-music-mute", "muted": "yes"}
         )
         self.assertEqual(reply["event"], "error")
 

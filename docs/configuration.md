@@ -47,7 +47,8 @@ channel back and fails if any level is unreadable or differs from the configured
 Loudness itself is two independent levels held by the audio manager: the **music level** (Sendspin, USB computer audio,
 and aux) and the **voice level** (everything the assistant plays). The output sink is pinned at 100% and each level is
 a gain on that class's own bridge stream, so voice speaks at its set loudness whether the music is at 5% or 80%. The
-volume dial and Home Assistant move the music level; `smartamp_startup_volume_percent` is where it starts each boot so
+volume dial, the LEVELS page, and Music Assistant's volume for this player all move the music level;
+`smartamp_startup_volume_percent` is where it starts each boot so
 the device always wakes at a predictable loudness. Because the sink is pinned, the manager also holds any stream that
 plays straight at the output — something not routed through a bus — at the music level rather than letting it play at
 full amplifier gain once the stream has been discovered. Direct clients can still produce an initial burst before
@@ -57,7 +58,18 @@ Each music input also carries a trim of its own — `smartamp_sendspin_volume_pe
 and `smartamp_aux_volume_percent` — the share of the music level that input plays at, for bringing inputs in line with
 each other (USB computers tend to play hotter than Sendspin). All three default to 100, meaning the music level
 untouched. The Sendspin trim is held on its stream into the background bus, so it applies only while voice ducking is
-enabled; the aux and USB trims always apply.
+enabled; the aux and USB trims always apply. All three can be moved live from the deck's
+[LEVELS page](controls.md#the-levels-page), which is the way to find a balance by ear; the audio manager holds that
+only in memory, so bring the number that works back to inventory.
+
+`sendspin_volume_sets_music_level` decides what Music Assistant's volume for this player means. On — the default — the
+client is given a volume hook and applies no gain of its own, so its slider hands the commanded percent to the audio
+manager exactly as the volume dial does: one loudness for the room, and the only way to set it at all on a unit with no
+Stream Deck. Off, the player scales its own samples, and its slider becomes a second gain underneath the music level
+that nothing else can see. The hook is told the effective volume only, so a mute in Music Assistant arrives as a plain
+zero rather than the amp's own volume mute, and unmuting lands on whatever it sends next. It is one-way: the volume
+dial moves the music level without Music Assistant hearing about it, so its slider can read stale until it next
+commands one.
 
 Device match expressions search every PipeWire/Pulse node property. Use `pactl list sinks` and `pactl list sources` on
 the Pi if your firmware exposes different names.

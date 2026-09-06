@@ -28,11 +28,19 @@ class BackgroundBus(PlaybackBus):
         super().__init__(
             "background", config, "SmartAmp_Background_Audio", view, registry
         )
+        # The configured trim is where the players start; a control surface
+        # moves it live to balance them against the other inputs, and the
+        # inventory default is what a restart comes back to.
+        self.client_trim = config.client_volume_percent
 
     def reconcile(self, output: Node | None, *, bridged: bool = True) -> Node | None:
         sink = super().reconcile(output, bridged=bridged)
-        self.hold_clients(self.config.client_volume_percent)
+        self.hold_clients(self.client_trim)
         return sink
+
+    def set_client_trim(self, percent: int) -> None:
+        self.client_trim = percent
+        self.hold_clients(self.client_trim)
 
     def target_gain(self, music_volume: int, ducked: bool) -> int:
         """The bridge gain for the music level, dipped by the duck share."""

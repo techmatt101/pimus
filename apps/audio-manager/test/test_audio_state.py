@@ -67,6 +67,15 @@ class RouteStateTests(ManagerTestCase):
             stream.update(index=62, volume={"mono": {"value_percent": "100%"}})
             reconcile()
             self.assertEqual(volume_writes(commands), [("62", "0%")])
+            # The trim moves live to balance this input against the others,
+            # and a background route carries it on its own stream whatever the
+            # music level is doing.
+            manager.routes.set_enabled("aux", True)
+            reconcile()
+            commands.reset_mock()
+            manager.set_input_trim("aux", 80)
+            self.assertEqual(volume_writes(commands)[-1], ("62", "80%"))
+            self.assertEqual(manager.trims()["aux"], 80)
 
     def test_failed_route_fade_can_be_reversed_and_retried(self) -> None:
         manager = self.make_manager(

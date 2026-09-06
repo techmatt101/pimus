@@ -251,13 +251,19 @@ const layout = createLayout({
             audio.setSourceState(name, command)
         },
         setVolume: (command) => {
-            if (command === 'vol_mute') return audio.setVolMute(audio.state.volMuted !== true)
+            if (command === 'vol_mute') return audio.setMusicMute(audio.state.volMuted !== true)
             const current = audio.state.musicVolume
             if (current === undefined) return
             return audio.setMusicVolume(current + (command === 'up' ? 5 : -5))
         },
         setVoiceVolume: (percent) => {
             audio.setVoiceVolume(percent)
+        },
+        setMusicVolume: (percent) => {
+            audio.setMusicVolume(percent)
+        },
+        setInputTrim: (name, percent) => {
+            audio.setInputTrim(name, percent)
         },
     },
     // The real client speaks the WebSocket API and has its own tests; what the

@@ -62,8 +62,11 @@ path, which is why the background bus can be selected by environment).
 Loudness is two independent gains on those bridges, not the sink volume: the manager pins the output sink at 100% and
 holds the music level on the background bridge (with aux and any direct route following it, and ducking dipping to a
 share of it) and the voice level on the voice bridge. Music at 5% with voice at 50% plays voice at 50%; music at 80%
-with voice at 30% plays voice at 30%. `set-music-volume` and `set-voice-volume` on the control socket move them.
-The volume mute (`set-vol-mute`, `vol_muted` in the state event) sits beside the music level as one boolean: while it
+with voice at 30% plays voice at 30%. `set-music-volume` and `set-voice-volume` on the control socket move them, and
+`set-input-trim` moves one input's share of the music level. Beside those the manager reads the card's hardware
+ceiling and reports it as `output_ceiling`, which nothing here writes: it is set once at boot from inventory and is
+the amplifier's protection rather than a gain.
+The volume mute (`set-music-mute`, `vol_muted` in the state event) sits beside the music level as one boolean: while it
 is on, every path that follows the music level plays at 0% and the level itself is untouched, so an unmute lands
 where the dial was. The voice bus is not a music path, so the assistant's replies, timers, and announcements made
 through the satellite still play; an announcement sent to the Music Assistant player is music and is muted with it.
@@ -112,7 +115,9 @@ policy and readiness gate to reopen the device. Silent or blocked capture withou
 - `smartamp-usb-audio-gadget`: creates the stereo UAC2 peripheral on the board's USB-C controller.
 - `smartamp-audio-manager`: maintains PipeWire defaults, switchable routes, the background bus and its ducking gain,
   the voice bus and its volume, and the volume mute, driven by `pactl subscribe` events and a Unix control socket.
-- `smartamp-sendspin`: runs the Sendspin player that Music Assistant discovers and streams to.
+- `smartamp-sendspin`: runs the Sendspin player that Music Assistant discovers and streams to. With
+  `sendspin_volume_sets_music_level` on it is given a volume hook (`smartamp_set_music_volume.py`) instead of a gain of
+  its own, so Music Assistant's slider for this player moves the audio manager's music level.
 - `smartamp-voice-assistant`: pinned OHF Linux Voice Assistant checkout and Python virtual environment.
 - `smartamp-controller`: maps Assist events to background ducking and XVF3800 effects, and renders/handles Stream Deck+
   controls without Elgato desktop software. The deck half is an addon behind one dynamic import
