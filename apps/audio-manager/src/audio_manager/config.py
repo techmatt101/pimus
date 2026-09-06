@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, cast
 
-from . import volume
+from smartamp_audio import volume
 
 
 DEFAULT_LATENCY_MS = 40
@@ -89,7 +89,6 @@ class SourceConfig:
     enabled: bool
     latency_ms: int
     mute_when_off: bool
-    requires_usb_host: bool
     target: str
     # This input's own trim, as a percent of the music level.
     volume_percent: int
@@ -158,7 +157,6 @@ class AudioConfig:
                     enabled=bool(source.get("enabled", False)),
                     latency_ms=int(source.get("latency_ms", DEFAULT_LATENCY_MS)),
                     mute_when_off=bool(source.get("mute_when_off", False)),
-                    requires_usb_host=bool(source.get("requires_usb_host", False)),
                     target=str(source.get("target", "output")),
                     volume_percent=volume.clamp(source.get("volume_percent", 100)),
                 )

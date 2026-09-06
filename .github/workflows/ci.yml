@@ -40,11 +40,13 @@ jobs:
         with:
           python-version: '3.13'
       - name: Compile Python clients
-        run: python -m compileall -q apps/audio-manager/src ansible/roles/smartamp/files/smartamp_lva.py ansible/roles/smartamp/files/smartamp_audio_recovery.py
+        run: python -m compileall -q apps/audio-manager/src apps/usb-audio/src apps/audio-common/src ansible/roles/smartamp/files/smartamp_lva.py ansible/roles/smartamp/files/smartamp_audio_recovery.py
       - name: Check audio scripts
         run: shellcheck ansible/roles/smartamp/files/scripts/*.sh
-      - name: Test audio manager
-        run: python -m unittest discover -s apps/audio-manager/test
+      - name: Test audio apps
+        run: |
+          python -m unittest discover -s apps/audio-manager/test
+          python -m unittest discover -s apps/usb-audio/test
 
   ansible:
     name: Ansible syntax

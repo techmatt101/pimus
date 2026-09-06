@@ -16,7 +16,7 @@ import logging
 import time
 from typing import Callable
 
-from .graph import Node, media_name
+from smartamp_audio.graph import Node, media_name
 from .modules import STREAM_PREFIX
 
 

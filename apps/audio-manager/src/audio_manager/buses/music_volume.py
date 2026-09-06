@@ -20,9 +20,9 @@ from __future__ import annotations
 
 import logging
 
-from .. import graph, volume
-from ..graph import Graph, Node
-from ..system import pactl
+from smartamp_audio import graph, volume
+from smartamp_audio.graph import Graph, Node
+from smartamp_audio import pactl
 
 
 LOG = logging.getLogger(__name__)
@@ -33,9 +33,7 @@ VolumeState = tuple[int, bool]
 class MusicVolumeSync:
     """Whichever side moved since the last agreement wins, the register on a tie.
 
-    The same shape as the USB host's agreement, for the same reason: two sides
-    hold the one level, and only a remembered agreement can say which of them
-    moved. The amp seeds the register at first sight, so a player reading it
+    Two sides hold one level; a remembered agreement says which side moved. The amp seeds the register at first sight, so a player reading it
     before anyone has touched it sees the real level.
     """
 

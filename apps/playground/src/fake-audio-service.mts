@@ -1,5 +1,5 @@
-// A stand-in for smartamp-audio-manager's Unix control socket. It speaks the
-// same newline-delimited JSON protocol, so AudioManagerClient's optimistic
+// Stand-ins for the manager and USB audio service sockets. It speaks the
+// same newline-delimited JSON protocol, so AudioClient's optimistic
 // cache, its re-assert on reconnect, and the duck request that the kernel
 // releases when the socket closes all behave exactly as they do on the Pi.
 //
@@ -10,24 +10,20 @@ import net from 'node:net'
 
 import type {PlaygroundBus} from './bus.mjs'
 
-/** The routes the real manager owns; anything else is rejected the same way. */
-const ROUTES = ['aux', 'usb'] as const
-
-/** The input trims the real manager publishes: its two routes, plus the players' bus. */
-const TRIMS = ['background', ...ROUTES] as const
-
-export interface FakeAudioManagerOptions {
+export interface FakeAudioServiceOptions {
     bus: PlaygroundBus
     socketPath: string
+    service: 'manager' | 'usb'
 }
 
-export class FakeAudioManager {
+export class FakeAudioService {
     readonly socketPath: string
-    sources: Record<string, boolean | undefined> = {aux: false, usb: true}
+    sources: Record<string, boolean | undefined>
     musicVolume = 40
     voiceVolume = 60
     volMuted = false
-    trims: Record<string, number> = {background: 100, aux: 100, usb: 100}
+    trims: Record<string, number>
+    private readonly service: 'manager' | 'usb'
     /** Read from the card on the Pi; a fixed reading here, as inventory sets it. */
     outputCeiling = 90
 
@@ -38,7 +34,10 @@ export class FakeAudioManager {
     private readonly metering = new Set<net.Socket>()
     private meterTimer: NodeJS.Timeout | null = null
 
-    constructor({bus, socketPath}: FakeAudioManagerOptions) {
+    constructor({bus, socketPath, service}: FakeAudioServiceOptions) {
+        this.service = service
+        this.sources = service === 'usb' ? {usb: true} : {aux: false}
+        this.trims = service === 'usb' ? {usb: 100} : {background: 100, aux: 100}
         this.bus = bus
         this.socketPath = socketPath
         this.server = net.createServer((socket) => this.accept(socket))
@@ -106,6 +105,10 @@ export class FakeAudioManager {
         const command = String(message.command ?? '')
         this.bus.log('audio', 'out', `command ${command}`, line)
 
+        if (this.service === 'usb' && !['get-state', 'set-source-state', 'set-input-trim'].includes(command)) {
+            this.reject(socket, `unknown USB command ${command}`)
+            return
+        }
         if (command === 'get-state') {
             this.sendState(socket)
         } else if (command === 'set-source-state') {
@@ -131,7 +134,7 @@ export class FakeAudioManager {
         } else if (command === 'set-input-trim') {
             const name = String(message.name ?? '')
             const percent = message.percent
-            if (!(TRIMS as readonly string[]).includes(name)) {
+            if (!Object.hasOwn(this.trims, name)) {
                 this.reject(socket, 'unknown input trim')
                 return
             }
@@ -187,7 +190,7 @@ export class FakeAudioManager {
     }
 
     private knows(name: string): boolean {
-        return (ROUTES as readonly string[]).includes(name)
+        return Object.hasOwn(this.sources, name)
     }
 
     private reject(socket: net.Socket, error: string): void {
@@ -220,11 +223,13 @@ export class FakeAudioManager {
         socket.write(`${JSON.stringify({
             event: 'state',
             sources: this.sources,
-            music_volume: this.musicVolume,
-            voice_volume: this.voiceVolume,
-            vol_muted: this.volMuted,
+            ...(this.service === 'manager' ? {
+                music_volume: this.musicVolume,
+                voice_volume: this.voiceVolume,
+                vol_muted: this.volMuted,
+                output_ceiling: this.outputCeiling,
+            } : {usb_playback: false}),
             trims: this.trims,
-            output_ceiling: this.outputCeiling,
         })}\n`)
     }
 

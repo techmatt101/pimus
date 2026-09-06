@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import subprocess
 
-from . import process
+from smartamp_audio import process
 
 
 # amixer prints one line per channel, each carrying the raw value, the dB

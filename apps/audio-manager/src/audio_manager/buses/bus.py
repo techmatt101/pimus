@@ -11,9 +11,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from .. import graph, volume
+from smartamp_audio import graph, volume
 from ..config import BusConfig
-from ..graph import Graph, Node
+from smartamp_audio.graph import Graph, Node
 from ..modules import ModuleRegistry, stream_media_name
 from ..output import hold_client_streams
 
@@ -110,7 +110,7 @@ class PlaybackBus:
     def hold_clients(self, level: int) -> None:
         """Hold every player's stream on this bus at a level; the bridge
         carries the class's gain, so a client stream holds only its trim."""
-        hold_client_streams(self._graph, self.sink, level)
+        hold_client_streams(self._graph, self.sink, level, respect_client_volume=True)
 
     def release(self) -> None:
         self._modules.unload(self.bridge_role)

@@ -1,0 +1,85 @@
+import assert from 'node:assert/strict'
+import {EventEmitter} from 'node:events'
+import type net from 'node:net'
+import test from 'node:test'
+import {setTimeout as delay} from 'node:timers/promises'
+import {AudioSystem} from '../../src/audio/system.mjs'
+
+class FakeSocket extends EventEmitter {
+    writes: Record<string, unknown>[] = []
+    write(line: string): boolean {
+        this.writes.push(JSON.parse(line) as Record<string, unknown>)
+        return true
+    }
+    destroy(): void { this.emit('close') }
+    state(value: Record<string, unknown>): void {
+        this.emit('data', `${JSON.stringify({event: 'state', ...value})}\n`)
+    }
+}
+
+test('USB controls, state and reconnect replay stay independent of manager state', async (t) => {
+    const sockets = new Map<string, FakeSocket[]>()
+    const audio = new AudioSystem({
+        socketPath: 'manager', usbSocketPath: 'usb', reconnectMilliseconds: 1,
+        connectSocket: (path) => {
+            const socket = new FakeSocket()
+            sockets.set(path, [...(sockets.get(path) ?? []), socket])
+            return socket as unknown as net.Socket
+        },
+    })
+    t.after(() => audio.close())
+    audio.connect()
+    const manager = sockets.get('manager')?.[0]
+    const usb = sockets.get('usb')?.[0]
+    assert.ok(manager && usb)
+    manager.emit('connect')
+    usb.emit('connect')
+    manager.state({sources: {aux: false}, trims: {aux: 80, background: 90}, music_volume: 40, voice_volume: 60})
+    assert.equal(audio.state.routesKnown, false)
+    usb.state({sources: {usb: true}, trims: {usb: 25}, usb_playback: true})
+    assert.deepEqual(audio.state.sources, {aux: false, usb: true})
+    assert.deepEqual(audio.state.trims, {aux: 80, background: 90, usb: 25})
+    assert.equal(audio.state.routesKnown, true)
+    assert.equal(audio.state.usbPlayback, true)
+    audio.setSourceState('usb', 'off')
+    audio.setInputTrim('usb', 30)
+    audio.setMusicVolume(50)
+    assert.deepEqual(usb.writes.slice(1), [
+        {command: 'set-source-state', name: 'usb', state: 'off'},
+        {command: 'set-input-trim', name: 'usb', percent: 30},
+    ])
+    assert.deepEqual(manager.writes.slice(1), [{command: 'set-music-volume', percent: 50}])
+    manager.state({sources: {aux: true}, trims: {aux: 80, background: 90}, music_volume: 50})
+    assert.deepEqual(audio.state.sources, {aux: true, usb: false})
+    assert.equal(audio.state.trims.usb, 30)
+    assert.equal(audio.state.usbPlayback, true)
+    usb.destroy()
+    assert.equal(audio.state.usbPlayback, false)
+    assert.equal(audio.connected, true)
+    for (let attempt = 0; attempt < 30 && sockets.get('usb')?.length !== 2; attempt++) await delay(2)
+    const replacement = sockets.get('usb')?.[1]
+    assert.ok(replacement)
+    replacement.emit('connect')
+    assert.deepEqual(replacement.writes, [
+        {command: 'set-source-state', name: 'usb', state: 'off'},
+        {command: 'set-input-trim', name: 'usb', percent: 30},
+    ])
+    replacement.state({sources: {usb: false}, trims: {usb: 30}, usb_playback: true})
+    assert.equal(audio.state.musicVolume, 50)
+    assert.equal(audio.state.usbPlayback, true)
+    assert.equal(sockets.get('manager')?.length, 1)
+})
+
+test('a deployment without USB exposes only the manager routes', (t) => {
+    const socket = new FakeSocket()
+    const audio = new AudioSystem({socketPath: 'manager', connectSocket: () => socket as unknown as net.Socket})
+    t.after(() => audio.close())
+    audio.connect()
+    socket.emit('connect')
+    socket.state({sources: {}, trims: {background: 100}})
+    assert.equal(audio.state.routesKnown, true)
+    assert.deepEqual(audio.state.sources, {})
+    assert.equal(audio.state.usbPlayback, false)
+    audio.setSourceState('usb', 'on')
+    assert.deepEqual(socket.writes, [{command: 'get-state'}])
+})

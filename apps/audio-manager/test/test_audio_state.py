@@ -13,10 +13,9 @@ from typing import Any
 from unittest import mock
 
 from test_audio_manager import Listings, ManagerTestCase, fake_run, volume_writes
-from audio_manager import graph
+from smartamp_audio import graph
 from audio_manager.daemon import AudioManager
-from audio_manager.system import pactl, usb_gadget
-from audio_manager.usb.volume_sync import UsbVolumeSync
+from smartamp_audio import pactl
 
 
 class RouteStateTests(ManagerTestCase):
@@ -47,11 +46,10 @@ class RouteStateTests(ManagerTestCase):
                 output={"name": "hifi"},
                 background_sink={"name": "background"},
                 music_volume=40,
-                usb_playback=False,
             )
 
         with self._patched_graph(listings, run) as commands, mock.patch(
-            "audio_manager.volume.time.sleep"
+            "smartamp_audio.volume.time.sleep"
         ):
             self.assertFalse(reconcile()["aux"]["enabled"])
             self.assertEqual(volume_writes(commands), [("61", "0%")])
@@ -84,7 +82,7 @@ class RouteStateTests(ManagerTestCase):
         stream = {"index": 61, "owner_module": 60}
         manager.modules.adopt("aux", 60)
         with self._patched_graph({"sink-inputs": [stream]}, fake_run), mock.patch(
-            "audio_manager.volume.time.sleep"
+            "smartamp_audio.volume.time.sleep"
         ), mock.patch.object(pactl, "set_sink_input_volume") as write:
             manager.routes.apply_music_volume(40)
             manager.routes.set_enabled("aux", True)
@@ -146,7 +144,7 @@ class GainRecoveryTests(ManagerTestCase):
         manager = self.make_manager({"background": {"enabled": True, "fade_ms": 100}})
         manager.background.stream_index = 42
         with mock.patch.object(pactl, "set_sink_input_volume") as write, mock.patch(
-            "audio_manager.volume.time.sleep"
+            "smartamp_audio.volume.time.sleep"
         ):
             manager.background.apply_ducking(100, False)
             write.side_effect = [None, OSError("write failed mid-fade")]
@@ -156,24 +154,6 @@ class GainRecoveryTests(ManagerTestCase):
             write.reset_mock()
             manager.background.apply_ducking(100, False)
             write.assert_called_once_with(42, 100)
-
-
-class UsbAgreementTests(ManagerTestCase):
-    def test_reappearing_gadget_is_seeded_from_the_amp(self) -> None:
-        sync = UsbVolumeSync()
-        with mock.patch.object(
-            usb_gadget, "card_present", return_value=True
-        ) as present, mock.patch.object(
-            usb_gadget, "read_mixer", return_value=(40, False)
-        ) as read, mock.patch.object(usb_gadget, "write_mixer") as write:
-            self.assertEqual(sync.sync((40, False)), (40, False))
-            present.return_value = False
-            self.assertEqual(sync.sync((40, False)), (40, False))
-            present.return_value = True
-            read.side_effect = [(100, False), (40, False)]
-            write.reset_mock()
-            self.assertEqual(sync.sync((40, False)), (40, False))
-            write.assert_called_once_with(40, False)
 
 
 class MusicRegisterTests(ManagerTestCase):
@@ -206,9 +186,7 @@ class MusicRegisterTests(ManagerTestCase):
                 [call.args for call in commands.call_args_list],
             )
 
-            # A player moving the register is the room's new level, and the USB
-            # agreement is dropped so the gadget is re-seeded from it.
-            manager.usb_volume._agreed = ((40, False), (40, False))
+            # A player moving the register is the room's new level.
             moved = self._sink(75)
             manager.graph.invalidate()
             with mock.patch.object(
@@ -216,7 +194,6 @@ class MusicRegisterTests(ManagerTestCase):
             ):
                 manager._sync_music_register(moved)
             self.assertEqual(manager.music_volume, 75)
-            self.assertIsNone(manager.usb_volume._agreed)
 
     def test_an_agreed_register_is_left_alone(self) -> None:
         manager = self.make_manager({"background": {"enabled": True}})
@@ -287,8 +264,6 @@ class ManagerLifecycleTests(ManagerTestCase):
         ), mock.patch.object(
             manager.graph_events, "stop"
         ) as stop_events, mock.patch.object(
-            manager.mixer_events, "stop"
-        ) as stop_mixer, mock.patch.object(
             manager.voice_meter, "close"
         ) as close_meter, mock.patch.object(
             manager.selector, "close"
@@ -298,7 +273,6 @@ class ManagerLifecycleTests(ManagerTestCase):
             with self.assertRaisesRegex(RuntimeError, "loop failed"):
                 manager.execute()
         stop_events.assert_called_once()
-        stop_mixer.assert_called_once()
         close_meter.assert_called_once()
         close_selector.assert_called_once()
         connection.close.assert_called_once()
@@ -306,3 +280,53 @@ class ManagerLifecycleTests(ManagerTestCase):
         unload.assert_called_once_with(60)
         self.assertFalse(manager.running)
         self.assertFalse(manager.status_path.exists())
+
+
+class ExternalClientTests(ManagerTestCase):
+    def test_client_owned_trim_is_respected_on_the_bus_but_not_on_hardware(self) -> None:
+        from audio_manager.output import hold_client_streams
+        manager = self.make_manager({})
+        sink = {"name": "music", "index": 2}
+        streams: list[graph.Node] = [
+            {"index": 10, "sink": 2, "properties": {"smartamp.volume.owner": "client"},
+             "volume": {"mono": {"value_percent": "25%"}}},
+            {"index": 11, "sink": 2, "properties": {},
+             "volume": {"mono": {"value_percent": "100%"}}},
+        ]
+        with self._patched_graph({"sink-inputs": streams}, fake_run), mock.patch.object(
+            pactl, "set_sink_input_volume"
+        ) as write:
+            hold_client_streams(manager.graph, sink, 80, respect_client_volume=True)
+            write.assert_called_once_with(11, 80)
+            write.reset_mock()
+            hold_client_streams(manager.graph, sink, 40)
+            self.assertEqual(write.call_args_list, [mock.call(10, 40), mock.call(11, 40)])
+
+    def test_external_input_activity_wakes_the_graph_and_its_removal_allows_idle(self) -> None:
+        manager = self.make_manager({})
+        streams: list[graph.Node] = [{"index": 10, "corked": False, "properties": {
+            "media.name": "Input client", "smartamp.volume.owner": "client",
+        }}]
+        with self._patched_graph({"sink-inputs": streams}, fake_run):
+            self.assertTrue(manager._audio_active())
+            streams.clear()
+            manager.graph.invalidate()
+            self.assertFalse(manager._audio_active())
+
+    def test_volume_commands_publish_the_bus_register_immediately(self) -> None:
+        manager = self.make_manager({"background": {"enabled": True}})
+        sink = {"name": "smartamp_background", "index": 2,
+                "volume": {"mono": {"value_percent": "40%"}}, "mute": False}
+        with self._patched_graph({"sinks": [sink]}, fake_run) as commands:
+            manager.set_music_volume(60)
+            self.assertIn(("pactl", "set-sink-volume", "smartamp_background", "60%"),
+                          [call.args for call in commands.call_args_list])
+
+    def test_monitor_restart_deadline_wakes_an_otherwise_idle_selector(self) -> None:
+        manager = self.make_manager({})
+        manager.next_resync = 900
+        with mock.patch.object(manager.graph_events, "deadline", return_value=101), mock.patch(
+            "audio_manager.daemon.time.monotonic", return_value=100
+        ), mock.patch.object(manager.selector, "select", return_value=[]) as select:
+            manager._wait_for_work()
+        select.assert_called_once_with(1)

@@ -10,7 +10,7 @@ import subprocess
 import time
 from typing import Callable
 
-from . import process, usb_gadget
+from smartamp_audio import process
 
 
 LOG = logging.getLogger(__name__)
@@ -88,6 +88,11 @@ class LineMonitor:
             running.wait(timeout=1)
         except subprocess.TimeoutExpired:
             running.kill()
+            running.wait(timeout=1)
+
+    def deadline(self) -> float | None:
+        """Wake the owner for a restart even when no graph events arrive."""
+        return self._retry_at if self._process is None else None
 
     def tick(self) -> None:
         """Reap the child if it died, and restart it once the backoff expires."""
@@ -139,25 +144,3 @@ def graph_events(
         on_restart=on_restart,
     )
 
-
-def gadget_mixer_events(
-    selector: selectors.BaseSelector, schedule_reconcile: Callable[[], None]
-) -> LineMonitor:
-    # The USB host's volume writes and its stream opens and closes change only
-    # ALSA controls on the gadget card, which pactl subscribe cannot see;
-    # alsactl monitor is the ALSA equivalent, one line per control event. The
-    # kernel notifies "Capture Rate" as the host starts or stops streaming,
-    # which is what makes the USB route react faster than the fallback poll.
-    def capture_control(line: bytes) -> None:
-        if b"Capture" in line:
-            schedule_reconcile()
-
-    return LineMonitor(
-        "alsactl monitor",
-        ["alsactl", "monitor", f"hw:{usb_gadget.CARD}"],
-        selector=selector,
-        retry_seconds=5.0,
-        on_line=capture_control,
-        can_start=usb_gadget.card_present,
-        quiet_stderr=True,
-    )

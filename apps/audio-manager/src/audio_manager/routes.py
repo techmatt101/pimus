@@ -1,4 +1,4 @@
-"""The switchable input routes: aux, USB, and anything else in the config."""
+"""The local switchable input routes, such as the analogue aux input."""
 
 from __future__ import annotations
 
@@ -6,10 +6,10 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from . import graph, volume
-from .system import pactl
+from smartamp_audio import graph, volume
+from smartamp_audio import pactl
 from .config import SourceConfig
-from .graph import Graph, Node, profiles_of
+from smartamp_audio.graph import Graph, Node, profiles_of
 from .modules import ModuleRegistry, stream_media_name
 
 
@@ -28,9 +28,7 @@ class AppliedRoute:
 
 
 def activate_parked_card(view: Graph, pattern: str) -> None:
-    # The UAC2 gadget's ALSA card exposes no mixer controls, so the card
-    # profiler offers only "off" and "pro-audio" and WirePlumber activates
-    # neither on its own; the card boots parked off with no capture node.
+    # A configured input may boot parked off with no capture node.
     # Switch a matching parked card on and let the resulting graph event
     # schedule the reconcile that finds its node.
     card = view.find_card(pattern)
@@ -95,7 +93,6 @@ class SourceRoutes:
         output: Node | None,
         background_sink: Node | None,
         music_volume: int,
-        usb_playback: bool,
         idle: bool = False,
     ) -> dict[str, dict[str, Any]]:
         self.settled = True
@@ -106,7 +103,6 @@ class SourceRoutes:
                 output=output,
                 background_sink=background_sink,
                 music_volume=music_volume,
-                usb_playback=usb_playback,
                 idle=idle,
             )
             for name, source in self._sources.items()
@@ -115,15 +111,10 @@ class SourceRoutes:
     def holds_awake(self) -> bool:
         """Whether an enabled route needs the graph kept out of idle teardown.
 
-        A USB-gadget route only carries audio while the host streams, which
-        the daemon gates on separately, so its toggle alone holds nothing
-        awake; an enabled analogue route has no stream to watch, so its toggle
-        is the activity signal.
+        An enabled analogue input has no client stream to watch, so its
+        toggle is the activity signal.
         """
-        return any(
-            self.enabled.get(name, False) and not source.requires_usb_host
-            for name, source in self._sources.items()
-        )
+        return any(self.enabled.values())
 
     def apply_trim(self, name: str, music_volume: int) -> None:
         """Move one route's stream to its trim, without reconciling.
@@ -168,19 +159,10 @@ class SourceRoutes:
         output: Node | None,
         background_sink: Node | None,
         music_volume: int,
-        usb_playback: bool,
         idle: bool,
     ) -> dict[str, Any]:
         node = self._graph.find_source(source.match)
         enabled = self.enabled.get(name, False)
-        # The gadget's capture clock only ticks while the computer holds its
-        # playback stream open; bridging a dead clock stalls the whole PipeWire
-        # driver group, silencing every output. A host that is enumerated but
-        # playing elsewhere leaves the clock just as dead as an unplugged
-        # cable, so the gate is the streaming state, not the UDC file. Keep the
-        # route's enabled flag but only build the loopback while audio is
-        # actually arriving.
-        attached = not source.requires_usb_host or usb_playback
         # Keep analogue routes connected while awake: reconnecting a DC offset
         # can click even when the route is meant to be silent.
         wanted = enabled or (source.mute_when_off and not idle)
@@ -188,11 +170,11 @@ class SourceRoutes:
             activate_parked_card(self._graph, source.match)
         status = {
             "enabled": enabled,
-            "available": node is not None and attached,
+            "available": node is not None,
             "node": node.get("name") if node else None,
         }
         target = background_sink if source.bridges_into_background else output
-        if not (wanted and attached and node is not None and target is not None):
+        if not (wanted and node is not None and target is not None):
             self._modules.unload(name)
             return status
         created = self._modules.ensure_loopback(

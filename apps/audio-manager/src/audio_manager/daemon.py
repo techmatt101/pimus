@@ -11,21 +11,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from . import output, status, volume
-from .system import amixer, monitors, pactl
+from . import output
+from smartamp_audio import status, volume
+from .system import amixer
+from smartamp_audio import monitors, pactl
 from .buses.background import BackgroundBus
 from .buses.music_volume import MusicVolumeSync
 from .buses.voice import VoiceBus
 from .buses.voice_meter import VoiceLevelMeter
 from .config import AudioConfig
 from .control.commands import CommandHandler
-from .control.server import ControlServer
-from .graph import Graph, Node
+from smartamp_audio.server import ControlServer
+from smartamp_audio.graph import Graph, Node
 from .idle import IdleTracker, playing_clients
 from .modules import ModuleRegistry
 from .routes import SourceRoutes
-from .usb.host import UsbHost
-from .usb.volume_sync import UsbVolumeSync
 from .microphone.microphone import MicrophoneStatus, build as build_microphone
 
 
@@ -81,8 +81,6 @@ class AudioManager:
         )
         self.microphone = build_microphone(config.microphone, self.graph, self.modules)
         self.routes = SourceRoutes(config.sources, self.graph, self.modules)
-        self.usb = UsbHost()
-        self.usb_volume = UsbVolumeSync()
         self.music_register = MusicVolumeSync()
         self.idle = IdleTracker(config.idle_teardown_seconds)
 
@@ -92,9 +90,6 @@ class AudioManager:
         )
         self.graph_events = monitors.graph_events(
             self.selector, self.schedule_reconcile, self._subscribe_restarted
-        )
-        self.mixer_events = monitors.gadget_mixer_events(
-            self.selector, self.schedule_reconcile
         )
 
         self.pending_reconcile: float | None = None
@@ -120,16 +115,11 @@ class AudioManager:
         while self.running:
             self._wait_for_work()
             self.graph_events.tick()
-            self.mixer_events.tick()
-            self._poll_usb_host()
             self._reconcile_when_due()
             # After the reconcile, so a pass that just published the voice
             # monitor can start metering it without waiting for the next wake.
             self.voice_meter.tick()
-            # Every reconcile refreshes the playback state, and a USB host can
-            # move the music level, whichever signal scheduled it; broadcast a
-            # change so the controller's icon and readout update without
-            # waiting for a command.
+            # A client can move the bus volume independently of the controller.
             self._broadcast_changes()
         return 0
 
@@ -140,7 +130,6 @@ class AudioManager:
         )
         for description, close in (
             ("Stopping graph events", self.graph_events.stop),
-            ("Stopping mixer events", self.mixer_events.stop),
             ("Closing control socket", self.control.close),
             ("Closing voice meter", self.voice_meter.close),
             ("Closing selector", self.selector.close),
@@ -164,7 +153,6 @@ class AudioManager:
             "event": "state",
             "sources": dict(self.routes.enabled),
             "ducked": self.desired_ducking(),
-            "usb_playback": self.usb.streaming,
             "music_volume": self.music_volume,
             "vol_muted": self.vol_muted,
             "voice_volume": self.voice_volume,
@@ -231,20 +219,14 @@ class AudioManager:
 
     def set_music_volume(self, percent: float) -> None:
         self.music_volume = volume.clamp(percent)
-        # Forget both agreements so the next reconcile seeds the gadget and the
-        # bus register with this commanded level; otherwise a stale reading from
-        # either would win its sync and claw the volume back.
-        self._forget_volume_agreements()
+        # Seed the public register from this explicit command.
+        self.music_register.forget()
         self._apply_or_retry("Music volume", self._apply_music_volume)
 
     def set_music_mute(self, muted: bool) -> None:
         self.vol_muted = muted
-        self._forget_volume_agreements()
-        self._apply_or_retry("Volume mute", self._apply_music_volume)
-
-    def _forget_volume_agreements(self) -> None:
-        self.usb_volume.forget()
         self.music_register.forget()
+        self._apply_or_retry("Volume mute", self._apply_music_volume)
 
     def schedule_reconcile(self, delay: float = EVENT_DEBOUNCE_SECONDS) -> None:
         deadline = time.monotonic() + delay
@@ -271,10 +253,6 @@ class AudioManager:
         self.graph.invalidate()
         self.modules.drop_released()
         sink = self.output.prepare()
-        self.music_volume, self.vol_muted = self.usb_volume.sync(
-            (self.music_volume, self.vol_muted)
-        )
-        self.usb.refresh()
         self._read_output_ceiling()
         idle = self.idle.update(self._audio_active())
         found = self._reconcile_graph(sink, idle)
@@ -290,9 +268,6 @@ class AudioManager:
         if after == before:
             return
         self.music_volume, self.vol_muted = after
-        # A player moved the level; let the gadget be re-seeded from it rather
-        # than letting its own stale reading win the next pass.
-        self.usb_volume.forget()
 
     def _read_output_ceiling(self) -> None:
         ceiling = self.config.output_ceiling
@@ -321,7 +296,6 @@ class AudioManager:
             output=sink,
             background_sink=background_sink,
             music_volume=self.music_level,
-            usb_playback=self.usb.streaming,
             idle=idle,
         )
         output.hold_client_streams(self.graph, sink, self.music_level)
@@ -347,8 +321,6 @@ class AudioManager:
             },
             "aec_reference": found.microphone.echo_reference,
             "sources": found.sources,
-            "usb_host": self.usb.attached,
-            "usb_playback": self.usb.streaming,
             "idle": self.idle.idle,
             "standby": self.idle.standby,
         }
@@ -362,7 +334,7 @@ class AudioManager:
         TTS stream exists, an enabled analogue route has no stream to watch,
         and everything else shows up as a client stream playing somewhere.
         """
-        if self.usb.streaming or self.commands.duck_requested:
+        if self.commands.duck_requested:
             return True
         if self.commands.meter_listeners or self.routes.holds_awake():
             return True
@@ -397,6 +369,10 @@ class AudioManager:
 
     def _apply_music_volume(self) -> None:
         self.graph.invalidate()
+        if self.config.background.enabled:
+            self._sync_music_register(
+                self.graph.sink_named(self.config.background.sink_name)
+            )
         self.apply_ducking()
         self.routes.apply_music_volume(self.music_level)
         output.hold_client_streams(self.graph, self.output.find(), self.music_level)
@@ -433,7 +409,10 @@ class AudioManager:
         # Ducking is applied when a set-duck arrives, when a client holding a
         # request disconnects, and at the end of every reconcile, so the loop
         # needs no poll interval to notice a duck request.
-        deadlines = [self.next_resync, self.usb.deadline()]
+        deadlines = [self.next_resync]
+        monitor_deadline = self.graph_events.deadline()
+        if monitor_deadline is not None:
+            deadlines.append(monitor_deadline)
         if self.pending_reconcile is not None:
             deadlines.append(self.pending_reconcile)
         # The meter has to be started once its monitor appears, and stopped once
@@ -450,12 +429,6 @@ class AudioManager:
         deadline = min(deadlines)
         for key, _ in self.selector.select(max(0.0, deadline - time.monotonic())):
             key.data()
-
-    def _poll_usb_host(self) -> None:
-        # Reconcile builds or tears down the gated USB route and records the
-        # new state.
-        if self.usb.poll():
-            self.safe_reconcile()
 
     def _reconcile_when_due(self) -> None:
         now = time.monotonic()

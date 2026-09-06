@@ -12,7 +12,7 @@ interface PendingLevel {
     until: number
 }
 
-interface ManagerEvent {
+interface AudioEvent {
     event?: string
     error?: string
     sources?: unknown
@@ -25,7 +25,7 @@ interface ManagerEvent {
     level?: unknown
 }
 
-export interface AudioManagerClientOptions {
+export interface AudioClientOptions {
     socketPath: string
     onStateChange?: () => void
     reconnectMilliseconds?: number
@@ -35,12 +35,12 @@ export interface AudioManagerClientOptions {
 }
 
 /**
- * Mirrors the audio manager's route state over its Unix control socket. The
+ * Mirrors one audio service's state over its Unix control socket. The
  * cache updates optimistically so the Stream Deck reacts instantly and keeps
  * working while the manager restarts; reconnecting re-asserts the cached
  * toggles so user choices survive a manager restart within a boot.
  */
-export class AudioManagerClient {
+export class AudioClient {
     state: AudioState = {sources: {}, routesKnown: false, trims: {}}
     connected = false
     /** The metered voice-playback level, 0..1, and zero unless metering is on. */
@@ -72,7 +72,7 @@ export class AudioManagerClient {
                     connectSocket = (path) => net.createConnection(path),
                     clock = Date.now,
                     logger = console,
-                }: AudioManagerClientOptions) {
+                }: AudioClientOptions) {
         this.#socketPath = socketPath
         this.#onStateChange = onStateChange
         this.#reconnectMilliseconds = reconnectMilliseconds
@@ -118,7 +118,7 @@ export class AudioManagerClient {
         socket.on('error', (error: Error) => {
             if (error.message !== this.#lastErrorMessage) {
                 this.#lastErrorMessage = error.message
-                this.#logger.error(`audio manager socket error: ${error.message}`)
+                this.#logger.error(`audio service ${this.#socketPath} socket error: ${error.message}`)
             }
         })
         socket.on('close', () => {
@@ -127,6 +127,7 @@ export class AudioManagerClient {
             const wasConnected = this.connected
             this.connected = false
             this.voiceLevel = 0
+            this.state = {...this.state, usbPlayback: false}
             if (wasConnected) this.#onStateChange()
             if (this.#closed) return
             this.#reconnectTimer = setTimeout(() => {
@@ -288,9 +289,9 @@ export class AudioManagerClient {
             const line = this.#buffer.slice(0, index).trim()
             this.#buffer = this.#buffer.slice(index + 1)
             if (!line) continue
-            let message: ManagerEvent
+            let message: AudioEvent
             try {
-                message = JSON.parse(line) as ManagerEvent
+                message = JSON.parse(line) as AudioEvent
             } catch {
                 continue
             }
@@ -314,7 +315,7 @@ export class AudioManagerClient {
             } else if (message.event === 'voice_level' && typeof message.level === 'number') {
                 this.voiceLevel = Math.max(0, Math.min(1, message.level))
             } else if (message.event === 'error') {
-                this.#logger.error(`audio manager rejected a command: ${message.error ?? 'unknown error'}`)
+                this.#logger.error(`audio service ${this.#socketPath} rejected a command: ${message.error ?? 'unknown error'}`)
             }
         }
     }

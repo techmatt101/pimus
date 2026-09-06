@@ -147,19 +147,21 @@ if [ -r "$STATUS_FILE" ] && jq -e 'type == "object"' "$STATUS_FILE" >/dev/null 2
         && pass 'Aux input source is available' \
         || fail 'Aux input source is unavailable'
 {% endif %}
-{% if usb_audio_gadget_enabled %}
-    # "available" additionally requires the computer to be streaming right
-    # now, so the durable health check is the capture node existing.
-    jq -e '.sources.usb.node | type == "string" and length > 0' "$STATUS_FILE" >/dev/null 2>&1 \
-        && pass 'USB gadget capture node is present' \
-        || fail 'USB gadget capture node is missing'
-{% endif %}
+
 else
     fail 'Audio router status is missing or invalid JSON'
 fi
 
+{% if usb_audio_gadget_enabled %}
+heading 'USB audio client'
+USB_STATUS_FILE=/run/user/{{ smartamp_uid }}/smartamp-usb-audio-status.json
+jq -e '.source | type == "string" and length > 0' "$USB_STATUS_FILE" >/dev/null 2>&1 \
+    && pass 'USB gadget capture node is present' \
+    || fail 'USB audio status or capture node is missing'
+{% endif %}
+
 heading 'Services'
-{% set doctor_services = ['smartamp-hifiberry', 'smartamp-audio-manager'] + (['smartamp-usb-audio-gadget'] if usb_audio_gadget_enabled else []) + (['smartamp-sendspin'] if sendspin_enabled else []) + (['smartamp-voice-assistant'] if voice_assistant_enabled else []) %}
+{% set doctor_services = ['smartamp-hifiberry', 'smartamp-audio-manager'] + (['smartamp-usb-audio-gadget', 'smartamp-usb-audio'] if usb_audio_gadget_enabled else []) + (['smartamp-sendspin'] if sendspin_enabled else []) + (['smartamp-voice-assistant'] if voice_assistant_enabled else []) %}
 {% for service in doctor_services %}
 systemctl is-active --quiet {{ service }}.service && pass '{{ service }} is active' || fail '{{ service }} is not active'
 {% endfor %}
@@ -171,6 +173,7 @@ heading 'Recent errors'
 journalctl -p warning -b --no-pager -n 30 \
     -u smartamp-hifiberry \
     -u smartamp-audio-manager \
+    -u smartamp-usb-audio \
     -u smartamp-sendspin \
     -u smartamp-voice-assistant \
     -u smartamp-controller || true

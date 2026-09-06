@@ -16,10 +16,10 @@ from test_audio_manager import (
     fake_run,
     volume_writes,
 )
-from audio_manager import graph
-from audio_manager.status import write as write_status
+from smartamp_audio import graph
+from smartamp_audio.status import write as write_status
 from audio_manager.config import AudioConfig
-from audio_manager.system import pactl, usb_gadget
+from smartamp_audio import pactl
 
 
 def stereo(left: int, right: int) -> graph.Node:
@@ -195,9 +195,7 @@ class RebuildSafetyTests(ManagerTestCase):
         self.fail_unmute = False
         patches = [
             self._patched_graph(self.listings, self.run_command),
-            mock.patch.object(usb_gadget, "card_present", return_value=False),
-            mock.patch.object(self.manager.usb, "refresh"),
-            mock.patch("audio_manager.status.write"),
+            mock.patch("smartamp_audio.status.write"),
         ]
         for patch in patches:
             patch.__enter__()
@@ -300,7 +298,7 @@ class RebuildSafetyTests(ManagerTestCase):
         self.assertFalse(self.sink["mute"])
 
     def test_failed_pass_withdraws_status_and_recovery_publishes_again(self) -> None:
-        with mock.patch("audio_manager.status.write", wraps=write_status):
+        with mock.patch("smartamp_audio.status.write", wraps=write_status):
             self.assertTrue(self.manager.safe_reconcile())
             self.assertTrue(self.manager.status_path.exists())
             self.fail_gain = True
@@ -321,22 +319,20 @@ class RebuildSafetyTests(ManagerTestCase):
                 "sources": {"aux": {"enabled": True, "match": "ADC"}},
             }
         )
-        with mock.patch.object(self.manager.usb, "refresh"):
-            self.manager.reconcile()
+        self.manager.reconcile()
 
 
 class BackgroundRouteSafetyTests(ManagerTestCase):
-    def test_delayed_usb_stream_is_guarded_until_its_trim_applies(self) -> None:
+    def test_delayed_background_route_stream_is_guarded_until_its_trim_applies(self) -> None:
         manager = self.make_manager(
             {
                 "startup_volume_percent": 40,
                 "background": {"enabled": True},
                 "sources": {
-                    "usb": {
+                    "line_in": {
                         "enabled": False,
-                        "match": "USB source",
+                        "match": "Line input",
                         "target": "background",
-                        "requires_usb_host": True,
                         "volume_percent": 25,
                     }
                 },
@@ -348,7 +344,7 @@ class BackgroundRouteSafetyTests(ManagerTestCase):
         }
         stream: graph.Node = {
             "index": 51, "owner_module": 50, "sink": 2,
-            "properties": {"media.name": "SmartAmp.usb"},
+            "properties": {"media.name": "SmartAmp.line_in"},
             **stereo(100, 100),
         }
         listings: Listings = {
@@ -358,7 +354,7 @@ class BackgroundRouteSafetyTests(ManagerTestCase):
             ],
             "sources": [
                 {"name": "smartamp_background.monitor"},
-                {"name": "usb", "description": "USB source"},
+                {"name": "line_in", "description": "Line input"},
             ],
             "modules": [
                 {"index": 20, "name": "module-null-sink"},
@@ -387,12 +383,9 @@ class BackgroundRouteSafetyTests(ManagerTestCase):
                 stream.update(stereo(level, level))
             return fake_run(*args, check=check)
 
-        with self._patched_graph(listings, run), mock.patch.object(
-            usb_gadget, "card_present", return_value=False
-        ), mock.patch.object(manager.usb, "refresh"):
+        with self._patched_graph(listings, run):
             manager.reconcile()
-            manager.usb.streaming = True
-            manager.routes.enabled["usb"] = True
+            manager.routes.enabled["line_in"] = True
             self.assertTrue(manager.safe_reconcile())
             self.assertFalse(manager.routes.settled)
             self.assertTrue(sink["mute"])

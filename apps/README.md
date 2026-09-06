@@ -21,8 +21,8 @@ own:
 - `actions/catalog.mts` declares every action a key or dial can be bound to,
   including each voice action's `run` behaviour and its indicator. See
   [docs/controls.md](../docs/controls.md).
-- `audio/` — `manager-client.mts` mirrors route, level, and volume-mute state
-  over the audio manager's Unix socket; `ducking.mts` turns voice events into
+- `audio/` — `system.mts` combines the manager and USB services; `client.mts` mirrors
+  each service's route, level, and volume-mute state over its Unix socket; `ducking.mts` turns voice events into
   duck requests on that same socket.
 - `home-assistant/` — the WebSocket `client.mts`, the compressed entity feed
   and `store.mts` cache behind it, `entity.mts` for reading state, and
@@ -65,38 +65,34 @@ repository root instead.
 
 ## `audio-manager`
 
-The long-running Python daemon in `audio-manager/src/audio_manager/` makes
-HiFiBerry the default output, selects the XVF3800 microphone, and maintains
-aux, USB audio, the Sendspin/USB background bus, ducking gain, and
-acoustic-echo-reference PipeWire routes. Its unit tests are colocated in
-`audio-manager/test/`.
+The Python daemon in `audio-manager/src/audio_manager/` owns the shared audio
+environment: output defaults, local aux routes, the music and voice buses,
+ducking, microphone capture, echo reference, and idle teardown. Its tests are
+in `audio-manager/test/`; it runs as `python3 -m audio_manager`.
 
-`daemon.py` holds the reconcile order and owns one object per concern. Three
-things carry sound to the amplifier: `routes.py` (the switchable inputs),
-`buses/` (the named sinks the players play into — `bus.py` is the generic
-`PlaybackBus`, `background.py` the music players' duckable bus, `voice.py` the
-assistant's, and `voice_meter.py` the level the ring pulses to), and
-`output.py` (the pinned output sink everything lands on). The daemon never
-names a player: Sendspin and the voice assistant are clients their own units
-point at a bus. `microphone/` serves the assistant's hearing instead, as three
-strategies composed by `microphone.py`: `device.py` finds the capture node and
-repairs its card, `capture.py` publishes the source the assistant records (one
-channel of a DSP array, or the device as it is), and `echo_reference.py` sends
-the device what it needs to cancel the room's own playback (the output's
-monitor into its playback endpoint, or nothing). Both ReSpeaker arrays are the
-same two strategies with different settings; another microphone is another
-choice per part. `idle.py` decides when the bridges may be torn down,
-`volume.py` holds the two levels, `status.py` writes the JSON snapshot,
-`modules.py` owns every PipeWire module they loaded, and `graph.py` is the
-cached view of the graph they all read. Everything crossing a boundary sits in
-a folder: `system/` (`process.py`, `pactl.py`, `amixer.py`, `usb_gadget.py`,
-`parec.py`, `monitors.py` — the only place a binary is run), `control/` (`server.py` and
-`commands.py`, the Unix socket the controller speaks to), and `usb/` (the
-state and volume kept agreed with a plugged-in computer). It runs as
-`python3 -m audio_manager`.
+`daemon.py` holds the reconcile order, `routes.py` owns local switchable inputs,
+`buses/` owns playback sinks and bridge gains, `microphone/` owns capture and
+echo reference, and `output.py` owns the hardware sink's unity gain and rebuild
+mute. `modules.py` tracks the PipeWire modules the manager creates.
 
-The [structure review](../docs/audio-manager-review.md) records the design
-comparisons, state invariants, and regression coverage.
+## `usb-audio`
+
+The Python client in `usb-audio/src/usb_audio/` owns the USB gadget's host and
+stream detection, ALSA volume/mute agreement, card activation, playback helper,
+USB toggle and trim. It plays into the manager's music bus like any other
+client and synchronises volume through that bus's public register.
+
+Its Unix socket serves USB controls and status directly to the controller.
+The separate root gadget setup service still creates the UAC2 peripheral at
+boot. See [USB audio](../docs/usb-audio.md) for lifecycle and validation details.
+
+## `audio-common`
+
+`audio-common/src/smartamp_audio/` contains shared graph queries, `pactl`, process
+and event-monitor helpers, the JSON control server, status publication and
+volume arithmetic. Both Python apps use these primitives; neither imports the
+other app's policy or daemon. Ansible installs an exact package tree and removes
+obsolete modules during an upgrade.
 
 ## `playground`
 

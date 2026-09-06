@@ -1,5 +1,5 @@
 import {VoiceDucker} from './audio/ducking.mjs'
-import {AudioManagerClient} from './audio/manager-client.mjs'
+import {AudioSystem} from './audio/system.mjs'
 import {loadConfig} from './config.mjs'
 import {defaultRouteExists, HealthMonitor} from './health.mjs'
 import {createOfflineHomeAssistant, HomeAssistantClient} from './home-assistant/client.mjs'
@@ -26,8 +26,9 @@ process.on('unhandledRejection', (reason) => {
 const config = loadConfig()
 const state = createState()
 
-const audio = new AudioManagerClient({
+const audio = new AudioSystem({
     socketPath: config.audio_socket,
+    usbSocketPath: config.usb_audio_socket,
     onStateChange: () => {
         state.volMuted = audio.state.volMuted === true
         model.notify()

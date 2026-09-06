@@ -20,15 +20,16 @@ from unittest import mock
 
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).parents[2] / "audio-common/src"))
 
-from audio_manager import graph, output, volume  # noqa: E402
+from audio_manager import output
+from smartamp_audio import graph, volume  # noqa: E402
 from audio_manager.buses import voice_meter  # noqa: E402
-from audio_manager.control import server as control_server  # noqa: E402
-from audio_manager.system import (  # noqa: E402
+from smartamp_audio import server as control_server  # noqa: E402
+from smartamp_audio import (  # noqa: E402
     monitors,
     pactl,
     process,
-    usb_gadget,
 )
 from audio_manager.config import AudioConfig  # noqa: E402
 from audio_manager.daemon import AudioManager  # noqa: E402
@@ -201,25 +202,24 @@ class ProcessTests(unittest.TestCase):
 class ControlSocketTests(ManagerTestCase):
     def test_route_state_defaults_follow_config(self) -> None:
         manager = self.make_manager(
-            {"sources": {"aux": {"enabled": True}, "usb": {"enabled": False}}}
+            {"sources": {"aux": {"enabled": True}, "line_in": {"enabled": False}}}
         )
-        self.assertEqual(manager.routes.enabled, {"aux": True, "usb": False})
+        self.assertEqual(manager.routes.enabled, {"aux": True, "line_in": False})
 
     def test_route_commands_update_memory_state(self) -> None:
         manager = self._duckable_manager()
-        manager.routes.enabled = {"aux": True, "usb": False}
+        manager.routes.enabled = {"aux": True, "line_in": False}
         connection = mock.Mock()
 
         reply, reconcile = manager.commands.apply(
-            connection, {"command": "set-source-state", "name": "usb", "state": "toggle"}
+            connection, {"command": "set-source-state", "name": "line_in", "state": "toggle"}
         )
         self.assertEqual(
             reply,
             {
                 "event": "state",
-                "sources": {"aux": True, "usb": True},
+                "sources": {"aux": True, "line_in": True},
                 "ducked": False,
-                "usb_playback": False,
                 "music_volume": 100,
                 "vol_muted": False,
                 "voice_volume": 100,
@@ -231,7 +231,7 @@ class ControlSocketTests(ManagerTestCase):
 
         # Re-applying the current state must not trigger graph work.
         _, reconcile = manager.commands.apply(
-            connection, {"command": "set-source-state", "name": "usb", "state": "on"}
+            connection, {"command": "set-source-state", "name": "line_in", "state": "on"}
         )
         self.assertFalse(reconcile)
 
@@ -275,7 +275,6 @@ class ControlSocketTests(ManagerTestCase):
                 "event": "state",
                 "sources": {"aux": True},
                 "ducked": False,
-                "usb_playback": False,
                 "music_volume": 100,
                 "vol_muted": False,
                 "voice_volume": 100,
@@ -455,37 +454,6 @@ class SubscribeEventTests(unittest.TestCase):
         self.assertFalse(monitors.is_relevant_event("garbage"))
 
 
-class UsbGadgetTests(unittest.TestCase):
-    def test_usb_host_detection_reads_the_udc_state_file(self) -> None:
-        with tempfile.TemporaryDirectory() as base:
-            root = Path(base)
-            self.assertFalse(usb_gadget.host_attached(root))
-
-            udc = root / "1000480000.usb"
-            udc.mkdir()
-            (udc / "state").write_text("not attached\n", encoding="utf-8")
-            self.assertFalse(usb_gadget.host_attached(root))
-
-            (udc / "state").write_text("configured\n", encoding="utf-8")
-            self.assertTrue(usb_gadget.host_attached(root))
-
-        self.assertFalse(usb_gadget.host_attached(root / "missing"))
-
-    def test_usb_streaming_detection_reads_the_gadget_rate_control(self) -> None:
-        listing = (
-            "numid=4,iface=PCM,name='Capture Rate'\n"
-            "  ; type=INTEGER,access=r--v----,values=1,min=48000,max=48000,step=0\n"
-            "  : values={rate}\n"
-        )
-        cases = [
-            (completed("amixer", stdout=listing.format(rate=48000)), True),
-            (completed("amixer", stdout=listing.format(rate=0)), False),
-            (completed("amixer", returncode=1), False),
-            (completed("amixer", stdout="garbage"), False),
-        ]
-        for result, expected in cases:
-            with mock.patch.object(process, "run", return_value=result):
-                self.assertEqual(usb_gadget.streaming(), expected)
 
 
 class ReconcileTests(ManagerTestCase):
@@ -519,233 +487,8 @@ class ReconcileTests(ManagerTestCase):
         self.assertIsNone(manager.pending_reconcile)
         self.assertEqual(manager.next_resync, 101.0)
 
-    def test_usb_route_bridges_only_while_the_host_is_streaming(self) -> None:
-        manager = self.make_manager(
-            {
-                "sources": {
-                    "usb": {
-                        "match": "UAC2Gadget",
-                        "requires_usb_host": True,
-                        "latency_ms": 20,
-                    }
-                }
-            }
-        )
-        manager.routes.enabled = {"usb": True}
-        loaded: list[str] = []
-        capture_node: graph.Node = {
-            "name": "uac2_capture",
-            "description": "UAC2Gadget",
-            "monitor_of_sink": 4294967295,
-        }
-        listings: Listings = {
-            "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
-            "sources": [],
-            "sink-inputs": [],
-            "cards": [
-                {
-                    "name": "alsa_card.platform-1000480000.usb",
-                    "properties": {"alsa.id": "UAC2Gadget"},
-                    "profiles": {"off": {}, "pro-audio": {}},
-                    "active_profile": "off",
-                }
-            ],
-        }
-        commands: list[tuple[str, ...]] = []
 
-        def load_module(module: str, *arguments: str) -> int:
-            loaded.append(module)
-            listings["sink-inputs"].append({"index": 51, "owner_module": 50})
-            return 50
 
-        def run(*args: str, check: bool = True) -> Any:
-            commands.append(args)
-            return fake_run(*args, check=check)
-
-        def reconcile(attached: bool, streaming: bool) -> dict[str, Any]:
-            with self._patched_graph(listings, run), mock.patch.object(
-                pactl, "load_module", side_effect=load_module
-            ), mock.patch.object(
-                usb_gadget, "host_attached", return_value=attached
-            ), mock.patch.object(
-                usb_gadget, "streaming", return_value=streaming
-            ), mock.patch(
-                "audio_manager.status.write"
-            ) as status_write:
-                manager.reconcile()
-            return status_write.call_args.args[1]
-
-        # The gadget card boots parked in its "off" profile (it has no mixer,
-        # so WirePlumber never activates a profile itself) and offers no
-        # capture node until the manager switches it on.
-        status = reconcile(attached=True, streaming=True)
-        self.assertIn(
-            (
-                "pactl",
-                "set-card-profile",
-                "alsa_card.platform-1000480000.usb",
-                "pro-audio",
-            ),
-            commands,
-        )
-        self.assertEqual(loaded, [])
-        self.assertFalse(status["sources"]["usb"]["available"])
-        listings["sources"] = [capture_node]
-        listings["cards"][0]["active_profile"] = "pro-audio"
-
-        # Enabled and enumerated but not streaming — the computer is playing
-        # to another output, or the cable is gone and the VBUS-blocked port
-        # never noticed. Either way the capture clock is dead and bridging it
-        # would stall the whole output graph, so no bridge.
-        status = reconcile(attached=True, streaming=False)
-        self.assertEqual(loaded, [])
-        self.assertTrue(status["usb_host"])
-        self.assertFalse(status["usb_playback"])
-        self.assertFalse(status["sources"]["usb"]["available"])
-        self.assertTrue(status["sources"]["usb"]["enabled"])
-
-        status = reconcile(attached=True, streaming=True)
-        self.assertEqual(loaded, ["module-loopback"])
-        self.assertTrue(status["usb_playback"])
-        self.assertTrue(status["sources"]["usb"]["available"])
-
-        status = reconcile(attached=True, streaming=False)
-        self.assertNotIn("usb", manager.modules)
-        self.assertFalse(status["sources"]["usb"]["available"])
-
-    def test_usb_volume_sync_follows_whichever_side_moved(self) -> None:
-        manager = self.make_manager({})
-        manager.music_volume = 40
-        gadget = {"volume": 30, "muted": False}
-        sinks = [
-            {
-                "name": "hifiberry",
-                "description": "HiFiBerry DAC2 ADC Pro",
-                "mute": False,
-                "volume": {
-                    "front-left": {"value_percent": "100%"},
-                    "front-right": {"value_percent": "100%"},
-                },
-            }
-        ]
-        listings: Listings = {"sinks": sinks, "sources": [], "sink-inputs": [], "cards": []}
-        commands: list[tuple[str, ...]] = []
-
-        def run(*args: str, check: bool = True) -> Any:
-            commands.append(args)
-            if args[0] == "amixer" and "sget" in args:
-                state = f"[{gadget['volume']}%] [{'off' if gadget['muted'] else 'on'}]"
-                return completed(*args, stdout=f"  Mono: Capture 123 {state}\n")
-            if args[0] == "amixer" and "sset" in args:
-                gadget["volume"] = int(args[6].rstrip("%"))
-                gadget["muted"] = args[7] == "nocap"
-                return completed(*args)
-            if args[:2] == ("pactl", "set-sink-mute"):
-                sinks[0]["mute"] = args[3] == "1"
-                return completed(*args)
-            return fake_run(*args, check=check)
-
-        def reconcile() -> None:
-            with self._patched_graph(listings, run), mock.patch.object(
-                usb_gadget, "card_present", return_value=True
-            ), mock.patch.object(
-                usb_gadget, "host_attached", return_value=True
-            ), mock.patch(
-                "audio_manager.status.write"
-            ):
-                manager.reconcile()
-
-        # First sight: the amp's music level seeds the gadget, so a computer
-        # plugging in reads the real level rather than a stale one.
-        reconcile()
-        self.assertEqual(gadget, {"volume": 40, "muted": False})
-
-        # The computer moves its slider: the music level follows; the sink
-        # volume itself stays pinned.
-        gadget.update(volume=55)
-        reconcile()
-        self.assertEqual(manager.music_volume, 55)
-        self.assertNotIn(("pactl", "set-sink-volume", "hifiberry", "55%"), commands)
-
-        # A settled graph stays quiet: no further writes on the next pass.
-        writes = len(commands)
-        reconcile()
-        self.assertEqual([c for c in commands[writes:] if "sset" in c], [])
-
-        # The computer mutes: that is the volume mute, so the music paths go
-        # silent while the level itself and the output sink are untouched, and
-        # the host's unmute brings the music back at the same level.
-        gadget.update(muted=True)
-        reconcile()
-        self.assertTrue(manager.vol_muted)
-        self.assertEqual(manager.music_volume, 55)
-        self.assertEqual(manager.music_level, 0)
-        self.assertFalse(sinks[0]["mute"])
-        gadget.update(muted=False)
-        reconcile()
-        self.assertFalse(manager.vol_muted)
-        self.assertEqual(manager.music_level, 55)
-
-        # The amp dial moves the music level and the deck mutes: the gadget
-        # follows both, so the computer's controls track the amp.
-        manager.music_volume = 70
-        manager.vol_muted = True
-        reconcile()
-        self.assertEqual(gadget, {"volume": 70, "muted": True})
-
-    def test_commanded_music_volume_survives_a_stale_gadget_reading(self) -> None:
-        manager = self.make_manager({})
-        manager.music_volume = 80
-        gadget = {"volume": 80, "muted": False}
-        sinks = [
-            {
-                "name": "hifiberry",
-                "description": "HiFiBerry DAC2 ADC Pro",
-                "mute": False,
-                "volume": {
-                    "front-left": {"value_percent": "100%"},
-                    "front-right": {"value_percent": "100%"},
-                },
-            }
-        ]
-        listings: Listings = {"sinks": sinks, "sources": [], "sink-inputs": [], "cards": []}
-
-        def run(*args: str, check: bool = True) -> Any:
-            if args[0] == "amixer" and "sget" in args:
-                state = f"[{gadget['volume']}%] [{'off' if gadget['muted'] else 'on'}]"
-                return completed(*args, stdout=f"  Mono: Capture 123 {state}\n")
-            if args[0] == "amixer" and "sset" in args:
-                gadget["volume"] = int(args[6].rstrip("%"))
-                gadget["muted"] = args[7] == "nocap"
-                return completed(*args)
-            return fake_run(*args, check=check)
-
-        def patched(action: Any) -> None:
-            with self._patched_graph(listings, run), mock.patch.object(
-                usb_gadget, "card_present", return_value=True
-            ), mock.patch.object(
-                usb_gadget, "host_attached", return_value=True
-            ), mock.patch(
-                "audio_manager.status.write"
-            ):
-                action()
-
-        # Both sides agree at 80.
-        patched(manager.reconcile)
-        self.assertEqual(gadget["volume"], 80)
-
-        # A dial step commands 60 while the host has re-quantised the gadget to
-        # 75. The command must forget the old agreement so the next reconcile
-        # seeds the gadget with 60 rather than clawing the level back to 75.
-        patched(
-            lambda: manager.commands.apply(
-                mock.Mock(), {"command": "set-music-volume", "percent": 60}
-            )
-        )
-        gadget["volume"] = 75
-        patched(manager.reconcile)
-        self.assertEqual(manager.music_volume, 60)
-        self.assertEqual(gadget, {"volume": 60, "muted": False})
 
     def test_muted_route_keeps_its_bridge_and_toggles_by_fading(self) -> None:
         manager = self.make_manager(
@@ -788,8 +531,8 @@ class ReconcileTests(ManagerTestCase):
         def reconcile() -> list[str]:
             with self._patched_graph(listings, run) as run_mock, mock.patch.object(
                 pactl, "load_module", side_effect=load_module
-            ), mock.patch("audio_manager.volume.time.sleep"), mock.patch(
-                "audio_manager.status.write"
+            ), mock.patch("smartamp_audio.volume.time.sleep"), mock.patch(
+                "smartamp_audio.status.write"
             ):
                 manager.reconcile()
             return [
@@ -880,7 +623,7 @@ class ReconcileTests(ManagerTestCase):
 
         with self._patched_graph(listings, fake_run) as run, mock.patch.object(
             pactl, "load_module", side_effect=self._recording_loader(loaded)
-        ), mock.patch("audio_manager.status.write") as status_write:
+        ), mock.patch("smartamp_audio.status.write") as status_write:
             manager.reconcile()
 
         # The far-end reference is what the room hears: the output sink's
@@ -936,7 +679,7 @@ class ReconcileTests(ManagerTestCase):
         }
 
         with self._patched_graph(listings, fake_run) as run, mock.patch(
-            "audio_manager.status.write"
+            "smartamp_audio.status.write"
         ) as status_write:
             manager.reconcile()
 
@@ -978,7 +721,7 @@ class ReconcileTests(ManagerTestCase):
 
         with self._patched_graph(listings, fake_run) as run, mock.patch.object(
             pactl, "load_module", side_effect=self._recording_loader(loaded)
-        ), mock.patch("audio_manager.status.write") as status_write:
+        ), mock.patch("smartamp_audio.status.write") as status_write:
             manager.reconcile()
 
         # Channel 1 is the XVF3800's ASR output; front-right is its label in
@@ -1028,7 +771,7 @@ class ReconcileTests(ManagerTestCase):
 
         with self._patched_graph(listings, fake_run) as run, mock.patch.object(
             pactl, "load_module"
-        ) as load_module, mock.patch("audio_manager.status.write") as status_write:
+        ) as load_module, mock.patch("smartamp_audio.status.write") as status_write:
             manager.reconcile()
 
         load_module.assert_not_called()
@@ -1080,7 +823,7 @@ class ReconcileTests(ManagerTestCase):
         def reconcile() -> None:
             with self._patched_graph(listings, run), mock.patch.object(
                 pactl, "load_module", side_effect=load_module
-            ), mock.patch("audio_manager.status.write"):
+            ), mock.patch("smartamp_audio.status.write"):
                 manager.reconcile()
 
         # A settled graph keeps the adopted remap.
@@ -1124,7 +867,7 @@ class ReconcileTests(ManagerTestCase):
         }
 
         with self._patched_graph(listings, fake_run) as run, mock.patch(
-            "audio_manager.status.write"
+            "smartamp_audio.status.write"
         ):
             manager.reconcile()
 
@@ -1147,7 +890,7 @@ class ReconcileTests(ManagerTestCase):
         }
 
         with self._patched_graph(listings, fake_run) as run, mock.patch(
-            "audio_manager.status.write"
+            "smartamp_audio.status.write"
         ):
             manager.reconcile()
 
@@ -1274,12 +1017,10 @@ class IdleTeardownTests(ManagerTestCase):
         def reconcile() -> dict[str, Any]:
             with self._patched_graph(listings, run), mock.patch.object(
                 pactl, "load_module", side_effect=load_module
-            ), mock.patch.object(
-                usb_gadget, "host_attached", return_value=False
             ), mock.patch(
-                "audio_manager.volume.time.sleep"
+                "smartamp_audio.volume.time.sleep"
             ), mock.patch(
-                "audio_manager.status.write"
+                "smartamp_audio.status.write"
             ) as status_write:
                 manager.reconcile()
             return status_write.call_args.args[1]
@@ -1471,7 +1212,7 @@ class VolumeTests(ManagerTestCase):
         manager.background.gain_applied = 100
 
         with mock.patch.object(process, "run") as run, mock.patch(
-            "audio_manager.volume.time.sleep"
+            "smartamp_audio.volume.time.sleep"
         ):
             manager.background.apply_ducking(manager.music_volume, True)
 
@@ -1627,7 +1368,7 @@ class VolumeTests(ManagerTestCase):
         with mock.patch.object(
             pactl, "list_json", return_value=sink_inputs
         ), mock.patch.object(process, "run") as run, mock.patch(
-            "audio_manager.volume.time.sleep"
+            "smartamp_audio.volume.time.sleep"
         ):
             manager.routes.apply_music_volume(100)
             run.reset_mock()
@@ -1655,7 +1396,7 @@ class VolumeTests(ManagerTestCase):
                         "mute_when_off": True,
                         "volume_percent": 50,
                     },
-                    "usb": {
+                    "line_in": {
                         "match": "UAC2Gadget",
                         "target": "background",
                         "volume_percent": 80,
@@ -1663,9 +1404,9 @@ class VolumeTests(ManagerTestCase):
                 },
             }
         )
-        manager.routes.enabled = {"aux": True, "usb": True}
+        manager.routes.enabled = {"aux": True, "line_in": True}
         manager.modules.adopt("aux", 60)
-        manager.modules.adopt("usb", 50)
+        manager.modules.adopt("line_in", 50)
         output_sink = {"name": "hifiberry", "index": 1}
         background_sink = {"name": "background", "index": 2}
         full = {"mono": {"value_percent": "100%"}}
@@ -1689,7 +1430,7 @@ class VolumeTests(ManagerTestCase):
                     "index": 71,
                     "owner_module": 50,
                     "sink": 2,
-                    "properties": {"media.name": "SmartAmp.usb"},
+                    "properties": {"media.name": "SmartAmp.line_in"},
                     "volume": full,
                 },
                 # Sendspin's own client stream into the bus.
@@ -1703,7 +1444,7 @@ class VolumeTests(ManagerTestCase):
         }
 
         with self._patched_graph(listings, fake_run) as run, mock.patch(
-            "audio_manager.volume.time.sleep"
+            "smartamp_audio.volume.time.sleep"
         ):
             manager.routes.apply_music_volume(100)
             run.reset_mock()
@@ -1711,7 +1452,6 @@ class VolumeTests(ManagerTestCase):
                 output=output_sink,
                 background_sink=background_sink,
                 music_volume=60,
-                usb_playback=True,
             )
             output.hold_client_streams(
                 manager.graph,

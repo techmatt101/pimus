@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import logging
 
-from ..system import pactl
-from ..graph import Graph, Node, profiles_of
+from smartamp_audio import pactl
+from smartamp_audio.graph import Graph, Node, profiles_of
 
 
 LOG = logging.getLogger(__name__)

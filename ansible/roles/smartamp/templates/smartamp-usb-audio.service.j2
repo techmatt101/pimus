@@ -1,0 +1,31 @@
+[Unit]
+Description=Smart Amp USB audio input
+After=smartamp-audio-manager.service smartamp-usb-audio-gadget.service
+Requires=smartamp-audio-manager.service smartamp-usb-audio-gadget.service
+PartOf=smartamp-audio-manager.service smartamp-usb-audio-gadget.service
+
+[Service]
+Type=simple
+User={{ smartamp_service_user }}
+Group={{ smartamp_service_user }}
+Environment=XDG_RUNTIME_DIR=/run/user/{{ smartamp_uid }}
+Environment=PULSE_SERVER=/run/user/{{ smartamp_uid }}/pulse/native
+Environment=LC_ALL=C
+Environment=SMARTAMP_LOG_LEVEL={{ 'debug' if smartamp_debug_logging | bool else 'info' }}
+Environment=PYTHONPATH={{ smartamp_app_dir }}/usb-audio:{{ smartamp_app_dir }}/audio-common
+ExecStartPre=/usr/bin/rm -f /run/user/{{ smartamp_uid }}/smartamp-usb-audio-status.json
+ExecStart=/usr/bin/python3 -m usb_audio --config {{ smartamp_config_dir }}/usb-audio.json --socket /run/user/{{ smartamp_uid }}/smartamp-usb-audio.sock --status /run/user/{{ smartamp_uid }}/smartamp-usb-audio-status.json
+Restart=always
+RestartSec=3
+# The loopback is a child client, never a lingering server module. Kill the
+# whole service group even if Python crashes, releasing the gadget clock.
+KillMode=control-group
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=tmpfs
+BindPaths=/run/user/{{ smartamp_uid }}
+ProtectSystem=full
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

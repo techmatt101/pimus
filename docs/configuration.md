@@ -98,11 +98,11 @@ Flip it to `false` while chasing a crash so the evidence survives, and back to `
 
 Set `smartamp_debug_logging: true` and re-provision to trace every action — deck input, route commands, Home Assistant
 service calls, LVA commands, and each `pactl` invocation the audio manager makes. It sets `SMARTAMP_LOG_LEVEL=debug` in
-the controller and audio-manager units; both default to `info`.
+the controller, audio-manager and USB audio units; all default to `info`.
 
 Set `smartamp_aux_enabled` and `smartamp_usb_enabled` to choose whether aux and USB monitoring start on boot. Both
-default to off. The USB route is additionally gated on the computer actively streaming to the gadget: the audio
-manager only builds the bridge while the gadget card's `Capture Rate` control reads a non-zero rate, because the
+default to off. The USB route is additionally gated on the computer actively streaming to the gadget: the USB
+audio app only starts its playback client while the gadget card's `Capture Rate` control reads a non-zero rate, because the
 gadget's capture clock only ticks while the host holds its playback stream open. A computer that is plugged in but
 playing to another output, or a cable that was unplugged, leaves a dead clock that would stall the whole output graph
 and silence everything else — including Sendspin and Home Assistant media on the background bus. Enumeration
@@ -111,17 +111,18 @@ never reports a disconnect, so that file stays `configured` after an unplug unti
 with nothing plugged in or nothing playing is therefore safe — the route simply waits for audio to arrive.
 
 The gadget's ALSA card boots with no active profile: it has no PipeWire-visible mixer path, so WirePlumber is offered
-only "off" and "pro-audio" and picks neither. While the USB route is enabled the audio manager switches a parked card
+only "off" and "pro-audio" and picks neither. The USB audio app switches a parked card
 to its pro-audio profile itself; that is what creates the capture node it bridges. Keep `usb_audio_sample_size_bytes`
 at `2` (16-bit) — the dwc2 gadget controller corrupts 3-byte (24-bit) samples on its isochronous endpoints,
 which plays as loud static with the audio faintly underneath.
 
 The gadget advertises a UAC2 mute/volume control, and the connected computer's writes to it land on the gadget card's
-`PCM Capture` ALSA controls. The audio manager keeps those and the music level plus the volume mute converged in both
+`PCM Capture` ALSA controls. The USB audio app keeps those and the music bus volume/mute converged in both
 directions (an `alsactl monitor` stream wakes it on host changes): change the volume on the computer and the amp
 follows, turn the amp's dial and the computer's slider follows, and the computer's mute key is the amp's volume mute,
-so it silences every music path and never the assistant. Whichever side moved since they last agreed wins, and when a
-computer first plugs in the amp's current volume and mute seed its controls.
+so it silences every music path and never the assistant. Whichever side moved since they last agreed wins; if both changed, the music bus wins so a dial or Sendspin
+command is not pulled back by a stale host reading. On gadget or bus recreation, the room's current volume/mute
+seed the host controls. USB playback, toggle, trim and recovery are configured in `usb-audio.json`; see [USB audio](usb-audio.md).
 
 The aux bridge is loaded muted whether or not the route is on; the toggle fades the bridge stream between silent and
 full over ~200 ms. Connecting the stream on demand used to land any DC offset on the line input as a step on the
@@ -132,7 +133,7 @@ Stream Deck route toggles last until the next reboot; every boot starts from the
 
 `smartamp_idle_teardown_seconds` (default 180, 0 to disable) is the power saver: the persistent loopbacks are what
 keep the HiFiBerry DAC/ADC path clocked and the XVF3800 playback endpoint awake even in silence, worth roughly a watt
-at the wall. After that many seconds with nothing playing — no client stream on any sink, no USB host streaming, no
+at the wall. After that many seconds with nothing playing — no client stream on any sink (including USB playback), no
 voice session, no enabled analogue route — the audio manager unloads the background and voice bus bridges, the AEC
 reference, and the muted aux bridge, and the devices suspend. The null sinks stay loaded so Sendspin and LVA keep
 their PULSE_SINK targets, and the wake-word capture path is untouched. Everything rebuilds within about a second of a

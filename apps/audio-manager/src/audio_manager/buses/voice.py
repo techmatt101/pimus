@@ -5,7 +5,7 @@ from __future__ import annotations
 from .bus import PlaybackBus
 from .voice_meter import VoiceLevelMeter
 from ..config import VoiceBusConfig
-from ..graph import Graph, Node
+from smartamp_audio.graph import Graph, Node
 from ..modules import ModuleRegistry
 
 

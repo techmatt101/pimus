@@ -72,6 +72,13 @@
   notify:
     - Restart voice assistant
     - Restart Sendspin
+    - Restart USB audio
+
+- name: Restart USB audio
+  ansible.builtin.systemd_service:
+    name: smartamp-usb-audio.service
+    state: restarted
+  when: usb_audio_gadget_enabled | bool
 
 - name: Restart voice assistant
   ansible.builtin.systemd_service:

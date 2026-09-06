@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
-import {AudioManagerClient} from '../../src/audio/manager-client.mjs'
+import {AudioClient} from '../../src/audio/client.mjs'
 
 async function waitFor(condition: () => boolean): Promise<void> {
     for (let attempt = 0; attempt < 500 && !condition(); attempt += 1) {
@@ -44,7 +44,7 @@ test('route toggles travel over the audio manager socket and survive reconnects'
     context.after(() => server.close())
 
     let changes = 0
-    const client = new AudioManagerClient({
+    const client = new AudioClient({
         socketPath,
         reconnectMilliseconds: 1,
         onStateChange: () => {
@@ -85,7 +85,7 @@ test('route toggles travel over the audio manager socket and survive reconnects'
 
 test('toggles before the first state sync defer to the manager', () => {
     const fake = new FakeSocket()
-    const client = new AudioManagerClient({
+    const client = new AudioClient({
         socketPath: '/nowhere/audio.sock',
         connectSocket: () => fake as unknown as net.Socket,
         logger: {
@@ -121,7 +121,7 @@ test('toggles before the first state sync defer to the manager', () => {
 
 test('the manager\'s route list says which routes this unit has at all', () => {
     const fake = new FakeSocket()
-    const client = new AudioManagerClient({
+    const client = new AudioClient({
         socketPath: '/nowhere/audio.sock',
         connectSocket: () => fake as unknown as net.Socket,
         logger: {
@@ -155,7 +155,7 @@ test('the manager\'s route list says which routes this unit has at all', () => {
 
 test('the volume mute travels as an absolute state and follows the manager', () => {
     const fake = new FakeSocket()
-    const client = new AudioManagerClient({
+    const client = new AudioClient({
         socketPath: '/nowhere/audio.sock',
         connectSocket: () => fake as unknown as net.Socket,
         logger: {
@@ -182,7 +182,7 @@ test('the volume mute travels as an absolute state and follows the manager', () 
 
 test('voice volume updates optimistically and re-asserts after a reconnect', async () => {
     const sockets: FakeSocket[] = []
-    const client = new AudioManagerClient({
+    const client = new AudioClient({
         socketPath: '/nowhere/audio.sock',
         reconnectMilliseconds: 1,
         connectSocket: () => {
@@ -246,7 +246,7 @@ test('voice volume updates optimistically and re-asserts after a reconnect', asy
 test('volume echoes racing newer sets do not walk the readout backwards', () => {
     let now = 0
     const fake = new FakeSocket()
-    const client = new AudioManagerClient({
+    const client = new AudioClient({
         socketPath: '/nowhere/audio.sock',
         connectSocket: () => fake as unknown as net.Socket,
         clock: () => now,
@@ -288,7 +288,7 @@ test('volume echoes racing newer sets do not walk the readout backwards', () => 
 
 test('duck requests are deduplicated and re-asserted after a reconnect', async () => {
     const sockets: FakeSocket[] = []
-    const client = new AudioManagerClient({
+    const client = new AudioClient({
         socketPath: '/nowhere/audio.sock',
         reconnectMilliseconds: 1,
         connectSocket: () => {
@@ -335,7 +335,7 @@ test('duck requests are deduplicated and re-asserted after a reconnect', async (
 
 test('panel standby is deduplicated and re-asserted after a reconnect', async () => {
     const sockets: FakeSocket[] = []
-    const client = new AudioManagerClient({
+    const client = new AudioClient({
         socketPath: '/nowhere/audio.sock',
         reconnectMilliseconds: 1,
         connectSocket: () => {
@@ -380,7 +380,7 @@ test('panel standby is deduplicated and re-asserted after a reconnect', async ()
 
 test('malformed audio manager events are ignored', () => {
     const fake = new FakeSocket()
-    const client = new AudioManagerClient({
+    const client = new AudioClient({
         socketPath: '/nowhere/audio.sock',
         connectSocket: () => fake as unknown as net.Socket,
         logger: {

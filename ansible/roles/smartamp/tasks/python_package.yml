@@ -1,0 +1,105 @@
+---
+# Install an exact package tree, removing modules moved by a refactor.
+- name: Create Python audio package directory
+  ansible.builtin.file:
+    path: "{{ python_package_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Find Python audio package modules
+  ansible.builtin.find:
+    paths: "{{ python_package_source }}"
+    patterns: "*.py"
+    file_type: file
+    recurse: true
+  delegate_to: localhost
+  become: false
+  register: python_package_sources
+
+# Modules are tracked by their path relative to the package root, not by file
+# name, so a subpackage such as system/ deploys as its own directory instead of
+# being flattened onto the modules beside it.
+- name: Record Python audio package modules
+  ansible.builtin.set_fact:
+    python_package_modules: >-
+      {{ python_package_sources.files | map(attribute='path')
+         | map('relpath', python_package_source) | list }}
+
+- name: Record Python audio subpackages
+  ansible.builtin.set_fact:
+    python_package_packages: >-
+      {{ python_package_modules | map('dirname')
+         | reject('equalto', '') | unique | list }}
+
+- name: Require a complete Python audio package
+  ansible.builtin.assert:
+    that:
+      - "'__init__.py' in python_package_modules"
+      - "(python_package_entrypoint | default('__init__.py')) in python_package_modules"
+    fail_msg: >-
+      The Python package is missing from {{ python_package_source }}.
+
+- name: Create Python audio subpackage directories
+  ansible.builtin.file:
+    path: "{{ python_package_dir }}/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ python_package_packages }}"
+
+# A module deleted or moved upstream must not keep running here: Python would
+# happily import whatever an older layout left behind.
+- name: Find deployed Python audio package modules
+  ansible.builtin.find:
+    paths: "{{ python_package_dir }}"
+    patterns: "*.py"
+    file_type: file
+    recurse: true
+  register: deployed_python_package_modules
+
+- name: Remove obsolete Python audio package modules
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ deployed_python_package_modules.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path | relpath(python_package_dir) }}"
+  when: >-
+    item.path | relpath(python_package_dir)
+    not in python_package_modules
+  notify: "{{ python_package_handlers }}"
+
+# Removing the modules leaves the directory that held them, and an empty
+# package still imports.
+- name: Find deployed Python audio package packages
+  ansible.builtin.find:
+    paths: "{{ python_package_dir }}"
+    file_type: directory
+    recurse: true
+  register: deployed_python_package_packages
+
+- name: Remove obsolete Python audio package packages
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ deployed_python_package_packages.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path | relpath(python_package_dir) }}"
+  when: >-
+    item.path | relpath(python_package_dir)
+    not in python_package_packages
+  notify: "{{ python_package_handlers }}"
+
+- name: Install Python audio package modules
+  ansible.builtin.copy:
+    src: "{{ python_package_source }}/{{ item }}"
+    dest: "{{ python_package_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ python_package_modules }}"
+  notify: "{{ python_package_handlers }}"
+

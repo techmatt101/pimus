@@ -249,8 +249,8 @@ path that follows the music level (Sendspin, the USB computer, aux) and leaves
 the voice bus alone, so the assistant still answers, rings, and announces out
 loud while the music is muted; the level itself is kept, so unmuting lands
 where the dial was. The microphone has its own mute, `mic_mute`, on the voice
-side. While a computer is on the USB-C gadget port, the audio manager keeps the
-music level and mute and the computer's controls for the device converged in
+side. While a computer is on the USB-C gadget port, the USB audio app keeps the
+music bus volume/mute and the computer's controls for the device converged in
 both directions: the computer's volume keys move the amp, its mute key is the
 amp's `vol_mute`, and the dial moves the computer's slider.
 

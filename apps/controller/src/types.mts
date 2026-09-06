@@ -133,6 +133,7 @@ export interface ControllerConfig {
     voice_enabled: boolean
     lva_uri: string
     audio_socket: string
+    usb_audio_socket?: string
     ducking?: DuckingConfig
     streamdeck?: StreamDeckDeployment
     sleep?: SleepDeployment

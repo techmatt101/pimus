@@ -10,7 +10,7 @@ from .capture import Capture, ChannelCapture, DirectCapture
 from .device import find_device
 from .echo_reference import EchoReference, NoEchoReference, PlaybackEchoReference
 from ..config import MicrophoneConfig
-from ..graph import Graph, Node
+from smartamp_audio.graph import Graph, Node
 from ..modules import ModuleRegistry
 
 

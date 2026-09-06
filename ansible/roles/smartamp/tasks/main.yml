@@ -32,6 +32,31 @@
   ansible.builtin.import_tasks: usb_gadget.yml
   when: usb_audio_gadget_enabled | bool
 
+- name: Configure USB audio client
+  ansible.builtin.import_tasks: usb_audio.yml
+  when: usb_audio_gadget_enabled | bool
+
+- name: Disable USB audio client when disabled
+  ansible.builtin.systemd_service:
+    name: smartamp-usb-audio.service
+    enabled: false
+    state: stopped
+  failed_when: false
+  when: not (usb_audio_gadget_enabled | bool)
+
+- name: Remove USB audio client artifacts when disabled
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/smartamp-usb-audio.service
+    - "{{ smartamp_app_dir }}/usb-audio"
+    - "{{ smartamp_config_dir }}/usb-audio.json"
+    - "/run/user/{{ smartamp_uid }}/smartamp-usb-audio.sock"
+    - "/run/user/{{ smartamp_uid }}/smartamp-usb-audio-status.json"
+  notify: Reload systemd
+  when: not (usb_audio_gadget_enabled | bool)
+
 # Feature flags must be reversible. Removing the overlay returns USB-C to its
 # normal role rather than leaving stale boot configuration from an earlier run.
 - name: Remove USB-C peripheral overlay when disabled

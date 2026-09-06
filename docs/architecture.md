@@ -17,7 +17,7 @@ XVF3800 microphones --USB/PipeWire--->| Linux Voice Assistant    |--ESPHome API-
                                       XVF3800 LEDs       Stream Deck+
 
 Aux (DAC2 ADC Pro only) --PipeWire loopback-----------------+
-Computer --USB-C UAC2--+                                    |
+Computer --USB-C UAC2--USB audio app--+                                    |
                        +--> duckable background bus --------+--> HiFiBerry DAC --> amplifier --> speakers
 Sendspin / MA ---------+                                    |
 Linux Voice Assistant TTS/media --> voice bus --------------+
@@ -70,9 +70,13 @@ with voice at 30% plays voice at 30%. `set-music-volume` and `set-voice-volume` 
 ceiling and reports it as `output_ceiling`, which nothing here writes: it is set once at boot from inventory and is
 the amplifier's protection rather than a gain.
 
+The USB audio app owns gadget discovery, host stream detection, its playback client,
+and USB controls/status. The controller combines its socket state with the audio
+manager's state. The root gadget setup service remains separate. See [USB audio](usb-audio.md).
+
 The music level also has a second face: the music bus sink's own volume and mute. That is an ordinary PipeWire control
 anything can read, write, and subscribe to, and the manager keeps it and the level agreed in both directions on the
-same last-mover-wins terms as the USB gadget's mixer — so a player watching its output device moves the room by moving
+last-mover-wins terms — so a player watching its output device moves the room by moving
 it, and is told through the same sink event when the dial or a USB host moved it instead. It is a control surface, not
 the gain: the bus is created with `monitor.channel-volumes=false` so that volume never reaches the monitor the bridge
 carries, which means a property that stopped applying could only ever play the room quieter than asked, never louder.
@@ -87,8 +91,10 @@ sink follow the music level both on a volume command and on reconciliation, but 
 manager sees them. The voice bus is never ducked.
 
 A fresh loopback stream plays at full volume until its gain lands. The manager mutes a newly discovered output before
-adjusting gains, and guards every new loopback into the output or either playback bus. This includes the USB route's
-input trim even when the background bridge is already running. An AEC-only connection does not need the speaker guard.
+adjusting gains, and guards every new loopback into the output or either playback bus. Local routes use that guard. External USB playback instead starts muted inside its own
+PipeWire client and unmutes only after its trim has been applied. The manager respects
+streams marked `smartamp.volume.owner=client` on a playback bus; direct hardware clients
+still follow the manager's gain enforcement. An AEC-only connection does not need the speaker guard.
 An unpublished playback stream keeps the guard held and schedules another pass a second later while the rest of the
 graph is reconciled and published. A failed command removes readiness status. The guard releases only after playback
 gains are applied and the unmute is successfully written; failed writes retain the guard for retry.
@@ -124,6 +130,8 @@ policy and readiness gate to reopen the device. Silent or blocked capture withou
 
 - `smartamp-hifiberry`: applies hardware mixer settings after ALSA detects the HAT.
 - `smartamp-usb-audio-gadget`: creates the stereo UAC2 peripheral on the board's USB-C controller.
+- `smartamp-usb-audio`: detects host streaming, synchronises the gadget mixer with the music bus,
+  and runs a muted-at-creation playback client. Its own socket serves USB toggle, trim and status.
 - `smartamp-audio-manager`: maintains PipeWire defaults, switchable routes, the background bus and its ducking gain,
   the voice bus and its volume, and the volume mute, driven by `pactl subscribe` events and a Unix control socket.
 - `smartamp-sendspin`: runs the Sendspin player that Music Assistant discovers and streams to. Run with

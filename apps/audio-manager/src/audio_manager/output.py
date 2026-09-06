@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import logging
 
-from . import graph
-from .system import pactl
-from .graph import Graph, Node
+from smartamp_audio import graph
+from smartamp_audio import pactl
+from smartamp_audio.graph import Graph, Node
 from .modules import STREAM_PREFIX
 
 
@@ -30,7 +30,9 @@ def set_mute(sink: Node, muted: bool) -> None:
     LOG.info("Output sink %s", "muted" if muted else "unmuted")
 
 
-def hold_client_streams(view: Graph, sink: Node | None, level: int) -> None:
+def hold_client_streams(
+    view: Graph, sink: Node | None, level: int, *, respect_client_volume: bool = False
+) -> None:
     """Hold every stream on the sink that is not one of our bridges at a level.
 
     On the pinned output sink this stops a client that plays straight at the
@@ -43,6 +45,9 @@ def hold_client_streams(view: Graph, sink: Node | None, level: int) -> None:
         if str(stream.get("sink")) != str(sink.get("index")):
             continue
         if graph.media_name(stream).startswith(STREAM_PREFIX):
+            continue
+        if (respect_client_volume
+                and graph.properties_of(stream).get("smartamp.volume.owner") == "client"):
             continue
         if graph.volume_is(stream, level):
             continue

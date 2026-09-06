@@ -12,10 +12,10 @@ from __future__ import annotations
 import logging
 from typing import Any, Protocol
 
-from .. import graph
-from ..system import pactl
+from smartamp_audio import graph
+from smartamp_audio import pactl
 from ..config import EchoReferenceConfig
-from ..graph import Graph, Node
+from smartamp_audio.graph import Graph, Node
 from ..modules import ModuleRegistry, stream_media_name
 
 

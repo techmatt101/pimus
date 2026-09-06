@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import subprocess
 
-from . import process
+from smartamp_audio import process
 
 
 def capture_mono(

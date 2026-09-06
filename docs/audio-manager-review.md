@@ -1,5 +1,9 @@
 # Audio manager structure review
 
+Follow-up, 6 September 2026: USB runtime responsibilities now live in their own
+[USB audio app](usb-audio.md). The review below records the earlier state-consistency
+work; its USB tests have moved to the client boundary.
+
 Reviewed 5 September 2026. The existing package boundaries suit this daemon;
 a broad rewrite would add churn without resolving its main risks. The useful
 changes are in state consistency and recovery from failed I/O.

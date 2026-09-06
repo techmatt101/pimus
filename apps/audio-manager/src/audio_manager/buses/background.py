@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 
 from .bus import PlaybackBus
-from .. import volume
+from smartamp_audio import volume
 from ..config import BackgroundConfig
-from ..graph import Graph, Node
+from smartamp_audio.graph import Graph, Node
 from ..modules import ModuleRegistry
 
 
@@ -15,9 +15,8 @@ LOG = logging.getLogger(__name__)
 
 
 class BackgroundBus(PlaybackBus):
-    """Everything that counts as music: the streaming player, and the USB
-    computer route when ducking is on. The bridge carries the music level,
-    so each player's own stream holds only its configured trim."""
+    """The shared music path. Its bridge carries music gain and ducking;
+    each input stream carries only its own trim."""
 
     config: BackgroundConfig
     ducked: bool | None = None

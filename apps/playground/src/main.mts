@@ -4,7 +4,7 @@
 //
 //   Stream Deck+ USB      -> fake-deck.mts, drawn in the browser
 //   LVA peripheral socket -> fake-lva.mts, a loopback WebSocket server
-//   audio manager socket  -> fake-audio-manager.mts, a real Unix socket server
+//   audio manager socket  -> fake-audio-service.mts, a real Unix socket server
 //   ReSpeaker USB LEDs    -> fake-led.mts, drawn as a ring
 //
 // Home Assistant is the one boundary that is NOT faked: the playground runs the
@@ -24,7 +24,7 @@ import path from 'node:path'
 import {spawn} from 'node:child_process'
 
 import {busLogger, PlaygroundBus, type PlaygroundSnapshot} from './bus.mjs'
-import {FakeAudioManager} from './fake-audio-manager.mjs'
+import {FakeAudioService} from './fake-audio-service.mjs'
 import {FakeDeckHardware} from './fake-deck.mjs'
 import {FakeLedRing} from './fake-led.mjs'
 import {FakeLvaServer} from './fake-lva.mjs'
@@ -32,7 +32,7 @@ import {FakeVoiceSensor} from './fake-voice-sensor.mjs'
 import {type PlaygroundInput, PlaygroundServer} from './server.mjs'
 
 import {VoiceDucker} from '../../controller/src/audio/ducking.mjs'
-import {AudioManagerClient} from '../../controller/src/audio/manager-client.mjs'
+import {AudioSystem} from '../../controller/src/audio/system.mjs'
 import {loadConfig} from '../../controller/src/config.mjs'
 import {HomeAssistantClient} from '../../controller/src/home-assistant/client.mjs'
 import {NotificationCenter} from '../../controller/src/home-assistant/notifications.mjs'
@@ -94,14 +94,17 @@ if (!haUrl || !haToken) {
 const bus = new PlaygroundBus()
 const temporary = (suffix: string): string => path.join(os.tmpdir(), `pimus-playground-${process.pid}.${suffix}`)
 const socketPath = temporary('sock')
+const usbSocketPath = temporary('usb.sock')
 const configPath = temporary('json')
 
-const audioManager = new FakeAudioManager({bus, socketPath})
+const audioManager = new FakeAudioService({bus, socketPath, service: 'manager'})
+const usbAudio = new FakeAudioService({bus, socketPath: usbSocketPath, service: 'usb'})
 const lvaServer = new FakeLvaServer({bus})
 const ledRing = new FakeLedRing(bus)
 const hardware = new FakeDeckHardware(bus)
 
 await audioManager.start()
+await usbAudio.start()
 const lvaUri = await lvaServer.start()
 
 // Round-tripping the configuration through the real loader means the playground
@@ -110,6 +113,7 @@ await fs.promises.writeFile(configPath, JSON.stringify({
     voice_enabled: true,
     lva_uri: lvaUri,
     audio_socket: socketPath,
+    usb_audio_socket: usbSocketPath,
     ducking: {enabled: true},
     home_assistant: {
         enabled: true,
@@ -132,8 +136,9 @@ const config = loadConfig(configPath, {REMOTE_TILES_TOKEN: 'playground', HOME_AS
 
 const state = createState()
 
-const audio = new AudioManagerClient({
+const audio = new AudioSystem({
     socketPath: config.audio_socket,
+    usbSocketPath: config.usb_audio_socket,
     onStateChange: () => {
         state.volMuted = audio.state.volMuted === true
         model.notify()
@@ -368,6 +373,7 @@ const shutdown = (): void => {
     server.close()
     lvaServer.close()
     audioManager.close()
+    usbAudio.close()
     fs.rmSync(configPath, {force: true})
     process.exit(0)
 }

@@ -7,7 +7,7 @@ import logging
 import socket
 from typing import TYPE_CHECKING, Any, Callable, cast
 
-from .. import volume
+from smartamp_audio import volume
 
 
 if TYPE_CHECKING:

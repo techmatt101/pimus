@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 from typing import Callable
 
-from . import graph
-from .system import pactl
-from .graph import Graph
+from smartamp_audio import graph
+from smartamp_audio import pactl
+from smartamp_audio.graph import Graph
 
 
 LOG = logging.getLogger(__name__)

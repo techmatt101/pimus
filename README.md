@@ -84,7 +84,9 @@ this computer and draws the deck in a browser 🕹️.
 
 ```text
 apps/controller      TypeScript daemon: Stream Deck, LED ring, voice state, ducking
-apps/audio-manager   Python daemon: PipeWire routes, mixing, ducking gains
+apps/audio-manager   Python daemon: shared PipeWire graph, mixing, ducking gains
+apps/usb-audio       Python client: USB host, playback, volume synchronisation
+apps/audio-common    Shared Python audio primitives
 apps/playground      Development-only fake hardware, never deployed
 ansible/             Inventory, playbooks, and the smartamp role
 docs/                You are here

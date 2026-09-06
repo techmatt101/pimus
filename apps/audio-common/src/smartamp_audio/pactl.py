@@ -6,7 +6,7 @@ import json
 import subprocess
 from typing import Any, cast
 
-from . import process
+from smartamp_audio import process
 
 
 def server_ready() -> bool:

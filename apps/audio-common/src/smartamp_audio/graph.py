@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any, cast
 
-from .system import pactl
+from smartamp_audio import pactl
 
 
 Node = dict[str, Any]

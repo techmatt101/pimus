@@ -6,7 +6,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from . import process
+from smartamp_audio import process
 
 
 # The gadget kernel driver hardcodes its ALSA card id. A USB host's volume and

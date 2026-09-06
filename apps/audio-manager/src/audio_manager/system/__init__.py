@@ -1,9 +1,5 @@
-"""The command-line boundary: every external binary this daemon drives.
+"""Hardware mixer reads and voice capture helpers used by the manager.
 
-Nothing here decides policy. `process` runs the children, `pactl` is the
-PipeWire surface, `amixer` reads a card's hardware playback level, `usb_gadget`
-the gadget card's ALSA mixer, `parec` a capture streaming samples to its stdout,
-and `monitors` the long-running children whose output lines wake the reconcile
-loop. Modules in here never import from the package above them, so the rest of
-the daemon has exactly one seam to patch in tests.
+PipeWire commands and process monitoring live in the shared smartamp_audio
+package. USB gadget controls belong to the usb_audio application.
 """

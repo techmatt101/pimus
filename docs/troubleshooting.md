@@ -337,11 +337,13 @@ is idle, playing to another output, or gone:
 amixer -c UAC2Gadget cget iface=PCM,name='Capture Rate'   # values=48000 streaming, values=0 idle or unplugged
 ```
 
-The audio manager gates the USB bridge and the Stream Deck's usb status icon on that control, so both follow actual
+The USB audio app gates playback and reports the Stream Deck's USB status from that control, so both follow actual
 playback rather than enumeration.
 
-If the computer is playing but no sound arrives, check the `smartamp-audio-manager` journal: its reconcile status
-should show the `usb` source with `"available": true` and a node name. The manager activates the gadget card's
+If the computer is playing but no sound arrives, check `journalctl -u smartamp-usb-audio` and
+`/run/user/<smartamp UID>/smartamp-usb-audio-status.json`: `available` should be true,
+`source` should name the capture node, and `playing` should be true when the USB toggle is on.
+The USB app activates the gadget card's
 pro-audio profile itself when the card is parked off; an older deployment without that logic needs
 `pactl set-card-profile alsa_card.platform-1000480000.usb pro-audio` once.
 
