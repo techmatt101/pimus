@@ -1,9 +1,10 @@
-// Stand-ins for the manager and USB audio service sockets. It speaks the
-// same newline-delimited JSON protocol, so AudioClient's optimistic
-// cache, its re-assert on reconnect, and the duck request that the kernel
-// releases when the socket closes all behave exactly as they do on the Pi.
+// A stand-in for the audio manager's socket. It speaks the same
+// newline-delimited JSON protocol, so AudioClient's optimistic cache, its
+// re-assert on reconnect, and the duck request that the kernel releases when
+// the socket closes all behave exactly as they do on the Pi.
 //
-// It reconciles no PipeWire graph, of course: a route here is just a boolean.
+// It reconciles no PipeWire graph, of course: a route here is just a boolean,
+// and a source's availability is a fixed answer rather than a stream on a bus.
 
 import fs from 'node:fs'
 import net from 'node:net'
@@ -13,13 +14,14 @@ import type {PlaygroundBus} from './bus.mjs'
 export interface FakeAudioServiceOptions {
     bus: PlaygroundBus
     socketPath: string
-    service: 'manager' | 'usb'
 }
 
 interface FakeSource {
     trim: number
     /** Absent for the players that play straight into the bus: nothing to switch. */
     enabled?: boolean
+    /** Whether a stream of this source is on the bus; USB means a computer is streaming. */
+    available: boolean
 }
 
 export class FakeAudioService {
@@ -28,7 +30,6 @@ export class FakeAudioService {
     musicVolume = 40
     voiceVolume = 60
     volMuted = false
-    private readonly service: 'manager' | 'usb'
     /** Read from the card on the Pi; a fixed reading here, as inventory sets it. */
     outputVolume = 90
 
@@ -39,11 +40,12 @@ export class FakeAudioService {
     private readonly metering = new Set<net.Socket>()
     private meterTimer: NodeJS.Timeout | null = null
 
-    constructor({bus, socketPath, service}: FakeAudioServiceOptions) {
-        this.service = service
-        this.sources = service === 'usb'
-            ? {usb: {trim: 100, enabled: true}}
-            : {sendspin: {trim: 100}, aux: {trim: 100, enabled: false}}
+    constructor({bus, socketPath}: FakeAudioServiceOptions) {
+        this.sources = {
+            sendspin: {trim: 100, available: true},
+            aux: {trim: 100, enabled: false, available: true},
+            usb: {trim: 100, enabled: false, available: false},
+        }
         this.bus = bus
         this.socketPath = socketPath
         this.server = net.createServer((socket) => this.accept(socket))
@@ -111,10 +113,6 @@ export class FakeAudioService {
         const command = String(message.command ?? '')
         this.bus.log('audio', 'out', `command ${command}`, line)
 
-        if (this.service === 'usb' && !['get-state', 'set-source-state', 'set-source-trim'].includes(command)) {
-            this.reject(socket, `unknown USB command ${command}`)
-            return
-        }
         if (command === 'get-state') {
             this.sendState(socket)
         } else if (command === 'set-source-state') {
@@ -227,11 +225,9 @@ export class FakeAudioService {
         socket.write(`${JSON.stringify({
             event: 'state',
             sources: this.sources,
-            ...(this.service === 'manager' ? {
-                output_volume: this.outputVolume,
-                music_bus: {volume: this.musicVolume, muted: this.volMuted, ducked: this.ducked},
-                voice_bus: {volume: this.voiceVolume},
-            } : {usb_playback: false}),
+            output_volume: this.outputVolume,
+            music_bus: {volume: this.musicVolume, muted: this.volMuted, ducked: this.ducked},
+            voice_bus: {volume: this.voiceVolume},
         })}\n`)
     }
 

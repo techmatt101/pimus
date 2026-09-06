@@ -31,7 +31,7 @@ after the problem and the startup lines are still there. Only `-f` on its own
 starts at "now" and misses startup.
 
 The other units are `smartamp-audio-manager`, `smartamp-voice-assistant`,
-`smartamp-sendspin`, and `smartamp-usb-audio-gadget`.
+`smartamp-sendspin`, `smartamp-audio-inputs`, and `smartamp-usb-audio-gadget`.
 
 The controller is deployed as three bundles rather than one module per source
 file, so a raw stack trace would name a line in `index.mjs` and tell you nothing.
@@ -337,15 +337,16 @@ is idle, playing to another output, or gone:
 amixer -c UAC2Gadget cget iface=PCM,name='Capture Rate'   # values=48000 streaming, values=0 idle or unplugged
 ```
 
-The USB audio app gates playback and reports the Stream Deck's USB status from that control, so both follow actual
-playback rather than enumeration.
+The audio inputs app gates its USB loopback on that control, and the Stream Deck's USB icon is the audio manager
+seeing that loopback's stream on the bus, so both follow actual playback rather than enumeration.
 
-If the computer is playing but no sound arrives, check `journalctl -u smartamp-usb-audio` and
-`/run/user/<smartamp UID>/smartamp-usb-audio-status.json`: under `sources.usb`, `available` should be true
-and `node` should name the capture node; `playing` should be true when the USB toggle is on.
-The USB app activates the gadget card's
-pro-audio profile itself when the card is parked off; an older deployment without that logic needs
-`pactl set-card-profile alsa_card.platform-1000480000.usb pro-audio` once.
+If the computer is playing but no sound arrives, check `journalctl -u smartamp-audio-inputs` and
+`/run/user/<smartamp UID>/smartamp-audio-inputs-status.json`: under `inputs.usb`, `streaming` should be true, `node`
+should name the gadget's capture node, and `playing` should be true once the loopback stream has reached the graph.
+Then check the manager's `smartamp-audio-status.json`: `sources.usb.available` should be true and `enabled` is the
+deck's toggle — a switched-off source plays at silence, so a stream that is there but inaudible is usually the toggle.
+The inputs app activates the gadget card's pro-audio profile itself when the card is parked off; an older deployment
+without that logic needs `pactl set-card-profile alsa_card.platform-1000480000.usb pro-audio` once.
 
 Because the Pi is powered through GPIO, its 5V rail sits directly on the USB-C VBUS pin — there is no switch firmware
 could open — so the Pi backfeeds power into whatever it is plugged into. A connected laptop may report it is charging

@@ -30,14 +30,12 @@ def set_mute(sink: Node, muted: bool) -> None:
     LOG.info("Output sink %s", "muted" if muted else "unmuted")
 
 
-def hold_client_streams(
-    view: Graph, sink: Node | None, level: int, *, respect_client_volume: bool = False
-) -> None:
+def hold_client_streams(view: Graph, sink: Node | None, level: int) -> None:
     """Hold every stream on the sink that is not one of our bridges at a level.
 
     On the pinned output sink this stops a client that plays straight at the
-    output landing at full amplifier level; on a bus it holds each player's
-    stream at the bus's configured client trim.
+    output landing at full amplifier level. The bus's own streams are the
+    mixer's (sources.py), each held at its source's trim.
     """
     if sink is None or sink.get("index") is None:
         return
@@ -45,9 +43,6 @@ def hold_client_streams(
         if str(stream.get("sink")) != str(sink.get("index")):
             continue
         if graph.media_name(stream).startswith(STREAM_PREFIX):
-            continue
-        if (respect_client_volume
-                and graph.properties_of(stream).get("smartamp.volume.owner") == "client"):
             continue
         if graph.volume_is(stream, level):
             continue

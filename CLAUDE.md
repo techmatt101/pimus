@@ -68,10 +68,14 @@ Keep these boundaries clear:
 - `smartamp-controller` is the long-running Node app. It owns Stream Deck input
   and rendering, ReSpeaker LED USB commands, the Linux Voice Assistant peripheral
   WebSocket, and shared control-surface state.
-- `smartamp-audio-manager` is a separate long-running Python daemon. It
-  continuously reconciles the PipeWire graph, default devices, aux/USB
-  loopbacks, the duckable music bus every music input plays into, and the XVF3800
-  acoustic-echo-cancellation reference.
+- `smartamp-audio-manager` is a separate long-running Python daemon: the
+  mixer. It continuously reconciles the PipeWire graph, default devices, the
+  duckable music bus every music source plays into, each source's trim and
+  toggle on that bus, and the XVF3800 acoustic-echo-cancellation reference. It
+  knows its sources only by name.
+- `smartamp-audio-inputs` is a third Python daemon, deployed only on a unit
+  with a local input. It brings the aux line-in and the USB gadget's capture
+  onto the music bus as tagged client streams, and holds no level of its own.
 - Linux Voice Assistant and Sendspin are external upstream applications
   installed and configured by Ansible; do not duplicate their logic locally.
 
@@ -108,7 +112,7 @@ apps/
     package.json
     tsconfig.json
   audio-manager/
-    src/audio_manager/   PipeWire reconciliation daemon, run as a package
+    src/audio_manager/   The mixer: PipeWire reconciliation daemon, run as a package
       buses/             The named sinks the players play into: the generic
                          PlaybackBus, the duckable music bus, the voice
                          bus, and the meter the ring pulses to
@@ -117,15 +121,15 @@ apps/
       echo_reference.py  The far-end reference the microphone array is sent:
                          the output's monitor looped into the array's own
                          playback sink; the daemon's one microphone-side job
-      system/            The command-line boundary: process, pactl, amixer,
-                         parec, and the monitors that read a child's lines
-      usb/               What the daemon keeps agreed with a computer plugged
-                         into the audio gadget: its state, and its volume
+      sources.py         The mixer's channels: the configured source names,
+                         and the trim and toggle held on each one's streams
+      system/            The command-line boundary: amixer and parec
     test/                Python unit tests
-  usb-audio/
-    src/usb_audio/       The USB gadget's own daemon: host and stream
-                         detection, card activation, playback into the music
-                         bus, and the volume it keeps agreed with the computer
+  audio-inputs/
+    src/audio_inputs/    The local inputs' daemon: one Input class per kind
+      inputs/            under inputs/ (the aux capture, the USB gadget with
+                         its host gate and volume agreement), each running a
+                         pw-loopback into the music bus tagged with its name
     test/                Python unit tests
 libs/                    Code more than one app needs, owned by none of them
   audio-common/
@@ -389,18 +393,32 @@ runtime validation, and relevant documentation together.
 
 ### Python apps
 
-- Keep the audio manager focused on PipeWire graph reconciliation and gain on
-  graph-owned routes. Voice-event policy stays in the Node controller.
+- The audio manager is a mixer and nothing more. It is configured with a list
+  of source names (`sources` in `audio.json`, rendered from inventory) and
+  holds each one's trim and, for a switchable source, its on/off on whatever
+  streams play into the music bus under that name: a stream belongs to the
+  source its `smartamp.source` property names, and an untagged one to
+  `default_source` (Sendspin). It knows no card, gadget, or capture node, and
+  must not learn one: a source that needs a device is an `Input` class in
+  `apps/audio-inputs`, which runs a `pw-loopback` into the bus born at volume
+  zero and tagged with the source's name, and owns no trim and no toggle. A
+  player that is a program of its own is an Ansible unit pointed at the bus
+  and a name in `audio.json`; Sendspin is the untagged `default_source`, and
+  a second such player tags its streams from its unit's environment. It needs
+  no Python at all. Adding a source must never mean teaching the manager where
+  the stream comes from. Voice-event policy stays in the Node controller.
 - Prefer the Python standard library unless a dependency has a clear runtime
   benefit and is provisioned explicitly by Ansible.
 - The audio manager is the `audio_manager` package, run as `python3 -m
-  audio_manager` with its parent directory on `PYTHONPATH`. `daemon.py` owns
-  the reconcile order and nothing else; each concern it drives (a bus, the
-  routes, the AEC reference, the USB volume agreement, the control socket)
-  lives in its own module and holds its own state. Reach the
-  outside world through the `system/` subpackage — `process.run`, `pactl`,
-  `usb_gadget`, `parec`, and the `monitors` line readers — and read the graph
-  through the cached `Graph`, so tests patch one seam. Every external binary the
+  audio_manager` with its parent directory on `PYTHONPATH`; the inputs app is
+  the `audio_inputs` package beside it, run the same way, and both import the
+  shared `smartamp_audio` primitives from `libs/audio-common`. `daemon.py`
+  owns the reconcile order and nothing else; each concern it drives (a bus,
+  the source mixer, the AEC reference, the control socket) lives in its own
+  module and holds its own state. Reach the outside world through the shared
+  `process.run`, `pactl`, and `monitors` line readers and the manager's own
+  `system/` subpackage (`amixer`, `parec`), and read the graph through the
+  cached `Graph`, so tests patch one seam. Every external binary the
   daemon runs is spawned from there and nothing in it imports the package above
   it; a module that decides policy does not belong in it. A caller passes what
   the command should say (the capture's rate, the device to meter) and keeps the
@@ -412,7 +430,8 @@ runtime validation, and relevant documentation together.
   package would need its own task.
 - The daemon names no product. A player is whichever client its systemd unit
   points at a bus in `buses/` (Sendspin by `PULSE_SINK`, the voice assistant by
-  mpv's output device), so swapping one is an Ansible change and nothing here.
+  mpv's output device), so swapping one is an Ansible change and nothing here;
+  the source names it mixes under come from inventory through `audio.json`.
   The daemon knows no microphone either. What the assistant records is
   PipeWire's own configuration, templated by Ansible: a WirePlumber rule
   (`templates/wireplumber/60-smartamp-voice-input.conf.j2`) renames the
@@ -572,8 +591,9 @@ change.
 - Only a board with an ADC has an analogue aux input. The Amp100 has none, so
   it gets no aux source in `audio.json` at all rather than a permanently
   unavailable one, and its ADC mixer controls are never written. The same holds
-  for `usb` without the audio gadget: `audio.json` lists only the routes the
-  hardware has, and both may be absent.
+  for `usb` without the audio gadget: `audio.json` lists only the sources the
+  hardware has, `audio-inputs.json` only the inputs, and both may be absent —
+  a unit with neither is sent no inputs app at all.
 - That list is the one answer to which routes exist. The audio manager
   publishes the names it knows, the controller mirrors them as
   `AudioState.sources`, and a route key whose name is missing from a known list

@@ -16,7 +16,6 @@ interface AudioEvent {
     event?: string
     error?: string
     sources?: unknown
-    usb_playback?: unknown
     music_bus?: unknown
     voice_bus?: unknown
     output_volume?: unknown
@@ -133,7 +132,6 @@ export class AudioClient {
             const wasConnected = this.connected
             this.connected = false
             this.voiceLevel = 0
-            this.state = {...this.state, usbPlayback: false}
             if (wasConnected) this.#onStateChange()
             if (this.#closed) return
             this.#reconnectTimer = setTimeout(() => {
@@ -281,6 +279,7 @@ export class AudioClient {
             else this.#pendingTrims.delete(name)
             const source: SourceState = {}
             if (typeof entry.enabled === 'boolean') source.enabled = entry.enabled
+            if (typeof entry.available === 'boolean') source.available = entry.available
             if (settled.level !== undefined) source.trim = settled.level
             sources[name] = source
         }
@@ -316,7 +315,6 @@ export class AudioClient {
                 this.state = {
                     sources: this.#settleSources(sources),
                     routesKnown: true,
-                    usbPlayback: message.usb_playback === true,
                     ...(music.level !== undefined ? {musicVolume: music.level} : {}),
                     ...(voice.level !== undefined ? {voiceVolume: voice.level} : {}),
                     ...(typeof musicBus?.muted === 'boolean' ? {volMuted: musicBus.muted} : {}),

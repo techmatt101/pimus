@@ -1,0 +1,31 @@
+---
+# The inputs app brings the unit's local inputs - the USB gadget's capture and
+# the analogue aux - onto the music bus as tagged client streams, and nothing
+# more: every trim and toggle is the audio manager's, which mixes them.
+- name: Install audio inputs app
+  ansible.builtin.include_tasks: python_package.yml
+  vars:
+    python_package_source: "{{ smartamp_source_dir }}/audio-inputs/src/audio_inputs"
+    python_package_dir: "{{ smartamp_app_dir }}/audio-inputs/audio_inputs"
+    python_package_handlers: [Restart audio inputs]
+    python_package_entrypoint: __main__.py
+
+- name: Configure audio inputs app
+  ansible.builtin.template:
+    src: audio-inputs.json.j2
+    dest: "{{ smartamp_config_dir }}/audio-inputs.json"
+    owner: root
+    group: "{{ smartamp_service_user }}"
+    mode: "0644"
+  notify: Restart audio inputs
+
+- name: Install audio inputs service
+  ansible.builtin.template:
+    src: smartamp-audio-inputs.service.j2
+    dest: /etc/systemd/system/smartamp-audio-inputs.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart audio inputs

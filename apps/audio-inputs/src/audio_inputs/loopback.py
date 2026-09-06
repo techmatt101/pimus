@@ -1,13 +1,24 @@
-"""A process-owned loopback, born muted and connected only to explicit targets."""
+"""A process-owned loopback into the bus, born silent and tagged with its source.
+
+The loopback is a child client, never a server module: it dies with this
+daemon, so a stopped or crashed daemon can never leave a device's clock linked
+into the graph. Its playback stream is created at volume zero, so nothing is
+heard until the audio manager holds it at the source's trim, and it carries
+the `smartamp.source` tag that tells the manager whose stream it is.
+"""
+
 from __future__ import annotations
 
 import json
 import os
 import subprocess
-from smartamp_audio import graph, pactl
+
+from smartamp_audio import graph
 from smartamp_audio.graph import Graph, Node
 
-PLAYBACK_NODE = "smartamp_usb_playback"
+
+SOURCE_PROPERTY = "smartamp.source"
+PLAYBACK_NODE = "smartamp_input"
 
 # How soon to look again while the client is starting: its stream takes a
 # moment to reach the graph, and every pass until then is an ordinary wait.
@@ -18,8 +29,9 @@ SETTLE_SECONDS = 0.1
 MAX_RETRY_SECONDS = 5.0
 
 
-class Playback:
-    def __init__(self, view: Graph, latency_ms: int) -> None:
+class Loopback:
+    def __init__(self, name: str, view: Graph, latency_ms: int) -> None:
+        self._name = name
         self._graph = view
         self._latency_ms = latency_ms
         self._process: subprocess.Popen[bytes] | None = None
@@ -53,7 +65,7 @@ class Playback:
         else:
             running.wait()
 
-    def reconcile(self, source: Node, sink: Node, trim: int) -> None:
+    def reconcile(self, source: Node, sink: Node) -> None:
         binding = (source["name"], source.get("index"), sink["name"], sink.get("index"))
         moved = self._binding != binding
         died = self._process is not None and self._process.poll() is not None
@@ -66,34 +78,7 @@ class Playback:
             if moved:
                 self._failures = 0
             self.stop()
-            self._generation += 1
-            self._node_name = f"{PLAYBACK_NODE}_{os.getpid()}_{self._generation}"
-            common = {
-                "node.dont-fallback": True,
-                "node.dont-reconnect": True,
-                "node.dont-move": True,
-                "state.restore-props": False,
-                "node.stream.restore-props": False,
-                "node.stream.restore-target": False,
-            }
-            capture = {**common, "node.name": "smartamp_usb_capture"}
-            playback = {
-                **common,
-                "node.name": self._node_name,
-                "media.name": "USB Audio",
-                "smartamp.volume.owner": "client",
-                # PipeWire's adapter applies these before exporting the node.
-                # A delayed query or failed trim leaves this stream silent.
-                "node.param.Props": {"mute": True, "channelVolumes": [0.0, 0.0]},
-            }
-            self._process = subprocess.Popen(
-                ["pw-loopback", "--capture", str(source["name"]),
-                 "--playback", str(sink["name"]), "--channels", "2",
-                 "--latency", str(self._latency_ms),
-                 "--capture-props", json.dumps(capture),
-                 "--playback-props", json.dumps(playback)],
-                stdout=subprocess.DEVNULL,
-            )
+            self._spawn(source, sink)
             self._binding = binding
             self._graph.invalidate()
         self.ready = False
@@ -108,9 +93,34 @@ class Playback:
         # repeat: the next fault starts its own count.
         self._published = True
         self._failures = 0
-        if not graph.volume_is(stream, trim):
-            pactl.set_sink_input_volume(int(stream["index"]), trim)
-        state = graph.volume_state(stream)
-        if state is None or state[1]:
-            pactl.set_sink_input_mute(int(stream["index"]), False)
         self.ready = True
+
+    def _spawn(self, source: Node, sink: Node) -> None:
+        self._generation += 1
+        self._node_name = f"{PLAYBACK_NODE}_{self._name}_{os.getpid()}_{self._generation}"
+        common = {
+            "node.dont-fallback": True,
+            "node.dont-reconnect": True,
+            "node.dont-move": True,
+            "state.restore-props": False,
+            "node.stream.restore-props": False,
+            "node.stream.restore-target": False,
+        }
+        capture = {**common, "node.name": f"{self._node_name}_capture"}
+        playback = {
+            **common,
+            "node.name": self._node_name,
+            "media.name": self._name,
+            SOURCE_PROPERTY: self._name,
+            # PipeWire's adapter applies these before exporting the node, so
+            # the stream is silent until the manager holds it at its trim.
+            "node.param.Props": {"mute": False, "channelVolumes": [0.0, 0.0]},
+        }
+        self._process = subprocess.Popen(
+            ["pw-loopback", "--capture", str(source["name"]),
+             "--playback", str(sink["name"]), "--channels", "2",
+             "--latency", str(self._latency_ms),
+             "--capture-props", json.dumps(capture),
+             "--playback-props", json.dumps(playback)],
+            stdout=subprocess.DEVNULL,
+        )

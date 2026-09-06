@@ -133,7 +133,6 @@ export interface ControllerConfig {
     voice_enabled: boolean
     lva_uri: string
     audio_socket: string
-    usb_audio_socket?: string
     ducking?: DuckingConfig
     streamdeck?: StreamDeckDeployment
     sleep?: SleepDeployment
@@ -226,27 +225,27 @@ export interface ControlState {
 }
 
 /**
- * One music input as the audio services list it. Every input carries a trim,
+ * One music input as the audio manager lists it. Every input carries a trim,
  * the share of the music level it plays at; only a route has a toggle, so the
- * players that play straight into the music bus report no `enabled`.
+ * players that play straight into the music bus report no `enabled`. It is
+ * available while at least one of its streams is on the bus.
  */
 export interface SourceState {
     enabled?: boolean
     trim?: number
+    available?: boolean
 }
 
 export interface AudioState {
     sources: Record<string, SourceState | undefined>
     /**
-     * Whether `sources` is the services' own list yet. It holds exactly the
+     * Whether `sources` is the manager's own list yet. It holds exactly the
      * inputs this deployment has, so a name missing from a known list is one
      * the hardware does not have — but an empty map before the manager has ever
-     * answered means nothing, and a unit with no aux and no USB gadget has only
-     * its players legitimately. Stays true across a manager restart, as the
+     * answered means nothing. Stays true across a manager restart, as the
      * cache does.
      */
     routesKnown: boolean
-    usbPlayback?: boolean
     /** The music level in percent; unknown until the manager's first state event. */
     musicVolume?: number
     /** The voice bus level in percent; unknown until the manager's first state event. */

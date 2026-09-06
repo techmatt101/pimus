@@ -7,7 +7,7 @@ import logging
 from .bus import PlaybackBus
 from smartamp_audio import volume
 from ..config import MusicBusConfig
-from smartamp_audio.graph import Graph, Node
+from smartamp_audio.graph import Graph
 from ..modules import ModuleRegistry
 
 
@@ -15,7 +15,8 @@ LOG = logging.getLogger(__name__)
 
 class MusicBus(PlaybackBus):
     """The shared music path. Its bridge carries music gain and ducking;
-    each input stream carries only its own trim."""
+    each input stream on it carries only its source's trim, which the
+    mixer (sources.py) holds."""
 
     config: MusicBusConfig
     ducked: bool | None = None
@@ -24,19 +25,6 @@ class MusicBus(PlaybackBus):
         self, config: MusicBusConfig, view: Graph, registry: ModuleRegistry
     ) -> None:
         super().__init__("music", config, "SmartAmp_Music_Audio", view, registry)
-        # The configured trim is where the players start; a control surface
-        # moves it live to balance them against the other inputs, and the
-        # inventory default is what a restart comes back to.
-        self.players_trim = config.players_volume_percent
-
-    def reconcile(self, output: Node | None, *, bridged: bool = True) -> Node | None:
-        sink = super().reconcile(output, bridged=bridged)
-        self.hold_clients(self.players_trim)
-        return sink
-
-    def set_players_trim(self, percent: int) -> None:
-        self.players_trim = percent
-        self.hold_clients(self.players_trim)
 
     def target_gain(self, music_volume: int, ducked: bool) -> int:
         """The bridge gain for the music level, dipped by the duck share."""

@@ -145,12 +145,7 @@ class AudioReliabilityTests(ManagerTestCase):
 
 class RebuildSafetyTests(ManagerTestCase):
     def setUp(self) -> None:
-        self.manager = self.make_manager(
-            {
-                "startup_volume_percent": 10,
-                "sources": {"aux": {"enabled": True, "match": "ADC"}},
-            }
-        )
+        self.manager = self._make_manager()
         self.sink: graph.Node = {
             "name": "hifiberry",
             "description": "HiFiBerry",
@@ -158,17 +153,21 @@ class RebuildSafetyTests(ManagerTestCase):
             "mute": False,
             **stereo(80, 80),
         }
+        # The music bus's bridge into the output, which appears once its
+        # loopback module loads and starts at full volume until held.
         self.stream: graph.Node = {
             "index": 51,
             "owner_module": 50,
-            "properties": {"media.name": "SmartAmp.aux"},
+            "sink": 1,
+            "properties": {"media.name": "SmartAmp.music_bridge"},
             **stereo(100, 100),
         }
         self.listings: Listings = {
             "sinks": [self.sink],
-            "sources": [{"name": "adc", "description": "ADC"}],
+            "sources": [],
             "sink-inputs": [],
             "modules": [],
+            "cards": [],
         }
         self.calls: list[tuple[str, ...]] = []
         self.publish_stream = True
@@ -182,16 +181,35 @@ class RebuildSafetyTests(ManagerTestCase):
             patch.__enter__()
             self.addCleanup(patch.__exit__, None, None, None)
 
+    def _make_manager(self) -> Any:
+        return self.make_manager(
+            {
+                "startup_volume_percent": 10,
+                "music_bus": {"enabled": True, "sink_name": "background"},
+            }
+        )
+
     def run_command(self, *args: str, check: bool = True) -> Any:
         self.calls.append(args)
         command = args[1]
         if command == "load-module":
+            if args[2] == "module-null-sink":
+                self.listings["modules"].append(
+                    {"index": 20, "name": args[2], "argument": " ".join(args[3:])}
+                )
+                self.listings["sinks"].append(
+                    {"name": "background", "index": 2, "owner_module": 20}
+                )
+                self.listings["sources"].append({"name": "background.monitor"})
+                return completed(*args, stdout="20\n")
             self.listings["modules"].append(
                 {"index": 50, "name": args[2], "argument": " ".join(args[3:])}
             )
             if self.publish_stream:
                 self.listings["sink-inputs"].append(self.stream)
             return completed(*args, stdout="50\n")
+        if command == "get-default-sink":
+            return completed(*args, stdout="background\n")
         if command == "set-sink-mute":
             if self.fail_unmute and args[3] == "0":
                 raise RuntimeError("unmute write failed")
@@ -219,15 +237,21 @@ class RebuildSafetyTests(ManagerTestCase):
         self.manager.reconcile()
         self.assertFalse(any(call[1].startswith("set-") for call in self.calls))
 
-    def test_connecting_a_route_while_active_is_also_protected(self) -> None:
-        self.manager.routes.enabled["aux"] = False
+    def test_a_bridge_rebuilt_while_active_is_also_protected(self) -> None:
         self.manager.reconcile()
+        # PipeWire drops the bridge module underneath the daemon; the fresh
+        # one starts at full volume, so the output is guarded while it lands.
+        self.listings["modules"] = [
+            module for module in self.listings["modules"] if module["index"] != 50
+        ]
+        self.listings["sink-inputs"].clear()
+        self.stream.update(stereo(100, 100))
         self.calls.clear()
-        self.manager.routes.enabled["aux"] = True
         self.manager.reconcile()
         commands = [call[1] for call in self.calls]
         self.assertLess(commands.index("set-sink-mute"), commands.index("load-module"))
         self.assertFalse(self.sink["mute"])
+        self.assertTrue(graph.volume_is(self.stream, 10))
 
     def test_failed_gain_keeps_output_muted_until_recovery(self) -> None:
         self.fail_gain = True
@@ -241,7 +265,7 @@ class RebuildSafetyTests(ManagerTestCase):
         self.assertTrue(self.manager.safe_reconcile())
         self.assertFalse(self.sink["mute"])
 
-    def test_unpublished_route_keeps_the_guard_and_the_rest_of_the_pass(self) -> None:
+    def test_unpublished_bridge_keeps_the_guard_and_the_rest_of_the_pass(self) -> None:
         # The stream not being listed yet is not a failure: the pass completes,
         # publishes, and books a retry, with the output held muted meanwhile.
         self.publish_stream = False
@@ -293,87 +317,25 @@ class RebuildSafetyTests(ManagerTestCase):
                 json.loads(self.manager.status_path.read_text())["sink"], "hifiberry"
             )
 
-    def _restart_manager(self) -> None:
+    def test_a_route_loopback_an_older_manager_left_is_released_once(self) -> None:
+        # Before the inputs app, the manager bridged aux itself with a server
+        # module, which outlives it. Left alone it would play untagged into
+        # the bus at whatever level it was last held.
         self.manager = self.make_manager(
-            {
-                "startup_volume_percent": 10,
-                "sources": {"aux": {"enabled": True, "match": "ADC"}},
-            }
+            {"music_bus": {"enabled": True, "sink_name": "background"},
+             "sources": {"aux": {"enabled": False}, "usb": {"enabled": False}}}
         )
+        self.listings["modules"] = [
+            {"index": 7, "name": "module-loopback",
+             "argument": "source=adc sink=background sink_input_properties=media.name=SmartAmp.aux"},
+            {"index": 8, "name": "module-loopback",
+             "argument": "source=hifi.monitor sink=xvf sink_input_properties=media.name=SmartAmp.aec"},
+        ]
         self.manager.reconcile()
+        self.manager.reconcile()
+        unloads = [call for call in self.calls if call[1] == "unload-module"]
+        self.assertEqual(unloads, [("pactl", "unload-module", "7")])
 
-
-class BackgroundRouteSafetyTests(ManagerTestCase):
-    def test_delayed_music_bus_route_stream_is_guarded_until_its_trim_applies(self) -> None:
-        manager = self.make_manager(
-            {
-                "startup_volume_percent": 40,
-                "music_bus": {"enabled": True},
-                "sources": {
-                    "line_in": {
-                        "enabled": False,
-                        "match": "Line input",
-                        "target": "music",
-                        "volume_percent": 25,
-                    }
-                },
-            }
-        )
-        sink: graph.Node = {
-            "name": "hifiberry", "description": "HiFiBerry", "index": 1,
-            "mute": False, **stereo(100, 100),
-        }
-        stream: graph.Node = {
-            "index": 51, "owner_module": 50, "sink": 2,
-            "properties": {"media.name": "SmartAmp.line_in"},
-            **stereo(100, 100),
-        }
-        listings: Listings = {
-            "sinks": [
-                sink,
-                {"name": "smartamp_music", "index": 2, "owner_module": 20},
-            ],
-            "sources": [
-                {"name": "smartamp_music.monitor"},
-                {"name": "line_in", "description": "Line input"},
-            ],
-            "modules": [
-                {"index": 20, "name": "module-null-sink"},
-                {
-                    "index": 30, "name": "module-loopback",
-                    "argument": "source=smartamp_music.monitor sink=hifiberry",
-                },
-            ],
-            "sink-inputs": [
-                {"index": 31, "owner_module": 30, "sink": 1, **stereo(40, 40)},
-            ],
-        }
-
-        def run(*args: str, check: bool = True) -> Any:
-            if args[1] == "load-module":
-                self.assertTrue(sink["mute"])
-                listings["modules"].append(
-                    {"index": 50, "name": args[2], "argument": " ".join(args[3:])}
-                )
-                return completed(*args, stdout="50\n")
-            if args[1] == "set-sink-mute":
-                sink["mute"] = args[3] == "1"
-            if args[1] == "set-sink-input-volume" and args[2] == "51":
-                self.assertTrue(sink["mute"])
-                level = int(args[3][:-1])
-                stream.update(stereo(level, level))
-            return fake_run(*args, check=check)
-
-        with self._patched_graph(listings, run):
-            manager.reconcile()
-            manager.routes.enabled["line_in"] = True
-            self.assertTrue(manager.safe_reconcile())
-            self.assertFalse(manager.routes.settled)
-            self.assertTrue(sink["mute"])
-            self.assertIsNotNone(manager.pending_reconcile)
-            self.assertTrue(manager.status_path.exists())
-            listings["sink-inputs"].append(stream)
-            self.assertTrue(manager.safe_reconcile())
-            self.assertTrue(graph.volume_is(stream, 25))
-            self.assertTrue(manager.routes.settled)
-            self.assertFalse(sink["mute"])
+    def _restart_manager(self) -> None:
+        self.manager = self._make_manager()
+        self.manager.reconcile()

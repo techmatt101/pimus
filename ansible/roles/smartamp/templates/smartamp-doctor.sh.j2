@@ -162,25 +162,38 @@ if [ -r "$STATUS_FILE" ] && jq -e 'type == "object"' "$STATUS_FILE" >/dev/null 2
         || fail 'ReSpeaker AEC reference path is unavailable'
 {% endif %}
 {% if smartamp_aux_enabled %}
-    jq -e '.sources.aux.available == true' "$STATUS_FILE" >/dev/null 2>&1 \
-        && pass 'Aux input source is available' \
-        || fail 'Aux input source is unavailable'
+{# The aux stream is the inputs app's, and it drops the loopback while the
+   manager reports the graph idle, so an idle amp has no aux stream on the bus
+   by design; the device itself is checked from the inputs status below. #}
+    jq -e '.sources.aux.available == true or .idle == true' "$STATUS_FILE" >/dev/null 2>&1 \
+        && pass 'Aux input source is on the bus or intentionally idle' \
+        || fail 'Aux input source has no stream on the music bus'
 {% endif %}
 
 else
     fail 'Audio router status is missing or invalid JSON'
 fi
 
-{% if usb_audio_gadget_enabled %}
-heading 'USB audio client'
-USB_STATUS_FILE=/run/user/{{ smartamp_uid }}/smartamp-usb-audio-status.json
-jq -e '.sources.usb.node | type == "string" and length > 0' "$USB_STATUS_FILE" >/dev/null 2>&1 \
+{% if smartamp_audio_inputs_enabled | bool %}
+{# The inputs app publishes what it found of each input it was configured with.
+   A missing node is the device, not the route: the route's own state (trim,
+   toggle, whether a stream is on the bus) is the manager's, checked above. #}
+heading 'Audio inputs'
+INPUTS_STATUS_FILE=/run/user/{{ smartamp_uid }}/smartamp-audio-inputs-status.json
+{% if usb_audio_gadget_enabled | bool %}
+jq -e '.inputs.usb.node | type == "string" and length > 0' "$INPUTS_STATUS_FILE" >/dev/null 2>&1 \
     && pass 'USB gadget capture node is present' \
-    || fail 'USB audio status or capture node is missing'
+    || fail 'Audio inputs status or the USB gadget capture node is missing'
+{% endif %}
+{% if smartamp_hifiberry_caps.aux_input | bool %}
+jq -e '.inputs.aux.node | type == "string" and length > 0' "$INPUTS_STATUS_FILE" >/dev/null 2>&1 \
+    && pass 'Aux capture node is present' \
+    || fail 'Audio inputs status or the aux capture node is missing'
+{% endif %}
 {% endif %}
 
 heading 'Services'
-{% set doctor_services = ['smartamp-hifiberry', 'smartamp-audio-manager'] + (['smartamp-usb-audio-gadget', 'smartamp-usb-audio'] if usb_audio_gadget_enabled else []) + (['smartamp-sendspin'] if sendspin_enabled else []) + (['smartamp-voice-assistant'] if voice_assistant_enabled else []) %}
+{% set doctor_services = ['smartamp-hifiberry', 'smartamp-audio-manager'] + (['smartamp-usb-audio-gadget'] if usb_audio_gadget_enabled else []) + (['smartamp-audio-inputs'] if smartamp_audio_inputs_enabled | bool else []) + (['smartamp-sendspin'] if sendspin_enabled else []) + (['smartamp-voice-assistant'] if voice_assistant_enabled else []) %}
 {% for service in doctor_services %}
 systemctl is-active --quiet {{ service }}.service && pass '{{ service }} is active' || fail '{{ service }} is not active'
 {% endfor %}
@@ -192,7 +205,7 @@ heading 'Recent errors'
 journalctl -p warning -b --no-pager -n 30 \
     -u smartamp-hifiberry \
     -u smartamp-audio-manager \
-    -u smartamp-usb-audio \
+    -u smartamp-audio-inputs \
     -u smartamp-sendspin \
     -u smartamp-voice-assistant \
     -u smartamp-controller || true

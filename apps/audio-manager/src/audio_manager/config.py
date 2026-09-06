@@ -17,7 +17,6 @@ from smartamp_audio import volume
 
 DEFAULT_LATENCY_MS = 40
 DEFAULT_RESYNC_SECONDS = 900.0
-MUSIC_TARGET = "music"
 
 
 @dataclass(frozen=True)
@@ -35,13 +34,6 @@ class MusicBusConfig(BusConfig):
     ducking_enabled: bool
     duck_volume_percent: int
     fade_ms: int
-    # The bus's own players - every client that plays straight into it rather
-    # than through a route - are published as one source under this name,
-    # with this trim held on their streams as a percent of the music level
-    # the bridge already carries. The daemon names no product; inventory
-    # calls them what they are on this unit.
-    players_source: str
-    players_volume_percent: int
 
 
 @dataclass(frozen=True)
@@ -85,17 +77,22 @@ class OutputCeilingConfig:
 
 @dataclass(frozen=True)
 class SourceConfig:
-    match: str
-    enabled: bool
-    latency_ms: int
-    mute_when_off: bool
-    target: str
+    """One channel of the mixer: a name inventory gave a music input.
+
+    The daemon never learns how the input reaches the bus - a stream is this
+    source's because its `smartamp.source` property says so. All it holds is
+    the input's trim, and, for an input the deck can switch, its toggle.
+    """
+
     # This input's own trim, as a percent of the music level.
     volume_percent: int
+    # The resting position of the toggle, or None for an input with nothing
+    # to switch, such as the players that stream straight into the bus.
+    enabled: bool | None
 
     @property
-    def bridges_into_music(self) -> bool:
-        return self.target == MUSIC_TARGET
+    def switchable(self) -> bool:
+        return self.enabled is not None
 
 
 @dataclass(frozen=True)
@@ -110,6 +107,11 @@ class AudioConfig:
     music_bus: MusicBusConfig
     voice_bus: VoiceBusConfig
     output_ceiling: OutputCeilingConfig
+    # The source a bus stream with no `smartamp.source` tag belongs to: the
+    # players pointed at the bus by their own units, and anything playing at
+    # the default sink. The daemon names no product; inventory calls it what
+    # it is on this unit.
+    default_source: str
     sources: dict[str, SourceConfig]
 
     @classmethod
@@ -137,10 +139,6 @@ class AudioConfig:
                     music_bus.get("duck_volume_percent", 15)
                 ),
                 fade_ms=max(0, int(music_bus.get("fade_ms", 250))),
-                players_source=str(music_bus.get("players_source", "players")),
-                players_volume_percent=volume.clamp(
-                    music_bus.get("players_volume_percent", 100)
-                ),
             ),
             voice_bus=VoiceBusConfig(
                 enabled=bool(voice_bus.get("enabled", False)),
@@ -152,18 +150,22 @@ class AudioConfig:
                 card=str(_section(raw, "output_ceiling").get("card", "")),
                 control=str(_section(raw, "output_ceiling").get("control", "")),
             ),
+            default_source=str(raw.get("default_source", "players")),
             sources={
-                name: SourceConfig(
-                    match=str(source.get("match", "")),
-                    enabled=bool(source.get("enabled", False)),
-                    latency_ms=int(source.get("latency_ms", DEFAULT_LATENCY_MS)),
-                    mute_when_off=bool(source.get("mute_when_off", False)),
-                    target=str(source.get("target", "output")),
-                    volume_percent=volume.clamp(source.get("volume_percent", 100)),
-                )
+                str(name): _source(source)
                 for name, source in _section(raw, "sources").items()
             },
         )
+
+
+def _source(raw: object) -> SourceConfig:
+    section: Mapping[str, Any] = (
+        cast(Mapping[str, Any], raw) if isinstance(raw, Mapping) else {}
+    )
+    return SourceConfig(
+        volume_percent=volume.clamp(section.get("volume_percent", 100)),
+        enabled=bool(section["enabled"]) if "enabled" in section else None,
+    )
 
 
 def _echo_reference(raw: Mapping[str, Any]) -> EchoReferenceConfig:

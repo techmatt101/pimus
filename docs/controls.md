@@ -78,13 +78,13 @@ numbers the volume dial and the `VOICE VOL` key move. `MUSIC` captions itself
 `MUSIC MUTED` while the volume mute is on, because the mute is a gain beside
 the level and the level itself still reads where the dial left it.
 
-The bottom-left key is every input's trim — the share of the music level that
-input plays at, for balancing them so switching input does not change how loud
-the room is. It is one `SourceTrimTile` that walks the list the audio manager
-and the USB audio app publish (`SENDSPIN`, `AUX`, `USB` on the office amp),
-so the layout never names an input and a unit offers exactly the inputs it
-has — an Amp100 has no aux, so `AUX` never comes up, and a unit with neither
-aux nor USB shows only `SENDSPIN`. Press to arm the dynamic dial to the source
+The bottom-left key is every source's trim — the share of the music level that
+source plays at, for balancing them so switching source does not change how loud
+the room is. It is one `SourceTrimTile` that walks the source list the audio
+manager publishes (`SENDSPIN`, `AUX`, `USB` on the office amp) — the manager
+is a mixer and those are its channels — so the layout never names a source and
+a unit offers exactly the sources it has: an Amp100 has no aux, so `AUX` never
+comes up, and a unit with neither aux nor USB shows only `SENDSPIN`. Press to arm the dynamic dial to the source
 showing; while armed, press the key again to step to the next source (dots
 along the top say which of how many), and press the knob to finish. The name
 on the key is the source's name upper-cased; `SOURCE_FACES` in `layout.mts`
@@ -259,9 +259,9 @@ path that follows the music level (Sendspin, the USB computer, aux) and leaves
 the voice bus alone, so the assistant still answers, rings, and announces out
 loud while the music is muted; the level itself is kept, so unmuting lands
 where the dial was. The microphone has its own mute, `mic_mute`, on the voice
-side. While a computer is on the USB-C gadget port, the USB audio app keeps the
-music bus volume/mute and the computer's controls for the device converged in
-both directions: the computer's volume keys move the amp, its mute key is the
+side. While a computer is on the USB-C gadget port, the audio inputs app keeps
+the music bus volume/mute and the computer's controls for the device converged
+in both directions: the computer's volume keys move the amp, its mute key is the
 amp's `vol_mute`, and the dial moves the computer's slider.
 
 | Command | Effect                                                     |
@@ -285,11 +285,11 @@ amp's `vol_mute`, and the dial moves the computer's slider.
 ## Audio routes — `type: audio` with a `source`
 
 Toggles a named route through the audio manager's control socket. `source` must
-be a route the audio manager owns, currently `aux` or `usb`; it rejects names it
-does not know. Aux toggles are a short fade of a permanently loaded bridge
-rather than a stream connect, so they are pop-free; the USB route connects and
-disconnects for real, and only while the computer is actively streaming audio
-to the gadget port.
+be a switchable source of the manager's mixer, currently `aux` or `usb`; it
+rejects names it does not know. A toggle is a short fade of the source's streams
+between silent and its trim, never a stream connect, so it is pop-free; the USB
+stream itself exists only while the computer is actively streaming audio to the
+gadget port, which the audio inputs app decides.
 
 | Command  | Effect                                |
 |----------|---------------------------------------|
@@ -298,11 +298,11 @@ to the gadget port.
 | `toggle` | Flip the named audio route on or off. |
 
 The routes that exist come from the deployed audio configuration, not from this
-layout. A HiFiBerry Amp100 has no ADC and so no `aux` route; a unit with
-`usb_audio_gadget_enabled: false` has no `usb` route. The audio manager and
-the USB audio app publish the sources they have, and a route is a source with
-an `enabled` toggle, so the deck reads that list rather than pretending to
-switch something.
+layout. A HiFiBerry Amp100 has no ADC and so no `aux` source; a unit with
+`usb_audio_gadget_enabled: false` has no `usb` source. The audio manager
+publishes the sources it mixes, and a route is a source with an `enabled`
+toggle, so the deck reads that one list rather than pretending to switch
+something.
 
 The SETTINGS page's `ROUTE` key is a `SourceRouteTile`, which walks that list:
 press to arm the dynamic dial, turn it to choose a route (dots along the top
@@ -538,12 +538,13 @@ turning is no feedback — and the notification comes back when the hold expires
 
 The idle clock carries a row of system-health icons at its left edge: network
 (wifi), Home Assistant (home), the microphone (mic), and audio (volume). The
-audio icon stands for every audio service this unit runs, not the manager
-alone: a room whose USB input service has stopped answering is not a healthy
-room, and one reading covers whatever input services a deployment gains later. A cyan usb icon joins the row only while a computer is actively
-streaming audio to the USB-C gadget port, and disappears when playback stops
-or the cable is pulled. It cannot mean merely "plugged in": the VBUS-blocked
-port never reports an unplug, so an idle connection and a missing one are
+audio icon is the audio manager's control socket, the one audio service the
+controller talks to. A cyan usb icon joins the row only while a computer is
+actively streaming audio to the USB-C gadget port, and disappears when playback
+stops or the cable is pulled: it is the manager's `sources.usb.available`,
+which is true exactly while the inputs app has a USB stream on the bus,
+switched on or not. It cannot mean merely "plugged in": the VBUS-blocked port
+never reports an unplug, so an idle connection and a missing one are
 indistinguishable. Healthy icons sit dim. A failed subsystem turns its icon red
 and pulses it, and the loss also posts a strip banner ("HOME ASSISTANT LOST");
 recovery is silent, the icon simply stops flashing. A mute is red too but

@@ -115,7 +115,7 @@ test('toggles before the first state sync defer to the manager', () => {
         name: 'aux',
         state: 'off',
     })
-    assert.deepEqual(client.state, {sources: {aux: {enabled: false}}, routesKnown: true, usbPlayback: false})
+    assert.deepEqual(client.state, {sources: {aux: {enabled: false}}, routesKnown: true})
     client.close()
 })
 
@@ -145,7 +145,8 @@ test('the manager\'s route list says which routes this unit has at all', () => {
 
     // A manager restart re-asserts the cache rather than re-reading it, so what
     // this unit has stays known across the drop.
-    fake.emit('data', '{"event":"state","sources":{"usb":{"enabled":false}}}\n')
+    fake.emit('data', '{"event":"state","sources":{"usb":{"enabled":false,"available":true}}}\n')
+    assert.equal(client.state.sources.usb?.available, true)
     fake.emit('close')
     assert.equal(client.state.routesKnown, true)
     assert.equal('usb' in client.state.sources, true)
@@ -393,6 +394,6 @@ test('malformed audio manager events are ignored', () => {
     client.connect()
     fake.emit('connect')
     fake.emit('data', 'garbage\n{"event":"state","sources":{"aux":{"enabled":true}}}\n{"event":"state","sources":null}\n')
-    assert.deepEqual(client.state, {sources: {aux: {enabled: true}}, routesKnown: true, usbPlayback: false})
+    assert.deepEqual(client.state, {sources: {aux: {enabled: true}}, routesKnown: true})
     client.close()
 })

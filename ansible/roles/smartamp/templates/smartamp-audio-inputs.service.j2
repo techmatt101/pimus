@@ -1,0 +1,37 @@
+[Unit]
+Description=Smart Amp audio inputs
+{# The app plays into the manager's music bus, so it follows the manager's
+   lifecycle; the gadget is only a dependency on a unit that has one. #}
+After=smartamp-audio-manager.service{% if usb_audio_gadget_enabled | bool %} smartamp-usb-audio-gadget.service{% endif %}
+
+Requires=smartamp-audio-manager.service{% if usb_audio_gadget_enabled | bool %} smartamp-usb-audio-gadget.service{% endif %}
+
+PartOf=smartamp-audio-manager.service{% if usb_audio_gadget_enabled | bool %} smartamp-usb-audio-gadget.service{% endif %}
+
+
+[Service]
+Type=simple
+User={{ smartamp_service_user }}
+Group={{ smartamp_service_user }}
+Environment=XDG_RUNTIME_DIR=/run/user/{{ smartamp_uid }}
+Environment=PULSE_SERVER=/run/user/{{ smartamp_uid }}/pulse/native
+Environment=LC_ALL=C
+Environment=SMARTAMP_LOG_LEVEL={{ 'debug' if smartamp_debug_logging | bool else 'info' }}
+Environment=PYTHONPATH={{ smartamp_app_dir }}/audio-inputs:{{ smartamp_app_dir }}/audio-common
+ExecStartPre=/usr/bin/rm -f /run/user/{{ smartamp_uid }}/smartamp-audio-inputs-status.json
+ExecStart=/usr/bin/python3 -m audio_inputs --config {{ smartamp_config_dir }}/audio-inputs.json --status /run/user/{{ smartamp_uid }}/smartamp-audio-inputs-status.json
+Restart=always
+RestartSec=3
+# Each input's loopback is a child client, never a lingering server module.
+# Kill the whole service group even if Python crashes, releasing the gadget
+# clock and the aux capture.
+KillMode=control-group
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=tmpfs
+BindPaths=/run/user/{{ smartamp_uid }}
+ProtectSystem=full
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

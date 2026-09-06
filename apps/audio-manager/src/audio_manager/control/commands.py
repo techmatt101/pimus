@@ -154,7 +154,7 @@ class CommandHandler:
         percent = message.get("percent")
         if not volume.is_percent(percent):
             return _error("set-music-volume needs a percent between 0 and 100")
-        # Stream volumes only - the music bus and the direct routes - so
+        # Stream volumes only - the music bus and the direct clients - so
         # apply them directly instead of asking for a full reconcile.
         self._manager.set_music_volume(percent)
         return self._state()
@@ -180,17 +180,17 @@ class CommandHandler:
         return self._state()
 
     def _set_source_state(self, _: socket.socket, message: dict[str, Any]) -> Reply:
-        routes = self._manager.routes
+        mixer = self._manager.mixer
         name = message.get("name")
         requested = message.get("state")
-        if not isinstance(name, str) or not routes.knows(name):
+        if not isinstance(name, str) or not mixer.switchable(name):
             return _error("unknown source or state")
         if requested not in ("on", "off", "toggle"):
             return _error("unknown source or state")
         enabled = (
-            not routes.enabled[name] if requested == "toggle" else requested == "on"
+            not mixer.enabled[name] if requested == "toggle" else requested == "on"
         )
-        return self._state(changed=routes.set_enabled(name, enabled))
+        return self._state(changed=self._manager.set_source_enabled(name, enabled))
 
     def _get_state(self, _: socket.socket, __: dict[str, Any]) -> Reply:
         return self._state()

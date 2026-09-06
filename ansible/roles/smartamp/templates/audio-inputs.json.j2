@@ -1,0 +1,26 @@
+{# Each input is a kind the inputs app knows how to bring onto the music bus
+     and the device it finds it on. The app owns no trim and no toggle: it
+     tags every stream it plays with smartamp.source=<name>, and the audio
+     manager holds that source's level. Only the inputs this unit has are
+     listed, so the app never waits for a device that is not fitted. #}
+{
+  "sink_name": {{ smartamp_music_sink_name | to_json }},
+  "audio_status": "/run/user/{{ smartamp_uid }}/smartamp-audio-status.json",
+  "latency_ms": {{ smartamp_loopback_latency_ms | int }},
+  "inputs": {
+{% if usb_audio_gadget_enabled | bool %}
+    "usb": {
+      "kind": "usb_gadget",
+      "match": {{ smartamp_usb_gadget_match | to_json }}
+    }{% if smartamp_hifiberry_caps.aux_input | bool %},{% endif %}
+
+{% endif %}
+{% if smartamp_hifiberry_caps.aux_input | bool %}
+    "aux": {
+      "kind": "capture",
+      "match": {{ smartamp_aux_match | to_json }},
+      "latency_ms": {{ smartamp_aux_latency_ms | int }}
+    }
+{% endif %}
+  }
+}

@@ -1,5 +1,5 @@
 import {VoiceDucker} from './audio/ducking.mjs'
-import {AudioSystem} from './audio/system.mjs'
+import {AudioClient} from './audio/client.mjs'
 import {loadConfig} from './config.mjs'
 import {defaultRouteExists, HealthMonitor} from './health.mjs'
 import {createOfflineHomeAssistant, HomeAssistantClient} from './home-assistant/client.mjs'
@@ -26,9 +26,8 @@ process.on('unhandledRejection', (reason) => {
 const config = loadConfig()
 const state = createState()
 
-const audio = new AudioSystem({
+const audio = new AudioClient({
     socketPath: config.audio_socket,
-    usbSocketPath: config.usb_audio_socket,
     onStateChange: () => {
         state.volMuted = audio.state.volMuted === true
         model.notify()
@@ -144,7 +143,7 @@ const health = new HealthMonitor({
         // than flagging an integration that was never configured.
         ha: config.home_assistant?.enabled ? () => homeAssistant.connected : () => true,
         audio: () => audio.connected,
-        usbPlayback: () => audio.state.usbPlayback === true,
+        usbPlayback: () => audio.state.sources.usb?.available === true,
     },
 })
 

@@ -32,7 +32,7 @@ import {FakeVoiceSensor} from './fake-voice-sensor.mjs'
 import {type PlaygroundInput, PlaygroundServer} from './server.mjs'
 
 import {VoiceDucker} from '../../../apps/controller/src/audio/ducking.mjs'
-import {AudioSystem} from '../../../apps/controller/src/audio/system.mjs'
+import {AudioClient} from '../../../apps/controller/src/audio/client.mjs'
 import {loadConfig} from '../../../apps/controller/src/config.mjs'
 import {HomeAssistantClient} from '../../../apps/controller/src/home-assistant/client.mjs'
 import {NotificationCenter} from '../../../apps/controller/src/home-assistant/notifications.mjs'
@@ -94,17 +94,14 @@ if (!haUrl || !haToken) {
 const bus = new PlaygroundBus()
 const temporary = (suffix: string): string => path.join(os.tmpdir(), `pimus-playground-${process.pid}.${suffix}`)
 const socketPath = temporary('sock')
-const usbSocketPath = temporary('usb.sock')
 const configPath = temporary('json')
 
-const audioManager = new FakeAudioService({bus, socketPath, service: 'manager'})
-const usbAudio = new FakeAudioService({bus, socketPath: usbSocketPath, service: 'usb'})
+const audioManager = new FakeAudioService({bus, socketPath})
 const lvaServer = new FakeLvaServer({bus})
 const ledRing = new FakeLedRing(bus)
 const hardware = new FakeDeckHardware(bus)
 
 await audioManager.start()
-await usbAudio.start()
 const lvaUri = await lvaServer.start()
 
 // Round-tripping the configuration through the real loader means the playground
@@ -113,7 +110,6 @@ await fs.promises.writeFile(configPath, JSON.stringify({
     voice_enabled: true,
     lva_uri: lvaUri,
     audio_socket: socketPath,
-    usb_audio_socket: usbSocketPath,
     ducking: {enabled: true},
     home_assistant: {
         enabled: true,
@@ -136,9 +132,8 @@ const config = loadConfig(configPath, {REMOTE_TILES_TOKEN: 'playground', HOME_AS
 
 const state = createState()
 
-const audio = new AudioSystem({
+const audio = new AudioClient({
     socketPath: config.audio_socket,
-    usbSocketPath: config.usb_audio_socket,
     onStateChange: () => {
         state.volMuted = audio.state.volMuted === true
         model.notify()
@@ -373,7 +368,6 @@ const shutdown = (): void => {
     server.close()
     lvaServer.close()
     audioManager.close()
-    usbAudio.close()
     fs.rmSync(configPath, {force: true})
     process.exit(0)
 }

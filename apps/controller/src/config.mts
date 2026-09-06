@@ -33,11 +33,6 @@ function validateControllerConfig(value: unknown, configPath: string): asserts v
         throw new Error(`Controller configuration at ${configPath} must define audio_socket`)
     }
 
-    if (value.usb_audio_socket !== undefined &&
-        (typeof value.usb_audio_socket !== 'string' || value.usb_audio_socket.length === 0)) {
-        throw new Error(`Controller configuration at ${configPath} has an invalid usb_audio_socket`)
-    }
-
     if (isRecord(value.home_assistant) && value.home_assistant.enabled) {
         const {url, token} = value.home_assistant
         if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {

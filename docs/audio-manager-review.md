@@ -1,8 +1,10 @@
 # Audio manager structure review
 
-Follow-up, 6 September 2026: USB runtime responsibilities now live in their own
-[USB audio app](usb-audio.md). The review below records the earlier state-consistency
-work; its USB tests have moved to the client boundary.
+Follow-up, 6 September 2026: the manager is now a mixer over a configured
+source list, and the aux and USB streams come from the separate
+[audio inputs app](audio-inputs.md). The review below records the earlier
+state-consistency work on the route model it replaced; its USB tests have
+moved to the inputs boundary.
 
 Reviewed 5 September 2026. The existing package boundaries suit this daemon;
 a broad rewrite would add churn without resolving its main risks. The useful

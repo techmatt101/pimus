@@ -84,8 +84,8 @@ this computer and draws the deck in a browser 🕹️.
 
 ```text
 apps/controller      TypeScript daemon: Stream Deck, LED ring, voice state, ducking
-apps/audio-manager   Python daemon: shared PipeWire graph, mixing, ducking gains
-apps/usb-audio       Python client: USB host, playback, volume synchronisation
+apps/audio-manager   Python daemon: the mixer - PipeWire graph, source trims, ducking gains
+apps/audio-inputs    Python daemon: aux and USB gadget streams into the music bus
 libs/audio-common    Shared Python audio primitives both daemons import
 tools/playground     Development-only fake hardware, never deployed
 tools/remote-demo    Development-only example client for the remote-tile socket

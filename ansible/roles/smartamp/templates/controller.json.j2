@@ -2,9 +2,6 @@
 {
   "voice_enabled": {{ voice_assistant_enabled | bool | to_json }},
   "lva_uri": "ws://127.0.0.1:{{ voice_assistant_peripheral_port }}",
-{% if usb_audio_gadget_enabled | bool %}
-  "usb_audio_socket": "/run/user/{{ smartamp_uid }}/smartamp-usb-audio.sock",
-{% endif %}
   "audio_socket": "/run/user/{{ smartamp_uid }}/smartamp-audio.sock",
   "ducking": {
     "enabled": {{ voice_ducking_enabled | to_json }}

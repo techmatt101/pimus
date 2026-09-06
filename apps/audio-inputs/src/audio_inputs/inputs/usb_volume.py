@@ -1,4 +1,8 @@
-"""Synchronise the host mixer with the music bus's public volume register."""
+"""Synchronise the USB host mixer with the music bus's public volume register.
+
+The bus sink's volume is the music level's public face, which Sendspin and any
+other player read and write; the computer's slider is made one more of them.
+"""
 from __future__ import annotations
 
 from smartamp_audio import graph, pactl, volume

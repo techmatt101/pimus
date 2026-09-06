@@ -17,19 +17,14 @@
      write, and subscribe to, which is how a player watching its output device
      moves the room's level and is told when the dial or a USB host moved it.
      It exists whether or not the assistant ducks it; ducking is only something
-     that happens to it. The clients that play straight into it - Sendspin,
-     and anything on the default sink - are published as one source with a
-     trim and nothing to switch; the daemon names no product, so this is where
-     that source gets its name. #}
+     that happens to it. #}
   "music_bus": {
     "enabled": true,
     "sink_name": {{ smartamp_music_sink_name | to_json }},
     "latency_ms": {{ smartamp_loopback_latency_ms | int }},
     "ducking_enabled": {{ voice_ducking_enabled | to_json }},
     "duck_volume_percent": {{ smartamp_voice_duck_volume_percent | int }},
-    "fade_ms": {{ smartamp_voice_duck_fade_ms | int }},
-    "players_source": "sendspin",
-    "players_volume_percent": {{ smartamp_sendspin_volume_percent | int }}
+    "fade_ms": {{ smartamp_voice_duck_fade_ms | int }}
   },
   "voice_bus": {
     "enabled": {{ voice_assistant_enabled | bool | to_json }},
@@ -47,18 +42,28 @@
   },
   "resync_seconds": 900,
   "idle_teardown_seconds": {{ smartamp_idle_teardown_seconds | int }},
-{# Local routes only. USB has its own client configuration and control socket. #}
+{# The mixer's channels. The manager is a mixer and nothing more: it knows
+     these names, holds each one's trim (and, for a source with an enabled
+     key, its on/off) on whatever streams play into the music bus under that
+     name, and knows nothing about where a stream comes from. A stream belongs
+     to the source its smartamp.source property names; one with no tag belongs
+     to default_source, which is what Sendspin - and anything playing to the
+     default sink - is. The inputs app (audio-inputs.json) is what tags the
+     aux and USB streams. Only the sources this unit has are listed, so a
+     route key for one it cannot have greys itself out on the deck. #}
+  "default_source": "sendspin",
   "sources": {
-{% set aux_route = smartamp_hifiberry_caps.aux_input | bool %}
-{% if aux_route %}
+    "sendspin": {
+      "volume_percent": {{ smartamp_sendspin_volume_percent | int }}
+    }{% if smartamp_hifiberry_caps.aux_input | bool %},
     "aux": {
-      "match": {{ smartamp_aux_match | to_json }},
-      "enabled": {{ smartamp_aux_enabled | bool | to_json }},
-      "mute_when_off": true,
-      "target": "music",
-      "latency_ms": {{ smartamp_aux_latency_ms | int }},
-      "volume_percent": {{ smartamp_aux_volume_percent | int }}
-    }
-{% endif %}
+      "volume_percent": {{ smartamp_aux_volume_percent | int }},
+      "enabled": {{ smartamp_aux_enabled | bool | to_json }}
+    }{% endif %}{% if usb_audio_gadget_enabled | bool %},
+    "usb": {
+      "volume_percent": {{ smartamp_usb_volume_percent | int }},
+      "enabled": {{ smartamp_usb_enabled | bool | to_json }}
+    }{% endif %}
+
   }
 }

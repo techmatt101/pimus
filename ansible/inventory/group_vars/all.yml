@@ -176,31 +176,36 @@ smartamp_voice_capture_channel: "{{ smartamp_respeaker_caps.asr_channel }}"
 # independent of usb_audio_product (the host-facing name), so this rarely needs
 # changing. Override only if a future kernel renames that card.
 smartamp_usb_gadget_match: "UAC2Gadget"
+# Whether the aux and USB sources start switched on at boot. These are only
+# the resting positions of the deck toggles: each is a mixer channel the
+# audio manager holds, and "off" is that channel faded to silence. The
+# streams themselves are the inputs app's: it keeps the aux capture on the
+# bus whenever the graph is awake (a DC-carrying connect pops, so it is made
+# once and muted rather than switched), and brings the USB gadget's capture
+# onto the bus only while a computer is actually streaming, because with no
+# host the gadget's capture clock never ticks and would stall the whole graph.
 smartamp_aux_enabled: false
-# Whether the USB computer-audio route starts enabled on boot. This is only
-# the resting position of the deck toggle: the audio manager builds the bridge
-# solely while a computer is enumerated on the gadget port, because with no
-# host the gadget's capture clock never ticks and would stall the whole output
-# graph.
 smartamp_usb_enabled: false
-# Each music input's own trim, as the share of the music volume it plays at:
-# 100 leaves it at the music level, 80 plays that input at 80% of wherever the
-# dial sits. Use these to balance the inputs against each other - USB
-# computers tend to play hotter than Sendspin. Every input plays into the
-# music bus and carries its trim on its own stream into it; the Sendspin trim
-# is held on the streams of whatever plays straight into the bus, which the
-# audio manager publishes as the "sendspin" source. The deck's LEVELS page
-# moves all of them live, in memory only: bring a number that works back here.
+# Each source's own trim, as the share of the music volume it plays at: 100
+# leaves it at the music level, 80 plays that source at 80% of wherever the
+# dial sits. Use these to balance the sources against each other - USB
+# computers tend to play hotter than Sendspin. The audio manager is a mixer:
+# every source is whatever streams play into the music bus under its name (a
+# stream's smartamp.source property; one with no tag is Sendspin's), and the
+# manager holds the trim on those streams. The deck's LEVELS page moves all of
+# them live, in memory only: bring a number that works back here.
 smartamp_sendspin_volume_percent: 100
 smartamp_usb_volume_percent: 100
 smartamp_aux_volume_percent: 100
-# Target buffer depth for every PipeWire loopback bridge the audio manager
-# builds (aux, USB, the music and voice buses, and the AEC reference). Lower tightens sync but
-# risks dropouts. PipeWire's stock quantum on the Pi is ~21 ms (48 kHz / 1024),
-# so ~20 ms is the practical floor: going lower needs a pipewire.conf.d quantum
-# override and on-Pi xrun testing. The USB->speakers path crosses two loopbacks
-# when ducking is on, so its delay is roughly double this. The aux line-in is
-# the one path monitored live, so it inherits this default but can override it.
+# Target buffer depth for every PipeWire loopback on the amp: the music and
+# voice bus bridges and the AEC reference the audio manager builds, and the
+# aux and USB loopbacks the inputs app runs into the music bus. Lower tightens
+# sync but risks dropouts. PipeWire's stock quantum on the Pi is ~21 ms
+# (48 kHz / 1024), so ~20 ms is the practical floor: going lower needs a
+# pipewire.conf.d quantum override and on-Pi xrun testing. The USB->speakers
+# path crosses two loopbacks, so its delay is roughly double this. The aux
+# line-in is the one path monitored live, so it inherits this default but can
+# override it.
 smartamp_loopback_latency_ms: 20
 smartamp_aux_latency_ms: "{{ smartamp_loopback_latency_ms }}"
 smartamp_aec_reference_enabled: true

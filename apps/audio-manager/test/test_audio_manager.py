@@ -22,7 +22,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).parents[3] / "libs/audio-common/src"))
 
-from audio_manager import output
+
 from smartamp_audio import graph, volume  # noqa: E402
 from audio_manager.buses import voice_meter  # noqa: E402
 from smartamp_audio import server as control_server  # noqa: E402
@@ -203,15 +203,16 @@ class ControlSocketTests(ManagerTestCase):
         manager = self.make_manager(
             {"sources": {"aux": {"enabled": True}, "line_in": {"enabled": False}}}
         )
-        self.assertEqual(manager.routes.enabled, {"aux": True, "line_in": False})
+        self.assertEqual(manager.mixer.enabled, {"aux": True, "line_in": False})
 
     def test_route_commands_update_memory_state(self) -> None:
         manager = self._duckable_manager(aux={"enabled": True}, line_in={"enabled": False})
         connection = mock.Mock()
 
-        reply, reconcile = manager.commands.apply(
-            connection, {"command": "set-source-state", "name": "line_in", "state": "toggle"}
-        )
+        with self._patched_graph({}, fake_run):
+            reply, reconcile = manager.commands.apply(
+                connection, {"command": "set-source-state", "name": "line_in", "state": "toggle"}
+            )
         self.assertEqual(
             reply,
             {
@@ -238,9 +239,8 @@ class ControlSocketTests(ManagerTestCase):
                     "sink": None,
                 },
                 "sources": {
-                    "players": {"trim": 100, "available": False},
-                    "aux": {"trim": 100, "enabled": True, "available": False, "node": None},
-                    "line_in": {"trim": 100, "enabled": True, "available": False, "node": None},
+                    "aux": {"trim": 100, "enabled": True, "available": False},
+                    "line_in": {"trim": 100, "enabled": True, "available": False},
                 },
                 "idle": False,
                 "standby": False,
@@ -254,15 +254,18 @@ class ControlSocketTests(ManagerTestCase):
         )
         self.assertFalse(reconcile)
 
-        reply, reconcile = manager.commands.apply(
-            connection, {"command": "set-source-state", "name": "phono", "state": "on"}
-        )
-        self.assertEqual(reply["event"], "error")
-        self.assertFalse(reconcile)
+        # A source with nothing to switch, or none at all, is not a route.
+        for name in ("phono", "sendspin"):
+            reply, reconcile = manager.commands.apply(
+                connection, {"command": "set-source-state", "name": name, "state": "on"}
+            )
+            self.assertEqual(reply["event"], "error")
+            self.assertFalse(reconcile)
 
     def test_trim_commands_are_refused_for_inputs_this_unit_does_not_have(self) -> None:
         manager = self.make_manager({"sources": {"aux": {"volume_percent": 90}}})
-        # No music bus, so no players' source with a trim of its own to move.
+        # Only the sources inventory listed exist, whatever the bus's default
+        # source is called.
         self.assertEqual(list(manager.sources()), ["aux"])
         self.assertEqual(manager.sources()["aux"]["trim"], 90)
 
@@ -275,21 +278,30 @@ class ControlSocketTests(ManagerTestCase):
             self.assertFalse(reconcile)
         self.assertEqual(manager.sources()["aux"]["trim"], 90)
 
-    def test_inventory_names_the_players_source(self) -> None:
+    def test_inventory_names_the_default_source(self) -> None:
+        # Sendspin plays into the bus by its own unit's PULSE_SINK and carries
+        # no tag; the untagged stream is the default source's, under the name
+        # inventory gives it.
         manager = self.make_manager(
-            {"music_bus": {"enabled": True, "players_source": "sendspin",
-                           "players_volume_percent": 70}}
+            {"music_bus": {"enabled": True, "sink_name": "background"},
+             "default_source": "sendspin",
+             "sources": {"sendspin": {"volume_percent": 70}}}
         )
         self.assertEqual(
             manager.sources(), {"sendspin": {"trim": 70, "available": False}}
         )
-        manager.music_bus.hold_clients = mock.Mock()
-        reply, reconcile = manager.commands.apply(
-            mock.Mock(), {"command": "set-source-trim", "name": "sendspin", "percent": 55}
-        )
+        bus: graph.Node = {"name": "background", "index": 2}
+        stream: graph.Node = {
+            "index": 81, "sink": 2, "properties": {"media.name": "ALSA Playback"},
+            "volume": {"mono": {"value_percent": "100%"}},
+        }
+        with self._patched_graph({"sinks": [bus], "sink-inputs": [stream]}, fake_run) as run:
+            reply, reconcile = manager.commands.apply(
+                mock.Mock(), {"command": "set-source-trim", "name": "sendspin", "percent": 55}
+            )
         self.assertFalse(reconcile)
         self.assertEqual(reply["sources"]["sendspin"]["trim"], 55)
-        manager.music_bus.hold_clients.assert_called_once_with(55)
+        self.assertEqual(volume_writes(run), [("81", "55%")])
 
     def test_socket_commands_reconcile_and_answer_with_live_state(self) -> None:
         manager = self._duckable_manager(aux={"enabled": False})
@@ -302,7 +314,8 @@ class ControlSocketTests(ManagerTestCase):
         manager.selector.register(left, selectors.EVENT_READ, lambda: None)
 
         right.sendall(b'{"command": "set-source-state", "name": "aux", "state": "on"}\n')
-        manager.control.read(left)
+        with self._patched_graph({}, fake_run):
+            manager.control.read(left)
 
         reply = json.loads(right.recv(4096))
         self.assertEqual(reply["event"], "state")
@@ -516,91 +529,64 @@ class ReconcileTests(ManagerTestCase):
 
 
 
-    def test_muted_route_keeps_its_bridge_and_toggles_by_fading(self) -> None:
+    def test_a_switchable_source_is_held_silent_and_toggles_by_fading(self) -> None:
         manager = self.make_manager(
             {
-                "sources": {
-                    "aux": {"match": "ADC Pro", "mute_when_off": True, "latency_ms": 20}
-                }
+                "music_bus": {"enabled": True, "sink_name": "background"},
+                "sources": {"aux": {"enabled": False}},
             }
         )
-        manager.routes.enabled = {"aux": False}
-        loaded: list[str] = []
-        listings: Listings = {
-            "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
-            "sources": [
-                {
-                    "name": "hifiberry_adc",
-                    "description": "HiFiBerry DAC2 ADC Pro",
-                    "monitor_of_sink": 4294967295,
-                }
-            ],
-            "sink-inputs": [{"index": 61, "owner_module": 60}],
-            "cards": [],
-            "modules": [],
+        bus: graph.Node = {"name": "background", "index": 2}
+        stream: graph.Node = {
+            "index": 61, "sink": 2, "properties": {"smartamp.source": "aux"}
         }
-
-        def load_module(module: str, *arguments: str) -> int:
-            listings["modules"].append(
-                {"index": 60, "name": module, "argument": " ".join(arguments)}
-            )
-            loaded.append(module)
-            return 60
+        listings: Listings = {"sinks": [bus], "sink-inputs": [stream]}
 
         def run(*args: str, check: bool = True) -> Any:
             if "set-sink-input-volume" in args:
-                listings["sink-inputs"][0]["volume"] = {
-                    "mono": {"value_percent": args[-1]}
-                }
+                stream["volume"] = {"mono": {"value_percent": args[-1]}}
             return fake_run(*args, check=check)
 
-        def reconcile() -> list[str]:
-            with self._patched_graph(listings, run) as run_mock, mock.patch.object(
-                pactl, "load_module", side_effect=load_module
-            ), mock.patch("smartamp_audio.volume.time.sleep"), mock.patch(
-                "smartamp_audio.status.write"
+        def writes(action: Callable[[], object]) -> list[str]:
+            with self._patched_graph(listings, run) as run_mock, mock.patch(
+                "smartamp_audio.volume.time.sleep"
             ):
-                manager.reconcile()
+                manager.graph.invalidate()
+                action()
             return [
                 call.args[-1]
                 for call in run_mock.call_args_list
                 if "set-sink-input-volume" in call.args
             ]
 
-        # Off at boot: the bridge still loads, snapped straight to silent so
-        # the pop-prone stream connect happens once, before anything plays.
-        self.assertEqual(reconcile(), ["0%"])
-        self.assertEqual(loaded, ["module-loopback"])
+        def reconcile() -> list[str]:
+            return writes(lambda: manager.mixer.reconcile(bus))
 
-        # Turning the route on is a fade, not a module load.
-        manager.routes.enabled["aux"] = True
-        volumes = reconcile()
-        self.assertEqual(loaded, ["module-loopback"])
+        # Off at boot: the input's loopback is born silent, and the mixer
+        # holds it there rather than letting it play a syllable at full level.
+        self.assertEqual(reconcile(), ["0%"])
+
+        # Turning the source on is a fade up to its trim, not a rebuild.
+        volumes = writes(lambda: manager.set_source_enabled("aux", True))
         self.assertGreater(len(volumes), 1)
         self.assertEqual(volumes[-1], "100%")
+        self.assertTrue(manager.sources()["aux"]["enabled"])
 
-        manager.routes.enabled["aux"] = False
-        volumes = reconcile()
+        volumes = writes(lambda: manager.set_source_enabled("aux", False))
         self.assertEqual(volumes[-1], "0%")
 
-        # A settled toggle fades nothing on the next reconcile.
+        # A settled toggle writes nothing on the next pass.
         self.assertEqual(reconcile(), [])
 
         # Live drift is repaired even when the desired toggle did not change.
-        listings["sink-inputs"][0]["volume"] = {
-            "mono": {"value_percent": "25%"}
-        }
+        stream["volume"] = {"mono": {"value_percent": "25%"}}
         self.assertEqual(reconcile(), ["0%"])
 
-        # PipeWire can recreate the stream without recreating its module. The
-        # replacement must be recognised and snapped silent too.
-        listings["sink-inputs"][0].update(
-            index=62, volume={"mono": {"value_percent": "100%"}}
-        )
+        # A recreated stream comes back at full volume; the replacement must
+        # be recognised and snapped silent too.
+        stream.update(index=62, volume={"mono": {"value_percent": "100%"}})
         self.assertEqual(reconcile(), ["0%"])
-        self.assertEqual(
-            listings["sink-inputs"][0]["volume"], {"mono": {"value_percent": "0%"}}
-        )
+        self.assertEqual(stream["volume"], {"mono": {"value_percent": "0%"}})
 
     def test_aec_reference_bridges_output_monitor_into_the_xvf3800(self) -> None:
         manager = self.make_manager(
@@ -741,9 +727,7 @@ class IdleTeardownTests(ManagerTestCase):
                     "sink_name": "background",
                     "latency_ms": 40,
                 },
-                "sources": {
-                    "aux": {"match": "ADC Pro", "mute_when_off": True, "latency_ms": 20}
-                },
+                "sources": {"aux": {"enabled": False}},
             }
         )
         clock = {"now": 0.0}
@@ -839,11 +823,11 @@ class IdleTeardownTests(ManagerTestCase):
                 manager.reconcile()
             return status_write.call_args.args[1]
 
-        # Something is playing: the sink, its bridge, the AEC reference, and
-        # the muted aux bridge all come up.
+        # Something is playing: the sink, its bridge, and the AEC reference
+        # all come up.
         status = reconcile()
         self.assertFalse(status["idle"])
-        for role in ("_music_sink", "_music_bridge", "_aec", "aux"):
+        for role in ("_music_sink", "_music_bridge", "_aec"):
             self.assertIn(role, manager.modules)
 
         # The stream ends. Inside the timeout everything stays loaded — the
@@ -863,7 +847,7 @@ class IdleTeardownTests(ManagerTestCase):
         before_teardown = len(commands)
         status = reconcile()
         self.assertTrue(status["idle"])
-        for role in ("_music_bridge", "_aec", "aux"):
+        for role in ("_music_bridge", "_aec"):
             self.assertNotIn(role, manager.modules)
         self.assertIn("_music_sink", manager.modules)
         self.assertIsNone(manager.idle.deadline())
@@ -879,7 +863,7 @@ class IdleTeardownTests(ManagerTestCase):
         before_rebuild = len(commands)
         status = reconcile()
         self.assertFalse(status["idle"])
-        for role in ("_music_bridge", "_aec", "aux"):
+        for role in ("_music_bridge", "_aec"):
             self.assertIn(role, manager.modules)
         rebuild = commands[before_rebuild:]
         muted = rebuild.index(("pactl", "set-sink-mute", "hifiberry", "1"))
@@ -1153,131 +1137,94 @@ class VolumeTests(ManagerTestCase):
             self.assertFalse(reconcile)
         self.assertEqual(manager.voice_volume, 100)
 
-    def test_music_volume_command_moves_the_bus_and_direct_routes(self) -> None:
-        manager = self.make_manager(
-            {
-                "music_bus": {
-                    "enabled": True,
-                    "duck_volume_percent": 15,
-                    "fade_ms": 0,
-                },
-                "sources": {
-                    "aux": {"match": "ADC Pro", "mute_when_off": True, "latency_ms": 20}
-                },
-            }
-        )
-        manager.modules.adopt("aux", 60)
-        manager.routes.enabled["aux"] = True
-        manager.music_bus.stream_index = 42
-        manager.music_bus.ducked = False
-        manager.music_bus.gain_applied = 100
-        sink_inputs = [
-            {
-                "index": 61,
-                "owner_module": 60,
-                "volume": {"mono": {"value_percent": "100%"}},
-            }
-        ]
-
-        with mock.patch.object(
-            pactl, "list_json", return_value=sink_inputs
-        ), mock.patch.object(process, "run") as run, mock.patch(
-            "smartamp_audio.volume.time.sleep"
-        ):
-            manager.routes.apply_music_volume(100)
-            run.reset_mock()
-            reply, reconcile = manager.commands.apply(
-                mock.Mock(), {"command": "set-music-volume", "percent": 30}
-            )
-
-        self.assertEqual(reply["music_bus"]["volume"], 30)
-        self.assertFalse(reconcile)
-        # The music bus snaps to the new level and the unmuted aux bridge
-        # follows it; the voice bridge is left alone.
-        self.assertEqual(volume_writes(run), [("42", "30%"), ("61", "30%")])
-
-    def test_each_music_input_carries_its_own_trim(self) -> None:
+    def test_music_volume_command_moves_the_bus_and_not_its_sources(self) -> None:
         manager = self.make_manager(
             {
                 "music_bus": {
                     "enabled": True,
                     "sink_name": "background",
-                    "players_volume_percent": 70,
+                    "duck_volume_percent": 15,
+                    "fade_ms": 0,
                 },
-                "sources": {
-                    "aux": {
-                        "match": "ADC Pro",
-                        "mute_when_off": True,
-                        "volume_percent": 50,
-                    },
-                    "line_in": {
-                        "match": "UAC2Gadget",
-                        "target": "music",
-                        "volume_percent": 80,
-                    },
-                },
+                "sources": {"aux": {"enabled": True}},
             }
         )
-        manager.routes.enabled = {"aux": True, "line_in": True}
-        manager.modules.adopt("aux", 60)
-        manager.modules.adopt("line_in", 50)
-        output_sink = {"name": "hifiberry", "index": 1}
-        music_sink = {"name": "background", "index": 2}
-        full = {"mono": {"value_percent": "100%"}}
+        manager.music_bus.stream_index = 42
+        manager.music_bus.ducked = False
+        manager.music_bus.gain_applied = 100
         listings: Listings = {
-            "sinks": [output_sink, music_sink],
-            "sources": [
-                {
-                    "name": "hifiberry_adc",
-                    "description": "ADC Pro",
-                    "monitor_of_sink": 4294967295,
-                },
-                {
-                    "name": "uac2_capture",
-                    "description": "UAC2Gadget",
-                    "monitor_of_sink": 4294967295,
-                },
-            ],
+            "sinks": [{"name": "background", "index": 2}],
             "sink-inputs": [
-                {"index": 61, "owner_module": 60, "sink": 1, "volume": full},
                 {
-                    "index": 71,
-                    "owner_module": 50,
+                    "index": 61,
                     "sink": 2,
-                    "properties": {"media.name": "SmartAmp.line_in"},
-                    "volume": full,
-                },
-                # Sendspin's own client stream into the bus.
-                {
-                    "index": 81,
-                    "sink": 2,
-                    "properties": {"media.name": "ALSA Playback"},
-                    "volume": full,
-                },
+                    "properties": {"smartamp.source": "aux"},
+                    "volume": {"mono": {"value_percent": "100%"}},
+                }
             ],
         }
 
         with self._patched_graph(listings, fake_run) as run, mock.patch(
             "smartamp_audio.volume.time.sleep"
         ):
-            manager.routes.apply_music_volume(100)
-            run.reset_mock()
-            manager.routes.reconcile(
-                output=output_sink,
-                music_sink=music_sink,
-                music_volume=60,
-            )
-            output.hold_client_streams(
-                manager.graph,
-                music_sink,
-                manager.config.music_bus.players_volume_percent,
+            reply, reconcile = manager.commands.apply(
+                mock.Mock(), {"command": "set-music-volume", "percent": 30}
             )
 
-        # The unmuted aux route plays at half the music level; the USB and
-        # Sendspin streams carry only their trims, because their shared bus
-        # bridge already carries the music level.
+        self.assertEqual(reply["music_bus"]["volume"], 30)
+        self.assertFalse(reconcile)
+        # The music bus snaps to the new level. The aux stream carries only
+        # its trim, because the bus bridge already carries the music level.
+        self.assertEqual(volume_writes(run), [("42", "30%")])
+
+    def test_each_music_input_carries_its_own_trim(self) -> None:
+        manager = self.make_manager(
+            {
+                "music_bus": {"enabled": True, "sink_name": "background"},
+                "default_source": "sendspin",
+                "sources": {
+                    "sendspin": {"volume_percent": 70},
+                    "aux": {"enabled": True, "volume_percent": 50},
+                    "usb": {"enabled": False, "volume_percent": 80},
+                },
+            }
+        )
+        music_sink: graph.Node = {"name": "background", "index": 2}
+        full = {"mono": {"value_percent": "100%"}}
+        listings: Listings = {
+            "sinks": [{"name": "hifiberry", "index": 1}, music_sink],
+            "sink-inputs": [
+                # The inputs app's loopbacks, each tagged with its source.
+                {"index": 61, "sink": 2, "properties": {"smartamp.source": "aux"}, "volume": full},
+                {"index": 71, "sink": 2, "properties": {"smartamp.source": "usb"}, "volume": full},
+                # Sendspin's own client stream into the bus: untagged, so the
+                # default source's.
+                {"index": 81, "sink": 2, "properties": {"media.name": "ALSA Playback"}, "volume": full},
+                # A stream at the hardware sink is not the mixer's.
+                {"index": 91, "sink": 1, "volume": full},
+                # A tag this unit does not know is left alone.
+                {"index": 95, "sink": 2, "properties": {"smartamp.source": "phono"}, "volume": full},
+                # The bus's own bridge is never a source.
+                {"index": 99, "sink": 2, "properties": {"media.name": "SmartAmp.music_bridge"}, "volume": full},
+            ],
+        }
+
+        with self._patched_graph(listings, fake_run) as run:
+            manager.graph.invalidate()
+            manager.mixer.reconcile(music_sink)
+
+        # Each stream carries only its source's trim - the shared bus bridge
+        # carries the music level - and a switched-off source is held silent.
         self.assertEqual(
-            volume_writes(run), [("61", "30%"), ("71", "80%"), ("81", "70%")]
+            volume_writes(run), [("81", "70%"), ("61", "50%"), ("71", "0%")]
+        )
+        self.assertEqual(
+            manager.sources(),
+            {
+                "sendspin": {"trim": 70, "available": True},
+                "aux": {"trim": 50, "enabled": True, "available": True},
+                "usb": {"trim": 80, "enabled": False, "available": True},
+            },
         )
 
     def test_percent_validation_rejects_booleans_and_out_of_range(self) -> None:

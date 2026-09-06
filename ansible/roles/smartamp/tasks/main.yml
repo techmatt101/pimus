@@ -32,19 +32,43 @@
   ansible.builtin.import_tasks: usb_gadget.yml
   when: usb_audio_gadget_enabled | bool
 
-- name: Configure USB audio client
-  ansible.builtin.import_tasks: usb_audio.yml
-  when: usb_audio_gadget_enabled | bool
+# The inputs app is wanted wherever there is a local input to bring onto the
+# music bus: the USB gadget's capture, the board's aux, or both.
+- name: Configure audio inputs app
+  ansible.builtin.import_tasks: audio_inputs.yml
+  when: smartamp_audio_inputs_enabled | bool
 
-- name: Disable USB audio client when disabled
+- name: Disable audio inputs app when there is no input for it
+  ansible.builtin.systemd_service:
+    name: smartamp-audio-inputs.service
+    enabled: false
+    state: stopped
+  failed_when: false
+  when: not (smartamp_audio_inputs_enabled | bool)
+
+- name: Remove audio inputs artifacts when there is no input for it
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/smartamp-audio-inputs.service
+    - "{{ smartamp_app_dir }}/audio-inputs"
+    - "{{ smartamp_config_dir }}/audio-inputs.json"
+    - "/run/user/{{ smartamp_uid }}/smartamp-audio-inputs-status.json"
+  notify: Reload systemd
+  when: not (smartamp_audio_inputs_enabled | bool)
+
+# The inputs app replaced a USB-only client with its own socket. A unit
+# provisioned before the change still has that client installed, importable,
+# and enabled, so it is retired on every run rather than only when USB is off.
+- name: Stop the superseded USB audio client
   ansible.builtin.systemd_service:
     name: smartamp-usb-audio.service
     enabled: false
     state: stopped
   failed_when: false
-  when: not (usb_audio_gadget_enabled | bool)
 
-- name: Remove USB audio client artifacts when disabled
+- name: Remove the superseded USB audio client
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
@@ -55,7 +79,6 @@
     - "/run/user/{{ smartamp_uid }}/smartamp-usb-audio.sock"
     - "/run/user/{{ smartamp_uid }}/smartamp-usb-audio-status.json"
   notify: Reload systemd
-  when: not (usb_audio_gadget_enabled | bool)
 
 # Feature flags must be reversible. Removing the overlay returns USB-C to its
 # normal role rather than leaving stale boot configuration from an earlier run.

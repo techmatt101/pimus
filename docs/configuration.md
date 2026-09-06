@@ -20,11 +20,13 @@ and whether its amplifier can be muted all follow from `ansible/roles/smartamp/v
 board cannot honour fails preflight by name.
 
 The Amp100 has no ADC, so it has no analogue line-in. `smartamp_aux_enabled` is refused there, the generated
-`audio.json` carries no aux route at all rather than a permanently unavailable one, and `hifiberry_aux_gain_db`,
-`hifiberry_aux_input_left` and `hifiberry_aux_input_right` are not written. `audio.json` lists only the routes the
+`audio.json` carries no `aux` source at all rather than a permanently unavailable one, and `hifiberry_aux_gain_db`,
+`hifiberry_aux_input_left` and `hifiberry_aux_input_right` are not written. `audio.json` lists only the sources the
 hardware has — the same is true of `usb` when `usb_audio_gadget_enabled` is off — and that list is what the deck greys
 its route keys against, so the AUX key on an Amp100 draws unavailable and does nothing rather than needing to be edited
-out of the compiled layout. See [controls](controls.md#audio-routes--type-audio-with-a-source).
+out of the compiled layout. The same two flags decide what `audio-inputs.json` lists, and a unit with neither input is
+sent no inputs app. See [controls](controls.md#audio-routes--type-audio-with-a-source) and
+[audio inputs](audio-inputs.md).
 
 `hifiberry_auto_mute` (Amp100 only) ties the board's hardware mute line to the audio device opening and closing, so the
 amplifier is muted whenever nothing is playing and unmuted before the first sample arrives. It is the answer to an
@@ -54,16 +56,16 @@ plays straight at the output — something not routed through a bus — at the m
 full amplifier gain once the stream has been discovered. Direct clients can still produce an initial burst before
 reconciliation; use the named buses for normal playback.
 
-Each music input also carries a trim of its own — `smartamp_sendspin_volume_percent`, `smartamp_usb_volume_percent`,
-and `smartamp_aux_volume_percent` — the share of the music level that input plays at, for bringing inputs in line with
-each other (USB computers tend to play hotter than Sendspin). All three default to 100, meaning the music level
-untouched. Every music input plays into the one music bus and carries its trim on its own stream into it, so the trims
-balance the inputs against each other and the bus's level is what they all follow. Because aux shares that bus it is
-also dipped when the assistant speaks; give it `"target": "output"` in the generated `audio.json` if a unit should have
-an analogue input that never ducks. The audio manager publishes each input as a source with its trim — the Sendspin
-trim under the `sendspin` name `audio.json` gives the bus's own players, since the daemon names no product — and the
-deck's [LEVELS page](controls.md#the-levels-page) shows one key per source, which is the way to find a balance by
-ear; the audio manager holds that only in memory, so bring the number that works back to inventory.
+Each music source also carries a trim of its own — `smartamp_sendspin_volume_percent`, `smartamp_usb_volume_percent`,
+and `smartamp_aux_volume_percent` — the share of the music level that source plays at, for bringing sources in line
+with each other (USB computers tend to play hotter than Sendspin). All three default to 100, meaning the music level
+untouched. The audio manager is a mixer: `audio.json` gives it the source names and their trims, every source is
+whatever streams play into the one music bus under that name (a stream's `smartamp.source` property; a stream with no
+tag is `default_source`, which is `sendspin`), and the manager holds each stream at its source's trim, so the trims
+balance the sources against each other and the bus's level is what they all follow. Every source shares that bus, so
+all of them are dipped when the assistant speaks. The manager publishes each source with its trim, and the deck's
+[LEVELS page](controls.md#the-levels-page) shows one key per source, which is the way to find a balance by ear; the
+audio manager holds that only in memory, so bring the number that works back to inventory.
 
 Music Assistant's volume for this player is the music level, in both directions. The Sendspin client runs with
 `--hardware-volume`, which puts it on the PulseAudio volume backend: it sets, reads, and subscribes to its output
@@ -85,7 +87,8 @@ the Pi if your firmware exposes different names.
 
 No component writes a log file of its own. Every service logs to stdout/stderr and systemd captures it in the journal,
 so `journalctl -u <unit>` is the only place to read logs: `smartamp-controller`, `smartamp-audio-manager`,
-`smartamp-voice-assistant`, `smartamp-sendspin`, `smartamp-usb-audio-gadget`, and `smartamp-hifiberry`.
+`smartamp-voice-assistant`, `smartamp-sendspin`, `smartamp-audio-inputs`, `smartamp-usb-audio-gadget`, and
+`smartamp-hifiberry`.
 
 `smartamp_journal_in_ram` chooses where that journal is stored, through
 `/etc/systemd/journald.conf.d/smartamp.conf`:
@@ -99,44 +102,48 @@ Flip it to `false` while chasing a crash so the evidence survives, and back to `
 
 Set `smartamp_debug_logging: true` and re-provision to trace every action — deck input, route commands, Home Assistant
 service calls, LVA commands, and each `pactl` invocation the audio manager makes. It sets `SMARTAMP_LOG_LEVEL=debug` in
-the controller, audio-manager and USB audio units; all default to `info`.
+the controller, audio-manager and audio-inputs units; all default to `info`.
 
-Set `smartamp_aux_enabled` and `smartamp_usb_enabled` to choose whether aux and USB monitoring start on boot. Both
-default to off. The USB route is additionally gated on the computer actively streaming to the gadget: the USB
-audio app only starts its playback client while the gadget card's `Capture Rate` control reads a non-zero rate, because the
-gadget's capture clock only ticks while the host holds its playback stream open. A computer that is plugged in but
-playing to another output, or a cable that was unplugged, leaves a dead clock that would stall the whole output graph
-and silence everything else — including Sendspin and Home Assistant media on the music bus. Enumeration
-(`/sys/class/udc/*/state` reading `configured`) cannot gate this: with the recommended VBUS-blocking adapter the port
-never reports a disconnect, so that file stays `configured` after an unplug until the next replug. Toggling USB on
-with nothing plugged in or nothing playing is therefore safe — the route simply waits for audio to arrive.
+Set `smartamp_aux_enabled` and `smartamp_usb_enabled` to choose whether the aux and USB sources start switched on at
+boot. Both default to off. Each is a channel of the audio manager's mixer: "off" is that source's streams held at
+silence, and the toggle fades them between silent and the source's trim over ~200 ms. The streams themselves are the
+[audio inputs app](audio-inputs.md)'s, and the USB one is additionally gated on the computer actively streaming to
+the gadget: the app only runs its USB loopback while the gadget card's `Capture Rate` control reads a non-zero rate,
+because the gadget's capture clock only ticks while the host holds its playback stream open. A computer that is
+plugged in but playing to another output, or a cable that was unplugged, leaves a dead clock that would stall the
+whole output graph and silence everything else — including Sendspin and Home Assistant media on the music bus.
+Enumeration (`/sys/class/udc/*/state` reading `configured`) cannot gate this: with the recommended VBUS-blocking
+adapter the port never reports a disconnect, so that file stays `configured` after an unplug until the next replug.
+Toggling USB on with nothing plugged in or nothing playing is therefore safe — the source simply waits for a stream
+to arrive.
 
 The gadget's ALSA card boots with no active profile: it has no PipeWire-visible mixer path, so WirePlumber is offered
-only "off" and "pro-audio" and picks neither. The USB audio app switches a parked card
-to its pro-audio profile itself; that is what creates the capture node it bridges. Keep `usb_audio_sample_size_bytes`
-at `2` (16-bit) — the dwc2 gadget controller corrupts 3-byte (24-bit) samples on its isochronous endpoints,
-which plays as loud static with the audio faintly underneath.
+only "off" and "pro-audio" and picks neither. The inputs app switches a parked card to its pro-audio profile itself;
+that is what creates the capture node it loops into the bus. Keep `usb_audio_sample_size_bytes` at `2` (16-bit) —
+the dwc2 gadget controller corrupts 3-byte (24-bit) samples on its isochronous endpoints, which plays as loud static
+with the audio faintly underneath.
 
 The gadget advertises a UAC2 mute/volume control, and the connected computer's writes to it land on the gadget card's
-`PCM Capture` ALSA controls. The USB audio app keeps those and the music bus volume/mute converged in both
-directions (an `alsactl monitor` stream wakes it on host changes): change the volume on the computer and the amp
-follows, turn the amp's dial and the computer's slider follows, and the computer's mute key is the amp's volume mute,
-so it silences every music path and never the assistant. Whichever side moved since they last agreed wins; if both changed, the music bus wins so a dial or Sendspin
-command is not pulled back by a stale host reading. On gadget or bus recreation, the room's current volume/mute
-seed the host controls. USB playback, toggle, trim and recovery are configured in `usb-audio.json`; see [USB audio](usb-audio.md).
+`PCM Capture` ALSA controls. The inputs app keeps those and the music bus volume/mute converged in both directions
+(an `alsactl monitor` stream wakes it on host changes): change the volume on the computer and the amp follows, turn
+the amp's dial and the computer's slider follows, and the computer's mute key is the amp's volume mute, so it
+silences every music path and never the assistant. Whichever side moved since they last agreed wins; if both changed,
+the music bus wins so a dial or Sendspin command is not pulled back by a stale host reading. On gadget or bus
+recreation, the room's current volume/mute seed the host controls. Which inputs the app runs, and on which devices,
+is `audio-inputs.json`; see [audio inputs](audio-inputs.md).
 
-The aux bridge is loaded muted whether or not the route is on; the toggle fades the bridge stream between silent and
-full over ~200 ms. Connecting the stream on demand used to land any DC offset on the line input as a step on the
-speakers — at full amplifier gain, since the volume dial only scales PipeWire — so the pop-prone connect always
-happens silent: the output is guarded while the bridge loads, and a fresh bridge stream is snapped to 0% before it is
-audible and only then faded up if the route is on. The fade is a run of volume writes rather than a sample-level ramp.
-Stream Deck route toggles last until the next reboot; every boot starts from these inventory defaults.
+The aux stream is on the bus whenever the graph is awake, whether or not the source is on; the toggle fades it
+between silent and its trim. Connecting the stream on demand used to land any DC offset on the line input as a step
+on the speakers — at full amplifier gain, since the volume dial only scales PipeWire — so the pop-prone connect
+always happens silent: the inputs app creates the stream at 0% and the manager snaps it to the source's level only
+once it sees it. The fade is a run of volume writes rather than a sample-level ramp. Stream Deck route toggles last
+until the next reboot; every boot starts from these inventory defaults.
 
 `smartamp_idle_teardown_seconds` (default 180, 0 to disable) is the power saver: the persistent loopbacks are what
 keep the HiFiBerry DAC/ADC path clocked and the XVF3800 playback endpoint awake even in silence, worth roughly a watt
 at the wall. After that many seconds with nothing playing — no client stream on any sink (including USB playback), no
-voice session, no enabled analogue route — the audio manager unloads the music and voice bus bridges, the AEC
-reference, and the muted aux bridge, and the devices suspend. The null sinks stay loaded so Sendspin and LVA keep
+voice session, and the streams of a switched-off source not counting — the audio manager unloads the music and voice
+bus bridges and the AEC reference, the inputs app drops its aux loopback, and the devices suspend. The null sinks stay loaded so Sendspin and LVA keep
 their PULSE_SINK targets, and the wake-word capture path is untouched. Everything rebuilds within about a second of a
 client stream appearing, a voice session opening (the controller's duck/meter request arrives before the first TTS
 audio), the USB host starting to stream, or a route being toggled on. The rebuild happens behind a mute on the output sink,

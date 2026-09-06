@@ -17,3 +17,8 @@ smartamp_libs_dir: "{{ playbook_dir }}/../../libs"
 # its deployment are named once and every module path is taken relative to them.
 smartamp_audio_manager_source: "{{ smartamp_source_dir }}/audio-manager/src/audio_manager"
 smartamp_audio_manager_dir: "{{ smartamp_app_dir }}/audio-manager/audio_manager"
+# The inputs app is deployed wherever there is an input for it to bring onto
+# the music bus: the USB gadget's capture, the board's analogue aux, or both.
+# Every task, handler, and doctor check that concerns it reads this one answer,
+# so a unit with neither gets no unit, no config, and no failing check.
+smartamp_audio_inputs_enabled: "{{ (usb_audio_gadget_enabled | bool) or (smartamp_hifiberry_caps.aux_input | bool) }}"

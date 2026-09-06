@@ -16,11 +16,11 @@ XVF3800 microphones --USB/PipeWire--->| Linux Voice Assistant    |--ESPHome API-
                                              | USB           | HID
                                       XVF3800 LEDs       Stream Deck+
 
-Aux (DAC2 ADC Pro only) --PipeWire loopback-----------------+
-Computer --USB-C UAC2--USB audio app--+                                    |
-                       +--> duckable music bus -------------+--> HiFiBerry DAC --> amplifier --> speakers
-Sendspin / MA ---------+                                    |
-Linux Voice Assistant TTS/media --> voice bus --------------+
+Aux (DAC2 ADC Pro only) --+                                                   |
+Computer --USB-C UAC2------+-- audio inputs app --+                             |
+                                                  +--> duckable music bus ------+--> HiFiBerry DAC --> amplifier --> speakers
+Sendspin / MA ------------------------------------+                             |
+Linux Voice Assistant TTS/media --> voice bus ----------------------------------+
 ```
 
 The amplifier is either an AAmp60 bolted to the DAC2 ADC Pro, or an Amp100 that is itself the DAC. An Amp100 has no
@@ -28,11 +28,12 @@ ADC, so the aux path above does not exist on one; see [configuration](configurat
 
 ## Audio ownership
 
-PipeWire and WirePlumber run in a persistent `smartamp` system-user session. The audio manager finds devices by
-configurable regular expressions instead of unstable ALSA card numbers, makes the music bus the default sink, and
-creates monitor loopbacks for enabled input routes. Anything that plays to the default is playing music, so it lands
-on that bus behind a trim and the music level rather than straight at the pinned hardware output. The manager knows
-nothing about the microphone: what the assistant records is PipeWire's own configuration, described below.
+PipeWire and WirePlumber run in a persistent `smartamp` system-user session. The audio manager finds the output by a
+configurable regular expression instead of an unstable ALSA card number, makes the music bus the default sink, and
+mixes whatever plays into that bus. Anything that plays to the default is playing music, so it lands on the bus behind
+a trim and the music level rather than straight at the pinned hardware output. The manager knows nothing about where
+a stream comes from — no card, no gadget, no capture node — and nothing about the microphone: the local inputs are the
+[audio inputs app](audio-inputs.md), and what the assistant records is PipeWire's own configuration, described below.
 
 The XVF3800's USB capture is not a stereo microphone: the chip beamforms its four mics internally and presents two
 independent DSP outputs — channel 0 is the Conference stream (post-processed for human listeners) and channel 1 is the
@@ -75,17 +76,24 @@ with voice at 30% plays voice at 30%. `set-music-volume` and `set-voice-volume` 
 ceiling and reports it as `output_volume`, which nothing here writes: it is set once at boot from inventory and is
 the amplifier's protection rather than a gain.
 
+The manager is a mixer, and its channels are the `sources` in `audio.json`: a list of names, each with a trim and,
+for the switchable ones, an on/off. A stream on the music bus belongs to the source its `smartamp.source` property
+names; a stream with no tag belongs to `default_source`, which inventory names `sendspin` — Sendspin's own ALSA-pulse
+stream, and anything that plays to the default sink. The manager holds every stream of a source at that source's trim
+(or at silence, faded, while the source is off), snaps a newly seen stream straight to it, and never asks how the
+stream got there. Only the sources a unit has are listed, so the deck greys a route key for one it cannot have.
+
 Everything the manager says about the graph is one document, written to `smartamp-audio-status.json` and sent over
 the socket as the `state` event with `event` in front. Each bus section carries its own level (`music_bus.volume` and
-`music_bus.muted`, `voice_bus.volume`, `music_bus.ducked`), and `sources` lists every music input this unit has, each
-with its own `trim` — the players that play straight into the bus first, under the name inventory gives them
-(`sendspin`), then each route with its `enabled` toggle and the capture node it was found on. A source with no
-`enabled` has nothing to switch. The USB audio app publishes its one source in the same shape, and the controller
-merges the two lists, so the key that shows the trims needs nothing but the list.
+`music_bus.muted`, `voice_bus.volume`, `music_bus.ducked`), and `sources` lists every configured source as
+`{trim, enabled?, available}`: `enabled` only on a switchable source, `available` when at least one stream carrying
+its name is on the bus. The controller reads that one list for the LEVELS and ROUTE keys, and the strip's cyan USB
+icon is `sources.usb.available` — a computer streaming to the gadget, switched on or not.
 
-The USB audio app owns gadget discovery, host stream detection, its playback client,
-and USB controls/status. The controller combines its socket state with the audio
-manager's state. The root gadget setup service remains separate. See [USB audio](usb-audio.md).
+The streams themselves come from the [audio inputs app](audio-inputs.md) for the aux line-in and the USB gadget: it
+finds each input's capture node, runs a `pw-loopback` into the bus born at volume zero and tagged with the source's
+name, gates the USB one on the computer actually streaming, keeps the gadget's mixer agreed with the bus register, and
+owns no trim and no toggle. The root gadget setup service remains separate.
 
 The music level also has a second face: the music bus sink's own volume and mute. That is an ordinary PipeWire control
 anything can read, write, and subscribe to, and the manager keeps it and the level agreed in both directions on the
@@ -104,10 +112,10 @@ sink follow the music level both on a volume command and on reconciliation, but 
 manager sees them. The voice bus is never ducked.
 
 A fresh loopback stream plays at full volume until its gain lands. The manager mutes a newly discovered output before
-adjusting gains, and guards every new loopback into the output or either playback bus. Local routes use that guard. External USB playback instead starts muted inside its own
-PipeWire client and unmutes only after its trim has been applied. The manager respects
-streams marked `smartamp.volume.owner=client` on a playback bus; direct hardware clients
-still follow the manager's gain enforcement. An AEC-only connection does not need the speaker guard.
+adjusting gains, and guards every new bridge it loads into the output. The inputs app's streams need no guard: each is
+created at volume zero inside its own PipeWire client, and the manager's first sight of it snaps it to its source's
+trim, so it is never audible before its gain lands. Direct hardware clients still follow the manager's gain
+enforcement. An AEC-only connection does not need the speaker guard.
 An unpublished playback stream keeps the guard held and schedules another pass a second later while the rest of the
 graph is reconciled and published. A failed command removes readiness status. The guard releases only after playback
 gains are applied and the unmute is successfully written; failed writes retain the guard for retry.
@@ -143,10 +151,13 @@ policy and readiness gate to reopen the device. Silent or blocked capture withou
 
 - `smartamp-hifiberry`: applies hardware mixer settings after ALSA detects the HAT.
 - `smartamp-usb-audio-gadget`: creates the stereo UAC2 peripheral on the board's USB-C controller.
-- `smartamp-usb-audio`: detects host streaming, synchronises the gadget mixer with the music bus,
-  and runs a muted-at-creation playback client. Its own socket serves USB toggle, trim and status.
-- `smartamp-audio-manager`: maintains PipeWire defaults, switchable routes, the music bus and its ducking gain,
-  the voice bus and its volume, and the volume mute, driven by `pactl subscribe` events and a Unix control socket.
+- `smartamp-audio-inputs`: brings the local inputs onto the music bus — the aux capture while the graph is awake,
+  the USB gadget's capture while a computer streams to it — as tagged client streams born at volume zero, and keeps
+  the gadget mixer agreed with the bus register. It holds no trim and no toggle and serves no socket; the doctor reads
+  its status file. Deployed only on a unit with an input.
+- `smartamp-audio-manager`: the mixer. Maintains PipeWire defaults, the music bus and its ducking gain, every source's
+  trim and toggle on that bus, the voice bus and its volume, and the volume mute, driven by `pactl subscribe` events
+  and a Unix control socket.
 - `smartamp-sendspin`: runs the Sendspin player that Music Assistant discovers and streams to. Run with
   `--hardware-volume`, so it sets, reads, and subscribes to its output sink's volume — the music bus register — rather
   than applying a gain of its own.

@@ -24,8 +24,8 @@ from .echo_reference import EchoReference
 from smartamp_audio.server import ControlServer
 from smartamp_audio.graph import Graph, Node
 from .idle import IdleTracker, playing_clients
-from .modules import ModuleRegistry
-from .routes import SourceRoutes
+from .modules import STREAM_PREFIX, ModuleRegistry
+from .sources import SourceMixer
 
 
 LOG = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ class AudioManager:
         self.echo_reference = EchoReference(
             config.echo_reference, self.graph, self.modules
         )
-        self.routes = SourceRoutes(config.sources, self.graph, self.modules)
+        self.mixer = SourceMixer(config.sources, config.default_source, self.graph)
         # What the last pass found of the reference path; the document
         # reports it between passes, as it does everything a pass settles.
         self.aec_reference: dict[str, Any] = self.echo_reference.status()
@@ -86,6 +86,7 @@ class AudioManager:
 
         self.pending_reconcile: float | None = None
         self.next_resync = 0.0
+        self._legacy_routes_released = False
         self._last_broadcast = self.state_event()
 
     def stop(self, *_args: object) -> None:
@@ -171,41 +172,32 @@ class AudioManager:
         return {"event": "state", **self.document()}
 
     def sources(self) -> dict[str, dict[str, Any]]:
-        """Every music input this unit has, each with its own trim.
-
-        The bus's own players come first: whatever plays into it without a
-        route, which is every client the daemon never hears about. They have
-        a trim like any route and nothing to switch, so no `enabled`.
-        """
-        sources: dict[str, dict[str, Any]] = {}
-        if self.config.music_bus.enabled:
-            sources[self.config.music_bus.players_source] = {
-                "trim": self.music_bus.players_trim,
-                "available": self.music_bus.sink is not None,
-            }
-        sources.update(self.routes.status())
-        return sources
+        """Every music input this unit has, each with its own trim."""
+        return self.mixer.status()
 
     def set_source_trim(self, name: str, percent: float) -> None:
-        level = volume.clamp(percent)
-        if name == self.config.music_bus.players_source:
-            self._apply_or_retry(
-                "Players trim", lambda: self._apply_players_trim(level)
-            )
-            return
-        self.routes.set_trim(name, level)
-        self._apply_or_retry(
-            "Source trim", lambda: self._apply_route_trim(name)
-        )
+        self.mixer.set_trim(name, volume.clamp(percent))
+        self._apply_or_retry("Source trim", lambda: self._apply_source(name))
+
+    def set_source_enabled(self, name: str, enabled: bool) -> bool:
+        """Switch a route; returns whether that changed anything."""
+        if not self.mixer.set_enabled(name, enabled):
+            return False
+        if enabled:
+            # A route coming on is someone back in the room: rebuild an idle
+            # graph now rather than fade a stream up into an unbridged bus.
+            self.notice_voice_activity()
+        self._apply_or_retry("Source toggle", lambda: self._apply_source(name))
+        return True
 
     def knows_source(self, name: str) -> bool:
-        return name in self.sources()
+        return self.mixer.knows(name)
 
     @property
     def music_level(self) -> int:
         """The gain every music path plays at: the music level, or silence.
 
-        The volume mute is this one substitution. The buses and routes never
+        The volume mute is this one substitution. The buses and the mixer never
         learn of it, the voice bus keeps its own level, and the music level
         itself is untouched so an unmute lands exactly where the dial was.
         """
@@ -267,11 +259,12 @@ class AudioManager:
     def reconcile(self) -> None:
         self.graph.invalidate()
         self.modules.drop_released()
+        self._release_legacy_routes()
         sink = self.output.prepare()
         self._read_output_volume()
         idle = self.idle.update(self._audio_active())
         self._reconcile_graph(sink, idle)
-        settled = self.music_bus.settled and self.voice_bus.settled and self.routes.settled
+        settled = self.music_bus.settled and self.voice_bus.settled
         if not settled:
             self.schedule_reconcile(RECONCILE_RETRY_SECONDS)
         self.output.settle(settled)
@@ -299,7 +292,7 @@ class AudioManager:
             self.output.guard()
 
     def _reconcile_graph(self, sink: Node | None, idle: bool) -> None:
-        """Put the buses, echo reference and routes back where they belong."""
+        """Put the buses, echo reference and mixer back where they belong."""
         music_sink = self.music_bus.reconcile(sink, bridged=not idle)
         self._sync_music_register(music_sink)
         self.voice_bus.reconcile(sink, bridged=not idle)
@@ -307,13 +300,29 @@ class AudioManager:
         self.aec_reference = self.echo_reference.reconcile(sink, wanted=not idle)
         self.apply_ducking()
         self._adopt_default_sink(sink, music_sink)
-        self.routes.reconcile(
-            output=sink,
-            music_sink=music_sink,
-            music_volume=self.music_level,
-            idle=idle,
-        )
+        self.mixer.reconcile(music_sink)
         output.hold_client_streams(self.graph, sink, self.music_level)
+
+    def _release_legacy_routes(self) -> None:
+        """Retire the aux and USB loopbacks an older manager built itself.
+
+        Those were server modules, so they outlive the daemon that loaded
+        them; left in place they would play untagged into the bus at whatever
+        level they were last held. Only a loopback tagged with a configured
+        source's old media name is this daemon's to unload.
+        """
+        if self._legacy_routes_released:
+            return
+        tags = {f"media.name={STREAM_PREFIX}{name}" for name in self.config.sources}
+        for module in self.graph.modules:
+            if module.get("name") != "module-loopback":
+                continue
+            arguments = str(module.get("argument", "")).split()
+            if any(argument.endswith(tag) for argument in arguments for tag in tags):
+                pactl.unload_module(int(module["index"]))
+                self.graph.invalidate()
+                LOG.info("Released a route loopback an older manager left behind")
+        self._legacy_routes_released = True
 
     def _publish(self) -> None:
         published = self.document()
@@ -324,15 +333,18 @@ class AudioManager:
         """Anything that means sound is, or is about to be, in flight.
 
         A duck or meter request marks a voice session well before its first
-        TTS stream exists, an enabled analogue route has no stream to watch,
-        and everything else shows up as a client stream playing somewhere.
+        TTS stream exists, and everything else shows up as a client stream
+        playing somewhere. A stream of a source that is switched off is
+        silence, however busy the computer behind it: it must not keep the
+        bridges up.
         """
-        if self.commands.duck_requested:
-            return True
-        if self.commands.meter_listeners or self.routes.holds_awake():
+        if self.commands.duck_requested or self.commands.meter_listeners:
             return True
         owned = {str(self.modules.id_of(role)) for role in self.modules.roles()}
-        return playing_clients(self.graph.sink_inputs, owned)
+        audible = [
+            stream for stream in self.graph.sink_inputs if not self.mixer.silenced(stream)
+        ]
+        return playing_clients(audible, owned)
 
     def notice_voice_activity(self) -> None:
         self.idle.touch()
@@ -367,16 +379,11 @@ class AudioManager:
                 self.graph.sink_named(self.config.music_bus.sink_name)
             )
         self.apply_ducking()
-        self.routes.apply_music_volume(self.music_level)
         output.hold_client_streams(self.graph, self.output.find(), self.music_level)
 
-    def _apply_players_trim(self, level: int) -> None:
+    def _apply_source(self, name: str) -> None:
         self.graph.invalidate()
-        self.music_bus.set_players_trim(level)
-
-    def _apply_route_trim(self, name: str) -> None:
-        self.graph.invalidate()
-        self.routes.apply_trim(name, self.music_level)
+        self.mixer.apply(name, self.graph.sink_named(self.config.music_bus.sink_name))
 
     def _adopt_default_sink(
         self, sink: Node | None, music_sink: Node | None

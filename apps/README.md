@@ -66,26 +66,32 @@ repository root instead.
 
 ## `audio-manager`
 
-The Python daemon in `audio-manager/src/audio_manager/` owns the shared audio
-environment: output defaults, local aux routes, the music and voice buses,
-ducking, the echo reference the microphone array is sent, and idle teardown.
-Its tests are in `audio-manager/test/`; it runs as `python3 -m audio_manager`.
-What the assistant records is not its concern: the voice capture source is
-PipeWire configuration Ansible deploys (`roles/smartamp/templates/pipewire/`
-and `templates/wireplumber/`).
+The Python daemon in `audio-manager/src/audio_manager/` is the mixer: output
+defaults, the music and voice buses, every source's trim and toggle on the
+music bus, ducking, the echo reference the microphone array is sent, and idle
+teardown. Its tests are in `audio-manager/test/`; it runs as
+`python3 -m audio_manager`. It knows its sources only as names from
+`audio.json`, found on the bus by each stream's `smartamp.source` property
+(untagged streams are the `default_source`, Sendspin), and knows nothing about
+cards, gadgets, or capture nodes. What the assistant records is not its concern
+either: the voice capture source is PipeWire configuration Ansible deploys
+(`roles/smartamp/templates/pipewire/` and `templates/wireplumber/`).
 
-`daemon.py` holds the reconcile order, `routes.py` owns local switchable inputs,
-`buses/` owns playback sinks and bridge gains, `echo_reference.py` owns the
-far-end reference loopback, and `output.py` owns the hardware sink's unity gain
-and rebuild mute. `modules.py` tracks the PipeWire modules the manager creates.
+`daemon.py` holds the reconcile order, `sources.py` owns the source list and the
+gain held on each source's streams, `buses/` owns playback sinks and bridge
+gains, `echo_reference.py` owns the far-end reference loopback, and `output.py`
+owns the hardware sink's unity gain and rebuild mute. `modules.py` tracks the
+PipeWire modules the manager creates.
 
-## `usb-audio`
+## `audio-inputs`
 
-The Python client in `usb-audio/src/usb_audio/` owns the USB gadget's host and
-stream detection, ALSA volume/mute agreement, card activation, playback helper,
-USB toggle and trim. It plays into the manager's music bus like any other
-client and synchronises volume through that bus's public register.
-
-Its Unix socket serves USB controls and status directly to the controller.
-The separate root gadget setup service still creates the UAC2 peripheral at
-boot. See [USB audio](../docs/usb-audio.md) for lifecycle and validation details.
+The Python daemon in `audio-inputs/src/audio_inputs/` brings a unit's local
+inputs onto the music bus: the aux line-in and the USB gadget's capture, each
+an `Input` class under `inputs/` that runs a `pw-loopback` born at volume zero
+and tagged `smartamp.source=<name>`. The USB input gates its loopback on the
+computer actually streaming and keeps the gadget mixer agreed with the bus's
+public volume register; the aux input runs while the manager reports the graph
+awake. It holds no trim and no toggle — those are the manager's — and serves
+no socket; it publishes a status file the doctor reads. It is deployed only on
+a unit with an input. The separate root gadget setup service still creates the
+UAC2 peripheral at boot. See [audio inputs](../docs/audio-inputs.md).
