@@ -114,10 +114,9 @@ apps/
                          bus, and the meter the ring pulses to
       control/           The Unix socket the controller drives it through:
                          the transport, and the command vocabulary
-      microphone/        The assistant's hearing, as strategies composed by
-                         microphone.py: finding the device, the capture
-                         published for it to record, the echo reference it
-                         is sent
+      echo_reference.py  The far-end reference the microphone array is sent:
+                         the output's monitor looped into the array's own
+                         playback sink; the daemon's one microphone-side job
       system/            The command-line boundary: process, pactl, amixer,
                          parec, and the monitors that read a child's lines
       usb/               What the daemon keeps agreed with a computer plugged
@@ -397,8 +396,8 @@ runtime validation, and relevant documentation together.
 - The audio manager is the `audio_manager` package, run as `python3 -m
   audio_manager` with its parent directory on `PYTHONPATH`. `daemon.py` owns
   the reconcile order and nothing else; each concern it drives (a bus, the
-  routes, voice capture, the AEC reference, the USB volume agreement, the
-  control socket) lives in its own module and holds its own state. Reach the
+  routes, the AEC reference, the USB volume agreement, the control socket)
+  lives in its own module and holds its own state. Reach the
   outside world through the `system/` subpackage — `process.run`, `pactl`,
   `usb_gadget`, `parec`, and the `monitors` line readers — and read the graph
   through the cached `Graph`, so tests patch one seam. Every external binary the
@@ -414,15 +413,23 @@ runtime validation, and relevant documentation together.
 - The daemon names no product. A player is whichever client its systemd unit
   points at a bus in `buses/` (Sendspin by `PULSE_SINK`, the voice assistant by
   mpv's output device), so swapping one is an Ansible change and nothing here.
-  The microphone is assembled in `microphone/microphone.py` from a `Capture`
-  and an `EchoReference` chosen by the `microphone` section of `audio.json`;
-  both ReSpeaker arrays are the same `ChannelCapture` and
-  `PlaybackEchoReference` with different settings, and a new array or a plain
-  microphone is a new strategy class there plus a row in `boards.yml`, never a
-  branch on the device elsewhere. The status file keys (`voice_input`,
-  `voice_capture`, `aec_reference`) are read by the doctor and the voice
-  assistant's start-up wait, so they keep their names whatever the module
-  behind them is called.
+  The daemon knows no microphone either. What the assistant records is
+  PipeWire's own configuration, templated by Ansible: a WirePlumber rule
+  (`templates/wireplumber/60-smartamp-voice-input.conf.j2`) renames the
+  array's capture node to `smartamp_voice_input` and starts its card on its
+  full-duplex profile, and a loopback drop-in
+  (`templates/pipewire/60-smartamp-voice-capture.conf.j2`) lifts the ASR
+  channel out of that node into the mono `smartamp_voice_capture` source,
+  which outranks every other source for the default the assistant resolves.
+  The daemon's one microphone-side job is `echo_reference.py`: the output's
+  monitor looped into whichever sink the `echo_reference` section of
+  `audio.json` matches, pinned at unity, released with the other idle bridges.
+  Do not put capture back in the daemon: a channel, a default source, or a
+  card profile is a line in those templates, and both arrays differ only in
+  the `boards.yml` row inventory fills them from. The status file's
+  `aec_reference` key is read by the doctor and keeps its name; the capture
+  side is read from PipeWire's source list by `wait-audio-ready.sh` and the
+  doctor, never from the status file.
 
 ### Ansible
 
@@ -611,7 +618,8 @@ the device match, the ASR capture channel, the USB ids, whether the Pi can
 drive its LEDs, and whether `xvf_host` applies; inventory's
 `smartamp_voice_input_match`, `smartamp_aec_reference_match`, and
 `smartamp_voice_capture_channel` default to that row. Neither daemon branches
-on the array: the audio manager remaps whichever channel it is told and the
+on the array: the voice capture drop-in lifts whichever channel it is told,
+the audio manager sends the reference to whichever sink matches, and the
 controller opens whichever USB ids it is given.
 
 - **ReSpeaker Lite** (`respeaker_board: lite`, `docs/respeaker-lite.md`): two
@@ -629,8 +637,8 @@ controller opens whichever USB ids it is given.
 
 - The XVF3800 USB capture is two DSP outputs, not stereo: channel 0 is the
   Conference stream (tuned for human listeners), channel 1 the ASR stream the
-  voice assistant must hear. Keep the audio manager's mono ASR remap source and
-  the voice unit's hardcoded single-channel capture: recording the device
+  voice assistant must hear. Keep the mono ASR source the voice capture
+  drop-in publishes and the voice unit's hardcoded single-channel capture: recording the device
   directly downmixes the two streams, and a second LVA channel would be
   forwarded to Home Assistant as a far-end echo reference, which on this
   device it is not.

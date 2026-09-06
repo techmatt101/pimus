@@ -20,12 +20,15 @@ Environment=SMARTAMP_ENDPOINT_SILENCE_MS={{ voice_assistant_endpoint_silence_ms 
 Environment=SMARTAMP_ENDPOINT_PATIENT_SILENCE_MS={{ voice_assistant_endpoint_patient_silence_ms }}
 Environment=SMARTAMP_ENDPOINT_SHORT_PHRASE_MS={{ voice_assistant_endpoint_short_phrase_ms }}
 Environment=SMARTAMP_ENDPOINT_MIN_SPEECH_MS={{ voice_assistant_endpoint_min_speech_ms }}
-# The audio manager chooses the real PipeWire defaults after discovering the
-# HiFiBerry and ReSpeaker. Waiting avoids racing that first hardware scan.
-ExecStartPre={{ smartamp_app_dir }}/wait-audio-ready.sh /run/user/{{ smartamp_uid }}/smartamp-audio-status.json 60
-# Capture is fixed at one channel: the audio manager publishes a mono default
-# source (the array's ASR channel - 1 on the XVF3800, 0 on the ReSpeaker Lite -
-# or the raw device when smartamp_voice_capture_channel is null). Never raise
+# The audio manager chooses the output defaults after discovering the
+# HiFiBerry, and PipeWire's own configuration publishes the capture sources
+# named here. Waiting for both avoids racing that first hardware scan.
+ExecStartPre={{ smartamp_app_dir }}/wait-audio-ready.sh /run/user/{{ smartamp_uid }}/smartamp-audio-status.json 60 {{ smartamp_voice_input_name }}{% if smartamp_voice_capture_channel is not none %} {{ smartamp_voice_capture_name }}{% endif %}
+
+# Capture is fixed at one channel: PipeWire publishes a mono default source
+# (the array's ASR channel - 1 on the XVF3800, 0 on the ReSpeaker Lite - lifted
+# by pipewire.conf.d/60-smartamp-voice-capture.conf, or the raw device when
+# smartamp_voice_capture_channel is null). Never raise
 # this to 2 here - LVA forwards a second channel to Home Assistant advertised
 # as a far-end echo reference for server-side AEC, and neither array's other
 # channel is one: the XVF3800's carries the voice itself and the Lite's a raw

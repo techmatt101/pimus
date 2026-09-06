@@ -68,13 +68,16 @@ repository root instead.
 
 The Python daemon in `audio-manager/src/audio_manager/` owns the shared audio
 environment: output defaults, local aux routes, the music and voice buses,
-ducking, microphone capture, echo reference, and idle teardown. Its tests are
-in `audio-manager/test/`; it runs as `python3 -m audio_manager`.
+ducking, the echo reference the microphone array is sent, and idle teardown.
+Its tests are in `audio-manager/test/`; it runs as `python3 -m audio_manager`.
+What the assistant records is not its concern: the voice capture source is
+PipeWire configuration Ansible deploys (`roles/smartamp/templates/pipewire/`
+and `templates/wireplumber/`).
 
 `daemon.py` holds the reconcile order, `routes.py` owns local switchable inputs,
-`buses/` owns playback sinks and bridge gains, `microphone/` owns capture and
-echo reference, and `output.py` owns the hardware sink's unity gain and rebuild
-mute. `modules.py` tracks the PipeWire modules the manager creates.
+`buses/` owns playback sinks and bridge gains, `echo_reference.py` owns the
+far-end reference loopback, and `output.py` owns the hardware sink's unity gain
+and rebuild mute. `modules.py` tracks the PipeWire modules the manager creates.
 
 ## `usb-audio`
 

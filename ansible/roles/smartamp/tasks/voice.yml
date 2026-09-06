@@ -131,8 +131,50 @@
     - smartamp_audio_recovery.py
   notify: Restart voice assistant
 
-# LVA must start after the audio manager has found both required devices. This
-# small gate checks the manager's fresh status file and produces a clear systemd
+# The assistant records PipeWire's default source, and what that source is
+# comes from PipeWire's own configuration rather than the audio manager: a
+# WirePlumber rule gives the array's capture node a fixed name and starts its
+# card on its full-duplex profile, and a loopback lifts the configured ASR
+# channel out of that node into a mono source that outranks every other for
+# the default. Both are read when PipeWire starts, so a change restarts the
+# service-account session. They are the WirePlumber 0.5 and PipeWire 1.x
+# formats, which is why preflight requires Trixie for voice.
+- name: Work out the capture channel's PipeWire position
+  ansible.builtin.set_fact:
+    smartamp_voice_capture_position: "{{ ['FL', 'FR'][smartamp_voice_capture_channel | int] }}"
+  when: smartamp_voice_capture_channel is not none
+
+- name: Name the microphone array's capture node for PipeWire
+  ansible.builtin.template:
+    src: wireplumber/60-smartamp-voice-input.conf.j2
+    dest: /etc/wireplumber/wireplumber.conf.d/60-smartamp-voice-input.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart service-account session
+
+- name: Publish the voice capture source
+  ansible.builtin.template:
+    src: pipewire/60-smartamp-voice-capture.conf.j2
+    dest: /etc/pipewire/pipewire.conf.d/60-smartamp-voice-capture.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when: smartamp_voice_capture_channel is not none
+  notify: Restart service-account session
+
+# A null channel records the array as it is, so the source lifted from one
+# channel must not linger from an earlier setting.
+- name: Remove the voice capture source when the array is recorded unmapped
+  ansible.builtin.file:
+    path: /etc/pipewire/pipewire.conf.d/60-smartamp-voice-capture.conf
+    state: absent
+  when: smartamp_voice_capture_channel is none
+  notify: Restart service-account session
+
+# LVA must start after the audio manager has selected the output defaults and
+# PipeWire has published the capture sources above. This small gate checks the
+# manager's fresh status file and the source list, and produces a clear systemd
 # failure instead of an obscure SoundCard device-lookup exception.
 - name: Install voice audio readiness check
   ansible.builtin.copy:

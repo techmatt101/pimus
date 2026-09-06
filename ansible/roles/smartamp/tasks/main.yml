@@ -147,6 +147,19 @@
   notify: Reload systemd
   when: not (voice_assistant_enabled | bool)
 
+# The capture source and the array's fixed node name are PipeWire configuration
+# only the assistant needs; left behind, a unit without voice would keep a
+# virtual source published and the default source pointed at it.
+- name: Remove voice capture PipeWire configuration when disabled
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/wireplumber/wireplumber.conf.d/60-smartamp-voice-input.conf
+    - /etc/pipewire/pipewire.conf.d/60-smartamp-voice-capture.conf
+  notify: Restart service-account session
+  when: not (voice_assistant_enabled | bool)
+
 # The controller changes far more often than the rest of the system. The tag
 # lets "make deploy-controller" push a rebuilt controller to an already
 # provisioned Pi without walking the audio, voice, and boot configuration.

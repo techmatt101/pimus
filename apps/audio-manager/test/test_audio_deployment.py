@@ -143,9 +143,7 @@ FAILED=0
     def ready_status() -> dict[str, Any]:
         return {
             "sink": "hifi",
-            "voice_input": "xvf",
             "idle": False,
-            "voice_capture": {"channel": 1, "source": "smartamp_voice_capture"},
             "voice_bus": {"enabled": True, "sink": "voice", "available": True},
             "background": {"sink": "background", "available": True},
             "aec_reference": {
@@ -162,10 +160,18 @@ FAILED=0
             path = Path(directory)
             (path / "sleep").write_text("#!/bin/sh\nexit 0\n")
             (path / "sleep").chmod(0o755)
+            # The capture side is read from PipeWire's source list, not the
+            # status file: each line is an index, a name, and the rest.
+            (path / "pactl").write_text(
+                "#!/bin/sh\nprintf '%s\\n' $PACTL_SOURCES | awk '{ print NR, $0, \"x\" }'\n"
+            )
+            (path / "pactl").chmod(0o755)
             status_file = path / "status.json"
+            wanted = ["smartamp_voice_input", "smartamp_voice_capture"]
             for scenario, expected in (
                 ("ready", 0),
                 ("missing_capture", 1),
+                ("missing_input", 1),
                 ("missing_bus", 1),
                 ("unbridged", 1),
                 ("idle", 0),
@@ -173,15 +179,20 @@ FAILED=0
             ):
                 with self.subTest(scenario=scenario):
                     status = self.ready_status()
+                    sources = ["hifi.monitor", *wanted]
+                    names = wanted
                     if scenario == "missing_capture":
-                        status["voice_capture"]["source"] = None
+                        sources.remove("smartamp_voice_capture")
+                    elif scenario == "missing_input":
+                        sources.remove("smartamp_voice_input")
                     elif scenario == "missing_bus":
                         status["voice_bus"]["sink"] = None
                     elif scenario in ("unbridged", "idle"):
                         status["voice_bus"]["available"] = False
                         status["idle"] = scenario == "idle"
                     elif scenario == "unmapped":
-                        status["voice_capture"] = {"channel": None, "source": None}
+                        sources.remove("smartamp_voice_capture")
+                        names = ["smartamp_voice_input"]
                     status_file.write_text(json.dumps(status))
                     result = subprocess.run(
                         [
@@ -189,8 +200,13 @@ FAILED=0
                             str(FILES / "scripts/wait-audio-ready.sh"),
                             str(status_file),
                             "1",
+                            *names,
                         ],
-                        env={**os.environ, "PATH": f"{path}:{os.environ['PATH']}"},
+                        env={
+                            **os.environ,
+                            "PATH": f"{path}:{os.environ['PATH']}",
+                            "PACTL_SOURCES": " ".join(sources),
+                        },
                         capture_output=True,
                         timeout=5,
                     )

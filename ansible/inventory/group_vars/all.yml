@@ -156,18 +156,21 @@ smartamp_aux_match: "HiFiBerry|snd_rpi_hifiberry|soc_sound"
 respeaker_board: xvf3800
 # The three settings below default to the chosen array's own row in boards.yml
 # and rarely need touching; override them only if a firmware exposes different
-# names or a different channel layout.
+# names or a different channel layout. The input match is what WirePlumber
+# picks the array's capture node out by (renaming it to
+# smartamp_voice_input_name below); the reference match is the sink the audio
+# manager sends the echo reference to.
 smartamp_voice_input_match: "{{ smartamp_respeaker_caps.match }}"
 smartamp_aec_reference_match: "{{ smartamp_respeaker_caps.match }}"
 # The array's USB capture is a set of DSP outputs, not a stereo pair. On the
 # XVF3800 channel 0 carries its Conference stream (post-processed for human
 # listeners) and channel 1 its ASR stream (tuned for wake-word and speech
 # recognition); on the Lite channel 0 is the processed output and channel 1 a
-# raw microphone. The audio manager remaps exactly this one channel into a mono
-# source and makes that the default, so the voice assistant hears the right
-# stream - capturing the device in mono would instead downmix the channels
-# together. Set to null to use the device unmapped (for a genuinely mono
-# microphone).
+# raw microphone. A PipeWire loopback (pipewire.conf.d/60-smartamp-voice-
+# capture.conf) lifts exactly this one channel into a mono source and makes
+# that the default, so the voice assistant hears the right stream - capturing
+# the device in mono would instead downmix the channels together. 0 or 1; set
+# to null to use the device unmapped (for a genuinely mono microphone).
 smartamp_voice_capture_channel: "{{ smartamp_respeaker_caps.asr_channel }}"
 # The kernel's f_uac2 driver always names the local capture card UAC2Gadget,
 # independent of usb_audio_product (the host-facing name), so this rarely needs
@@ -238,6 +241,13 @@ smartamp_voice_duck_fade_ms: 250
 # Assist is live own it from then on. Only mute crosses the two - it lands on
 # the output sink and silences music and voice alike.
 smartamp_voice_sink_name: smartamp_voice
+# The PipeWire names of the assistant's hearing: the array's capture node,
+# which WirePlumber renames from its per-unit ALSA name so the capture loopback
+# can target it, and the mono source that loopback publishes. The voice
+# service's readiness gate, the doctor, and the recording recipes in
+# docs/xvf3800.md all name them.
+smartamp_voice_input_name: smartamp_voice_input
+smartamp_voice_capture_name: smartamp_voice_capture
 smartamp_voice_startup_volume_percent: 30
 
 # Make the Pi appear as a 48 kHz 16-bit stereo USB sound card to a computer

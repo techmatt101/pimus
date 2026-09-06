@@ -76,7 +76,9 @@
 # transient and the amplifier. Two files because the two supported OS releases
 # read different formats: Trixie's WirePlumber 0.5 reads wireplumber.conf.d,
 # Bookworm's 0.4 reads main.lua.d, and each ignores the other's directory.
-- name: Create WirePlumber configuration directories
+# PipeWire's own drop-in directory is created beside them for the voice
+# capture loopback voice.yml installs.
+- name: Create PipeWire and WirePlumber configuration directories
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
@@ -84,6 +86,7 @@
     group: root
     mode: "0755"
   loop:
+    - /etc/pipewire/pipewire.conf.d
     - /etc/wireplumber/wireplumber.conf.d
     - /etc/wireplumber/main.lua.d
 

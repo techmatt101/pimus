@@ -181,9 +181,8 @@ class Graph:
     def find_sink(self, pattern: str) -> Node | None:
         return find_node(self.sinks, pattern)
 
-    def find_source(self, pattern: str, *, excluding: str = "") -> Node | None:
-        candidates = [node for node in self.sources if node.get("name") != excluding]
-        return find_node(candidates, pattern)
+    def find_source(self, pattern: str) -> Node | None:
+        return find_node(self.sources, pattern)
 
     def find_card(self, pattern: str) -> Node | None:
         return find_node(self.cards, pattern)

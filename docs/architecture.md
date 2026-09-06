@@ -29,10 +29,10 @@ ADC, so the aux path above does not exist on one; see [configuration](configurat
 ## Audio ownership
 
 PipeWire and WirePlumber run in a persistent `smartamp` system-user session. The audio manager finds devices by
-configurable regular expressions instead of unstable ALSA card numbers, makes the music bus the default sink, publishes
-the XVF3800's ASR channel as the mono default voice source, and creates monitor loopbacks for enabled input routes.
-Anything that plays to the default is playing music, so it lands on that bus behind a trim and the music level rather
-than straight at the pinned hardware output.
+configurable regular expressions instead of unstable ALSA card numbers, makes the music bus the default sink, and
+creates monitor loopbacks for enabled input routes. Anything that plays to the default is playing music, so it lands
+on that bus behind a trim and the music level rather than straight at the pinned hardware output. The manager knows
+nothing about the microphone: what the assistant records is PipeWire's own configuration, described below.
 
 The XVF3800's USB capture is not a stereo microphone: the chip beamforms its four mics internally and presents two
 independent DSP outputs — channel 0 is the Conference stream (post-processed for human listeners) and channel 1 is the
@@ -40,15 +40,20 @@ ASR stream (tuned for wake-word and speech recognition). The chip's pipeline, it
 module owns each part of it are in [xvf3800](xvf3800.md). A unit may carry a ReSpeaker Lite instead
 ([respeaker-lite](respeaker-lite.md)): the same remap then lifts its channel 0, the processed output, and the AEC
 reference lands on its playback endpoint the same way. Which array is fitted is a row in `boards.yml` that inventory
-reads its defaults from; nothing in either daemon branches on it. Recording the device in mono would downmix the two, so the
-audio manager loads a `module-remap-source` that lifts exactly the ASR channel (`smartamp_voice_capture_channel`,
-default 1) into the `smartamp_voice_capture` source and makes that the default. Linux Voice Assistant records this one
-channel; it must not be given a second channel, which it would forward to Home Assistant advertised as a far-end echo
-reference for server-side AEC — on this device that second channel is the voice itself, not a reference.
+reads its defaults from; nothing in either daemon branches on it. Recording the device in mono would downmix the two, so
+Ansible deploys two pieces of PipeWire configuration: a WirePlumber rule
+(`60-smartamp-voice-input.conf`) that renames the array's capture node to the fixed `smartamp_voice_input` and starts
+its card on its full-duplex profile, and a loopback drop-in (`60-smartamp-voice-capture.conf`) that lifts exactly the
+ASR channel (`smartamp_voice_capture_channel`, default 1) out of that node into the mono `smartamp_voice_capture`
+source, which outranks every other source for the default. The loopback targets the node by name and never falls back,
+so an unplugged or power-cycled array means silence until it returns and the link re-forms on its own. Linux Voice
+Assistant records this one channel; it must not be given a second channel, which it would forward to Home Assistant
+advertised as a far-end echo reference for server-side AEC — on this device that second channel is the voice itself,
+not a reference. The one microphone-side thing the audio manager does is send the array its echo reference.
 
-The voice service waits for a fresh audio-manager status file containing both
-devices. It then lets the audio library resolve PipeWire's selected defaults;
-`default` is not passed as a literal hardware-device name.
+The voice service waits for a fresh audio-manager status file naming the output sink and voice bus, and for PipeWire's
+source list to carry both capture nodes. It then lets the audio library resolve PipeWire's selected defaults; `default`
+is not passed as a literal hardware-device name.
 
 Every music input — Sendspin, the USB computer, and aux — feeds one named music bus. Its monitor is bridged to
 HiFiBerry through a single gain-controlled loopback; only Linux Voice Assistant bypasses it. The bus exists whether or

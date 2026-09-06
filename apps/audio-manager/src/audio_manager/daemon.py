@@ -21,12 +21,12 @@ from .buses.voice import VoiceBus
 from .buses.voice_meter import VoiceLevelMeter
 from .config import AudioConfig
 from .control.commands import CommandHandler
+from .echo_reference import EchoReference
 from smartamp_audio.server import ControlServer
 from smartamp_audio.graph import Graph, Node
 from .idle import IdleTracker, playing_clients
 from .modules import ModuleRegistry
 from .routes import SourceRoutes
-from .microphone.microphone import MicrophoneStatus, build as build_microphone
 
 
 LOG = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ class GraphStatus:
     these have to be carried out of the rebuild.
     """
 
-    microphone: MicrophoneStatus
+    echo_reference: dict[str, Any]
     sources: dict[str, dict[str, Any]]
 
 
@@ -79,7 +79,9 @@ class AudioManager:
         self.voice_bus = VoiceBus(
             config.voice_bus, self.graph, self.modules, self.voice_meter
         )
-        self.microphone = build_microphone(config.microphone, self.graph, self.modules)
+        self.echo_reference = EchoReference(
+            config.echo_reference, self.graph, self.modules
+        )
         self.routes = SourceRoutes(config.sources, self.graph, self.modules)
         self.music_register = MusicVolumeSync()
         self.idle = IdleTracker(config.idle_teardown_seconds)
@@ -284,14 +286,14 @@ class AudioManager:
             self.output.guard()
 
     def _reconcile_graph(self, sink: Node | None, idle: bool) -> GraphStatus:
-        """Put the buses, microphone and routes back where they belong."""
+        """Put the buses, echo reference and routes back where they belong."""
         background_sink = self.background.reconcile(sink, bridged=not idle)
         self._sync_music_register(background_sink)
         self.voice_bus.reconcile(sink, bridged=not idle)
         self.voice_bus.apply_gain(self.voice_volume)
-        microphone = self.microphone.reconcile(sink, awake=not idle)
+        reference = self.echo_reference.reconcile(sink, wanted=not idle)
         self.apply_ducking()
-        self._adopt_defaults(sink, microphone.source, background_sink)
+        self._adopt_default_sink(sink, background_sink)
         source_status = self.routes.reconcile(
             output=sink,
             background_sink=background_sink,
@@ -299,7 +301,7 @@ class AudioManager:
             idle=idle,
         )
         output.hold_client_streams(self.graph, sink, self.music_level)
-        return GraphStatus(microphone=microphone, sources=source_status)
+        return GraphStatus(echo_reference=reference, sources=source_status)
 
     def _publish(self, sink: Node | None, found: GraphStatus) -> None:
         published = {
@@ -308,8 +310,6 @@ class AudioManager:
             "vol_muted": self.vol_muted,
             "output_ceiling": self.output_ceiling,
             "trims": self.trims(),
-            "voice_input": found.microphone.device,
-            "voice_capture": found.microphone.capture,
             "background": {
                 **self.background.status(),
                 "ducked": self.desired_ducking(),
@@ -319,7 +319,7 @@ class AudioManager:
                 **self.voice_bus.status(),
                 "volume_percent": self.voice_volume,
             },
-            "aec_reference": found.microphone.echo_reference,
+            "aec_reference": found.echo_reference,
             "sources": found.sources,
             "idle": self.idle.idle,
             "standby": self.idle.standby,
@@ -385,11 +385,8 @@ class AudioManager:
         self.graph.invalidate()
         self.routes.apply_trim(name, self.music_level)
 
-    def _adopt_defaults(
-        self,
-        sink: Node | None,
-        voice_source: Node | None,
-        background_sink: Node | None,
+    def _adopt_default_sink(
+        self, sink: Node | None, background_sink: Node | None
     ) -> None:
         # A client that plays to the default is playing music, so it belongs on
         # the music bus, where it lands behind a trim and the music level rather
@@ -402,8 +399,6 @@ class AudioManager:
         # scheduled reconcile and never quiesce.
         if default and pactl.default_sink() != default["name"]:
             pactl.set_default_sink(default["name"])
-        if voice_source and pactl.default_source() != voice_source["name"]:
-            pactl.set_default_source(voice_source["name"])
 
     def _wait_for_work(self) -> None:
         # Ducking is applied when a set-duck arrives, when a client holding a

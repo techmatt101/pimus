@@ -18,7 +18,7 @@ settings named here are explained in [configuration](configuration.md).
 | Self-powered USB hub | Required on a Pi Zero 2 W, useful anywhere | anywhere |
 
 Also: a microSD card and a 64-bit Raspberry Pi OS Lite install (Trixie or newer
-for Sendspin; Bookworm works with `sendspin_enabled: false`).
+for Sendspin and the voice assistant; Bookworm works with both switched off).
 
 ## Which HiFiBerry board
 

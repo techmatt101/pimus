@@ -1,22 +1,24 @@
-"""What the microphone is sent so it can subtract the room's own playback.
+"""The far-end reference a device with its own echo canceller is sent.
 
-A device that cancels echo in its own DSP needs the far-end reference: what the
-speakers are playing, delivered ahead of the acoustic echo. On the ReSpeaker
+A DSP that subtracts the room's own playback from what it hears has to be told
+what the speakers are playing, ahead of the acoustic echo. On the ReSpeaker
 arrays that is the output sink's monitor looped into the array's USB playback
-endpoint - its physical speaker jack is unused, but the route is what lets the
-device subtract our own output from the microphones.
+endpoint: its physical speaker jack is unused, but the route is what lets the
+device cancel our own output. Nothing else about the device is this daemon's
+business - which sink receives the reference is a match expression, and what
+the device records is published by PipeWire's own configuration.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any, Protocol
+from typing import Any
 
 from smartamp_audio import graph
 from smartamp_audio import pactl
-from ..config import EchoReferenceConfig
+from .config import EchoReferenceConfig
 from smartamp_audio.graph import Graph, Node
-from ..modules import ModuleRegistry, stream_media_name
+from .modules import ModuleRegistry, stream_media_name
 
 
 LOG = logging.getLogger(__name__)
@@ -24,27 +26,8 @@ LOG = logging.getLogger(__name__)
 REFERENCE_ROLE = "_aec"
 
 
-class EchoReference(Protocol):
-    def reconcile(self, output: Node | None, *, wanted: bool = True) -> dict[str, Any]:
-        """Keep the reference flowing while wanted; answers with the status
-        file's `aec_reference` section."""
-        ...
-
-
-class NoEchoReference:
-    """A microphone that is sent nothing: it cancels no echo, or hears its own."""
-
-    def reconcile(self, output: Node | None, *, wanted: bool = True) -> dict[str, Any]:
-        return {
-            "enabled": False,
-            "available": False,
-            "endpoints_available": False,
-            "sink": None,
-        }
-
-
-class PlaybackEchoReference:
-    """The output's monitor, looped into the device's own playback endpoint."""
+class EchoReference:
+    """The output's monitor, looped into the reference sink at unity."""
 
     def __init__(
         self, config: EchoReferenceConfig, view: Graph, registry: ModuleRegistry
@@ -54,6 +37,8 @@ class PlaybackEchoReference:
         self._modules = registry
 
     def reconcile(self, output: Node | None, *, wanted: bool = True) -> dict[str, Any]:
+        """Keep the reference flowing while wanted; answers with the status
+        file's `aec_reference` section."""
         reference_sink = self._graph.find_sink(self.config.sink_match)
         monitor = (
             self._graph.source_named(graph.monitor_name(output["name"]))

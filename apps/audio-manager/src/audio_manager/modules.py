@@ -109,28 +109,6 @@ class ModuleRegistry:
             before_load=lambda: self._announce_bridging(sink),
         )
 
-    def ensure_remap_source(
-        self, role: str, name: str, master: str, master_channel: str, description: str
-    ) -> bool:
-        return self._ensure(
-            role,
-            "module-remap-source",
-            binding=(master, master_channel),
-            adopt_arguments=(
-                f"master={master}",
-                f"master_channel_map={master_channel}",
-            ),
-            arguments=(
-                f"source_name={name}",
-                f"master={master}",
-                "channels=1",
-                "channel_map=mono",
-                f"master_channel_map={master_channel}",
-                "remix=no",
-                f"source_properties=device.description={description}",
-            ),
-        )
-
     def _ensure(
         self,
         role: str,

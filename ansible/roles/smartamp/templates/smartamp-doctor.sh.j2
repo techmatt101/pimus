@@ -110,11 +110,33 @@ printf 'VL805 firmware must be 000137ad or newer for USB power switching\n'
 {% endif %}
 
 heading 'PipeWire'
-if runuser -u {{ smartamp_service_user | quote }} -- env XDG_RUNTIME_DIR=/run/user/{{ smartamp_uid }} PULSE_SERVER=/run/user/{{ smartamp_uid }}/pulse/native pactl info; then
+smartamp_pactl() {
+    runuser -u {{ smartamp_service_user | quote }} -- env XDG_RUNTIME_DIR=/run/user/{{ smartamp_uid }} PULSE_SERVER=/run/user/{{ smartamp_uid }}/pulse/native pactl "$@"
+}
+if smartamp_pactl info; then
     pass 'PipeWire Pulse is reachable'
 else
     fail 'PipeWire Pulse is not reachable by {{ smartamp_service_user }}'
 fi
+{% if voice_assistant_enabled %}
+{# The capture side is PipeWire's own configuration rather than the audio
+   manager's, so it is read from the graph, not the status file: the array's
+   capture node under the fixed name the loopback targets, the mono source that
+   loopback publishes, and which of them the assistant resolves as the default. #}
+{% set voice_default = smartamp_voice_capture_name if smartamp_voice_capture_channel is not none else smartamp_voice_input_name %}
+SOURCES=$(smartamp_pactl list short sources 2>/dev/null | awk '{ print $2 }')
+printf '%s\n' "$SOURCES" | grep -qxF {{ smartamp_voice_input_name | quote }} \
+    && pass '{{ smartamp_respeaker_caps.label }} capture node is published as {{ smartamp_voice_input_name }}' \
+    || fail '{{ smartamp_respeaker_caps.label }} capture node {{ smartamp_voice_input_name }} is missing: array unplugged, or its card is on a profile with no input'
+{% if smartamp_voice_capture_channel is not none %}
+printf '%s\n' "$SOURCES" | grep -qxF {{ smartamp_voice_capture_name | quote }} \
+    && pass 'Voice capture source {{ smartamp_voice_capture_name }} is published' \
+    || fail 'Voice capture source {{ smartamp_voice_capture_name }} is missing; PipeWire did not load 60-smartamp-voice-capture.conf'
+{% endif %}
+[ "$(smartamp_pactl get-default-source 2>/dev/null)" = {{ voice_default | quote }} ] \
+    && pass 'Default source is {{ voice_default }}, which the voice assistant records' \
+    || fail 'Default source is not {{ voice_default }}; the voice assistant is recording something else'
+{% endif %}
 STATUS_FILE=/run/user/{{ smartamp_uid }}/smartamp-audio-status.json
 if [ -r "$STATUS_FILE" ] && jq -e 'type == "object"' "$STATUS_FILE" >/dev/null 2>&1; then
     jq . "$STATUS_FILE"
@@ -122,12 +144,6 @@ if [ -r "$STATUS_FILE" ] && jq -e 'type == "object"' "$STATUS_FILE" >/dev/null 2
         && pass 'HiFiBerry is selected as the output sink' \
         || fail 'Audio status has no selected output sink'
 {% if voice_assistant_enabled %}
-    jq -e '.voice_input | type == "string" and length > 0' "$STATUS_FILE" >/dev/null 2>&1 \
-        && pass 'ReSpeaker is selected as the voice input' \
-        || fail 'Audio status has no selected voice input'
-    jq -e '.voice_capture.channel == null or (.voice_capture.source | type == "string" and length > 0)' "$STATUS_FILE" >/dev/null 2>&1 \
-        && pass 'Configured voice capture channel is ready' \
-        || fail 'Configured voice capture channel is unavailable'
     jq -e '(.idle == true or .voice_bus.available == true) and (.voice_bus.sink | type == "string" and length > 0)' "$STATUS_FILE" >/dev/null 2>&1 \
         && pass 'Voice playback bus is available' \
         || fail 'Voice playback bus is unavailable'

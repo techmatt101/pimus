@@ -48,7 +48,7 @@ def completed(*args: str, returncode: int = 0, stdout: str = "") -> Any:
 
 
 def fake_run(*args: str, check: bool = True) -> Any:
-    defaults = {"get-default-sink": "hifiberry", "get-default-source": "xvf_mic"}
+    defaults = {"get-default-sink": "hifiberry"}
     stdout = next((name + "\n" for key, name in defaults.items() if key in args), "")
     return completed(*args, stdout=stdout)
 
@@ -63,13 +63,12 @@ def volume_writes(run: mock.Mock) -> list[tuple[str, str]]:
 
 class ManagerTestCase(unittest.TestCase):
     def make_manager(self, raw_config: dict[str, Any]) -> AudioManager:
-        microphone = {"match": "XVF3800", **raw_config.get("microphone", {})}
         base: dict[str, Any] = {"output_match": "HiFiBerry", "sources": {}}
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         path = Path(directory.name)
         manager = AudioManager(
-            AudioConfig.from_mapping({**base, **raw_config, "microphone": microphone}),
+            AudioConfig.from_mapping({**base, **raw_config}),
             path / "control.sock",
             path / "status.json",
         )
@@ -579,13 +578,11 @@ class ReconcileTests(ManagerTestCase):
     def test_aec_reference_bridges_output_monitor_into_the_xvf3800(self) -> None:
         manager = self.make_manager(
             {
-                "microphone": {
-                    "echo_reference": {
-                        "enabled": True,
-                        "sink_match": "XVF3800",
-                        "latency_ms": 40,
-                    }
-                }
+                "echo_reference": {
+                    "enabled": True,
+                    "sink_match": "XVF3800",
+                    "latency_ms": 40,
+                },
             }
         )
         loaded: list[tuple[str, tuple[str, ...]]] = []
@@ -660,13 +657,11 @@ class ReconcileTests(ManagerTestCase):
     def test_aec_reference_is_released_when_the_xvf3800_disappears(self) -> None:
         manager = self.make_manager(
             {
-                "microphone": {
-                    "echo_reference": {
-                        "enabled": True,
-                        "sink_match": "XVF3800",
-                        "latency_ms": 40,
-                    }
-                }
+                "echo_reference": {
+                    "enabled": True,
+                    "sink_match": "XVF3800",
+                    "latency_ms": 40,
+                },
             }
         )
         manager.modules.adopt("_aec", 30, ("hifiberry.monitor", "xvf_playback"))
@@ -693,212 +688,6 @@ class ReconcileTests(ManagerTestCase):
             {"enabled": True, "available": False, "endpoints_available": False, "sink": None},
         )
 
-    def test_voice_capture_publishes_the_asr_channel_as_the_default_source(
-        self,
-    ) -> None:
-        manager = self.make_manager({"microphone": {"capture_channel": 1}})
-        loaded: list[tuple[str, tuple[str, ...]]] = []
-        listings: Listings = {
-            "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
-            "sources": [
-                # Listed first, and naming its master in a property, to prove
-                # the remap source can never be matched as the voice device.
-                {
-                    "name": "smartamp_voice_capture",
-                    "monitor_of_sink": 4294967295,
-                    "properties": {"device.master_device": "alsa_input.usb-XVF3800"},
-                },
-                {
-                    "name": "xvf_mic",
-                    "description": "reSpeaker XVF3800 Mic Array",
-                    "monitor_of_sink": 4294967295,
-                    "channel_map": "front-left,front-right",
-                },
-            ],
-            "sink-inputs": [],
-            "cards": [],
-        }
-
-        with self._patched_graph(listings, fake_run) as run, mock.patch.object(
-            pactl, "load_module", side_effect=self._recording_loader(loaded)
-        ), mock.patch("smartamp_audio.status.write") as status_write:
-            manager.reconcile()
-
-        # Channel 1 is the XVF3800's ASR output; front-right is its label in
-        # the device channel map. remix=no keeps the Conference channel out.
-        self.assertEqual(
-            loaded,
-            [
-                (
-                    "module-remap-source",
-                    (
-                        "source_name=smartamp_voice_capture",
-                        "master=xvf_mic",
-                        "channels=1",
-                        "channel_map=mono",
-                        "master_channel_map=front-right",
-                        "remix=no",
-                        "source_properties=device.description=SmartAmp_Voice_Capture",
-                    ),
-                )
-            ],
-        )
-        self.assertIn(
-            ("pactl", "set-default-source", "smartamp_voice_capture"),
-            [call.args for call in run.call_args_list],
-        )
-        status = status_write.call_args.args[1]
-        self.assertEqual(status["voice_input"], "xvf_mic")
-        self.assertEqual(
-            status["voice_capture"], {"channel": 1, "source": "smartamp_voice_capture"}
-        )
-
-    def test_voice_capture_waits_instead_of_using_the_wrong_channel(self) -> None:
-        manager = self.make_manager({"microphone": {"capture_channel": 1}})
-        listings: Listings = {
-            "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
-            "sources": [
-                {
-                    "name": "mono_mic",
-                    "description": "reSpeaker XVF3800 Mic Array",
-                    "monitor_of_sink": 4294967295,
-                    "channel_map": "mono",
-                }
-            ],
-            "sink-inputs": [],
-            "cards": [],
-        }
-
-        with self._patched_graph(listings, fake_run) as run, mock.patch.object(
-            pactl, "load_module"
-        ) as load_module, mock.patch("smartamp_audio.status.write") as status_write:
-            manager.reconcile()
-
-        load_module.assert_not_called()
-        self.assertNotIn(
-            ("pactl", "set-default-source", "mono_mic"),
-            [call.args for call in run.call_args_list],
-        )
-        status = status_write.call_args.args[1]
-        self.assertEqual(status["voice_capture"], {"channel": 1, "source": None})
-
-    def test_voice_capture_remap_is_rebuilt_when_the_master_is_recreated(self) -> None:
-        manager = self.make_manager({"microphone": {"capture_channel": 1}})
-        manager.modules.adopt("_voice_capture", 40, ("xvf_mic", "front-right"))
-        device = {
-            "index": 10,
-            "name": "xvf_mic",
-            "description": "reSpeaker XVF3800 Mic Array",
-            "monitor_of_sink": 4294967295,
-            "channel_map": "front-left,front-right",
-        }
-        listings: dict[str, Any] = {
-            "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
-            "sources": [device, {"name": "smartamp_voice_capture", "monitor_of_sink": 4294967295,
-                                 "properties": {"device.master_device": "xvf_mic"}}],
-            "sink-inputs": [],
-            "cards": [],
-            "modules": [{"index": 40, "name": "module-remap-source",
-                         "argument": "master=xvf_mic master_channel_map=front-right"}],
-        }
-        loaded: list[str] = []
-
-        def load_module(module: str, *arguments: str) -> int:
-            loaded.append(module)
-            listings["modules"].append(
-                {"index": 41, "name": module, "argument": " ".join(arguments)}
-            )
-            return 41
-
-        def run(*args: str, check: bool = True) -> Any:
-            if args[:2] == ("pactl", "unload-module"):
-                listings["modules"] = [
-                    module
-                    for module in listings["modules"]
-                    if str(module["index"]) != args[2]
-                ]
-                return completed(*args)
-            return fake_run(*args, check=check)
-
-        def reconcile() -> None:
-            with self._patched_graph(listings, run), mock.patch.object(
-                pactl, "load_module", side_effect=load_module
-            ), mock.patch("smartamp_audio.status.write"):
-                manager.reconcile()
-
-        # A settled graph keeps the adopted remap.
-        reconcile()
-        self.assertEqual(loaded, [])
-        self.assertEqual(manager.modules.id_of("_voice_capture"), 40)
-
-        # A USB power cycle recreates the master under the same name: the
-        # surviving module would publish silence from the dead node, so it is
-        # rebuilt against the new one.
-        device["index"] = 99
-        reconcile()
-        self.assertEqual(loaded, ["module-remap-source"])
-        self.assertEqual(manager.modules.id_of("_voice_capture"), 41)
-
-    def test_voice_card_without_an_input_profile_is_repaired(self) -> None:
-        manager = self.make_manager({"microphone": {"capture_channel": 1}})
-        # A USB power cycle re-enumerated the XVF3800 before its capture side
-        # was ready: WirePlumber restored an output-only profile, so no voice
-        # source exists even though the card is present.
-        listings: Listings = {
-            "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
-            "sources": [{"name": "hifiberry.monitor", "monitor_of_sink": 0}],
-            "sink-inputs": [],
-            "cards": [
-                {
-                    "name": "alsa_card.usb-XVF3800",
-                    "properties": {"device.product.name": "reSpeaker XVF3800"},
-                    "active_profile": "output:analog-stereo",
-                    "profiles": {
-                        "off": {"sinks": 0, "sources": 0, "priority": 0},
-                        "output:analog-stereo": {
-                            "sinks": 1,
-                            "sources": 0,
-                            "priority": 6500,
-                        },
-                        "pro-audio": {"sinks": 1, "sources": 1, "priority": 1},
-                    },
-                }
-            ],
-        }
-
-        with self._patched_graph(listings, fake_run) as run, mock.patch(
-            "smartamp_audio.status.write"
-        ):
-            manager.reconcile()
-
-        # The only profile with a source wins; it also keeps a sink, so the
-        # AEC reference endpoint survives the repair.
-        self.assertIn(
-            ("pactl", "set-card-profile", "alsa_card.usb-XVF3800", "pro-audio"),
-            [call.args for call in run.call_args_list],
-        )
-
-    def test_voice_capture_is_released_when_the_xvf3800_disappears(self) -> None:
-        manager = self.make_manager({"microphone": {"capture_channel": 1}})
-        manager.modules.adopt("_voice_capture", 40, ("xvf_mic", "front-right"))
-        listings: Listings = {
-            "sinks": [{"name": "hifiberry", "description": "HiFiBerry DAC2 ADC Pro"}],
-            "sources": [{"name": "hifiberry.monitor", "monitor_of_sink": 0}],
-            "sink-inputs": [],
-            "cards": [],
-            "modules": [{"index": 40}],
-        }
-
-        with self._patched_graph(listings, fake_run) as run, mock.patch(
-            "smartamp_audio.status.write"
-        ):
-            manager.reconcile()
-
-        self.assertNotIn("_voice_capture", manager.modules)
-        self.assertIn(
-            ("pactl", "unload-module", "40"), [call.args for call in run.call_args_list]
-        )
-
     @staticmethod
     def _recording_loader(loaded: list[tuple[str, tuple[str, ...]]]) -> Any:
         def load_module(module: str, *arguments: str) -> int:
@@ -915,12 +704,10 @@ class IdleTeardownTests(ManagerTestCase):
         manager = self.make_manager(
             {
                 "idle_teardown_seconds": 60,
-                "microphone": {
-                    "echo_reference": {
-                        "enabled": True,
-                        "sink_match": "XVF3800",
-                        "latency_ms": 40,
-                    }
+                "echo_reference": {
+                    "enabled": True,
+                    "sink_match": "XVF3800",
+                    "latency_ms": 40,
                 },
                 "background": {
                     "enabled": True,

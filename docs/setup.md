@@ -5,8 +5,10 @@ idempotent: run it as often as you like, and it applies later changes safely.
 
 ## 1. Prepare the Pi
 
-Flash 64-bit **Raspberry Pi OS Lite** (Bookworm or Trixie; Trixie or newer for
-Sendspin, which needs Python 3.12) with Raspberry Pi Imager, and in its advanced
+Flash 64-bit **Raspberry Pi OS Lite** (Trixie or newer for Sendspin, which
+needs Python 3.12, and for the voice assistant, whose capture source is
+PipeWire 1.x configuration; Bookworm works with both off) with Raspberry Pi
+Imager, and in its advanced
 options enable SSH and create your normal admin user. Nothing else is needed on
 the Pi — it never gets Ansible, pnpm, or a TypeScript toolchain.
 

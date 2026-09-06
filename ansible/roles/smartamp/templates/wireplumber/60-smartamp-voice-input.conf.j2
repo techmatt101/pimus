@@ -1,0 +1,47 @@
+# The microphone array's capture node, as PipeWire's own configuration sees it
+# (WirePlumber 0.5+, Trixie). Two rules on the {{ smartamp_respeaker_caps.label }}:
+#
+# 1. The card starts on its full-duplex profile. After a USB power cycle the
+#    card can be probed before its capture side is ready, and WirePlumber then
+#    settles on an output-only profile whose input node never appears; naming
+#    the profile here is what used to be a repair the audio manager made on
+#    every reconcile. A profile name the card does not offer is ignored, and
+#    WirePlumber picks its best as before.
+# 2. The capture node gets a fixed name. The ALSA name carries the device's
+#    USB serial, which differs per unit, and the voice capture loopback
+#    (pipewire.conf.d) has to name its target: `{{ smartamp_voice_input_name }}`
+#    is that name on every amp, whatever array it carries. The node also
+#    outranks every other capture device for the default source, so a unit
+#    with no channel remap records the array as it is.
+#
+# The array is matched by the same expression inventory uses for its echo
+# reference sink, restricted to USB capture; the USB audio gadget's card is
+# a platform device and does not match.
+monitor.alsa.rules = [
+  {
+    matches = [
+      {
+        device.name = "~alsa_card[.]usb-.*({{ smartamp_voice_input_match }}).*"
+      }
+    ]
+    actions = {
+      update-props = {
+        device.profile = "output:analog-stereo+input:analog-stereo"
+      }
+    }
+  }
+  {
+    matches = [
+      {
+        node.name = "~alsa_input[.]usb-.*({{ smartamp_voice_input_match }}).*"
+      }
+    ]
+    actions = {
+      update-props = {
+        node.name = "{{ smartamp_voice_input_name }}"
+        node.description = "{{ smartamp_respeaker_caps.label }} capture"
+        priority.session = 9000
+      }
+    }
+  }
+]

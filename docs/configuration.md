@@ -381,12 +381,15 @@ the pair by name. See [hardware](hardware.md#which-microphone-array), [xvf3800](
 Either array's USB capture channels are separate DSP outputs, not a stereo pair. On the XVF3800 channel 0 is the
 Conference stream (tuned for human listeners) and channel 1 the ASR stream (tuned for recognition); on the Lite channel
 0 is the processed output and channel 1 a raw microphone. `smartamp_voice_capture_channel` (defaulting to the array's
-ASR channel) tells the audio manager which channel to publish as the mono default source; set it to `null` to capture
-a device unmapped (a genuinely mono microphone). The voice assistant's capture is hardcoded to one channel in its systemd unit
-because that mono source is the entire capture either way — a second LVA channel would be forwarded to Home Assistant
-labelled as a far-end echo reference for server-side AEC, and on the XVF3800 that channel carries the voice, not an echo
-reference. If the selected channel is missing or its remap is not published yet, startup waits rather than silently
-recording a different output. Channel indices must be non-negative integers (or `null` for explicit unmapped capture).
+ASR channel) names the channel a PipeWire loopback drop-in lifts into the mono `smartamp_voice_capture_name` source
+that becomes the default; set it to `null` to capture the device unmapped (a genuinely mono microphone), in which case
+the array's own node, renamed to `smartamp_voice_input_name`, is the default instead. The voice assistant's capture is
+hardcoded to one channel in its systemd unit because that mono source is the entire capture either way — a second LVA
+channel would be forwarded to Home Assistant labelled as a far-end echo reference for server-side AEC, and on the
+XVF3800 that channel carries the voice, not an echo reference. Startup waits for both sources to be published rather
+than silently recording a different output. The channel is `0`, `1`, or `null`; the arrays present a stereo pair, and
+preflight refuses anything else by name. Both drop-ins are PipeWire 1.x and WirePlumber 0.5 configuration, so voice
+needs Trixie, as Sendspin already does.
 
 ## ReSpeaker effects
 

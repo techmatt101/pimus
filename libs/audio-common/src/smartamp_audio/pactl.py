@@ -75,16 +75,8 @@ def default_sink() -> str:
     return process.run("pactl", "get-default-sink", check=False).stdout.strip()
 
 
-def default_source() -> str:
-    return process.run("pactl", "get-default-source", check=False).stdout.strip()
-
-
 def set_default_sink(sink_name: str) -> None:
     process.run("pactl", "set-default-sink", sink_name)
-
-
-def set_default_source(source_name: str) -> None:
-    process.run("pactl", "set-default-source", source_name)
 
 
 def set_card_profile(card_name: str, profile: str) -> None:

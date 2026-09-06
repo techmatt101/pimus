@@ -1,0 +1,40 @@
+# The mono source the voice assistant records: one channel of the microphone
+# array, lifted into a source of its own (PipeWire 1.x, Trixie).
+#
+# The array's USB capture is a set of DSP outputs, not a stereo pair - on the
+# XVF3800 channel 0 is the Conference stream and channel 1 the ASR stream the
+# wake word must hear; on the ReSpeaker Lite channel 0 is the processed output
+# and channel 1 a raw microphone. Recording the device in mono would downmix
+# them, so this loopback captures exactly one channel and publishes it as a
+# mono source that outranks every other for the default the assistant resolves.
+#
+#   channel {{ smartamp_voice_capture_channel }} ({{ smartamp_voice_capture_position }}) of {{ smartamp_voice_input_name }} -> {{ smartamp_voice_capture_name }}
+#
+# The capture side targets the array by the fixed name WirePlumber gives it
+# (wireplumber.conf.d/60-smartamp-voice-input.conf) and never falls back to
+# another source: with the array unplugged, or dark while the panel sleeps,
+# the assistant hears silence and the link re-forms as soon as the node is
+# back, which a USB power cycle used to defeat when the remap was a
+# PulseAudio module. Passive, so the array can suspend when nothing records.
+context.modules = [
+  {
+    name = libpipewire-module-loopback
+    args = {
+      node.description = "{{ smartamp_respeaker_caps.label }} voice capture"
+      capture.props = {
+        node.name = "{{ smartamp_voice_capture_name }}.input"
+        target.object = "{{ smartamp_voice_input_name }}"
+        audio.position = [ {{ smartamp_voice_capture_position }} ]
+        stream.dont-remix = true
+        node.passive = true
+        node.dont-fallback = true
+      }
+      playback.props = {
+        node.name = "{{ smartamp_voice_capture_name }}"
+        media.class = "Audio/Source"
+        audio.position = [ MONO ]
+        priority.session = 10000
+      }
+    }
+  }
+]

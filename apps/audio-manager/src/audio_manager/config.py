@@ -47,22 +47,18 @@ class VoiceBusConfig(BusConfig):
 
 @dataclass(frozen=True)
 class EchoReferenceConfig:
+    """The output's monitor, looped into whichever sink matches.
+
+    What the assistant records is not here: the voice capture source is
+    PipeWire's own configuration, deployed beside this daemon rather than
+    built by it.
+    """
+
     enabled: bool
+    # Matched against the reference sink's node name, description and
+    # properties; the array's row in boards.yml is the usual source.
     sink_match: str
     latency_ms: int
-
-
-@dataclass(frozen=True)
-class MicrophoneConfig:
-    # Matched against the capture device's node name, description and
-    # properties; the array's row in boards.yml is the usual source.
-    match: str
-    # The device channel published as the mono source the assistant records,
-    # or None to record the device as it is. A DSP array's channels are
-    # separate outputs, not a stereo pair, so this picks the one meant for
-    # recognition.
-    capture_channel: int | None
-    echo_reference: EchoReferenceConfig
 
 
 @dataclass(frozen=True)
@@ -101,7 +97,7 @@ class SourceConfig:
 @dataclass(frozen=True)
 class AudioConfig:
     output_match: str
-    microphone: MicrophoneConfig
+    echo_reference: EchoReferenceConfig
     startup_volume_percent: int
     resync_seconds: float
     # Seconds of silence before the persistent bridges are released so the
@@ -122,7 +118,7 @@ class AudioConfig:
         voice_bus = _section(raw, "voice_bus")
         return cls(
             output_match=str(raw.get("output_match", "")),
-            microphone=_microphone(_section(raw, "microphone")),
+            echo_reference=_echo_reference(_section(raw, "echo_reference")),
             startup_volume_percent=volume.clamp(raw.get("startup_volume_percent", 100)),
             resync_seconds=float(raw.get("resync_seconds", DEFAULT_RESYNC_SECONDS)),
             idle_teardown_seconds=max(
@@ -165,25 +161,13 @@ class AudioConfig:
         )
 
 
-def _microphone(raw: Mapping[str, Any]) -> MicrophoneConfig:
-    channel = raw.get("capture_channel")
-    if channel is not None and (
-        isinstance(channel, bool) or not isinstance(channel, int) or channel < 0
-    ):
-        raise ValueError(
-            "microphone.capture_channel must be a non-negative integer or null"
-        )
-    reference = _section(raw, "echo_reference")
-    return MicrophoneConfig(
-        match=str(raw.get("match", "")),
-        capture_channel=channel,
-        echo_reference=EchoReferenceConfig(
-            enabled=bool(reference.get("enabled", False)),
-            # A pattern that can never match, so a disabled reference also
-            # reports no candidate sink.
-            sink_match=str(reference.get("sink_match", "a^")),
-            latency_ms=int(reference.get("latency_ms", DEFAULT_LATENCY_MS)),
-        ),
+def _echo_reference(raw: Mapping[str, Any]) -> EchoReferenceConfig:
+    return EchoReferenceConfig(
+        enabled=bool(raw.get("enabled", False)),
+        # A pattern that can never match, so a disabled reference also
+        # reports no candidate sink.
+        sink_match=str(raw.get("sink_match", "a^")),
+        latency_ms=int(raw.get("latency_ms", DEFAULT_LATENCY_MS)),
     )
 
 

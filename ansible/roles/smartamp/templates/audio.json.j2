@@ -2,18 +2,15 @@
 {
   "output_match": {{ smartamp_output_match | to_json }},
   "startup_volume_percent": {{ smartamp_startup_volume_percent | int }},
-{# The microphone the assistant hears through, as one section: the device, the
-     channel published for it to record, and the echo reference the device is
-     sent. Both ReSpeaker arrays fill all three from their boards.yml row; a
-     plain microphone would set the channel null and the reference off. #}
-  "microphone": {
-    "match": {{ smartamp_voice_input_match | to_json }},
-    "capture_channel": {{ smartamp_voice_capture_channel | to_json }},
-    "echo_reference": {
-      "enabled": {{ smartamp_aec_reference_enabled | bool | to_json }},
-      "sink_match": {{ smartamp_aec_reference_match | to_json }},
-      "latency_ms": {{ smartamp_loopback_latency_ms | int }}
-    }
+{# The far-end echo reference the microphone array is sent: the output's
+     monitor looped into the array's own playback endpoint, so its DSP can
+     subtract the room's playback from what it hears. What the assistant
+     records is not the manager's to build - PipeWire's own configuration
+     publishes the voice capture source (templates/pipewire/). #}
+  "echo_reference": {
+    "enabled": {{ smartamp_aec_reference_enabled | bool | to_json }},
+    "sink_match": {{ smartamp_aec_reference_match | to_json }},
+    "latency_ms": {{ smartamp_loopback_latency_ms | int }}
   },
 {# The music bus. Every music input plays into it, and its own sink volume is
      the music level's public face - a real PipeWire control anything can read,

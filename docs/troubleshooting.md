@@ -123,7 +123,7 @@ stream, right ear the ASR stream the assistant actually gets:
 
 ```sh
 sudo -u smartamp XDG_RUNTIME_DIR=/run/user/$(id -u smartamp) timeout 15 \
-  parecord --device=$(pactl list sources short | awk '/XVF3800/ && !/monitor/ {print $2; exit}') \
+  parecord --device=smartamp_voice_input \
   --channels=2 --file-format=wav /tmp/mic.wav
 ```
 
@@ -444,20 +444,30 @@ service log. The Node dependency may compile `node-hid` locally on Raspberry Pi;
 ## Home Assistant does not discover voice
 
 If `smartamp-voice-assistant` reports that audio routing did not become ready,
-inspect `/run/user/*/smartamp-audio-status.json`. Both `sink` and `voice_input`
-must contain device names. Then check `smartamp-audio-manager` logs for the
-HiFiBerry or ReSpeaker match that is missing. `smartamp-doctor` looks for the
-array `respeaker_board` names, by USB id, so a unit configured for an XVF3800
-with a ReSpeaker Lite plugged in (or the reverse) fails there by name: the two
-match different node names and want different capture channels, and neither
-works under the other's settings.
+run `smartamp-doctor`. Its PipeWire section checks the two halves separately:
+the status file at `/run/user/*/smartamp-audio-status.json` must name the
+output `sink` (check `smartamp-audio-manager` logs for the HiFiBerry match if
+not), and `pactl list sources short` as the `smartamp` user must list
+`smartamp_voice_input` (the array's capture node, renamed by the WirePlumber
+rule in `/etc/wireplumber/wireplumber.conf.d/60-smartamp-voice-input.conf`)
+and `smartamp_voice_capture` (the mono ASR source the loopback in
+`/etc/pipewire/pipewire.conf.d/60-smartamp-voice-capture.conf` lifts from
+it), and `pactl get-default-source` must answer with the latter. The doctor
+also looks for the array `respeaker_board` names, by USB id, so a unit
+configured for an XVF3800 with a ReSpeaker Lite plugged in (or the reverse)
+fails there by name: the two match different node names and want different
+capture channels, and neither works under the other's settings.
 
-`voice_capture` in the same file shows the ASR-channel remap: `source` should
-read `smartamp_voice_capture`, and that source should be the PipeWire default
-(`pactl get-default-source`). If `source` is null with a channel configured,
-the device's channel map did not contain that channel — the manager logs the
-map it saw — and the assistant is hearing the raw device instead, which on the
-XVF3800 means a Conference/ASR downmix rather than the ASR stream.
+If the array is plugged in but `smartamp_voice_input` is missing, WirePlumber
+did not rename its node: compare the ALSA name in `pactl list sources short`
+against the rule's pattern, and check the card is on a profile with an input
+(`pactl list cards`), which the rule asks for but a stored profile can
+override; `pactl set-card-profile <card> output:analog-stereo+input:analog-stereo`
+puts it right. If `smartamp_voice_capture` exists but the assistant hears
+silence, the loopback is not linked to the node: `pw-link -l` shows whether
+`smartamp_voice_capture.input` has a link from `smartamp_voice_input`, and the
+node's channel positions (`pactl list sources`, Channel Map) must include the
+one the drop-in names, front-left for channel 0 or front-right for channel 1.
 
 Ensure the Pi and Home Assistant share an mDNS-capable LAN/VLAN, and ports 6053/tcp and mDNS are not filtered. Add it
 manually through **Settings → Devices & services → ESPHome** using the Pi IP and port 6053 if discovery is blocked.

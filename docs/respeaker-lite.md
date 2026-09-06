@@ -22,12 +22,12 @@ One USB audio device, ids `2886:0019`, product string `ReSpeaker Lite`, at
 | Capture | 2 | Channel 0 is the processed output: echo cancellation, interference cancellation, noise suppression, and gain control. Channel 1 is one raw microphone. |
 | Playback | 2 | Whatever the Pi plays is the DSP's far-end echo reference, and is also played out of the speaker connector or the jack. |
 
-The audio manager therefore remaps capture channel 0 into the mono
-`smartamp_voice_capture` source (the XVF3800 uses channel 1), and the AEC
-reference loopback lands on the same playback sink it would on an XVF3800.
-Nothing in the audio manager or the voice assistant branches on which array is
-fitted; the difference is entirely in the `boards.yml` row that inventory reads
-its defaults from.
+The voice capture loopback therefore lifts capture channel 0 into the mono
+`smartamp_voice_capture` source (the XVF3800 uses channel 1), and the audio
+manager's AEC reference loopback lands on the same playback sink it would on
+an XVF3800. Nothing in the audio manager, the PipeWire configuration, or the
+voice assistant branches on which array is fitted; the difference is entirely
+in the `boards.yml` row that inventory reads its defaults from.
 
 There is no host control over USB. The DSP's parameters cannot be read or
 tuned from the Pi, so `xvf_host` is not installed, and the WS2812 is released
