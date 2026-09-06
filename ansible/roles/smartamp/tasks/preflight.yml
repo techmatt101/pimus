@@ -33,14 +33,14 @@
 - name: Check the target platform
   ansible.builtin.assert:
     that:
-      - ansible_architecture in ['aarch64', 'arm64']
+      - ansible_facts['architecture'] in ['aarch64', 'arm64']
       - smartamp_board | length > 0
-      - ansible_os_family == 'Debian'
+      - ansible_facts['os_family'] == 'Debian'
     fail_msg: >-
       This recipe requires 64-bit Raspberry Pi OS on one of
       {{ smartamp_boards.values() | map(attribute='label') | join(', ') }}. Detected
-      {{ raspberry_pi_model }}, {{ ansible_distribution }} {{ ansible_distribution_version }},
-      {{ ansible_architecture }}.
+      {{ raspberry_pi_model }}, {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }},
+      {{ ansible_facts['architecture'] }}.
 
 - name: Select the board capabilities
   ansible.builtin.set_fact:
@@ -52,11 +52,11 @@
 # recording a downmix of the array, so voice needs Trixie, as Sendspin does.
 - name: Require Trixie for the voice assistant
   ansible.builtin.assert:
-    that: ansible_distribution_major_version | int >= 13
+    that: ansible_facts['distribution_major_version'] | int >= 13
     fail_msg: >-
       voice_assistant_enabled needs Raspberry Pi OS Trixie (Debian 13) or newer,
       whose PipeWire reads the voice capture configuration; this unit runs
-      {{ ansible_distribution }} {{ ansible_distribution_version }}.
+      {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}.
   when: voice_assistant_enabled | bool
 
 # The HiFiBerry board is named rather than detected, because the recipe tells
@@ -247,10 +247,10 @@
 # the flag.
 - name: Refuse to disable WiFi over a WiFi connection
   ansible.builtin.assert:
-    that: ansible_default_ipv4.interface | default('') is not match('^wl')
+    that: ansible_facts['default_ipv4']['interface'] | default('') is not match('^wl')
     fail_msg: >-
       smartamp_wifi_enabled is off but {{ inventory_hostname }} routes over
-      {{ ansible_default_ipv4.interface | default('an unknown interface') }}.
+      {{ ansible_facts['default_ipv4']['interface'] | default('an unknown interface') }}.
       Move the Pi onto Ethernet before disabling the radio.
   when: not (smartamp_wifi_enabled | bool)
 
