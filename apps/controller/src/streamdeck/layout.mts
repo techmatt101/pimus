@@ -6,6 +6,7 @@ import {MediaDial} from './dials/media-dial.mjs'
 import {PageDial} from './dials/page-dial.mjs'
 import {VolumeDial} from './dials/volume-dial.mjs'
 import type {PageGrid, StreamDeckLayout, StreamDeckPage} from './grid.mjs'
+import {AnnouncementScreen} from './screens/announcement-screen.mjs'
 import {IdleScreen} from './screens/idle-screen.mjs'
 import {NowPlayingScreen} from './screens/now-playing-screen.mjs'
 import {StartingScreen} from './screens/starting-screen.mjs'
@@ -300,6 +301,7 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
 
     const strip = new TouchStrip({
         resting: [starting, nowPlaying, idle],
+        alerts: [new AnnouncementScreen(model)],
         dials,
         clock,
         ...(notifications ? {notifications} : {}),

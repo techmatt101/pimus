@@ -180,19 +180,28 @@ def install_media_event_adapters() -> None:
         announcement: bool = False,
         done_callback: Callable[[], None] | None = None,
     ) -> Iterable[Any]:
-        callback = done_callback
-        if not announcement:
-            upstream_callback = done_callback
+        emitter = getattr(self.server, "_emit", None)
 
-            def finished() -> None:
-                emitter = getattr(self.server, "_emit", None)
-                if callable(emitter):
-                    emitter(SmartampMediaEvent.IDLE)
-                if upstream_callback is not None:
-                    upstream_callback()
+        def emit(event: PeripheralEvent) -> None:
+            if callable(emitter):
+                emitter(event)
 
-            callback = finished
-        yield from original_play(self, url, announcement=announcement, done_callback=callback)
+        # Upstream skips the playing event for an announcement on the grounds
+        # that tts_speaking covers it, which is only true of the satellite's own
+        # announcements: one sent to this media player entity plays on the
+        # voice bus with no event at all, so nothing ducks and nothing shows.
+        if announcement:
+            emit(LVAEvent.MEDIA_PLAYER_PLAYING)
+
+        def finished() -> None:
+            # An announcement over the entity's own music resumes it, so the
+            # player is still playing once the announcement is done.
+            if not (announcement and self.music_player.is_playing):
+                emit(SmartampMediaEvent.IDLE)
+            if done_callback is not None:
+                done_callback()
+
+        yield from original_play(self, url, announcement=announcement, done_callback=finished)
 
     MediaPlayerEntity.play = play  # type: ignore[method-assign]
 

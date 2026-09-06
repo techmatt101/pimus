@@ -186,6 +186,8 @@ Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Every music input 
 during an Assist interaction — the value is the level the music plays *at* while ducked (reduced to 15%, not by 15%),
 and it returns to 100% afterwards. `smartamp_voice_duck_fade_ms` controls the transition. The controller requests
 ducking over the audio manager's control socket, which releases the request automatically if the controller disconnects.
+A clip played on the assistant's exposed media player ducks the same way for as long as it plays, and the strip shows
+an announcement banner while it does.
 
 Aux is on that bus too, so it ducks with everything else. The flag only decides whether the assistant dips the bus —
 the bus itself is the music path either way, because its sink volume is the music level's public face. A unit that

@@ -12,6 +12,8 @@ const ZONE_WIDTH = 200
 export interface TouchStripOptions {
     /** Candidate resting screens in priority order; the first whose `applies()` returns true shows. */
     resting: readonly Screen[]
+    /** Screens that take the strip whenever they apply, behind a notification and ahead of the resting face. */
+    alerts?: readonly Screen[]
     dials: readonly Dial[]
     notifications?: NotificationFeed
     dialHoldMilliseconds?: number
@@ -20,10 +22,12 @@ export interface TouchStripOptions {
 
 /**
  * The strip shows one screen at a time: the dial being turned (for a short hold
- * after the last movement), then a live notification, then the resting face.
+ * after the last movement), then a live notification, then an alert that
+ * applies, then the resting face.
  */
 export class TouchStrip {
     readonly #resting: readonly Screen[]
+    readonly #alerts: readonly Screen[]
     readonly #dials: readonly Dial[]
     readonly #notifications: NotificationFeed | undefined
     readonly #dialHoldMilliseconds: number
@@ -40,12 +44,14 @@ export class TouchStrip {
 
     constructor({
                     resting,
+                    alerts = [],
                     dials,
                     notifications,
                     dialHoldMilliseconds = DIAL_HOLD_MILLISECONDS,
                     clock = Date.now,
                 }: TouchStripOptions) {
         this.#resting = resting
+        this.#alerts = alerts
         this.#dials = dials
         this.#notifications = notifications
         this.#dialHoldMilliseconds = dialHoldMilliseconds
@@ -55,7 +61,11 @@ export class TouchStrip {
     }
 
     get #screens(): Screen[] {
-        return [...this.#resting, this.#dialScreen, this.#notificationScreen]
+        return [...this.#resting, ...this.#alerts, this.#dialScreen, this.#notificationScreen]
+    }
+
+    #faceScreen(): Screen {
+        return this.#alerts.find((screen) => screen.applies?.() ?? false) ?? this.#restingScreen()
     }
 
     // All candidates stay mounted, so the one not showing keeps watching its
@@ -111,7 +121,7 @@ export class TouchStrip {
         const pinned = this.#pinnedDial()
         // The resting screen's own controls claim the tap before the dial beneath.
         if (!pinned && now >= this.#dialUntil) {
-            const hit = this.#restingScreen().pressAt?.(x)
+            const hit = this.#faceScreen().pressAt?.(x)
             if (hit) return hit
         }
         const index = Math.max(0, Math.min(this.#dials.length - 1, Math.floor(x / ZONE_WIDTH)))
@@ -156,7 +166,7 @@ export class TouchStrip {
             this.#notificationScreen.show(notification)
             return this.#notificationScreen
         }
-        return this.#restingScreen()
+        return this.#faceScreen()
     }
 
     #showingNotification(now: number): boolean {

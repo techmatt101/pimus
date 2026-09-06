@@ -71,6 +71,7 @@ const ICONS = {
     wind: 'FastWindIcon',
     hail: 'CloudHailstoneIcon',
     alert: 'Alert02Icon',
+    megaphone: 'Megaphone01Icon',
 }
 
 const OUTPUT = fileURLToPath(new URL('../apps/controller/src/streamdeck/icon-set.mts', import.meta.url))

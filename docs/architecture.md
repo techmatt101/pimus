@@ -61,7 +61,11 @@ HiFiBerry through a single gain-controlled loopback; only Linux Voice Assistant 
 not the assistant ducks it, because it is the music path either way. The controller requests ducking on
 wake/listen/think/TTS, announcement, and timer events by sending `set-duck` over the audio manager's control socket. The
 manager holds the request against that connection, so the music cannot remain quiet indefinitely: if the
-controller stops unexpectedly the socket closes and the duck is released at once.
+controller stops unexpectedly the socket closes and the duck is released at once. The assistant's own media player
+plays on the voice bus too, so a clip Home Assistant sends that entity (`media_player.play_media`, with or without
+`announce`) ducks the music for as long as it plays: the launcher adapter emits the playing and idle events for it,
+and the controller holds that reason apart from the pipeline's, so a clip ending under a reply restores nothing
+until both are over.
 
 Linux Voice Assistant playback (TTS, timer chimes, announcements) feeds a second bus of the same shape, the voice sink,
 selected by `--audio-output-device pipewire/<sink>` in its unit — LVA plays through libmpv, whose native PipeWire

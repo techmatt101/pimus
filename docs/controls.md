@@ -527,6 +527,7 @@ in this order:
 |--------------|----------------------------------------------------|---------------------------------------------------------------------|
 | Dial readout | For 2.5 s after a dial was last turned or pressed, or the whole time a key is mid-pick on the shared dial | The dial's name, its readout, and a bar for a dial with a level     |
 | Notification | While a message pushed from Home Assistant is live | Its heading and message on its own colour, with a draining time bar |
+| Announcement | While the assistant's own media player is playing a clip Home Assistant sent it | "ANNOUNCEMENT" beside a pulsing megaphone on teal; the music is ducked underneath |
 | Starting up  | During boot, until the network, audio manager, and Home Assistant have all connected (90 s at most) | "STARTING UP" over a row of the three subsystems: teal once connected, amber and breathing while still pending |
 | Now playing  | A track is playing or paused                       | A play/pause button at the left edge, the track title and credit (scrolling only when too long, tap to reveal shuffle/repeat/back), a clock at the right edge, and a position bar |
 | Idle clock   | The player is stopped (nothing playing)            | The time centred, with the current outdoor conditions beside it |
@@ -566,7 +567,10 @@ which reads as broken rather than busy; it latches off for good once everything
 has connected once, so a later outage is reported as the fault it is. The strip
 is handed all three and shows the first whose `applies()` returns true; all stay mounted, so
 the one not showing keeps watching its entity and swaps the strip over the moment
-a track starts or stops. `NowPlayingScreen` watches the media player entity
+a track starts or stops. `AnnouncementScreen` sits above the resting faces as an
+alert: it applies while the LVA media player reports itself playing, which is the
+same event that ducks the music, and steps aside for a dial hold or a
+notification exactly as the resting faces do. `NowPlayingScreen` watches the media player entity
 itself, so the strip keeps working on pages where no key happens to watch it. Its
 title and credit are left-aligned; a title too wide for the text region is drawn
 smaller, and scrolls once even the smallest size will not fit; a playing track
