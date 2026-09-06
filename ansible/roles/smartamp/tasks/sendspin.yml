@@ -53,18 +53,6 @@
     group: "{{ smartamp_service_user }}"
     mode: "0750"
 
-# Music Assistant's volume for this player, turned into the amp's music level.
-# Deployed whatever the flag says, so turning it off and back on does not need a
-# full provision, and removed with the rest of Sendspin in main.yml.
-- name: Install Sendspin volume hook
-  ansible.builtin.copy:
-    src: smartamp_set_music_volume.py
-    dest: "{{ smartamp_app_dir }}/smartamp_set_music_volume.py"
-    owner: root
-    group: root
-    mode: "0755"
-  notify: Restart Sendspin
-
 # The custom unit advertises Office Amp and runs as the same audio-session user
 # as every other client, playing into PipeWire through the Pulse socket.
 - name: Install Smart Amp Sendspin service

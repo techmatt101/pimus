@@ -229,8 +229,10 @@
   when: not (smartamp_wifi_enabled | bool)
 
 # These values become PipeWire node names and gain levels. Validate them before
-# provisioning can restart any live audio service.
-- name: Validate voice ducking settings
+# provisioning can restart any live audio service. The sink name is checked
+# whatever ducking is set to: the bus is the music path either way, and its
+# name is what every music client is pointed at.
+- name: Validate the music bus settings
   ansible.builtin.assert:
     that:
       - smartamp_background_sink_name is match('^[A-Za-z0-9._]+$')
@@ -238,9 +240,8 @@
       - (smartamp_voice_duck_volume_percent | int) <= 100
       - (smartamp_voice_duck_fade_ms | int) >= 0
     fail_msg: >-
-      Voice ducking requires a PipeWire-safe background sink name, a volume
-      from 0 to 100 percent, and a non-negative fade time.
-  when: smartamp_voice_ducking_enabled | bool
+      The music bus requires a PipeWire-safe sink name, a duck volume from 0 to
+      100 percent, and a non-negative fade time.
 
 # Invalid regular expressions otherwise leave the audio manager restarting in
 # a loop. Compile every hardware matcher before any configuration is changed.

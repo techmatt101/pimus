@@ -140,9 +140,18 @@ class PlaybackBus:
                     "module-null-sink",
                     f"sink_name={self.config.sink_name}",
                     # priority.session=1 keeps WirePlumber from ever electing
-                    # the bus as its own default sink.
+                    # the bus as its own default sink; the manager names the
+                    # default itself.
+                    #
+                    # monitor.channel-volumes=false keeps the sink's own volume
+                    # off its monitor, which is what lets that volume be a
+                    # control surface beside the gain rather than a second one
+                    # in front of it. It is PipeWire's default, stated here
+                    # because the bridge already carries the level: were it ever
+                    # to change, a bus whose monitor also attenuated would play
+                    # twice as quiet, and never louder than asked for.
                     f"sink_properties=device.description={self.description}"
-                    " priority.session=1",
+                    " priority.session=1 monitor.channel-volumes=false",
                 )
                 LOG.info("Created %s audio sink", self.prefix)
             self._graph.invalidate()

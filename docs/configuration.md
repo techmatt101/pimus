@@ -57,21 +57,25 @@ reconciliation; use the named buses for normal playback.
 Each music input also carries a trim of its own — `smartamp_sendspin_volume_percent`, `smartamp_usb_volume_percent`,
 and `smartamp_aux_volume_percent` — the share of the music level that input plays at, for bringing inputs in line with
 each other (USB computers tend to play hotter than Sendspin). All three default to 100, meaning the music level
-untouched. The Sendspin trim is held on its stream into the background bus, so it applies only while voice ducking is
-enabled; the aux and USB trims always apply. All three can be moved live from the deck's
+untouched. Every music input plays into the one music bus and carries its trim on its own stream into it, so the trims
+balance the inputs against each other and the bus's level is what they all follow. Because aux shares that bus it is
+also dipped when the assistant speaks; give it `"target": "output"` in the generated `audio.json` if a unit should have
+an analogue input that never ducks. All three can be moved live from the deck's
 [LEVELS page](controls.md#the-levels-page), which is the way to find a balance by ear; the audio manager holds that
 only in memory, so bring the number that works back to inventory.
 
-Music Assistant's volume for this player is the music level. The Sendspin client is given a volume hook
-(`--hook-set-volume`, which outranks its own `--hardware-volume` and turns its software gain off), so the slider hands
-the commanded percent to the audio manager exactly as the volume dial does: one loudness for the room, and the only way
-to set it at all on a unit with no Stream Deck. The hook is told the effective volume only, so a mute in Music
-Assistant arrives as a plain zero rather than the amp's own volume mute, and unmuting lands on whatever it sends next.
-It is one-way: the volume dial moves the music level without Music Assistant hearing about it, so its slider can read
-stale until it next commands one. Appending `--hook-set-volume '' --hardware-volume false` to `sendspin_extra_args` is
-the way back to the player scaling its own samples, at the cost of a gain beneath the music level that nothing else can
-see. Emptying the hook alone is not that: with no hook and no explicit answer the client goes looking for an ALSA or
-PulseAudio control to drive instead, which on this stack is a mixer the audio manager owns.
+Music Assistant's volume for this player is the music level, in both directions. The Sendspin client runs with
+`--hardware-volume`, which puts it on the PulseAudio volume backend: it sets, reads, and subscribes to its output
+sink's volume and mute rather than scaling its own samples. That sink is the music bus, because the bus is the default
+sink, so Music Assistant's slider moves the room — and when the volume dial or a USB host moves the level instead, the
+manager writes the register, the client's subscription fires, and it reports the new level back to Music Assistant as
+its own player volume. One loudness for the room, however it was set, and the only way to set it at all on a unit with
+no Stream Deck.
+
+Two details follow from that. It is the player's volume, never a group command: the client's MPRIS `Volume` property
+sends a group command instead, so nothing here writes it, and Music Assistant player groups are unaffected. And the
+register is a control surface rather than the gain — the level itself stays on the bus's bridge — so the round trip
+costs one debounced reconcile: a slider move is heard within a fraction of a second, not instantly.
 
 Device match expressions search every PipeWire/Pulse node property. Use `pactl list sinks` and `pactl list sources` on
 the Pi if your firmware exposes different names.
@@ -168,14 +172,16 @@ effect over whatever was written into that gap, without any transfer having fail
 the whole face on a slow tick for twenty seconds after the device starts answering again rather than trusting one
 successful write.
 
-Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Sendspin and USB computer audio share the
-`smartamp_background_sink_name` bus and fade down to `smartamp_voice_duck_volume_percent` per cent of their normal level
+Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Every music input shares the
+`smartamp_background_sink_name` bus and fades down to `smartamp_voice_duck_volume_percent` per cent of its normal level
 during an Assist interaction — the value is the level the music plays *at* while ducked (reduced to 15%, not by 15%),
 and it returns to 100% afterwards. `smartamp_voice_duck_fade_ms` controls the transition. The controller requests
 ducking over the audio manager's control socket, which releases the request automatically if the controller disconnects.
 
-Aux is deliberately not on the duckable bus. It continues at its selected level during voice interactions. Set the
-generated source target to `background` as a code-level extension if aux should follow the same policy.
+Aux is on that bus too, so it ducks with everything else. The flag only decides whether the assistant dips the bus —
+the bus itself is the music path either way, because its sink volume is the music level's public face. A unit that
+wants an analogue input which never ducks gives aux `"target": "output"` in the generated `audio.json`, at the cost of
+it no longer following the shared music level.
 
 Voice playback has a bus of its own, `smartamp_voice_sink_name`, so how loud the assistant speaks is fully independent
 of the music level: TTS, timer chimes, and announcements play at `smartamp_voice_startup_volume_percent` whether the

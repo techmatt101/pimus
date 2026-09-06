@@ -9,9 +9,13 @@ another needs a change to its unit, not to anything here; adding a class of
 playback with a level of its own is a new `PlaybackBus` subclass and a line in
 the reconcile order.
 
-    bus          `PlaybackBus`: the null sink, its bridge, and the gain held on it
-    background   the music players' bus, dipped while the assistant talks
-    voice        the assistant's bus, so speech has a level independent of music
-    voice_meter  the voice bus's monitor reduced to one level per block, for
-                 the ring to pulse to
+    bus            `PlaybackBus`: the null sink, its bridge, and the gain held on it
+    background     the music bus every music input plays into, dipped while the
+                   assistant talks
+    music_volume   that bus's own sink volume, kept agreed with the music level
+                   so a player can move the room and be told when something else
+                   did
+    voice          the assistant's bus, so speech has a level independent of music
+    voice_meter    the voice bus's monitor reduced to one level per block, for
+                   the ring to pulse to
 """

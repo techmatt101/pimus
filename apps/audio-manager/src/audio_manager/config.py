@@ -29,6 +29,10 @@ class BusConfig:
 
 @dataclass(frozen=True)
 class BackgroundConfig(BusConfig):
+    # Whether the assistant dips this bus while it talks. The bus is the music
+    # path whatever the answer, because its sink volume is the music level's
+    # public face; ducking is only something that happens to it.
+    ducking_enabled: bool
     duck_volume_percent: int
     fade_ms: int
     # The trim held on the players' own streams into the bus, as a percent of
@@ -129,6 +133,7 @@ class AudioConfig:
                 enabled=bool(background.get("enabled", False)),
                 sink_name=str(background.get("sink_name", "smartamp_background")),
                 latency_ms=int(background.get("latency_ms", DEFAULT_LATENCY_MS)),
+                ducking_enabled=bool(background.get("ducking_enabled", False)),
                 duck_volume_percent=volume.clamp(
                     background.get("duck_volume_percent", 15)
                 ),

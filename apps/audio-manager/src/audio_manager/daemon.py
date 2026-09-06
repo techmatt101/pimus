@@ -14,6 +14,7 @@ from typing import Any, Callable
 from . import output, status, volume
 from .system import amixer, monitors, pactl
 from .buses.background import BackgroundBus
+from .buses.music_volume import MusicVolumeSync
 from .buses.voice import VoiceBus
 from .buses.voice_meter import VoiceLevelMeter
 from .config import AudioConfig
@@ -82,6 +83,7 @@ class AudioManager:
         self.routes = SourceRoutes(config.sources, self.graph, self.modules)
         self.usb = UsbHost()
         self.usb_volume = UsbVolumeSync()
+        self.music_register = MusicVolumeSync()
         self.idle = IdleTracker(config.idle_teardown_seconds)
 
         self.commands = CommandHandler(self)
@@ -173,9 +175,8 @@ class AudioManager:
     def trims(self) -> dict[str, int]:
         """Every input trim this unit has, as the levels page reads them.
 
-        The background bus only carries a trim of its own while it exists, so
-        a unit with ducking off publishes none for it rather than one that
-        would change nothing.
+        The players' bus carries one of its own for whatever plays into it
+        without a route, which is every client the daemon never hears about.
         """
         trims = dict(self.routes.trims)
         if self.config.background.enabled:
@@ -208,7 +209,7 @@ class AudioManager:
         return 0 if self.vol_muted else self.music_volume
 
     def desired_ducking(self) -> bool:
-        return self.config.background.enabled and self.commands.duck_requested
+        return self.config.background.ducking_enabled and self.commands.duck_requested
 
     def apply_ducking(self) -> bool:
         ducked = self.desired_ducking()
@@ -230,16 +231,20 @@ class AudioManager:
 
     def set_music_volume(self, percent: float) -> None:
         self.music_volume = volume.clamp(percent)
-        # Forget the last USB agreement so the next reconcile seeds the gadget
-        # with this commanded level; otherwise the gadget's stale reading would
-        # win the sync and claw the volume back.
-        self.usb_volume.forget()
+        # Forget both agreements so the next reconcile seeds the gadget and the
+        # bus register with this commanded level; otherwise a stale reading from
+        # either would win its sync and claw the volume back.
+        self._forget_volume_agreements()
         self._apply_or_retry("Music volume", self._apply_music_volume)
 
     def set_music_mute(self, muted: bool) -> None:
         self.vol_muted = muted
-        self.usb_volume.forget()
+        self._forget_volume_agreements()
         self._apply_or_retry("Volume mute", self._apply_music_volume)
+
+    def _forget_volume_agreements(self) -> None:
+        self.usb_volume.forget()
+        self.music_register.forget()
 
     def schedule_reconcile(self, delay: float = EVENT_DEBOUNCE_SECONDS) -> None:
         deadline = time.monotonic() + delay
@@ -279,6 +284,16 @@ class AudioManager:
         self.output.settle(settled)
         self._publish(sink, found)
 
+    def _sync_music_register(self, background_sink: Node | None) -> None:
+        before = (self.music_volume, self.vol_muted)
+        after = self.music_register.sync(background_sink, before, self.graph)
+        if after == before:
+            return
+        self.music_volume, self.vol_muted = after
+        # A player moved the level; let the gadget be re-seeded from it rather
+        # than letting its own stale reading win the next pass.
+        self.usb_volume.forget()
+
     def _read_output_ceiling(self) -> None:
         ceiling = self.config.output_ceiling
         if not ceiling.readable:
@@ -296,11 +311,12 @@ class AudioManager:
     def _reconcile_graph(self, sink: Node | None, idle: bool) -> GraphStatus:
         """Put the buses, microphone and routes back where they belong."""
         background_sink = self.background.reconcile(sink, bridged=not idle)
+        self._sync_music_register(background_sink)
         self.voice_bus.reconcile(sink, bridged=not idle)
         self.voice_bus.apply_gain(self.voice_volume)
         microphone = self.microphone.reconcile(sink, awake=not idle)
         self.apply_ducking()
-        self._adopt_defaults(sink, microphone.source)
+        self._adopt_defaults(sink, microphone.source, background_sink)
         source_status = self.routes.reconcile(
             output=sink,
             background_sink=background_sink,
@@ -393,12 +409,23 @@ class AudioManager:
         self.graph.invalidate()
         self.routes.apply_trim(name, self.music_level)
 
-    def _adopt_defaults(self, sink: Node | None, voice_source: Node | None) -> None:
+    def _adopt_defaults(
+        self,
+        sink: Node | None,
+        voice_source: Node | None,
+        background_sink: Node | None,
+    ) -> None:
+        # A client that plays to the default is playing music, so it belongs on
+        # the music bus, where it lands behind a trim and the music level rather
+        # than straight at the pinned output. It is also the only sink a player
+        # watching its own output device can find, which is what makes the bus
+        # register reach one that was never told a sink name.
+        default = background_sink or sink
         # Only set defaults that are wrong: an unconditional set-default emits a
         # subscribe event on every reconcile, which would echo into another
         # scheduled reconcile and never quiesce.
-        if sink and pactl.default_sink() != sink["name"]:
-            pactl.set_default_sink(sink["name"])
+        if default and pactl.default_sink() != default["name"]:
+            pactl.set_default_sink(default["name"])
         if voice_source and pactl.default_source() != voice_source["name"]:
             pactl.set_default_source(voice_source["name"])
 

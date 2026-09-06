@@ -11,18 +11,17 @@ Group={{ smartamp_service_user }}
 Environment=XDG_RUNTIME_DIR=/run/user/{{ smartamp_uid }}
 Environment=PULSE_SERVER=/run/user/{{ smartamp_uid }}/pulse/native
 Environment=XDG_CONFIG_HOME={{ smartamp_state_dir }}/sendspin
-{% if (voice_assistant_enabled | bool) and (smartamp_voice_ducking_enabled | bool) %}
 {# The ALSA "pulse" output honours PULSE_SINK, which places playback on the
-   duckable background bus the audio manager maintains. #}
+   music bus the audio manager maintains. That bus is also the default sink, so
+   this only states what the client would resolve to anyway. #}
 Environment=PULSE_SINK={{ smartamp_background_sink_name }}
-{% endif %}
-{# The volume hook reaches the audio manager through its control socket. #}
-Environment=SMARTAMP_AUDIO_SOCKET=/run/user/{{ smartamp_uid }}/smartamp-audio.sock
-{# --hook-set-volume outranks --hardware-volume in the client and turns its own
-   software gain off, so Music Assistant's slider becomes the amp's music level
-   rather than a second gain underneath it. Passing it last would let
-   sendspin_extra_args override the hook, which is the one way back. #}
-ExecStart={{ smartamp_app_dir }}/sendspin/bin/sendspin daemon --name {{ sendspin_name | quote }} --audio-device pulse --hook-set-volume {{ smartamp_app_dir }}/smartamp_set_music_volume.py {{ ('--url ' + sendspin_server_url) if sendspin_server_url else '' }} {{ sendspin_extra_args }}
+{# --hardware-volume puts the client on the PulseAudio volume backend, which
+   sets, reads, and subscribes to its output sink's volume and mute. With the
+   music bus as the default sink that sink is the amp's music level, so Music
+   Assistant's slider moves the room and the client reports the level back as
+   its own player volume whenever the dial or a USB host moves it. Its MPRIS
+   volume is a group command rather than a player one, so it is left alone. #}
+ExecStart={{ smartamp_app_dir }}/sendspin/bin/sendspin daemon --name {{ sendspin_name | quote }} --audio-device pulse --hardware-volume true {{ ('--url ' + sendspin_server_url) if sendspin_server_url else '' }} {{ sendspin_extra_args }}
 Restart=on-failure
 RestartSec=3
 # Apply a small, predictable isolation baseline without restricting the network

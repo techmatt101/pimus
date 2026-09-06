@@ -89,7 +89,6 @@
   loop:
     - /etc/systemd/system/smartamp-sendspin.service
     - "{{ smartamp_app_dir }}/sendspin"
-    - "{{ smartamp_app_dir }}/smartamp_set_music_volume.py"
   notify: Reload systemd
   when: not (sendspin_enabled | bool)
 

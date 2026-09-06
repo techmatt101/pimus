@@ -195,35 +195,41 @@ controller is connected to the socket in the `smartamp-controller` log, then loo
 
 ## Music Assistant's volume does nothing, or fights the dial
 
-Music Assistant's slider for this player runs the volume hook, which sends `set-music-volume` to the audio manager;
-the player applies no gain of its own. Confirm the wiring first:
+Music Assistant's slider for this player is the music bus sink's own volume, which the audio manager mirrors onto the
+music level and back. Confirm the wiring first — the client must be on the PulseAudio volume backend, and the bus must
+be the default sink it resolves to:
 
 ```sh
-systemctl cat smartamp-sendspin | grep -E 'hook-set-volume|SMARTAMP_AUDIO_SOCKET'
-journalctl -u smartamp-sendspin -n 50 | grep -i 'volume hook'
+systemctl cat smartamp-sendspin | grep -E 'hardware-volume|PULSE_SINK'
+journalctl -u smartamp-sendspin | grep -iE 'hardware volume|volume changed externally' | tail
+sudo -u smartamp XDG_RUNTIME_DIR=/run/user/$(id -u smartamp) pactl get-default-sink
 ```
 
-Move the slider and watch the level follow, on the deck's LEVELS page or in the status file:
+The default sink must be `smartamp_background`. If it is the HiFiBerry, the client is watching the pinned output
+instead and will fight the manager's 100% pin; check for `Pinned the output sink` repeating in
+`smartamp-audio-manager`.
+
+Then watch the register and the level move together. Turn the deck's dial and Music Assistant should follow; move the
+slider and the level should follow:
 
 ```sh
-jq '{music_volume, trims, output_ceiling}' /run/user/*/smartamp-audio-status.json
+sudo -u smartamp XDG_RUNTIME_DIR=/run/user/$(id -u smartamp) \
+  pactl list sinks | grep -A 8 smartamp_background
+jq '{music_volume, vol_muted, trims, output_ceiling}' /run/user/*/smartamp-audio-status.json
+journalctl -u smartamp-audio-manager | grep -E 'Music volume set to' | tail
 ```
 
-A hook that runs but changes nothing means the manager refused the command; look for `audio manager rejected a
-command` in `smartamp-controller`, or run the hook by hand:
+`Music volume set to N% on the bus` is the manager adopting a change something else made. If the two nudge each other
+back and forth instead of settling, the agreement is being dropped every pass — look for the sink quantising the value
+it was written, which the register re-reads specifically to avoid.
+
+If music plays much quieter than the level says, the bus's monitor is attenuating as well as its bridge. The sink is
+created with `monitor.channel-volumes=false` to prevent exactly that; confirm it survived:
 
 ```sh
-sudo -u smartamp SMARTAMP_AUDIO_SOCKET=/run/user/$(id -u smartamp)/smartamp-audio.sock \
-  /opt/smartamp/smartamp_set_music_volume.py 40
+sudo -u smartamp XDG_RUNTIME_DIR=/run/user/$(id -u smartamp) \
+  pactl list sinks | grep -B 20 smartamp_background | grep -i monitor.channel-volumes
 ```
-
-The link is one-way. Turning the volume dial moves the music level without telling Music Assistant, so its slider can
-read stale until it next commands a volume; and if Music Assistant re-asserts a remembered volume when the player
-reconnects, that will land on the music level as a jump at reconnect. If that proves annoying, guard it in the hook
-rather than reverting: appending `--hook-set-volume '' --hardware-volume false` to `sendspin_extra_args` puts the
-player back to scaling its own samples, which is the hidden second gain this replaced. Both halves are needed — with
-the hook emptied and nothing else said, the client looks for an ALSA or PulseAudio control to drive instead of leaving
-the level alone.
 
 ## Music crackles or pops every few seconds
 

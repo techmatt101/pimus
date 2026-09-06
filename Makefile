@@ -85,7 +85,7 @@ test: build ## Run local source and Ansible checks without contacting the Pi
 	@# Strict pyright is the audio manager's type check; the daemon runs on
 	@# Bookworm's Python 3.11, so that is the version it checks against.
 	pnpm exec pyright --project apps/audio-manager
-	python3 -m compileall -q ansible/roles/smartamp/files/smartamp_lva.py ansible/roles/smartamp/files/smartamp_audio_recovery.py ansible/roles/smartamp/files/smartamp_set_music_volume.py
+	python3 -m compileall -q ansible/roles/smartamp/files/smartamp_lva.py ansible/roles/smartamp/files/smartamp_audio_recovery.py
 	python3 -m unittest discover -s apps/audio-manager/test
 	node --test $$(find apps/controller/dist/test -name '*.test.mjs' | sort)
 	@# The tests import the tsc modules; the Pi runs the bundle, so check that

@@ -103,7 +103,9 @@ class RouteStateTests(ManagerTestCase):
 
 class StateBroadcastTests(ManagerTestCase):
     def test_clients_receive_voice_and_duck_changes_and_disconnect(self) -> None:
-        manager = self.make_manager({"background": {"enabled": True}})
+        manager = self.make_manager(
+            {"background": {"enabled": True, "ducking_enabled": True}}
+        )
         sender, _ = self._client(manager)
         _, listener = self._client(manager)
         for command, field, expected in (
@@ -172,6 +174,62 @@ class UsbAgreementTests(ManagerTestCase):
             write.reset_mock()
             self.assertEqual(sync.sync((40, False)), (40, False))
             write.assert_called_once_with(40, False)
+
+
+class MusicRegisterTests(ManagerTestCase):
+    """The music bus sink's volume as the level's public face.
+
+    Every music player reads and writes this one control, so the room keeps one
+    loudness however it was set: a player that moves it moves the amp, and the
+    amp writes it back so the next player to look agrees.
+    """
+
+    def _sink(self, percent: int, muted: bool = False) -> graph.Node:
+        return {
+            "name": "background",
+            "index": 1,
+            "volume": {"mono": {"value_percent": f"{percent}%"}},
+            "mute": muted,
+        }
+
+    def test_the_register_carries_the_level_both_ways(self) -> None:
+        manager = self.make_manager({"background": {"enabled": True}})
+        manager.music_volume = 40
+        sink = self._sink(100)
+        with self._patched_graph({"sinks": [sink]}, fake_run) as commands:
+            # Nothing has agreed yet, so the amp seeds the register with the
+            # level it already holds rather than adopting whatever it reads.
+            manager._sync_music_register(sink)
+            self.assertEqual(manager.music_volume, 40)
+            self.assertIn(
+                ("pactl", "set-sink-volume", "background", "40%"),
+                [call.args for call in commands.call_args_list],
+            )
+
+            # A player moving the register is the room's new level, and the USB
+            # agreement is dropped so the gadget is re-seeded from it.
+            manager.usb_volume._agreed = ((40, False), (40, False))
+            moved = self._sink(75)
+            manager.graph.invalidate()
+            with mock.patch.object(
+                manager.graph, "sink_named", return_value=moved
+            ):
+                manager._sync_music_register(moved)
+            self.assertEqual(manager.music_volume, 75)
+            self.assertIsNone(manager.usb_volume._agreed)
+
+    def test_an_agreed_register_is_left_alone(self) -> None:
+        manager = self.make_manager({"background": {"enabled": True}})
+        manager.music_volume = 40
+        sink = self._sink(40)
+        with self._patched_graph({"sinks": [sink]}, fake_run) as commands:
+            manager._sync_music_register(sink)
+            commands.reset_mock()
+            # Writing an unchanged register every pass would emit a subscribe
+            # event that schedules the pass that writes it again.
+            manager._sync_music_register(sink)
+            self.assertEqual(commands.call_args_list, [])
+            self.assertEqual(manager.music_volume, 40)
 
 
 class ManagerLifecycleTests(ManagerTestCase):

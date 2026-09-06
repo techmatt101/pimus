@@ -351,7 +351,9 @@ class ControlSocketTests(ManagerTestCase):
         self.assertFalse(reconcile)
 
     def _duckable_manager(self) -> AudioManager:
-        return self.make_manager({"background": {"enabled": True}})
+        return self.make_manager(
+            {"background": {"enabled": True, "ducking_enabled": True}}
+        )
 
 
 class VoiceLevelTests(ManagerTestCase):
@@ -1479,7 +1481,11 @@ class VolumeTests(ManagerTestCase):
     def test_vol_mute_silences_every_music_path_and_nothing_else(self) -> None:
         manager = self.make_manager(
             {
-                "background": {"enabled": True, "duck_volume_percent": 15},
+                "background": {
+                    "enabled": True,
+                    "ducking_enabled": True,
+                    "duck_volume_percent": 15,
+                },
                 "voice_bus": {"enabled": True, "volume_percent": 50},
             }
         )
