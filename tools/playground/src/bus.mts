@@ -4,6 +4,8 @@
 
 import {EventEmitter} from 'node:events'
 
+import type {SourceState} from '../../../apps/controller/src/types.mjs'
+
 /** Which part of the controller a log line came from. Drives the UI colours. */
 export type LogCategory =
     | 'system'
@@ -42,7 +44,7 @@ export interface PlaygroundSnapshot {
     /** The fake manager's voice bus level, undefined until the controller syncs. */
     voiceVolume: number | undefined
     media: boolean
-    sources: Record<string, boolean | undefined>
+    sources: Record<string, SourceState | undefined>
     ducked: boolean
     /** Whether the real Home Assistant WebSocket is connected and authenticated. */
     homeAssistant: boolean

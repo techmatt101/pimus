@@ -38,7 +38,7 @@ const audio = new AudioSystem({
 const model = new ControlModel(state, () => audio.state)
 
 // No exit handler releases the duck: the manager holds the request against this
-// socket, so the kernel closing it on exit or crash restores background audio.
+// socket, so the kernel closing it on exit or crash restores the music.
 const ducker = config.ducking?.enabled
     ? new VoiceDucker({setDuck: (active) => audio.setDuck(active)})
     : null
@@ -107,8 +107,8 @@ const surface = config.streamdeck?.enabled
             setMusicVolume: (percent) => {
                 audio.setMusicVolume(percent)
             },
-            setInputTrim: (name, percent) => {
-                audio.setInputTrim(name, percent)
+            setSourceTrim: (name, percent) => {
+                audio.setSourceTrim(name, percent)
             },
         },
         ha: homeAssistant,

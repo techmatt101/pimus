@@ -18,7 +18,7 @@ XVF3800 microphones --USB/PipeWire--->| Linux Voice Assistant    |--ESPHome API-
 
 Aux (DAC2 ADC Pro only) --PipeWire loopback-----------------+
 Computer --USB-C UAC2--USB audio app--+                                    |
-                       +--> duckable background bus --------+--> HiFiBerry DAC --> amplifier --> speakers
+                       +--> duckable music bus -------------+--> HiFiBerry DAC --> amplifier --> speakers
 Sendspin / MA ---------+                                    |
 Linux Voice Assistant TTS/media --> voice bus --------------+
 ```
@@ -59,21 +59,29 @@ Every music input — Sendspin, the USB computer, and aux — feeds one named mu
 HiFiBerry through a single gain-controlled loopback; only Linux Voice Assistant bypasses it. The bus exists whether or
 not the assistant ducks it, because it is the music path either way. The controller requests ducking on
 wake/listen/think/TTS, announcement, and timer events by sending `set-duck` over the audio manager's control socket. The
-manager holds the request against that connection, so background audio cannot remain quiet indefinitely: if the
+manager holds the request against that connection, so the music cannot remain quiet indefinitely: if the
 controller stops unexpectedly the socket closes and the duck is released at once.
 
 Linux Voice Assistant playback (TTS, timer chimes, announcements) feeds a second bus of the same shape, the voice sink,
 selected by `--audio-output-device pipewire/<sink>` in its unit — LVA plays through libmpv, whose native PipeWire
 output outranks pulse on mpv ≥ 0.36 and ignores `PULSE_SINK` (Sendspin, by contrast, plays through the ALSA-pulse
-path, which is why the background bus can be selected by environment).
+path, which is why the music bus can be selected by environment).
 
 Loudness is two independent gains on those bridges, not the sink volume: the manager pins the output sink at 100% and
-holds the music level on the background bridge (with aux and any direct route following it, and ducking dipping to a
+holds the music level on the music bridge (with aux and any direct route following it, and ducking dipping to a
 share of it) and the voice level on the voice bridge. Music at 5% with voice at 50% plays voice at 50%; music at 80%
 with voice at 30% plays voice at 30%. `set-music-volume` and `set-voice-volume` on the control socket move them, and
-`set-input-trim` moves one input's share of the music level. Beside those the manager reads the card's hardware
-ceiling and reports it as `output_ceiling`, which nothing here writes: it is set once at boot from inventory and is
+`set-source-trim` moves one input's share of the music level. Beside those the manager reads the card's hardware
+ceiling and reports it as `output_volume`, which nothing here writes: it is set once at boot from inventory and is
 the amplifier's protection rather than a gain.
+
+Everything the manager says about the graph is one document, written to `smartamp-audio-status.json` and sent over
+the socket as the `state` event with `event` in front. Each bus section carries its own level (`music_bus.volume` and
+`music_bus.muted`, `voice_bus.volume`, `music_bus.ducked`), and `sources` lists every music input this unit has, each
+with its own `trim` — the players that play straight into the bus first, under the name inventory gives them
+(`sendspin`), then each route with its `enabled` toggle and the capture node it was found on. A source with no
+`enabled` has nothing to switch. The USB audio app publishes its one source in the same shape, and the controller
+merges the two lists, so a key that shows a trim needs only the list and a slot in it.
 
 The USB audio app owns gadget discovery, host stream detection, its playback client,
 and USB controls/status. The controller combines its socket state with the audio
@@ -86,7 +94,7 @@ it, and is told through the same sink event when the dial or a USB host moved it
 the gain: the bus is created with `monitor.channel-volumes=false` so that volume never reaches the monitor the bridge
 carries, which means a property that stopped applying could only ever play the room quieter than asked, never louder.
 The voice bus is a sink of its own and is not mirrored, so the assistant keeps its level whatever a music player does.
-The volume mute (`set-music-mute`, `vol_muted` in the state event) sits beside the music level as one boolean: while it
+The volume mute (`set-music-mute`, `music_bus.muted` in the state event) sits beside the music level as one boolean: while it
 is on, every path that follows the music level plays at 0% and the level itself is untouched, so an unmute lands
 where the dial was. The voice bus is not a music path, so the assistant's replies, timers, and announcements made
 through the satellite still play; an announcement sent to the Music Assistant player is music and is muted with it.
@@ -137,13 +145,13 @@ policy and readiness gate to reopen the device. Silent or blocked capture withou
 - `smartamp-usb-audio-gadget`: creates the stereo UAC2 peripheral on the board's USB-C controller.
 - `smartamp-usb-audio`: detects host streaming, synchronises the gadget mixer with the music bus,
   and runs a muted-at-creation playback client. Its own socket serves USB toggle, trim and status.
-- `smartamp-audio-manager`: maintains PipeWire defaults, switchable routes, the background bus and its ducking gain,
+- `smartamp-audio-manager`: maintains PipeWire defaults, switchable routes, the music bus and its ducking gain,
   the voice bus and its volume, and the volume mute, driven by `pactl subscribe` events and a Unix control socket.
 - `smartamp-sendspin`: runs the Sendspin player that Music Assistant discovers and streams to. Run with
   `--hardware-volume`, so it sets, reads, and subscribes to its output sink's volume — the music bus register — rather
   than applying a gain of its own.
 - `smartamp-voice-assistant`: pinned OHF Linux Voice Assistant checkout and Python virtual environment.
-- `smartamp-controller`: maps Assist events to background ducking and XVF3800 effects, and renders/handles Stream Deck+
+- `smartamp-controller`: maps Assist events to music ducking and XVF3800 effects, and renders/handles Stream Deck+
   controls without Elgato desktop software. The deck half is an addon behind one dynamic import
   (`apps/controller/src/streamdeck/control-surface.mts`), taken only when `streamdeck_enabled` is on, so a unit
   without one loads none of it and is never sent the drawing packages it needs. When remote tiles are enabled it listens
@@ -190,7 +198,7 @@ its buffer with it.
 A duck request is scoped to the connection that made it, so the socket doubles
 as the liveness check. The controller re-asserts an active duck on reconnect,
 and the manager releases it the moment the connection drops, which is what
-keeps a controller crash from leaving background audio quiet.
+keeps a controller crash from leaving the music quiet.
 
 The Stream Deck driver uses `@elgato-stream-deck/node`, which supports the Plus model's eight key LCDs, four rotary
 encoders, and 800×100 touch strip. The ReSpeaker module uses USB vendor-control transfers for XVF3800 LED effects.
@@ -219,7 +227,7 @@ warning, then `off`. The renderer reacts to it exactly as it reacts to the deck 
 tiles so their animation timers and entity watches stop with the light. Dimming stops short of that: the faces stay
 mounted and current, but the renderer freezes the time it hands them and the strip drops to a once-a-minute frame, so
 every animation holds still and resumes where it stopped.
-Nothing else sleeps: the wake word, the ReSpeaker ring, and background playback are untouched. It fails towards a lit
+Nothing else sleeps: the wake word, the ReSpeaker ring, and music playback are untouched. It fails towards a lit
 panel — an unreachable Home Assistant, a sensor reporting `unavailable`, or a hand on a deck the sensor thinks nobody is
 near all keep it awake, and the first press on a dark or dimmed panel wakes it without also running the key.
 

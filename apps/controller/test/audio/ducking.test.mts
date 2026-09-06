@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import {duckingForEvent, VoiceDucker} from '../../src/audio/ducking.mjs'
 
-test('voice pipeline events duck and safely restore background audio', () => {
+test('voice pipeline events duck and safely restore the music', () => {
     const requests: boolean[] = []
     const ducker = new VoiceDucker({setDuck: (active) => requests.push(active)})
 

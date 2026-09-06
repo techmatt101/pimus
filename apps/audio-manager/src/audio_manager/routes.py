@@ -71,6 +71,9 @@ class SourceRoutes:
         # live to balance the inputs against each other; a restart comes back
         # to the configured share.
         self.trims = {name: source.volume_percent for name, source in sources.items()}
+        # Whether each input's capture node was there on the last pass, and
+        # which node it was; nothing until a pass has looked.
+        self._found: dict[str, dict[str, Any]] = {}
         self._applied: dict[str, AppliedRoute] = {}
         self.settled = True
         registry.on_released(self._role_released)
@@ -87,26 +90,36 @@ class SourceRoutes:
     def set_trim(self, name: str, percent: int) -> None:
         self.trims[name] = percent
 
+    def status(self) -> dict[str, dict[str, Any]]:
+        """Each route as the document lists it: its trim, its toggle, and
+        what the last pass found of its capture node."""
+        return {
+            name: {
+                "trim": self.trims[name],
+                "enabled": self.enabled[name],
+                **self._found.get(name, {"available": False, "node": None}),
+            }
+            for name in self._sources
+        }
+
     def reconcile(
         self,
         *,
         output: Node | None,
-        background_sink: Node | None,
+        music_sink: Node | None,
         music_volume: int,
         idle: bool = False,
-    ) -> dict[str, dict[str, Any]]:
+    ) -> None:
         self.settled = True
-        return {
-            name: self._reconcile_source(
+        for name, source in self._sources.items():
+            self._reconcile_source(
                 name,
                 source,
                 output=output,
-                background_sink=background_sink,
+                music_sink=music_sink,
                 music_volume=music_volume,
                 idle=idle,
             )
-            for name, source in self._sources.items()
-        }
 
     def holds_awake(self) -> bool:
         """Whether an enabled route needs the graph kept out of idle teardown.
@@ -120,7 +133,7 @@ class SourceRoutes:
         """Move one route's stream to its trim, without reconciling.
 
         Unlike a music level move this includes a route bridged into the
-        background bus: the bus carries the music gain for it, but the trim is
+        music bus: the bus carries the music gain for it, but the trim is
         held on the route's own stream either way.
         """
         source = self._sources.get(name)
@@ -136,9 +149,9 @@ class SourceRoutes:
     def apply_music_volume(self, music_volume: int) -> None:
         """Move every stream this owns to the music level, without reconciling."""
         for name, source in self._sources.items():
-            # Background-target routes play into the bus, which already carries
+            # Music-target routes play into the bus, which already carries
             # the music gain.
-            if source.bridges_into_background:
+            if source.bridges_into_music:
                 continue
             stream = self._stream_of(name)
             if stream is None:
@@ -157,10 +170,10 @@ class SourceRoutes:
         source: SourceConfig,
         *,
         output: Node | None,
-        background_sink: Node | None,
+        music_sink: Node | None,
         music_volume: int,
         idle: bool,
-    ) -> dict[str, Any]:
+    ) -> None:
         node = self._graph.find_source(source.match)
         enabled = self.enabled.get(name, False)
         # Keep analogue routes connected while awake: reconnecting a DC offset
@@ -168,15 +181,14 @@ class SourceRoutes:
         wanted = enabled or (source.mute_when_off and not idle)
         if node is None and wanted:
             activate_parked_card(self._graph, source.match)
-        status = {
-            "enabled": enabled,
+        self._found[name] = {
             "available": node is not None,
             "node": node.get("name") if node else None,
         }
-        target = background_sink if source.bridges_into_background else output
+        target = music_sink if source.bridges_into_music else output
         if not (wanted and node is not None and target is not None):
             self._modules.unload(name)
-            return status
+            return
         created = self._modules.ensure_loopback(
             name, node["name"], target["name"], source.latency_ms
         )
@@ -186,9 +198,8 @@ class SourceRoutes:
         if stream is None:
             self.settled = False
             LOG.info("Waiting for the %s playback stream", name)
-            return status
+            return
         self._apply_stream_level(name, source, stream, enabled, music_volume)
-        return status
 
     def _apply_stream_level(
         self,
@@ -199,12 +210,12 @@ class SourceRoutes:
         music_volume: int,
     ) -> None:
         stream_index = int(stream["index"])
-        # Background routes inherit the bus's music gain; both targets share
+        # Music-bus routes inherit the bus's music gain; both targets share
         # the same off/on handling and carry the input's own trim.
-        trim = self.trims.get(name, source.volume_percent)
+        trim = self.trims[name]
         level = (
             trim
-            if source.bridges_into_background
+            if source.bridges_into_music
             else volume.scale(music_volume, trim)
         )
         if not source.mute_when_off:

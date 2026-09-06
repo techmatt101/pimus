@@ -183,17 +183,19 @@ smartamp_aux_enabled: false
 # host the gadget's capture clock never ticks and would stall the whole output
 # graph.
 smartamp_usb_enabled: false
-# Each music input's own level, as the share of the music volume it plays at:
+# Each music input's own trim, as the share of the music volume it plays at:
 # 100 leaves it at the music level, 80 plays that input at 80% of wherever the
 # dial sits. Use these to balance the inputs against each other - USB
-# computers tend to play hotter than Sendspin. The Sendspin trim is held on
-# its stream into the background bus, so it applies only while
-# smartamp_voice_ducking_enabled is on; the aux and USB trims always apply.
+# computers tend to play hotter than Sendspin. Every input plays into the
+# music bus and carries its trim on its own stream into it; the Sendspin trim
+# is held on the streams of whatever plays straight into the bus, which the
+# audio manager publishes as the "sendspin" source. The deck's LEVELS page
+# moves all of them live, in memory only: bring a number that works back here.
 smartamp_sendspin_volume_percent: 100
 smartamp_usb_volume_percent: 100
 smartamp_aux_volume_percent: 100
 # Target buffer depth for every PipeWire loopback bridge the audio manager
-# builds (aux, USB, ducking bus, and the AEC reference). Lower tightens sync but
+# builds (aux, USB, the music and voice buses, and the AEC reference). Lower tightens sync but
 # risks dropouts. PipeWire's stock quantum on the Pi is ~21 ms (48 kHz / 1024),
 # so ~20 ms is the practical floor: going lower needs a pipewire.conf.d quantum
 # override and on-Pi xrun testing. The USB->speakers path crosses two loopbacks
@@ -215,17 +217,19 @@ smartamp_aec_reference_enabled: true
 # permanently, panel asleep or not.
 smartamp_idle_teardown_seconds: 180
 
-# Keep background playback audible but quieter while Assist is listening,
-# thinking, speaking, announcing, or ringing a timer. Sendspin and the USB
-# computer input share this background path; LVA voice playback bypasses it.
+# Keep the music audible but quieter while Assist is listening, thinking,
+# speaking, announcing, or ringing a timer. Sendspin, aux, and the USB
+# computer input all share the music bus; LVA voice playback bypasses it.
 smartamp_voice_ducking_enabled: true
-smartamp_background_sink_name: smartamp_background
-# The share of the music level background audio plays AT while ducked -
-# reduced TO this share, not BY it. 15 drops music at 60% to 9% (a strong dip;
-# Pulse percentages are perceptual, so 50 sounds roughly half as loud). 100
-# leaves it untouched, 0 silences it. It scales only the background bridge
-# stream, so the music level itself and what plays after the dip are
-# unaffected.
+# The PipeWire name of the music bus: the sink every music client is pointed
+# at (Sendspin by PULSE_SINK, the USB client by its own config) and the
+# default sink, so anything that plays to the default is playing music.
+smartamp_music_sink_name: smartamp_music
+# The share of the music level the music plays AT while ducked - reduced TO
+# this share, not BY it. 15 drops music at 60% to 9% (a strong dip; Pulse
+# percentages are perceptual, so 50 sounds roughly half as loud). 100 leaves
+# it untouched, 0 silences it. It scales only the music bus's bridge stream,
+# so the music level itself and what plays after the dip are unaffected.
 smartamp_voice_duck_volume_percent: 15
 # The duration of each fade, applied in both directions: the music takes this
 # long to ramp down when Assist starts and this long again to ramp back up

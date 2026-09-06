@@ -60,9 +60,10 @@ each other (USB computers tend to play hotter than Sendspin). All three default 
 untouched. Every music input plays into the one music bus and carries its trim on its own stream into it, so the trims
 balance the inputs against each other and the bus's level is what they all follow. Because aux shares that bus it is
 also dipped when the assistant speaks; give it `"target": "output"` in the generated `audio.json` if a unit should have
-an analogue input that never ducks. All three can be moved live from the deck's
-[LEVELS page](controls.md#the-levels-page), which is the way to find a balance by ear; the audio manager holds that
-only in memory, so bring the number that works back to inventory.
+an analogue input that never ducks. The audio manager publishes each input as a source with its trim — the Sendspin
+trim under the `sendspin` name `audio.json` gives the bus's own players, since the daemon names no product — and the
+deck's [LEVELS page](controls.md#the-levels-page) shows one key per source, which is the way to find a balance by
+ear; the audio manager holds that only in memory, so bring the number that works back to inventory.
 
 Music Assistant's volume for this player is the music level, in both directions. The Sendspin client runs with
 `--hardware-volume`, which puts it on the PulseAudio volume backend: it sets, reads, and subscribes to its output
@@ -105,7 +106,7 @@ default to off. The USB route is additionally gated on the computer actively str
 audio app only starts its playback client while the gadget card's `Capture Rate` control reads a non-zero rate, because the
 gadget's capture clock only ticks while the host holds its playback stream open. A computer that is plugged in but
 playing to another output, or a cable that was unplugged, leaves a dead clock that would stall the whole output graph
-and silence everything else — including Sendspin and Home Assistant media on the background bus. Enumeration
+and silence everything else — including Sendspin and Home Assistant media on the music bus. Enumeration
 (`/sys/class/udc/*/state` reading `configured`) cannot gate this: with the recommended VBUS-blocking adapter the port
 never reports a disconnect, so that file stays `configured` after an unplug until the next replug. Toggling USB on
 with nothing plugged in or nothing playing is therefore safe — the route simply waits for audio to arrive.
@@ -134,14 +135,14 @@ Stream Deck route toggles last until the next reboot; every boot starts from the
 `smartamp_idle_teardown_seconds` (default 180, 0 to disable) is the power saver: the persistent loopbacks are what
 keep the HiFiBerry DAC/ADC path clocked and the XVF3800 playback endpoint awake even in silence, worth roughly a watt
 at the wall. After that many seconds with nothing playing — no client stream on any sink (including USB playback), no
-voice session, no enabled analogue route — the audio manager unloads the background and voice bus bridges, the AEC
+voice session, no enabled analogue route — the audio manager unloads the music and voice bus bridges, the AEC
 reference, and the muted aux bridge, and the devices suspend. The null sinks stay loaded so Sendspin and LVA keep
 their PULSE_SINK targets, and the wake-word capture path is untouched. Everything rebuilds within about a second of a
 client stream appearing, a voice session opening (the controller's duck/meter request arrives before the first TTS
 audio), the USB host starting to stream, or a route being toggled on. The rebuild happens behind a mute on the output sink,
 held until every fresh bridge stream carries its gain — a fresh loopback stream plays at full volume until its gain
 lands, which would otherwise pop the first instant of audio through the amp — so the first moment of music after a
-long quiet spell can be delayed. Connections into the background bus are also guarded until their input trims apply.
+long quiet spell can be delayed. Connections into the music bus are also guarded until their input trims apply.
 Failed reconciliation withdraws readiness; delayed streams keep the output guarded for a retry. That guard is the
 only thing that mutes the sink — the volume mute is a gain on the music paths, not a sink property — so a sink found
 muted is simply released once the graph settles. Idle-wake AEC timing and cancellation recovery
@@ -174,7 +175,7 @@ the whole face on a slow tick for twenty seconds after the device starts answeri
 successful write.
 
 Voice ducking is enabled by `smartamp_voice_ducking_enabled`. Every music input shares the
-`smartamp_background_sink_name` bus and fades down to `smartamp_voice_duck_volume_percent` per cent of its normal level
+`smartamp_music_sink_name` bus and fades down to `smartamp_voice_duck_volume_percent` per cent of its normal level
 during an Assist interaction — the value is the level the music plays *at* while ducked (reduced to 15%, not by 15%),
 and it returns to 100% afterwards. `smartamp_voice_duck_fade_ms` controls the transition. The controller requests
 ducking over the audio manager's control socket, which releases the request automatically if the controller disconnects.

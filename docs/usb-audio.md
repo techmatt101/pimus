@@ -75,10 +75,13 @@ service is visible rather than silent. The playground models both sockets.
 
 The USB socket uses newline-delimited JSON. Commands are `get-state`,
 `set-source-state` with `name: "usb"` and `state: "on" | "off" | "toggle"`, and
-`set-input-trim` with `name: "usb"` and a numeric `percent` from 0 to 100.
-State events contain `sources`, `trims`, `usb_host`, `usb_playback`, `available`,
-`playing` and `source`. `usb_playback` describes host streaming; `playing`
-describes the app's configured playback stream.
+`set-source-trim` with `name: "usb"` and a numeric `percent` from 0 to 100.
+State events contain `sources`, `usb_host`, `usb_playback` and `playing`.
+`sources.usb` is the one USB source in the shape the audio manager lists its
+own — its `trim`, its `enabled` toggle, whether the gadget's capture node is
+`available`, and which `node` it is — so the controller merges the two lists
+without knowing which service a source came from. `usb_playback` describes
+host streaming; `playing` describes the app's configured playback stream.
 
 ## Deployment and validation
 

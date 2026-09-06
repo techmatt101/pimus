@@ -16,7 +16,7 @@ install, over SSH, as many times as you like.
 - 🎛️ **Has controls you can touch** — an optional Stream Deck+ with keys, dials,
   and a touch strip for volume, media, lights, scenes, and timers.
 - 💡 **Reacts** — an LED ring that shows what the voice assistant is doing, and
-  background audio that ducks out of the way while it talks.
+  music that ducks out of the way while it talks.
 - 🔌 **Behaves itself** — the panel sleeps when the room is empty, the audio
   graph tears itself down when nothing is playing, and it all comes back in
   about a second.

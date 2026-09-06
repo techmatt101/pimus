@@ -25,7 +25,7 @@ class UsbConfig:
     def from_mapping(cls, raw: Mapping[str, Any]) -> UsbConfig:
         return cls(
             source_match=str(raw.get("source_match", "UAC2Gadget")),
-            sink_name=str(raw.get("sink_name", "smartamp_background")),
+            sink_name=str(raw.get("sink_name", "smartamp_music")),
             audio_status=Path(raw["audio_status"]),
             enabled=bool(raw.get("enabled", False)),
             volume_percent=volume.clamp(raw.get("volume_percent", 100)),

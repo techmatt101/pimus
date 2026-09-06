@@ -66,7 +66,7 @@ class AudioReliabilityTests(ManagerTestCase):
             reply, reconcile = manager.commands.apply(
                 mock.Mock(), {"command": "set-music-volume", "percent": 25}
             )
-        self.assertEqual(reply["music_volume"], 25)
+        self.assertEqual(reply["music_bus"]["volume"], 25)
         self.assertFalse(reconcile)
         self.assertEqual(volume_writes(run), [("10", "25%")])
 
@@ -304,16 +304,16 @@ class RebuildSafetyTests(ManagerTestCase):
 
 
 class BackgroundRouteSafetyTests(ManagerTestCase):
-    def test_delayed_background_route_stream_is_guarded_until_its_trim_applies(self) -> None:
+    def test_delayed_music_bus_route_stream_is_guarded_until_its_trim_applies(self) -> None:
         manager = self.make_manager(
             {
                 "startup_volume_percent": 40,
-                "background": {"enabled": True},
+                "music_bus": {"enabled": True},
                 "sources": {
                     "line_in": {
                         "enabled": False,
                         "match": "Line input",
-                        "target": "background",
+                        "target": "music",
                         "volume_percent": 25,
                     }
                 },
@@ -331,17 +331,17 @@ class BackgroundRouteSafetyTests(ManagerTestCase):
         listings: Listings = {
             "sinks": [
                 sink,
-                {"name": "smartamp_background", "index": 2, "owner_module": 20},
+                {"name": "smartamp_music", "index": 2, "owner_module": 20},
             ],
             "sources": [
-                {"name": "smartamp_background.monitor"},
+                {"name": "smartamp_music.monitor"},
                 {"name": "line_in", "description": "Line input"},
             ],
             "modules": [
                 {"index": 20, "name": "module-null-sink"},
                 {
                     "index": 30, "name": "module-loopback",
-                    "argument": "source=smartamp_background.monitor sink=hifiberry",
+                    "argument": "source=smartamp_music.monitor sink=hifiberry",
                 },
             ],
             "sink-inputs": [

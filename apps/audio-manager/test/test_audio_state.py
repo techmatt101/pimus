@@ -19,11 +19,11 @@ from smartamp_audio import pactl
 
 
 class RouteStateTests(ManagerTestCase):
-    def test_background_route_obeys_off_toggle_and_keeps_only_its_own_trim(self) -> None:
+    def test_music_bus_route_obeys_off_toggle_and_keeps_only_its_own_trim(self) -> None:
         manager = self.make_manager(
             {"sources": {"aux": {
                 "match": "ADC",
-                "target": "background",
+                "target": "music",
                 "mute_when_off": True,
                 "volume_percent": 50,
             }}}
@@ -42,11 +42,12 @@ class RouteStateTests(ManagerTestCase):
 
         def reconcile() -> dict[str, dict[str, Any]]:
             manager.graph.invalidate()
-            return manager.routes.reconcile(
+            manager.routes.reconcile(
                 output={"name": "hifi"},
-                background_sink={"name": "background"},
+                music_sink={"name": "background"},
                 music_volume=40,
             )
+            return manager.routes.status()
 
         with self._patched_graph(listings, run) as commands, mock.patch(
             "smartamp_audio.volume.time.sleep"
@@ -66,14 +67,14 @@ class RouteStateTests(ManagerTestCase):
             reconcile()
             self.assertEqual(volume_writes(commands), [("62", "0%")])
             # The trim moves live to balance this input against the others,
-            # and a background route carries it on its own stream whatever the
+            # and a music-bus route carries it on its own stream whatever the
             # music level is doing.
             manager.routes.set_enabled("aux", True)
             reconcile()
             commands.reset_mock()
-            manager.set_input_trim("aux", 80)
+            manager.set_source_trim("aux", 80)
             self.assertEqual(volume_writes(commands)[-1], ("62", "80%"))
-            self.assertEqual(manager.trims()["aux"], 80)
+            self.assertEqual(manager.sources()["aux"]["trim"], 80)
 
     def test_failed_route_fade_can_be_reversed_and_retried(self) -> None:
         manager = self.make_manager(
@@ -102,20 +103,20 @@ class RouteStateTests(ManagerTestCase):
 class StateBroadcastTests(ManagerTestCase):
     def test_clients_receive_voice_and_duck_changes_and_disconnect(self) -> None:
         manager = self.make_manager(
-            {"background": {"enabled": True, "ducking_enabled": True}}
+            {"music_bus": {"enabled": True, "ducking_enabled": True}}
         )
         sender, _ = self._client(manager)
         _, listener = self._client(manager)
-        for command, field, expected in (
-            ({"command": "set-voice-volume", "percent": 35}, "voice_volume", 35),
-            ({"command": "set-duck", "active": True}, "ducked", True),
+        for command, section, field, expected in (
+            ({"command": "set-voice-volume", "percent": 35}, "voice_bus", "volume", 35),
+            ({"command": "set-duck", "active": True}, "music_bus", "ducked", True),
         ):
             manager.control._handle(sender, json.dumps(command).encode())
             manager._broadcast_changes()
-            self.assertEqual(json.loads(listener.recv(4096))[field], expected)
+            self.assertEqual(json.loads(listener.recv(4096))[section][field], expected)
         manager.control.drop(sender)
         manager._broadcast_changes()
-        self.assertFalse(json.loads(listener.recv(4096))["ducked"])
+        self.assertFalse(json.loads(listener.recv(4096))["music_bus"]["ducked"])
 
     def test_broadcast_detects_route_mutations_and_ignores_unchanged_state(self) -> None:
         manager = self.make_manager({"sources": {"aux": {}}})
@@ -125,7 +126,7 @@ class StateBroadcastTests(ManagerTestCase):
             manager.routes.set_enabled("aux", True)
             manager._broadcast_changes()
             broadcast.assert_called_once()
-            self.assertEqual(broadcast.call_args.args[0]["sources"], {"aux": True})
+            self.assertTrue(broadcast.call_args.args[0]["sources"]["aux"]["enabled"])
             manager._broadcast_changes()
             broadcast.assert_called_once()
 
@@ -141,18 +142,18 @@ class StateBroadcastTests(ManagerTestCase):
 
 class GainRecoveryTests(ManagerTestCase):
     def test_reversing_a_partially_failed_duck_restores_the_requested_gain(self) -> None:
-        manager = self.make_manager({"background": {"enabled": True, "fade_ms": 100}})
-        manager.background.stream_index = 42
+        manager = self.make_manager({"music_bus": {"enabled": True, "fade_ms": 100}})
+        manager.music_bus.stream_index = 42
         with mock.patch.object(pactl, "set_sink_input_volume") as write, mock.patch(
             "smartamp_audio.volume.time.sleep"
         ):
-            manager.background.apply_ducking(100, False)
+            manager.music_bus.apply_ducking(100, False)
             write.side_effect = [None, OSError("write failed mid-fade")]
             with self.assertRaises(OSError):
-                manager.background.apply_ducking(100, True)
+                manager.music_bus.apply_ducking(100, True)
             write.side_effect = None
             write.reset_mock()
-            manager.background.apply_ducking(100, False)
+            manager.music_bus.apply_ducking(100, False)
             write.assert_called_once_with(42, 100)
 
 
@@ -173,7 +174,7 @@ class MusicRegisterTests(ManagerTestCase):
         }
 
     def test_the_register_carries_the_level_both_ways(self) -> None:
-        manager = self.make_manager({"background": {"enabled": True}})
+        manager = self.make_manager({"music_bus": {"enabled": True}})
         manager.music_volume = 40
         sink = self._sink(100)
         with self._patched_graph({"sinks": [sink]}, fake_run) as commands:
@@ -196,7 +197,7 @@ class MusicRegisterTests(ManagerTestCase):
             self.assertEqual(manager.music_volume, 75)
 
     def test_an_agreed_register_is_left_alone(self) -> None:
-        manager = self.make_manager({"background": {"enabled": True}})
+        manager = self.make_manager({"music_bus": {"enabled": True}})
         manager.music_volume = 40
         sink = self._sink(40)
         with self._patched_graph({"sinks": [sink]}, fake_run) as commands:
@@ -314,12 +315,12 @@ class ExternalClientTests(ManagerTestCase):
             self.assertFalse(manager._audio_active())
 
     def test_volume_commands_publish_the_bus_register_immediately(self) -> None:
-        manager = self.make_manager({"background": {"enabled": True}})
-        sink = {"name": "smartamp_background", "index": 2,
+        manager = self.make_manager({"music_bus": {"enabled": True}})
+        sink = {"name": "smartamp_music", "index": 2,
                 "volume": {"mono": {"value_percent": "40%"}}, "mute": False}
         with self._patched_graph({"sinks": [sink]}, fake_run) as commands:
             manager.set_music_volume(60)
-            self.assertIn(("pactl", "set-sink-volume", "smartamp_background", "60%"),
+            self.assertIn(("pactl", "set-sink-volume", "smartamp_music", "60%"),
                           [call.args for call in commands.call_args_list])
 
     def test_monitor_restart_deadline_wakes_an_otherwise_idle_selector(self) -> None:

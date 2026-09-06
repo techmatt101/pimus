@@ -17,15 +17,19 @@
      write, and subscribe to, which is how a player watching its output device
      moves the room's level and is told when the dial or a USB host moved it.
      It exists whether or not the assistant ducks it; ducking is only something
-     that happens to it. #}
-  "background": {
+     that happens to it. The clients that play straight into it - Sendspin,
+     and anything on the default sink - are published as one source with a
+     trim and nothing to switch; the daemon names no product, so this is where
+     that source gets its name. #}
+  "music_bus": {
     "enabled": true,
-    "sink_name": {{ smartamp_background_sink_name | to_json }},
+    "sink_name": {{ smartamp_music_sink_name | to_json }},
     "latency_ms": {{ smartamp_loopback_latency_ms | int }},
     "ducking_enabled": {{ voice_ducking_enabled | to_json }},
     "duck_volume_percent": {{ smartamp_voice_duck_volume_percent | int }},
     "fade_ms": {{ smartamp_voice_duck_fade_ms | int }},
-    "client_volume_percent": {{ smartamp_sendspin_volume_percent | int }}
+    "players_source": "sendspin",
+    "players_volume_percent": {{ smartamp_sendspin_volume_percent | int }}
   },
   "voice_bus": {
     "enabled": {{ voice_assistant_enabled | bool | to_json }},
@@ -51,7 +55,7 @@
       "match": {{ smartamp_aux_match | to_json }},
       "enabled": {{ smartamp_aux_enabled | bool | to_json }},
       "mute_when_off": true,
-      "target": "background",
+      "target": "music",
       "latency_ms": {{ smartamp_aux_latency_ms | int }},
       "volume_percent": {{ smartamp_aux_volume_percent | int }}
     }

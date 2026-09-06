@@ -180,15 +180,15 @@ speech-to-text sits between the two. The pipeline debug view (Settings → Voice
 assistants → ⋮ → Debug) times each stage. Setting the silence to `0` disables
 local endpointing entirely and restores the old behaviour.
 
-## Background audio does not duck or restore
+## Music does not duck or restore
 
-Check the `background` section in `/run/user/*/smartamp-audio-status.json`. `available` confirms that the background
+Check the `music_bus` section in `/run/user/*/smartamp-audio-status.json`. `available` confirms that the music
 sink and HiFiBerry bridge exist; `ducked` reports whether any connected controller is currently requesting a duck.
-Sendspin should have `PULSE_SINK=smartamp_background` in `systemctl cat smartamp-sendspin`, and an enabled USB route
+Sendspin should have `PULSE_SINK=smartamp_music` in `systemctl cat smartamp-sendspin`, and an enabled USB route
 should target the same sink in `pactl list sink-inputs`.
 
 The controller sends `set-duck` over the audio manager's control socket from LVA events. The manager holds that request
-against the controller's connection, so a controller crash or restart releases it immediately and background audio
+against the controller's connection, so a controller crash or restart releases it immediately and the music
 returns to full volume; there is no lease file to inspect or expire. If the gain does not change, check that the
 controller is connected to the socket in the `smartamp-controller` log, then look for `Ducked`/`Restored` lines in
 `smartamp-audio-manager`.
@@ -205,7 +205,7 @@ journalctl -u smartamp-sendspin | grep -iE 'hardware volume|volume changed exter
 sudo -u smartamp XDG_RUNTIME_DIR=/run/user/$(id -u smartamp) pactl get-default-sink
 ```
 
-The default sink must be `smartamp_background`. If it is the HiFiBerry, the client is watching the pinned output
+The default sink must be `smartamp_music`. If it is the HiFiBerry, the client is watching the pinned output
 instead and will fight the manager's 100% pin; check for `Pinned the output sink` repeating in
 `smartamp-audio-manager`.
 
@@ -214,8 +214,8 @@ slider and the level should follow:
 
 ```sh
 sudo -u smartamp XDG_RUNTIME_DIR=/run/user/$(id -u smartamp) \
-  pactl list sinks | grep -A 8 smartamp_background
-jq '{music_volume, vol_muted, trims, output_ceiling}' /run/user/*/smartamp-audio-status.json
+  pactl list sinks | grep -A 8 smartamp_music
+jq '{music_bus, output_volume, sources}' /run/user/*/smartamp-audio-status.json
 journalctl -u smartamp-audio-manager | grep -E 'Music volume set to' | tail
 ```
 
@@ -228,7 +228,7 @@ created with `monitor.channel-volumes=false` to prevent exactly that; confirm it
 
 ```sh
 sudo -u smartamp XDG_RUNTIME_DIR=/run/user/$(id -u smartamp) \
-  pactl list sinks | grep -B 20 smartamp_background | grep -i monitor.channel-volumes
+  pactl list sinks | grep -B 20 smartamp_music | grep -i monitor.channel-volumes
 ```
 
 ## Music crackles or pops every few seconds

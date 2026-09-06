@@ -261,7 +261,7 @@
 - name: Validate the music bus settings
   ansible.builtin.assert:
     that:
-      - smartamp_background_sink_name is match('^[A-Za-z0-9._]+$')
+      - smartamp_music_sink_name is match('^[A-Za-z0-9._]+$')
       - (smartamp_voice_duck_volume_percent | int) >= 0
       - (smartamp_voice_duck_volume_percent | int) <= 100
       - (smartamp_voice_duck_fade_ms | int) >= 0

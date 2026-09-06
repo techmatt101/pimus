@@ -7,7 +7,6 @@ import logging
 import selectors
 import subprocess
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -15,7 +14,7 @@ from . import output
 from smartamp_audio import status, volume
 from .system import amixer
 from smartamp_audio import monitors, pactl
-from .buses.background import BackgroundBus
+from .buses.music import MusicBus
 from .buses.music_volume import MusicVolumeSync
 from .buses.voice import VoiceBus
 from .buses.voice_meter import VoiceLevelMeter
@@ -44,18 +43,6 @@ RECONCILE_RETRY_SECONDS = 1.0
 GRAPH_ERRORS = (subprocess.SubprocessError, json.JSONDecodeError, RuntimeError, OSError)
 
 
-@dataclass(frozen=True)
-class GraphStatus:
-    """What one pass over the graph found, as the status file describes it.
-
-    The rest of the document is manager state that outlives a pass, so only
-    these have to be carried out of the rebuild.
-    """
-
-    echo_reference: dict[str, Any]
-    sources: dict[str, dict[str, Any]]
-
-
 class AudioManager:
     def __init__(self, config: AudioConfig, socket_path: Path, status_path: Path) -> None:
         self.config = config
@@ -64,16 +51,16 @@ class AudioManager:
         self.music_volume = config.startup_volume_percent
         self.vol_muted = False
         self.voice_volume = config.voice_bus.volume_percent
-        # The amplifier's hardware ceiling, refreshed by each reconcile rather
-        # than read per query: it is set once at boot and only a hand at the
-        # mixer moves it. None until the first pass, and on a unit whose card
-        # cannot be read at all.
-        self.output_ceiling: int | None = None
+        # The card's hardware volume - the amplifier's ceiling - refreshed by
+        # each reconcile rather than read per query: it is set once at boot
+        # and only a hand at the mixer moves it. None until the first pass,
+        # and on a unit whose card cannot be read at all.
+        self.output_volume: int | None = None
 
         self.graph = Graph()
         self.output = output.OutputSink(config.output_match, self.graph)
         self.modules = ModuleRegistry(self.graph, self._guard_output)
-        self.background = BackgroundBus(config.background, self.graph, self.modules)
+        self.music_bus = MusicBus(config.music_bus, self.graph, self.modules)
         self.selector = selectors.DefaultSelector()
         self.voice_meter = VoiceLevelMeter(self.selector, self._publish_voice_level)
         self.voice_bus = VoiceBus(
@@ -83,6 +70,9 @@ class AudioManager:
             config.echo_reference, self.graph, self.modules
         )
         self.routes = SourceRoutes(config.sources, self.graph, self.modules)
+        # What the last pass found of the reference path; the document
+        # reports it between passes, as it does everything a pass settles.
+        self.aec_reference: dict[str, Any] = self.echo_reference.status()
         self.music_register = MusicVolumeSync()
         self.idle = IdleTracker(config.idle_teardown_seconds)
 
@@ -150,43 +140,66 @@ class AudioManager:
             LOG.info("Waiting for PipeWire Pulse")
             time.sleep(1)
 
-    def state_event(self) -> dict[str, Any]:
+    def document(self) -> dict[str, Any]:
+        """Everything this daemon says about the graph, in one shape.
+
+        The status file is this document; a state event is this document
+        with `event` in front. Each bus section carries its own level, and
+        each source its own trim, so a reader never joins two maps by name.
+        """
         return {
-            "event": "state",
-            "sources": dict(self.routes.enabled),
-            "ducked": self.desired_ducking(),
-            "music_volume": self.music_volume,
-            "vol_muted": self.vol_muted,
-            "voice_volume": self.voice_volume,
-            "trims": self.trims(),
-            "output_ceiling": self.output_ceiling,
+            "sink": self.output.name,
+            "output_volume": self.output_volume,
+            "music_bus": {
+                **self.music_bus.status(),
+                "ducked": self.desired_ducking(),
+                "volume": self.music_volume,
+                "muted": self.vol_muted,
+            },
+            "voice_bus": {
+                "enabled": self.config.voice_bus.enabled,
+                **self.voice_bus.status(),
+                "volume": self.voice_volume,
+            },
+            "aec_reference": self.aec_reference,
+            "sources": self.sources(),
+            "idle": self.idle.idle,
+            "standby": self.idle.standby,
         }
 
-    def trims(self) -> dict[str, int]:
-        """Every input trim this unit has, as the levels page reads them.
+    def state_event(self) -> dict[str, Any]:
+        return {"event": "state", **self.document()}
 
-        The players' bus carries one of its own for whatever plays into it
-        without a route, which is every client the daemon never hears about.
+    def sources(self) -> dict[str, dict[str, Any]]:
+        """Every music input this unit has, each with its own trim.
+
+        The bus's own players come first: whatever plays into it without a
+        route, which is every client the daemon never hears about. They have
+        a trim like any route and nothing to switch, so no `enabled`.
         """
-        trims = dict(self.routes.trims)
-        if self.config.background.enabled:
-            trims["background"] = self.background.client_trim
-        return trims
+        sources: dict[str, dict[str, Any]] = {}
+        if self.config.music_bus.enabled:
+            sources[self.config.music_bus.players_source] = {
+                "trim": self.music_bus.players_trim,
+                "available": self.music_bus.sink is not None,
+            }
+        sources.update(self.routes.status())
+        return sources
 
-    def set_input_trim(self, name: str, percent: float) -> None:
+    def set_source_trim(self, name: str, percent: float) -> None:
         level = volume.clamp(percent)
-        if name == "background":
+        if name == self.config.music_bus.players_source:
             self._apply_or_retry(
-                "Background trim", lambda: self._apply_background_trim(level)
+                "Players trim", lambda: self._apply_players_trim(level)
             )
             return
         self.routes.set_trim(name, level)
         self._apply_or_retry(
-            "Input trim", lambda: self._apply_route_trim(name)
+            "Source trim", lambda: self._apply_route_trim(name)
         )
 
-    def knows_trim(self, name: str) -> bool:
-        return name in self.trims()
+    def knows_source(self, name: str) -> bool:
+        return name in self.sources()
 
     @property
     def music_level(self) -> int:
@@ -199,11 +212,11 @@ class AudioManager:
         return 0 if self.vol_muted else self.music_volume
 
     def desired_ducking(self) -> bool:
-        return self.config.background.ducking_enabled and self.commands.duck_requested
+        return self.config.music_bus.ducking_enabled and self.commands.duck_requested
 
     def apply_ducking(self) -> bool:
         ducked = self.desired_ducking()
-        self.background.apply_ducking(self.music_level, ducked)
+        self.music_bus.apply_ducking(self.music_level, ducked)
         return ducked
 
     def safe_apply_ducking(self) -> None:
@@ -255,75 +268,55 @@ class AudioManager:
         self.graph.invalidate()
         self.modules.drop_released()
         sink = self.output.prepare()
-        self._read_output_ceiling()
+        self._read_output_volume()
         idle = self.idle.update(self._audio_active())
-        found = self._reconcile_graph(sink, idle)
-        settled = self.background.settled and self.voice_bus.settled and self.routes.settled
+        self._reconcile_graph(sink, idle)
+        settled = self.music_bus.settled and self.voice_bus.settled and self.routes.settled
         if not settled:
             self.schedule_reconcile(RECONCILE_RETRY_SECONDS)
         self.output.settle(settled)
-        self._publish(sink, found)
+        self._publish()
 
-    def _sync_music_register(self, background_sink: Node | None) -> None:
+    def _sync_music_register(self, music_sink: Node | None) -> None:
         before = (self.music_volume, self.vol_muted)
-        after = self.music_register.sync(background_sink, before, self.graph)
+        after = self.music_register.sync(music_sink, before, self.graph)
         if after == before:
             return
         self.music_volume, self.vol_muted = after
 
-    def _read_output_ceiling(self) -> None:
+    def _read_output_volume(self) -> None:
         ceiling = self.config.output_ceiling
         if not ceiling.readable:
             return
-        self.output_ceiling = amixer.playback_percent(ceiling.card, ceiling.control)
+        self.output_volume = amixer.playback_percent(ceiling.card, ceiling.control)
 
     def _guard_output(self, sink_name: str) -> None:
         if sink_name in (
             self.output.name,
-            self.background.sink_name,
+            self.music_bus.sink_name,
             self.voice_bus.sink_name,
         ):
             self.output.guard()
 
-    def _reconcile_graph(self, sink: Node | None, idle: bool) -> GraphStatus:
+    def _reconcile_graph(self, sink: Node | None, idle: bool) -> None:
         """Put the buses, echo reference and routes back where they belong."""
-        background_sink = self.background.reconcile(sink, bridged=not idle)
-        self._sync_music_register(background_sink)
+        music_sink = self.music_bus.reconcile(sink, bridged=not idle)
+        self._sync_music_register(music_sink)
         self.voice_bus.reconcile(sink, bridged=not idle)
         self.voice_bus.apply_gain(self.voice_volume)
-        reference = self.echo_reference.reconcile(sink, wanted=not idle)
+        self.aec_reference = self.echo_reference.reconcile(sink, wanted=not idle)
         self.apply_ducking()
-        self._adopt_default_sink(sink, background_sink)
-        source_status = self.routes.reconcile(
+        self._adopt_default_sink(sink, music_sink)
+        self.routes.reconcile(
             output=sink,
-            background_sink=background_sink,
+            music_sink=music_sink,
             music_volume=self.music_level,
             idle=idle,
         )
         output.hold_client_streams(self.graph, sink, self.music_level)
-        return GraphStatus(echo_reference=reference, sources=source_status)
 
-    def _publish(self, sink: Node | None, found: GraphStatus) -> None:
-        published = {
-            "sink": sink.get("name") if sink else None,
-            "music_volume": self.music_volume,
-            "vol_muted": self.vol_muted,
-            "output_ceiling": self.output_ceiling,
-            "trims": self.trims(),
-            "background": {
-                **self.background.status(),
-                "ducked": self.desired_ducking(),
-            },
-            "voice_bus": {
-                "enabled": self.config.voice_bus.enabled,
-                **self.voice_bus.status(),
-                "volume_percent": self.voice_volume,
-            },
-            "aec_reference": found.echo_reference,
-            "sources": found.sources,
-            "idle": self.idle.idle,
-            "standby": self.idle.standby,
-        }
+    def _publish(self) -> None:
+        published = self.document()
         status.write(self.status_path, published)
         LOG.debug("reconciled: %s", json.dumps(published))
 
@@ -369,31 +362,31 @@ class AudioManager:
 
     def _apply_music_volume(self) -> None:
         self.graph.invalidate()
-        if self.config.background.enabled:
+        if self.config.music_bus.enabled:
             self._sync_music_register(
-                self.graph.sink_named(self.config.background.sink_name)
+                self.graph.sink_named(self.config.music_bus.sink_name)
             )
         self.apply_ducking()
         self.routes.apply_music_volume(self.music_level)
         output.hold_client_streams(self.graph, self.output.find(), self.music_level)
 
-    def _apply_background_trim(self, level: int) -> None:
+    def _apply_players_trim(self, level: int) -> None:
         self.graph.invalidate()
-        self.background.set_client_trim(level)
+        self.music_bus.set_players_trim(level)
 
     def _apply_route_trim(self, name: str) -> None:
         self.graph.invalidate()
         self.routes.apply_trim(name, self.music_level)
 
     def _adopt_default_sink(
-        self, sink: Node | None, background_sink: Node | None
+        self, sink: Node | None, music_sink: Node | None
     ) -> None:
         # A client that plays to the default is playing music, so it belongs on
         # the music bus, where it lands behind a trim and the music level rather
         # than straight at the pinned output. It is also the only sink a player
         # watching its own output device can find, which is what makes the bus
         # register reach one that was never told a sink name.
-        default = background_sink or sink
+        default = music_sink or sink
         # Only set defaults that are wrong: an unconditional set-default emits a
         # subscribe event on every reconcile, which would echo into another
         # scheduled reconcile and never quiesce.

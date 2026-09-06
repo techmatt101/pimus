@@ -17,7 +17,7 @@ from smartamp_audio import volume
 
 DEFAULT_LATENCY_MS = 40
 DEFAULT_RESYNC_SECONDS = 900.0
-BACKGROUND_TARGET = "background"
+MUSIC_TARGET = "music"
 
 
 @dataclass(frozen=True)
@@ -28,16 +28,20 @@ class BusConfig:
 
 
 @dataclass(frozen=True)
-class BackgroundConfig(BusConfig):
+class MusicBusConfig(BusConfig):
     # Whether the assistant dips this bus while it talks. The bus is the music
     # path whatever the answer, because its sink volume is the music level's
     # public face; ducking is only something that happens to it.
     ducking_enabled: bool
     duck_volume_percent: int
     fade_ms: int
-    # The trim held on the players' own streams into the bus, as a percent of
-    # the music level the bridge already carries.
-    client_volume_percent: int
+    # The bus's own players - every client that plays straight into it rather
+    # than through a route - are published as one source under this name,
+    # with this trim held on their streams as a percent of the music level
+    # the bridge already carries. The daemon names no product; inventory
+    # calls them what they are on this unit.
+    players_source: str
+    players_volume_percent: int
 
 
 @dataclass(frozen=True)
@@ -90,8 +94,8 @@ class SourceConfig:
     volume_percent: int
 
     @property
-    def bridges_into_background(self) -> bool:
-        return self.target == BACKGROUND_TARGET
+    def bridges_into_music(self) -> bool:
+        return self.target == MUSIC_TARGET
 
 
 @dataclass(frozen=True)
@@ -103,7 +107,7 @@ class AudioConfig:
     # Seconds of silence before the persistent bridges are released so the
     # audio devices can suspend; 0 keeps every bridge loaded permanently.
     idle_teardown_seconds: float
-    background: BackgroundConfig
+    music_bus: MusicBusConfig
     voice_bus: VoiceBusConfig
     output_ceiling: OutputCeilingConfig
     sources: dict[str, SourceConfig]
@@ -114,7 +118,7 @@ class AudioConfig:
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> AudioConfig:
-        background = _section(raw, "background")
+        music_bus = _section(raw, "music_bus")
         voice_bus = _section(raw, "voice_bus")
         return cls(
             output_match=str(raw.get("output_match", "")),
@@ -124,17 +128,18 @@ class AudioConfig:
             idle_teardown_seconds=max(
                 0.0, float(raw.get("idle_teardown_seconds", 0))
             ),
-            background=BackgroundConfig(
-                enabled=bool(background.get("enabled", False)),
-                sink_name=str(background.get("sink_name", "smartamp_background")),
-                latency_ms=int(background.get("latency_ms", DEFAULT_LATENCY_MS)),
-                ducking_enabled=bool(background.get("ducking_enabled", False)),
+            music_bus=MusicBusConfig(
+                enabled=bool(music_bus.get("enabled", False)),
+                sink_name=str(music_bus.get("sink_name", "smartamp_music")),
+                latency_ms=int(music_bus.get("latency_ms", DEFAULT_LATENCY_MS)),
+                ducking_enabled=bool(music_bus.get("ducking_enabled", False)),
                 duck_volume_percent=volume.clamp(
-                    background.get("duck_volume_percent", 15)
+                    music_bus.get("duck_volume_percent", 15)
                 ),
-                fade_ms=max(0, int(background.get("fade_ms", 250))),
-                client_volume_percent=volume.clamp(
-                    background.get("client_volume_percent", 100)
+                fade_ms=max(0, int(music_bus.get("fade_ms", 250))),
+                players_source=str(music_bus.get("players_source", "players")),
+                players_volume_percent=volume.clamp(
+                    music_bus.get("players_volume_percent", 100)
                 ),
             ),
             voice_bus=VoiceBusConfig(

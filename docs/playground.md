@@ -78,8 +78,9 @@ The controller configuration is written out and then read back through the real
   buttons fire the same `smartamp_notify` event a real automation would.
   **toggle Home Assistant** under fault injection drops the connection, which is
   how to see the unknown-state faces.
-- **State** — the shared control state, the audio manager's routes, whether
-  background audio is ducked, and every Home Assistant entity the keys read.
+- **State** — the shared control state, the audio services' sources with their
+  trims and toggles, whether the music is ducked, and every Home Assistant
+  entity the keys read.
 - **ReSpeaker ring** — every frame the controller writes, streamed as it is
   written rather than sampled with the panel above, with the measured frame rate
   beside it. That is what makes an animation debuggable: a 25-frame-a-second

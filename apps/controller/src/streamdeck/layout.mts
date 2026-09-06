@@ -20,6 +20,7 @@ import {PlaylistTile} from './tiles/playlist-tile.mjs'
 import {PowerTile} from './tiles/power-tile.mjs'
 import {RemoteTile} from './tiles/remote-tile.mjs'
 import {SceneTile} from './tiles/scene-tile.mjs'
+import {type SourceFace, SourceTrimTile} from './tiles/source-trim-tile.mjs'
 import {TemperatureTile} from './tiles/temperature-tile.mjs'
 import {TimerTile} from './tiles/timer-tile.mjs'
 import type {Tile} from './tile.mjs'
@@ -61,22 +62,27 @@ const HA = {
 
 /**
  * The gains on the amp's path, in the order sound crosses them: the hardware
- * ceiling the manager only reads, the two levels the dials move, then each
- * input's trim — the share of the music level that input plays at, for
- * balancing them so switching input does not change how loud the room is.
- * `input` names the trim as the audio manager publishes it; a unit whose
- * hardware has no such input reports none and the key draws unknown.
+ * ceiling the manager only reads, then the two levels the dials move. Each
+ * input's trim — the share of the music level it plays at, for balancing the
+ * inputs so switching between them does not change how loud the room is —
+ * follows on the LEVELS page, one key per source the audio services list.
  */
 const LEVELS = {
     music: {label: 'MUSIC', icon: 'note', color: '#004d40'},
     voice: {label: 'VOICE', icon: 'voice', color: '#00565e'},
     ceiling: {label: 'AMP CEILING', icon: 'volume', color: '#263238'},
-    trims: [
-        {label: 'SENDSPIN', input: 'background', icon: 'playlist', color: '#311b92'},
-        {label: 'AUX', input: 'aux', icon: 'cable', color: '#4a148c'},
-        {label: 'USB', input: 'usb', icon: 'usb', color: '#0d47a1'},
-    ],
 } as const
+
+/**
+ * How each source the audio services can publish is drawn, keyed by the name
+ * they give it (inventory names the players' source in `audio.json`). A
+ * source missing here still gets a key, in the plain face with its name.
+ */
+const SOURCE_FACES: Partial<Record<string, SourceFace>> = {
+    sendspin: {icon: 'playlist', color: '#311b92'},
+    aux: {icon: 'cable', color: '#4a148c'},
+    usb: {icon: 'usb', color: '#0d47a1'},
+}
 
 const TIMER_SECONDS = 5 * 60
 
@@ -232,14 +238,7 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
         ],
     ]
 
-    const trimTile = ({label, input, icon, color}: (typeof LEVELS.trims)[number]): Tile =>
-        new LevelTile({
-            label,
-            icon,
-            color,
-            read: () => model.audio.trims[input],
-            apply: (percent) => audio.setInputTrim(input, percent),
-        }, dynamic)
+    const sourceTrim = (slot: number): Tile => new SourceTrimTile(model, audio, dynamic, {slot, faces: SOURCE_FACES})
 
     const levelsGrid: PageGrid = [
         [
@@ -263,12 +262,7 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
             }, dynamic),
             null,
         ],
-        [
-            trimTile(LEVELS.trims[0]),
-            trimTile(LEVELS.trims[1]),
-            trimTile(LEVELS.trims[2]),
-            null,
-        ],
+        [sourceTrim(0), sourceTrim(1), sourceTrim(2), sourceTrim(3)],
     ]
 
     const remoteGrid: PageGrid | null = remote

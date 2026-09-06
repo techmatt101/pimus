@@ -272,7 +272,7 @@ class UsbLifecycleTests(unittest.TestCase):
         self.contexts.enter_context(mock.patch.object(gadget, "card_present", return_value=False))
         self.play = self.contexts.enter_context(mock.patch.object(self.client.playback, "reconcile"))
         self.halt = self.contexts.enter_context(mock.patch.object(self.client.playback, "stop"))
-        self.client.config.audio_status.write_text(json.dumps({"background": {"sink": "music"}, "idle": True}))
+        self.client.config.audio_status.write_text(json.dumps({"music_bus": {"sink": "music"}, "idle": True}))
 
     def test_enumeration_alone_never_connects_and_stream_stop_disconnects(self) -> None:
         self.client.reconcile()
@@ -310,7 +310,7 @@ class UsbLifecycleTests(unittest.TestCase):
         self.client.reconcile()
         self.play.assert_not_called()
         self.assertTrue(self.client.state_event()["usb_playback"])
-        self.assertFalse(self.client.state_event()["sources"]["usb"])
+        self.assertFalse(self.client.state_event()["sources"]["usb"]["enabled"])
 
     def test_missing_manager_readiness_or_target_stops_the_client(self) -> None:
         self.streaming.return_value = True
@@ -318,7 +318,7 @@ class UsbLifecycleTests(unittest.TestCase):
         self.client.reconcile()
         self.play.assert_not_called()
         self.halt.assert_called()
-        self.client.config.audio_status.write_text('{"background":{"sink":"music"}}')
+        self.client.config.audio_status.write_text('{"music_bus":{"sink":"music"}}')
         self.listings["sinks"] = []
         self.client.reconcile()
         self.play.assert_not_called()
@@ -368,10 +368,10 @@ class UsbLifecycleTests(unittest.TestCase):
                     key.data()
             return json.loads(connection.recv(4096))
 
-        self.assertTrue(exchange({"command": "get-state"})["sources"]["usb"])
+        self.assertTrue(exchange({"command": "get-state"})["sources"]["usb"]["enabled"])
         for _ in range(2):
-            self.assertFalse(exchange({"command": "set-source-state", "name": "usb", "state": "off"})["sources"]["usb"])
-            self.assertEqual(exchange({"command": "set-input-trim", "name": "usb", "percent": 25})["trims"]["usb"], 25)
-        invalid: list[Any] = [[], {"command": []}, {"command": "set-input-trim", "name": "usb", "percent": True}, {"command": "set-source-state", "name": "usb", "state": []}]
+            self.assertFalse(exchange({"command": "set-source-state", "name": "usb", "state": "off"})["sources"]["usb"]["enabled"])
+            self.assertEqual(exchange({"command": "set-source-trim", "name": "usb", "percent": 25})["sources"]["usb"]["trim"], 25)
+        invalid: list[Any] = [[], {"command": []}, {"command": "set-source-trim", "name": "usb", "percent": True}, {"command": "set-source-state", "name": "usb", "state": []}]
         for bad in invalid:
             self.assertEqual(exchange(bad)["event"], "error")

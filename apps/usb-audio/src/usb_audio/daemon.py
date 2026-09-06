@@ -74,11 +74,16 @@ class UsbAudio:
                     LOG.exception("USB cleanup failed")
 
     def state_event(self) -> dict[str, Any]:
+        # The one USB source, in the shape the audio manager lists its own:
+        # its trim, its toggle, and the capture node it plays from.
         return {
-            "event": "state", "sources": {"usb": self.enabled},
-            "trims": {"usb": self.trim}, "usb_host": self.host.attached,
-            "usb_playback": self.host.streaming, "available": self.available,
-            "playing": self.playback.ready, "source": self.source_name,
+            "event": "state",
+            "sources": {"usb": {
+                "trim": self.trim, "enabled": self.enabled,
+                "available": self.available, "node": self.source_name,
+            }},
+            "usb_host": self.host.attached, "usb_playback": self.host.streaming,
+            "playing": self.playback.ready,
         }
 
     def safe_reconcile(self) -> None:
@@ -142,9 +147,9 @@ class UsbAudio:
             document = json.loads(self.config.audio_status.read_text(encoding="utf-8"))
             if not isinstance(document, dict):
                 return False
-            background = cast(dict[str, Any], document).get("background")
-            return (isinstance(background, dict)
-                    and cast(dict[str, Any], background).get("sink") == self.config.sink_name)
+            music_bus = cast(dict[str, Any], document).get("music_bus")
+            return (isinstance(music_bus, dict)
+                    and cast(dict[str, Any], music_bus).get("sink") == self.config.sink_name)
         except (OSError, ValueError):
             return False
 
@@ -162,7 +167,7 @@ class UsbAudio:
                 changed = self.enabled != enabled
                 self.enabled = enabled
                 return self.state_event(), changed
-        if command == "set-input-trim" and message.get("name") == "usb":
+        if command == "set-source-trim" and message.get("name") == "usb":
             percent = message.get("percent")
             if volume.is_percent(percent):
                 trim = volume.clamp(percent)

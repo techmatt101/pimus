@@ -25,6 +25,47 @@ export interface LevelTileConfig {
     caption?: () => string
 }
 
+export interface LevelFace {
+    label: string
+    icon: IconName
+    color: string
+    level: number | undefined
+    adjustable: boolean
+    armed: boolean
+}
+
+/** The face every level key shares: icon, reading, bar, and caption. */
+export function drawLevelFace(surface: Surface, {label, icon, color, level, adjustable, armed}: LevelFace): void {
+    const x = surface.width / 2
+    const ink = adjustable ? '#ffffff' : READONLY_INK
+    drawBackground(surface, color)
+    drawIcon(surface, icon, {x, y: 28, size: 30, color: ink})
+    // An unreachable audio manager reads as unknown, never as a level of zero.
+    const value = level === undefined ? '?' : `${level}%`
+    drawText(surface, value, {
+        x,
+        y: READING_Y,
+        size: fittingSize(value, [30, 26, 22], 112),
+        color: ink,
+    })
+    drawLevelBar(surface, level, ink)
+    drawCaption(surface, label)
+    if (armed) drawActiveGlow(surface)
+}
+
+function drawLevelBar(surface: Surface, level: number | undefined, ink: string): void {
+    const {ctx} = surface
+    const width = surface.width - BAR_INSET * 2
+    ctx.save()
+    ctx.fillStyle = 'rgba(0,0,0,0.45)'
+    ctx.fillRect(BAR_INSET, BAR_Y, width, BAR_HEIGHT)
+    if (level !== undefined) {
+        ctx.fillStyle = ink
+        ctx.fillRect(BAR_INSET, BAR_Y, (width * Math.max(0, Math.min(100, level))) / 100, BAR_HEIGHT)
+    }
+    ctx.restore()
+}
+
 /**
  * One gain on the amp's path, shown as a percentage and adjusted in place.
  * Press to arm: the shared dial steps it live in 5% notches, clamped at the
@@ -65,35 +106,13 @@ export class LevelTile implements Tile {
 
     draw(surface: Surface): void {
         const {label, icon, color, read, caption} = this.#config
-        const level = read()
-        const adjustable = this.#armed !== null
-        const x = surface.width / 2
-        drawBackground(surface, color)
-        drawIcon(surface, icon, {x, y: 28, size: 30, color: adjustable ? '#ffffff' : READONLY_INK})
-        // An unreachable audio manager reads as unknown, never as a level of zero.
-        const value = level === undefined ? '?' : `${level}%`
-        drawText(surface, value, {
-            x,
-            y: READING_Y,
-            size: fittingSize(value, [30, 26, 22], 112),
-            color: adjustable ? '#ffffff' : READONLY_INK,
+        drawLevelFace(surface, {
+            label: caption ? caption() : label,
+            icon,
+            color,
+            level: read(),
+            adjustable: this.#armed !== null,
+            armed: this.holdsDial(),
         })
-        this.#drawBar(surface, level)
-        drawCaption(surface, caption ? caption() : label)
-
-        if (this.holdsDial()) drawActiveGlow(surface)
-    }
-
-    #drawBar(surface: Surface, level: number | undefined): void {
-        const {ctx} = surface
-        const width = surface.width - BAR_INSET * 2
-        ctx.save()
-        ctx.fillStyle = 'rgba(0,0,0,0.45)'
-        ctx.fillRect(BAR_INSET, BAR_Y, width, BAR_HEIGHT)
-        if (level !== undefined) {
-            ctx.fillStyle = this.#armed === null ? READONLY_INK : '#ffffff'
-            ctx.fillRect(BAR_INSET, BAR_Y, (width * Math.max(0, Math.min(100, level))) / 100, BAR_HEIGHT)
-        }
-        ctx.restore()
     }
 }

@@ -267,8 +267,8 @@ const layout = createLayout({
         setMusicVolume: (percent) => {
             audio.setMusicVolume(percent)
         },
-        setInputTrim: (name, percent) => {
-            audio.setInputTrim(name, percent)
+        setSourceTrim: (name, percent) => {
+            audio.setSourceTrim(name, percent)
         },
     },
     // The real client speaks the WebSocket API and has its own tests; what the

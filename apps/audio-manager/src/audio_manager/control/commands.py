@@ -28,7 +28,7 @@ class CommandHandler:
 
     A duck request is held against the connection that asked for it, which
     makes the socket itself the liveness signal: if the controller crashes
-    mid-conversation the kernel closes its socket and background audio restores
+    mid-conversation the kernel closes its socket and the music restores
     immediately, with no timestamped lease file to expire.
     """
 
@@ -44,7 +44,7 @@ class CommandHandler:
             "set-voice-volume": self._set_voice_volume,
             "set-music-volume": self._set_music_volume,
             "set-music-mute": self._set_music_mute,
-            "set-input-trim": self._set_input_trim,
+            "set-source-trim": self._set_source_trim,
             "set-source-state": self._set_source_state,
             "get-state": self._get_state,
             "resync": self._resync,
@@ -105,7 +105,7 @@ class CommandHandler:
             self._manager.notice_voice_activity()
         else:
             self._duck_requests.discard(connection)
-        # Ducking only touches the background stream volume, so apply it
+        # Ducking only touches the music bridge's volume, so apply it
         # directly instead of asking for a full graph reconcile.
         self._manager.safe_apply_ducking()
         return self._state()
@@ -154,7 +154,7 @@ class CommandHandler:
         percent = message.get("percent")
         if not volume.is_percent(percent):
             return _error("set-music-volume needs a percent between 0 and 100")
-        # Stream volumes only - the background bus and the direct routes - so
+        # Stream volumes only - the music bus and the direct routes - so
         # apply them directly instead of asking for a full reconcile.
         self._manager.set_music_volume(percent)
         return self._state()
@@ -167,16 +167,16 @@ class CommandHandler:
         self._manager.set_music_mute(muted)
         return self._state()
 
-    def _set_input_trim(self, _: socket.socket, message: dict[str, Any]) -> Reply:
+    def _set_source_trim(self, _: socket.socket, message: dict[str, Any]) -> Reply:
         name = message.get("name")
         percent = message.get("percent")
-        if not isinstance(name, str) or not self._manager.knows_trim(name):
-            return _error("unknown input trim")
+        if not isinstance(name, str) or not self._manager.knows_source(name):
+            return _error("unknown source trim")
         if not volume.is_percent(percent):
-            return _error("set-input-trim needs a percent between 0 and 100")
+            return _error("set-source-trim needs a percent between 0 and 100")
         # One stream's own gain, exactly as a music level move is, so it
         # applies directly rather than asking for a full reconcile.
-        self._manager.set_input_trim(name, percent)
+        self._manager.set_source_trim(name, percent)
         return self._state()
 
     def _set_source_state(self, _: socket.socket, message: dict[str, Any]) -> Reply:

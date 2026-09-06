@@ -16,16 +16,21 @@ export interface FakeAudioServiceOptions {
     service: 'manager' | 'usb'
 }
 
+interface FakeSource {
+    trim: number
+    /** Absent for the players that play straight into the bus: nothing to switch. */
+    enabled?: boolean
+}
+
 export class FakeAudioService {
     readonly socketPath: string
-    sources: Record<string, boolean | undefined>
+    sources: Record<string, FakeSource | undefined>
     musicVolume = 40
     voiceVolume = 60
     volMuted = false
-    trims: Record<string, number>
     private readonly service: 'manager' | 'usb'
     /** Read from the card on the Pi; a fixed reading here, as inventory sets it. */
-    outputCeiling = 90
+    outputVolume = 90
 
     private readonly bus: PlaygroundBus
     private readonly server: net.Server
@@ -36,8 +41,9 @@ export class FakeAudioService {
 
     constructor({bus, socketPath, service}: FakeAudioServiceOptions) {
         this.service = service
-        this.sources = service === 'usb' ? {usb: true} : {aux: false}
-        this.trims = service === 'usb' ? {usb: 100} : {background: 100, aux: 100}
+        this.sources = service === 'usb'
+            ? {usb: {trim: 100, enabled: true}}
+            : {sendspin: {trim: 100}, aux: {trim: 100, enabled: false}}
         this.bus = bus
         this.socketPath = socketPath
         this.server = net.createServer((socket) => this.accept(socket))
@@ -87,7 +93,7 @@ export class FakeAudioService {
         socket.on('close', () => {
             this.connections.delete(socket)
             // The manager ties a duck request to its connection; closing the socket
-            // is what restores background audio after a controller crash.
+            // is what restores the music after a controller crash.
             if (this.ducking.delete(socket)) this.bus.log('duck', 'note', 'duck released with the socket')
             if (this.metering.delete(socket) && this.metering.size === 0) this.stopMetering()
             this.bus.log('audio', 'note', 'controller disconnected from the audio manager')
@@ -105,7 +111,7 @@ export class FakeAudioService {
         const command = String(message.command ?? '')
         this.bus.log('audio', 'out', `command ${command}`, line)
 
-        if (this.service === 'usb' && !['get-state', 'set-source-state', 'set-input-trim'].includes(command)) {
+        if (this.service === 'usb' && !['get-state', 'set-source-state', 'set-source-trim'].includes(command)) {
             this.reject(socket, `unknown USB command ${command}`)
             return
         }
@@ -131,19 +137,20 @@ export class FakeAudioService {
             this.musicVolume = Math.round(percent)
             this.bus.log('audio', 'note', `music volume set to ${this.musicVolume}%`)
             this.broadcastState()
-        } else if (command === 'set-input-trim') {
+        } else if (command === 'set-source-trim') {
             const name = String(message.name ?? '')
             const percent = message.percent
-            if (!Object.hasOwn(this.trims, name)) {
-                this.reject(socket, 'unknown input trim')
+            const source = this.sources[name]
+            if (!source) {
+                this.reject(socket, 'unknown source trim')
                 return
             }
             if (typeof percent !== 'number' || percent < 0 || percent > 100) {
-                this.reject(socket, 'set-input-trim needs a percent between 0 and 100')
+                this.reject(socket, 'set-source-trim needs a percent between 0 and 100')
                 return
             }
-            this.trims[name] = Math.round(percent)
-            this.bus.log('audio', 'note', `${name} trim set to ${this.trims[name]}%`)
+            source.trim = Math.round(percent)
+            this.bus.log('audio', 'note', `${name} trim set to ${source.trim}%`)
             this.broadcastState()
         } else if (command === 'set-music-mute') {
             const muted = message.muted
@@ -158,7 +165,7 @@ export class FakeAudioService {
             const active = Boolean(message.active)
             if (active) this.ducking.add(socket)
             else this.ducking.delete(socket)
-            this.bus.log('duck', 'note', active ? 'background audio ducked' : 'background audio restored')
+            this.bus.log('duck', 'note', active ? 'music ducked' : 'music restored')
         } else if (command === 'set-voice-meter') {
             const active = message.active
             if (typeof active !== 'boolean') {
@@ -176,21 +183,18 @@ export class FakeAudioService {
     }
 
     private setSourceState(socket: net.Socket, name: string, state: string): void {
-        if (!this.knows(name)) {
+        const source = this.sources[name]
+        if (source?.enabled === undefined) {
             this.reject(socket, `unknown source "${name}"`)
             return
         }
-        if (state === 'toggle') this.sources[name] = !this.sources[name]
-        else if (state === 'on' || state === 'off') this.sources[name] = state === 'on'
+        if (state === 'toggle') source.enabled = !source.enabled
+        else if (state === 'on' || state === 'off') source.enabled = state === 'on'
         else {
             this.reject(socket, `unknown state "${state}"`)
             return
         }
         this.broadcastState()
-    }
-
-    private knows(name: string): boolean {
-        return Object.hasOwn(this.sources, name)
     }
 
     private reject(socket: net.Socket, error: string): void {
@@ -224,12 +228,10 @@ export class FakeAudioService {
             event: 'state',
             sources: this.sources,
             ...(this.service === 'manager' ? {
-                music_volume: this.musicVolume,
-                voice_volume: this.voiceVolume,
-                vol_muted: this.volMuted,
-                output_ceiling: this.outputCeiling,
+                output_volume: this.outputVolume,
+                music_bus: {volume: this.musicVolume, muted: this.volMuted, ducked: this.ducked},
+                voice_bus: {volume: this.voiceVolume},
             } : {usb_playback: false}),
-            trims: this.trims,
         })}\n`)
     }
 

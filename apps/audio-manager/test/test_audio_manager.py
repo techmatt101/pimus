@@ -127,9 +127,9 @@ class GraphMatchingTests(unittest.TestCase):
         self.assertIsNone(graph.find_owned_stream(streams, 9))
 
         tagged = [
-            {"index": 12, "properties": {"media.name": "SmartAmp.background_bridge"}}
+            {"index": 12, "properties": {"media.name": "SmartAmp.music_bridge"}}
         ]
-        tagged_stream = graph.find_owned_stream(tagged, 8, "SmartAmp.background_bridge")
+        tagged_stream = graph.find_owned_stream(tagged, 8, "SmartAmp.music_bridge")
         assert tagged_stream is not None
         self.assertEqual(tagged_stream["index"], 12)
 
@@ -206,8 +206,7 @@ class ControlSocketTests(ManagerTestCase):
         self.assertEqual(manager.routes.enabled, {"aux": True, "line_in": False})
 
     def test_route_commands_update_memory_state(self) -> None:
-        manager = self._duckable_manager()
-        manager.routes.enabled = {"aux": True, "line_in": False}
+        manager = self._duckable_manager(aux={"enabled": True}, line_in={"enabled": False})
         connection = mock.Mock()
 
         reply, reconcile = manager.commands.apply(
@@ -217,13 +216,34 @@ class ControlSocketTests(ManagerTestCase):
             reply,
             {
                 "event": "state",
-                "sources": {"aux": True, "line_in": True},
-                "ducked": False,
-                "music_volume": 100,
-                "vol_muted": False,
-                "voice_volume": 100,
-                "trims": {"background": 100},
-                "output_ceiling": None,
+                "sink": None,
+                "output_volume": None,
+                "music_bus": {
+                    "available": False,
+                    "sink": None,
+                    "ducked": False,
+                    "volume": 100,
+                    "muted": False,
+                },
+                "voice_bus": {
+                    "enabled": False,
+                    "available": False,
+                    "sink": None,
+                    "volume": 100,
+                },
+                "aec_reference": {
+                    "enabled": False,
+                    "available": False,
+                    "endpoints_available": False,
+                    "sink": None,
+                },
+                "sources": {
+                    "players": {"trim": 100, "available": False},
+                    "aux": {"trim": 100, "enabled": True, "available": False, "node": None},
+                    "line_in": {"trim": 100, "enabled": True, "available": False, "node": None},
+                },
+                "idle": False,
+                "standby": False,
             },
         )
         self.assertTrue(reconcile)
@@ -242,21 +262,37 @@ class ControlSocketTests(ManagerTestCase):
 
     def test_trim_commands_are_refused_for_inputs_this_unit_does_not_have(self) -> None:
         manager = self.make_manager({"sources": {"aux": {"volume_percent": 90}}})
-        # No background bus without ducking, so no trim of its own to move.
-        self.assertEqual(manager.trims(), {"aux": 90})
+        # No music bus, so no players' source with a trim of its own to move.
+        self.assertEqual(list(manager.sources()), ["aux"])
+        self.assertEqual(manager.sources()["aux"]["trim"], 90)
 
         for message in (
-            {"command": "set-input-trim", "name": "background", "percent": 50},
-            {"command": "set-input-trim", "name": "aux", "percent": 120},
+            {"command": "set-source-trim", "name": "players", "percent": 50},
+            {"command": "set-source-trim", "name": "aux", "percent": 120},
         ):
             reply, reconcile = manager.commands.apply(mock.Mock(), message)
             self.assertEqual(reply["event"], "error")
             self.assertFalse(reconcile)
-        self.assertEqual(manager.trims(), {"aux": 90})
+        self.assertEqual(manager.sources()["aux"]["trim"], 90)
+
+    def test_inventory_names_the_players_source(self) -> None:
+        manager = self.make_manager(
+            {"music_bus": {"enabled": True, "players_source": "sendspin",
+                           "players_volume_percent": 70}}
+        )
+        self.assertEqual(
+            manager.sources(), {"sendspin": {"trim": 70, "available": False}}
+        )
+        manager.music_bus.hold_clients = mock.Mock()
+        reply, reconcile = manager.commands.apply(
+            mock.Mock(), {"command": "set-source-trim", "name": "sendspin", "percent": 55}
+        )
+        self.assertFalse(reconcile)
+        self.assertEqual(reply["sources"]["sendspin"]["trim"], 55)
+        manager.music_bus.hold_clients.assert_called_once_with(55)
 
     def test_socket_commands_reconcile_and_answer_with_live_state(self) -> None:
-        manager = self._duckable_manager()
-        manager.routes.enabled = {"aux": False}
+        manager = self._duckable_manager(aux={"enabled": False})
         manager.safe_reconcile = mock.Mock()
         left, right = socket.socketpair()
         self.addCleanup(left.close)
@@ -268,19 +304,10 @@ class ControlSocketTests(ManagerTestCase):
         right.sendall(b'{"command": "set-source-state", "name": "aux", "state": "on"}\n')
         manager.control.read(left)
 
-        self.assertEqual(
-            json.loads(right.recv(4096)),
-            {
-                "event": "state",
-                "sources": {"aux": True},
-                "ducked": False,
-                "music_volume": 100,
-                "vol_muted": False,
-                "voice_volume": 100,
-                "trims": {"background": 100},
-                "output_ceiling": None,
-            },
-        )
+        reply = json.loads(right.recv(4096))
+        self.assertEqual(reply["event"], "state")
+        self.assertEqual(reply["sources"]["aux"]["enabled"], True)
+        self.assertEqual(reply["music_bus"]["volume"], 100)
         manager.safe_reconcile.assert_called_once()
 
         right.sendall(b"not json\n")
@@ -307,7 +334,7 @@ class ControlSocketTests(ManagerTestCase):
         reply, needs_reconcile = manager.commands.apply(
             connection, {"command": "set-duck", "active": True}
         )
-        self.assertTrue(reply["ducked"])
+        self.assertTrue(reply["music_bus"]["ducked"])
         # Ducking only changes one stream volume, so it must not force a full
         # graph reconcile.
         self.assertFalse(needs_reconcile)
@@ -325,12 +352,12 @@ class ControlSocketTests(ManagerTestCase):
         self.assertTrue(manager.desired_ducking())
 
         # Losing the socket is the liveness signal: a controller that crashes
-        # mid-conversation must not leave background audio ducked.
+        # mid-conversation must not leave the music ducked.
         manager.control.drop(connection)
         self.assertFalse(manager.desired_ducking())
 
-    def test_ducking_stays_off_when_the_background_path_is_disabled(self) -> None:
-        manager = self.make_manager({"background": {"enabled": False}})
+    def test_ducking_stays_off_when_the_music_bus_is_disabled(self) -> None:
+        manager = self.make_manager({"music_bus": {"enabled": False}})
         manager.commands.apply(mock.Mock(), {"command": "set-duck", "active": True})
         self.assertFalse(manager.desired_ducking())
 
@@ -348,9 +375,9 @@ class ControlSocketTests(ManagerTestCase):
         self.assertEqual(reply["event"], "error")
         self.assertFalse(reconcile)
 
-    def _duckable_manager(self) -> AudioManager:
+    def _duckable_manager(self, **sources: dict[str, Any]) -> AudioManager:
         return self.make_manager(
-            {"background": {"enabled": True, "ducking_enabled": True}}
+            {"music_bus": {"enabled": True, "ducking_enabled": True}, "sources": sources}
         )
 
 
@@ -709,7 +736,7 @@ class IdleTeardownTests(ManagerTestCase):
                     "sink_match": "XVF3800",
                     "latency_ms": 40,
                 },
-                "background": {
+                "music_bus": {
                     "enabled": True,
                     "sink_name": "background",
                     "latency_ms": 40,
@@ -816,7 +843,7 @@ class IdleTeardownTests(ManagerTestCase):
         # the muted aux bridge all come up.
         status = reconcile()
         self.assertFalse(status["idle"])
-        for role in ("_background_sink", "_background_bridge", "_aec", "aux"):
+        for role in ("_music_sink", "_music_bridge", "_aec", "aux"):
             self.assertIn(role, manager.modules)
 
         # The stream ends. Inside the timeout everything stays loaded — the
@@ -827,7 +854,7 @@ class IdleTeardownTests(ManagerTestCase):
         clock["now"] = 30.0
         status = reconcile()
         self.assertFalse(status["idle"])
-        self.assertIn("_background_bridge", manager.modules)
+        self.assertIn("_music_bridge", manager.modules)
 
         # Past the timeout the bridges are released; the null sink stays so
         # clients pointed at it by PULSE_SINK keep their target. Nothing is
@@ -836,9 +863,9 @@ class IdleTeardownTests(ManagerTestCase):
         before_teardown = len(commands)
         status = reconcile()
         self.assertTrue(status["idle"])
-        for role in ("_background_bridge", "_aec", "aux"):
+        for role in ("_music_bridge", "_aec", "aux"):
             self.assertNotIn(role, manager.modules)
-        self.assertIn("_background_sink", manager.modules)
+        self.assertIn("_music_sink", manager.modules)
         self.assertIsNone(manager.idle.deadline())
         self.assertNotIn(
             "set-sink-mute", {arg for args in commands[before_teardown:] for arg in args}
@@ -852,7 +879,7 @@ class IdleTeardownTests(ManagerTestCase):
         before_rebuild = len(commands)
         status = reconcile()
         self.assertFalse(status["idle"])
-        for role in ("_background_bridge", "_aec", "aux"):
+        for role in ("_music_bridge", "_aec", "aux"):
             self.assertIn(role, manager.modules)
         rebuild = commands[before_rebuild:]
         muted = rebuild.index(("pactl", "set-sink-mute", "hifiberry", "1"))
@@ -862,7 +889,7 @@ class IdleTeardownTests(ManagerTestCase):
 
     def test_a_voice_session_wakes_an_idle_graph_immediately(self) -> None:
         manager = self.make_manager(
-            {"idle_teardown_seconds": 60, "background": {"enabled": True}}
+            {"idle_teardown_seconds": 60, "music_bus": {"enabled": True}}
         )
         manager.idle.idle = True
         self.assertIsNone(manager.pending_reconcile)
@@ -874,7 +901,7 @@ class IdleTeardownTests(ManagerTestCase):
 
     def test_a_sleeping_panel_skips_the_silence_timeout(self) -> None:
         manager = self.make_manager(
-            {"idle_teardown_seconds": 60, "background": {"enabled": True}}
+            {"idle_teardown_seconds": 60, "music_bus": {"enabled": True}}
         )
         connection = mock.Mock()
         manager.control.clients[connection] = b""
@@ -990,26 +1017,26 @@ class VolumeTests(ManagerTestCase):
         self.assertEqual(manager.music_volume, 20)
         self.assertEqual(manager.voice_volume, 50)
 
-    def test_background_bridge_fades_without_changing_client_volumes(self) -> None:
+    def test_music_bridge_fades_without_changing_client_volumes(self) -> None:
         manager = self.make_manager(
-            {"background": {"enabled": True, "duck_volume_percent": 15, "fade_ms": 100}}
+            {"music_bus": {"enabled": True, "duck_volume_percent": 15, "fade_ms": 100}}
         )
-        manager.background.stream_index = 42
-        manager.background.ducked = False
-        manager.background.gain_applied = 100
+        manager.music_bus.stream_index = 42
+        manager.music_bus.ducked = False
+        manager.music_bus.gain_applied = 100
 
         with mock.patch.object(process, "run") as run, mock.patch(
             "smartamp_audio.volume.time.sleep"
         ):
-            manager.background.apply_ducking(manager.music_volume, True)
+            manager.music_bus.apply_ducking(manager.music_volume, True)
 
         self.assertEqual([call.args[-1] for call in run.call_args_list], ["58%", "15%"])
-        self.assertTrue(manager.background.ducked)
+        self.assertTrue(manager.music_bus.ducked)
 
     def test_vol_mute_silences_every_music_path_and_nothing_else(self) -> None:
         manager = self.make_manager(
             {
-                "background": {
+                "music_bus": {
                     "enabled": True,
                     "ducking_enabled": True,
                     "duck_volume_percent": 15,
@@ -1018,9 +1045,9 @@ class VolumeTests(ManagerTestCase):
             }
         )
         manager.music_volume = 60
-        manager.background.stream_index = 42
-        manager.background.ducked = False
-        manager.background.gain_applied = 60
+        manager.music_bus.stream_index = 42
+        manager.music_bus.ducked = False
+        manager.music_bus.gain_applied = 60
         manager.voice_bus.stream_index = 43
         manager.voice_bus.gain_applied = 50
         client = {"index": 7, "sink": 1, "properties": {"media.name": "mpv"}}
@@ -1034,7 +1061,7 @@ class VolumeTests(ManagerTestCase):
                 action()
             return volume_writes(run)
 
-        # Muting drops the background bus and the direct client to silence;
+        # Muting drops the music bus and the direct client to silence;
         # the voice bus is not written at all, and the music level itself is
         # untouched.
         writes = gains(
@@ -1048,7 +1075,7 @@ class VolumeTests(ManagerTestCase):
         self.assertTrue(manager.vol_muted)
         self.assertEqual(manager.music_volume, 60)
         self.assertEqual(manager.music_level, 0)
-        self.assertTrue(manager.state_event()["vol_muted"])
+        self.assertTrue(manager.state_event()["music_bus"]["muted"])
 
         # Ducking a muted amp stays silent, and unmuting lands back on the
         # dial's level, ducked or not.
@@ -1057,7 +1084,7 @@ class VolumeTests(ManagerTestCase):
                 mock.Mock(), {"command": "set-duck", "active": True}
             )
         )
-        self.assertEqual(manager.background.target_gain(manager.music_level, True), 0)
+        self.assertEqual(manager.music_bus.target_gain(manager.music_level, True), 0)
         writes = gains(
             lambda: manager.commands.apply(
                 mock.Mock(), {"command": "set-music-mute", "muted": False}
@@ -1074,11 +1101,11 @@ class VolumeTests(ManagerTestCase):
 
     def test_ducked_music_dips_by_the_duck_share_of_the_music_level(self) -> None:
         manager = self.make_manager(
-            {"background": {"enabled": True, "duck_volume_percent": 15}}
+            {"music_bus": {"enabled": True, "duck_volume_percent": 15}}
         )
         manager.music_volume = 60
-        self.assertEqual(manager.background.target_gain(60, False), 60)
-        self.assertEqual(manager.background.target_gain(60, True), 9)
+        self.assertEqual(manager.music_bus.target_gain(60, False), 60)
+        self.assertEqual(manager.music_bus.target_gain(60, True), 9)
 
     def test_voice_volume_command_applies_the_bridge_gain(self) -> None:
         manager = self.make_manager({"voice_bus": {"enabled": True}})
@@ -1089,7 +1116,7 @@ class VolumeTests(ManagerTestCase):
                 mock.Mock(), {"command": "set-voice-volume", "percent": 40}
             )
 
-        self.assertEqual(reply["voice_volume"], 40)
+        self.assertEqual(reply["voice_bus"]["volume"], 40)
         # One stream volume, like ducking: never a full graph reconcile.
         self.assertFalse(reconcile)
         # The sink is pinned, so the bridge gain is the voice level itself,
@@ -1129,7 +1156,7 @@ class VolumeTests(ManagerTestCase):
     def test_music_volume_command_moves_the_bus_and_direct_routes(self) -> None:
         manager = self.make_manager(
             {
-                "background": {
+                "music_bus": {
                     "enabled": True,
                     "duck_volume_percent": 15,
                     "fade_ms": 0,
@@ -1141,9 +1168,9 @@ class VolumeTests(ManagerTestCase):
         )
         manager.modules.adopt("aux", 60)
         manager.routes.enabled["aux"] = True
-        manager.background.stream_index = 42
-        manager.background.ducked = False
-        manager.background.gain_applied = 100
+        manager.music_bus.stream_index = 42
+        manager.music_bus.ducked = False
+        manager.music_bus.gain_applied = 100
         sink_inputs = [
             {
                 "index": 61,
@@ -1163,19 +1190,19 @@ class VolumeTests(ManagerTestCase):
                 mock.Mock(), {"command": "set-music-volume", "percent": 30}
             )
 
-        self.assertEqual(reply["music_volume"], 30)
+        self.assertEqual(reply["music_bus"]["volume"], 30)
         self.assertFalse(reconcile)
-        # The background bus snaps to the new level and the unmuted aux bridge
+        # The music bus snaps to the new level and the unmuted aux bridge
         # follows it; the voice bridge is left alone.
         self.assertEqual(volume_writes(run), [("42", "30%"), ("61", "30%")])
 
     def test_each_music_input_carries_its_own_trim(self) -> None:
         manager = self.make_manager(
             {
-                "background": {
+                "music_bus": {
                     "enabled": True,
                     "sink_name": "background",
-                    "client_volume_percent": 70,
+                    "players_volume_percent": 70,
                 },
                 "sources": {
                     "aux": {
@@ -1185,7 +1212,7 @@ class VolumeTests(ManagerTestCase):
                     },
                     "line_in": {
                         "match": "UAC2Gadget",
-                        "target": "background",
+                        "target": "music",
                         "volume_percent": 80,
                     },
                 },
@@ -1195,10 +1222,10 @@ class VolumeTests(ManagerTestCase):
         manager.modules.adopt("aux", 60)
         manager.modules.adopt("line_in", 50)
         output_sink = {"name": "hifiberry", "index": 1}
-        background_sink = {"name": "background", "index": 2}
+        music_sink = {"name": "background", "index": 2}
         full = {"mono": {"value_percent": "100%"}}
         listings: Listings = {
-            "sinks": [output_sink, background_sink],
+            "sinks": [output_sink, music_sink],
             "sources": [
                 {
                     "name": "hifiberry_adc",
@@ -1237,13 +1264,13 @@ class VolumeTests(ManagerTestCase):
             run.reset_mock()
             manager.routes.reconcile(
                 output=output_sink,
-                background_sink=background_sink,
+                music_sink=music_sink,
                 music_volume=60,
             )
             output.hold_client_streams(
                 manager.graph,
-                background_sink,
-                manager.config.background.client_volume_percent,
+                music_sink,
+                manager.config.music_bus.players_volume_percent,
             )
 
         # The unmuted aux route plays at half the music level; the USB and
@@ -1343,10 +1370,10 @@ class BusTests(ManagerTestCase):
             "pactl", "set-sink-input-volume", "27", "40%"
         )
 
-    def test_background_sink_is_created_and_its_bridge_is_identifiable(self) -> None:
+    def test_music_sink_is_created_and_its_bridge_is_identifiable(self) -> None:
         manager = self.make_manager(
             {
-                "background": {
+                "music_bus": {
                     "enabled": True,
                     "sink_name": "background",
                     "latency_ms": 40,
@@ -1377,15 +1404,15 @@ class BusTests(ManagerTestCase):
         ), mock.patch.object(pactl, "list_modules", return_value=[]), mock.patch.object(
             pactl, "load_module", side_effect=load_module
         ), mock.patch.object(process, "run"):
-            selected = manager.background.reconcile(output_sink)
+            selected = manager.music_bus.reconcile(output_sink)
 
         self.assertEqual(selected, background)
-        self.assertEqual(manager.background.stream_index, 21)
+        self.assertEqual(manager.music_bus.stream_index, 21)
         self.assertEqual(loaded[0][0], "module-null-sink")
         self.assertIn("priority.session=1", loaded[0][1][-1])
         self.assertEqual(loaded[1][0], "module-loopback")
         self.assertIn(
-            "sink_input_properties=media.name=SmartAmp.background_bridge", loaded[1][1]
+            "sink_input_properties=media.name=SmartAmp.music_bridge", loaded[1][1]
         )
 
 

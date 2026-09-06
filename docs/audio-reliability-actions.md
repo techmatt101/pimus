@@ -30,7 +30,7 @@ loopback latency have deliberately not been retuned.
   A host unmute cannot release the rebuild guard; a host mute is the volume
   mute, reflected in the manager's state in the same pass.
 - [x] Music-volume commands immediately update direct playback clients, not
-  just the background bus and owned input routes.
+  just the music bus and owned input routes.
 - [x] Check every channel when enforcing stream gains/output unity. A loudest
   channel of 100% no longer hides a silent left channel.
 - [x] Repair muted AEC bridge streams as well as the reference sink. Separate

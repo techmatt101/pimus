@@ -1,7 +1,7 @@
 import net from 'node:net'
 
 import {logger} from '../log.mjs'
-import type {AudioState} from '../types.mjs'
+import type {AudioState, SourceState} from '../types.mjs'
 
 const log = logger('audio')
 
@@ -17,12 +17,16 @@ interface AudioEvent {
     error?: string
     sources?: unknown
     usb_playback?: unknown
-    music_volume?: unknown
-    voice_volume?: unknown
-    vol_muted?: unknown
-    trims?: unknown
-    output_ceiling?: unknown
+    music_bus?: unknown
+    voice_bus?: unknown
+    output_volume?: unknown
     level?: unknown
+}
+
+function section(value: unknown): Record<string, unknown> | null {
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : null
 }
 
 export interface AudioClientOptions {
@@ -41,7 +45,7 @@ export interface AudioClientOptions {
  * toggles so user choices survive a manager restart within a boot.
  */
 export class AudioClient {
-    state: AudioState = {sources: {}, routesKnown: false, trims: {}}
+    state: AudioState = {sources: {}, routesKnown: false}
     connected = false
     /** The metered voice-playback level, 0..1, and zero unless metering is on. */
     voiceLevel = 0
@@ -89,17 +93,19 @@ export class AudioClient {
         socket.on('connect', () => {
             this.connected = true
             this.#lastErrorMessage = null
-            // A manager restart resets its routes to configured defaults, so
+            // A manager restart resets its sources to configured defaults, so
             // re-assert the cache; with no cache yet, adopt what the manager has.
             if (this.state.routesKnown) {
-                for (const [name, enabled] of Object.entries(this.state.sources)) {
-                    this.#write({command: 'set-source-state', name, state: enabled ? 'on' : 'off'})
+                for (const [name, source] of Object.entries(this.state.sources)) {
+                    if (source?.enabled !== undefined) {
+                        this.#write({command: 'set-source-state', name, state: source.enabled ? 'on' : 'off'})
+                    }
                 }
                 if (this.state.voiceVolume !== undefined) this.setVoiceVolume(this.state.voiceVolume)
                 if (this.state.musicVolume !== undefined) this.setMusicVolume(this.state.musicVolume)
                 if (this.state.volMuted !== undefined) this.setMusicMute(this.state.volMuted)
-                for (const [name, percent] of Object.entries(this.state.trims)) {
-                    if (percent !== undefined) this.setInputTrim(name, percent)
+                for (const [name, source] of Object.entries(this.state.sources)) {
+                    if (source?.trim !== undefined) this.setSourceTrim(name, source.trim)
                 }
             } else {
                 this.#write({command: 'get-state'})
@@ -148,9 +154,10 @@ export class AudioClient {
             this.#write({command: 'set-source-state', name, state: command})
             return
         }
-        const enabled = command === 'toggle' ? !this.state.sources[name] : command === 'on'
-        if (this.state.sources[name] !== enabled) {
-            this.state = {...this.state, sources: {...this.state.sources, [name]: enabled}}
+        const source = this.state.sources[name]
+        const enabled = command === 'toggle' ? !source?.enabled : command === 'on'
+        if (source?.enabled !== enabled) {
+            this.state = {...this.state, sources: {...this.state.sources, [name]: {...source, enabled}}}
             this.#onStateChange()
         }
         this.#write({command: 'set-source-state', name, state: enabled ? 'on' : 'off'})
@@ -190,19 +197,20 @@ export class AudioClient {
      * Held only in the manager's memory, so a restart there comes back to the
      * configured trim and this cache re-asserts what was set since.
      */
-    setInputTrim(name: string, percent: number): void {
+    setSourceTrim(name: string, percent: number): void {
         const level = Math.round(Math.max(0, Math.min(100, percent)))
-        if (this.state.trims[name] !== level) {
-            this.state = {...this.state, trims: {...this.state.trims, [name]: level}}
+        const source = this.state.sources[name]
+        if (source?.trim !== level) {
+            this.state = {...this.state, sources: {...this.state.sources, [name]: {...source, trim: level}}}
             this.#onStateChange()
         }
         this.#pendingTrims.set(name, {level, until: this.#clock() + ECHO_HOLD_MILLISECONDS})
-        this.#write({command: 'set-input-trim', name, percent: level})
+        this.#write({command: 'set-source-trim', name, percent: level})
     }
 
     /**
      * The manager releases a duck request by itself if this socket closes, so a
-     * crash cannot leave the background bus stuck at the duck level.
+     * crash cannot leave the music bus stuck at the duck level.
      */
     setDuck(active: boolean): void {
         if (this.#duckActive === active) return
@@ -259,22 +267,24 @@ export class AudioClient {
     }
 
     /**
-     * The manager's trims, each held at what was just asked for until its own
-     * echo comes back, so a dial turn is not dragged backwards by a state
-     * event that was already in flight.
+     * The service's sources, each trim held at what was just asked for until
+     * its own echo comes back, so a dial turn is not dragged backwards by a
+     * state event that was already in flight.
      */
-    #settleTrims(reported: unknown): AudioState['trims'] {
-        if (typeof reported !== 'object' || reported === null || Array.isArray(reported)) {
-            return this.state.trims
-        }
-        const trims: AudioState['trims'] = {}
-        for (const [name, value] of Object.entries(reported as Record<string, unknown>)) {
-            const settled = this.#settleLevel(this.#pendingTrims.get(name) ?? null, value, this.state.trims[name])
+    #settleSources(reported: Record<string, unknown>): AudioState['sources'] {
+        const sources: AudioState['sources'] = {}
+        for (const [name, value] of Object.entries(reported)) {
+            const entry = section(value)
+            if (!entry) continue
+            const settled = this.#settleLevel(this.#pendingTrims.get(name) ?? null, entry.trim, this.state.sources[name]?.trim)
             if (settled.pending) this.#pendingTrims.set(name, settled.pending)
             else this.#pendingTrims.delete(name)
-            if (settled.level !== undefined) trims[name] = settled.level
+            const source: SourceState = {}
+            if (typeof entry.enabled === 'boolean') source.enabled = entry.enabled
+            if (settled.level !== undefined) source.trim = settled.level
+            sources[name] = source
         }
-        return trims
+        return sources
     }
 
     #write(message: Record<string, unknown>): void {
@@ -295,21 +305,22 @@ export class AudioClient {
             } catch {
                 continue
             }
-            if (message.event === 'state' && typeof message.sources === 'object'
-                && message.sources !== null && !Array.isArray(message.sources)) {
-                const music = this.#settleLevel(this.#pendingMusic, message.music_volume, this.state.musicVolume)
-                const voice = this.#settleLevel(this.#pendingVoice, message.voice_volume, this.state.voiceVolume)
+            const sources = message.event === 'state' ? section(message.sources) : null
+            if (sources) {
+                const musicBus = section(message.music_bus)
+                const voiceBus = section(message.voice_bus)
+                const music = this.#settleLevel(this.#pendingMusic, musicBus?.volume, this.state.musicVolume)
+                const voice = this.#settleLevel(this.#pendingVoice, voiceBus?.volume, this.state.voiceVolume)
                 this.#pendingMusic = music.pending
                 this.#pendingVoice = voice.pending
                 this.state = {
-                    sources: {...(message.sources as AudioState['sources'])},
+                    sources: this.#settleSources(sources),
                     routesKnown: true,
                     usbPlayback: message.usb_playback === true,
-                    trims: this.#settleTrims(message.trims),
                     ...(music.level !== undefined ? {musicVolume: music.level} : {}),
                     ...(voice.level !== undefined ? {voiceVolume: voice.level} : {}),
-                    ...(typeof message.vol_muted === 'boolean' ? {volMuted: message.vol_muted} : {}),
-                    ...(typeof message.output_ceiling === 'number' ? {ampCeiling: message.output_ceiling} : {}),
+                    ...(typeof musicBus?.muted === 'boolean' ? {volMuted: musicBus.muted} : {}),
+                    ...(typeof message.output_volume === 'number' ? {ampCeiling: message.output_volume} : {}),
                 }
                 this.#onStateChange()
             } else if (message.event === 'voice_level' && typeof message.level === 'number') {

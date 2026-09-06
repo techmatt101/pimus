@@ -70,7 +70,7 @@ Keep these boundaries clear:
   WebSocket, and shared control-surface state.
 - `smartamp-audio-manager` is a separate long-running Python daemon. It
   continuously reconciles the PipeWire graph, default devices, aux/USB
-  loopbacks, the duckable Sendspin/USB background bus, and the XVF3800
+  loopbacks, the duckable music bus every music input plays into, and the XVF3800
   acoustic-echo-cancellation reference.
 - Linux Voice Assistant and Sendspin are external upstream applications
   installed and configured by Ansible; do not duplicate their logic locally.
@@ -110,7 +110,7 @@ apps/
   audio-manager/
     src/audio_manager/   PipeWire reconciliation daemon, run as a package
       buses/             The named sinks the players play into: the generic
-                         PlaybackBus, the duckable background bus, the voice
+                         PlaybackBus, the duckable music bus, the voice
                          bus, and the meter the ring pulses to
       control/           The Unix socket the controller drives it through:
                          the transport, and the command vocabulary

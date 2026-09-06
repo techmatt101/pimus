@@ -181,7 +181,7 @@ export interface AudioControls {
     /** The music level as an absolute percent, where `setVolume` steps it. */
     setMusicVolume(percent: number): unknown
 
-    setInputTrim(name: string, percent: number): unknown
+    setSourceTrim(name: string, percent: number): unknown
 }
 
 export interface HealthState {
@@ -225,14 +225,25 @@ export interface ControlState {
     health: HealthState
 }
 
+/**
+ * One music input as the audio services list it. Every input carries a trim,
+ * the share of the music level it plays at; only a route has a toggle, so the
+ * players that play straight into the music bus report no `enabled`.
+ */
+export interface SourceState {
+    enabled?: boolean
+    trim?: number
+}
+
 export interface AudioState {
-    sources: Record<string, boolean | undefined>
+    sources: Record<string, SourceState | undefined>
     /**
-     * Whether `sources` is the manager's own list yet. It holds exactly the
-     * routes this deployment has, so a name missing from a known list is a route
+     * Whether `sources` is the services' own list yet. It holds exactly the
+     * inputs this deployment has, so a name missing from a known list is one
      * the hardware does not have — but an empty map before the manager has ever
-     * answered means nothing, and a unit with no aux and no USB gadget has none
-     * legitimately. Stays true across a manager restart, as the cache does.
+     * answered means nothing, and a unit with no aux and no USB gadget has only
+     * its players legitimately. Stays true across a manager restart, as the
+     * cache does.
      */
     routesKnown: boolean
     usbPlayback?: boolean
@@ -242,12 +253,6 @@ export interface AudioState {
     voiceVolume?: number
     /** Whether the music paths are muted; unknown until the manager's first state event. */
     volMuted?: boolean
-    /**
-     * Each input's own trim, as the share of the music level it plays at. Holds
-     * exactly the inputs this deployment has, on the same terms as `sources`:
-     * a name missing from a known list is a trim this hardware does not have.
-     */
-    trims: Record<string, number | undefined>
     /**
      * The amplifier's hardware ceiling in percent, which the manager reads and
      * never writes. Undefined until its first state event, and on a unit whose

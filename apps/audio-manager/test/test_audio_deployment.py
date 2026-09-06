@@ -145,7 +145,7 @@ FAILED=0
             "sink": "hifi",
             "idle": False,
             "voice_bus": {"enabled": True, "sink": "voice", "available": True},
-            "background": {"sink": "background", "available": True},
+            "music_bus": {"sink": "background", "available": True},
             "aec_reference": {
                 "sink": "xvf",
                 "available": True,
@@ -215,7 +215,7 @@ FAILED=0
     def test_doctor_distinguishes_idle_routes_from_missing_endpoints(self) -> None:
         template = (ROLE / "templates/smartamp-doctor.sh.j2").read_text()
         expressions = re.findall(r"jq -e '([^']+)' \"\$STATUS_FILE\"", template)
-        for section in ("voice_bus", "background", "aec_reference"):
+        for section in ("voice_bus", "music_bus", "aec_reference"):
             expression = next(
                 value for value in expressions if f".{section}.available" in value
             )

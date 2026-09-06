@@ -112,13 +112,15 @@ export const VOLUME_ACTIONS = {
 export type VolumeActionName = keyof typeof VOLUME_ACTIONS
 
 const routeIndicator: KeyIndicator = {
-    isActive: ({audio, source}) => Boolean(source && audio.sources[source]),
+    isActive: ({audio, source}) => Boolean(source && audio.sources[source]?.enabled),
     activeColor: '#1b5e20',
     label: (configured, active) => `${configured} ${active ? 'ON' : 'OFF'}`,
-    // The manager's route list is what this deployment's hardware actually
+    // The manager's source list is what this deployment's hardware actually
     // offers: no aux without an ADC, no usb without the gadget. A name missing
-    // from a list we have is a route this unit cannot have.
-    isAvailable: ({audio, source}) => !audio.routesKnown || !source || source in audio.sources,
+    // from a list we have is a route this unit cannot have, and a source with
+    // no toggle is not a route at all.
+    isAvailable: ({audio, source}) =>
+        !audio.routesKnown || !source || audio.sources[source]?.enabled !== undefined,
 }
 
 export const ROUTE_ACTIONS = {

@@ -62,12 +62,12 @@ test('route toggles travel over the audio manager socket and survive reconnects'
     // A client with no cache adopts the manager's state.
     await waitFor(() => received.length >= 1)
     assert.deepEqual(JSON.parse(received[0] ?? ''), {command: 'get-state'})
-    connections[0]?.write(`${JSON.stringify({event: 'state', sources: {aux: true, usb: false}})}\n`)
-    await waitFor(() => client.state.sources.aux === true)
+    connections[0]?.write(`${JSON.stringify({event: 'state', sources: {aux: {enabled: true}, usb: {enabled: false}}})}\n`)
+    await waitFor(() => client.state.sources.aux?.enabled === true)
 
     // Toggles update the cache immediately and send an absolute state.
     client.setSourceState('usb', 'toggle')
-    assert.equal(client.state.sources.usb, true)
+    assert.equal(client.state.sources.usb?.enabled, true)
     await waitFor(() => received.length >= 2)
     assert.deepEqual(JSON.parse(received[1] ?? ''), {command: 'set-source-state', name: 'usb', state: 'on'})
 
@@ -105,17 +105,17 @@ test('toggles before the first state sync defer to the manager', () => {
         name: 'aux',
         state: 'toggle',
     })
-    assert.deepEqual(client.state, {sources: {}, routesKnown: false, trims: {}})
+    assert.deepEqual(client.state, {sources: {}, routesKnown: false})
 
     // Once synced, toggles resolve locally and travel as absolute states.
-    fake.emit('data', '{"event":"state","sources":{"aux":true}}\n')
+    fake.emit('data', '{"event":"state","sources":{"aux":{"enabled":true}}}\n')
     client.setSourceState('aux', 'toggle')
     assert.deepEqual(JSON.parse(fake.written.at(-1) ?? ''), {
         command: 'set-source-state',
         name: 'aux',
         state: 'off',
     })
-    assert.deepEqual(client.state, {sources: {aux: false}, routesKnown: true, usbPlayback: false, trims: {}})
+    assert.deepEqual(client.state, {sources: {aux: {enabled: false}}, routesKnown: true, usbPlayback: false})
     client.close()
 })
 
@@ -145,7 +145,7 @@ test('the manager\'s route list says which routes this unit has at all', () => {
 
     // A manager restart re-asserts the cache rather than re-reading it, so what
     // this unit has stays known across the drop.
-    fake.emit('data', '{"event":"state","sources":{"usb":false}}\n')
+    fake.emit('data', '{"event":"state","sources":{"usb":{"enabled":false}}}\n')
     fake.emit('close')
     assert.equal(client.state.routesKnown, true)
     assert.equal('usb' in client.state.sources, true)
@@ -166,7 +166,7 @@ test('the volume mute travels as an absolute state and follows the manager', () 
     })
     client.connect()
     fake.emit('connect')
-    fake.emit('data', '{"event":"state","sources":{},"vol_muted":false}\n')
+    fake.emit('data', '{"event":"state","sources":{},"music_bus":{"muted":false}}\n')
     assert.equal(client.state.volMuted, false)
 
     client.setMusicMute(true)
@@ -175,7 +175,7 @@ test('the volume mute travels as an absolute state and follows the manager', () 
 
     // A mute made anywhere else, such as a computer's mute key on the USB
     // gadget, reaches the deck through the same broadcast.
-    fake.emit('data', '{"event":"state","sources":{},"vol_muted":false}\n')
+    fake.emit('data', '{"event":"state","sources":{},"music_bus":{"muted":false}}\n')
     assert.equal(client.state.volMuted, false)
     client.close()
 })
@@ -204,12 +204,12 @@ test('voice volume updates optimistically and re-asserts after a reconnect', asy
     // Until the manager reports a level the client has nothing to show or send.
     assert.equal(client.state.voiceVolume, undefined)
     assert.equal(client.state.musicVolume, undefined)
-    first.emit('data', '{"event":"state","sources":{},"voice_volume":60,"music_volume":25,"trims":{"aux":100},"output_ceiling":90}\n')
+    first.emit('data', '{"event":"state","sources":{"aux":{"trim":100,"enabled":false}},"voice_bus":{"volume":60},"music_bus":{"volume":25},"output_volume":90}\n')
     assert.equal(client.state.voiceVolume, 60)
     assert.equal(client.state.musicVolume, 25)
     // The hardware ceiling is reported and never set from here.
     assert.equal(client.state.ampCeiling, 90)
-    assert.deepEqual(client.state.trims, {aux: 100})
+    assert.deepEqual(client.state.sources, {aux: {trim: 100, enabled: false}})
 
     // Sets clamp and round locally, update the cache immediately, and travel
     // as absolute percentages.
@@ -223,10 +223,10 @@ test('voice volume updates optimistically and re-asserts after a reconnect', asy
     assert.equal(client.state.musicVolume, 55)
     assert.deepEqual(JSON.parse(first.written.at(-1) ?? ''), {command: 'set-music-volume', percent: 55})
 
-    // An input trim is one more level held only in the manager's memory.
-    client.setInputTrim('aux', 80)
-    assert.deepEqual(client.state.trims, {aux: 80})
-    assert.deepEqual(JSON.parse(first.written.at(-1) ?? ''), {command: 'set-input-trim', name: 'aux', percent: 80})
+    // A source's trim is one more level held only in the manager's memory.
+    client.setSourceTrim('aux', 80)
+    assert.deepEqual(client.state.sources, {aux: {trim: 80, enabled: false}})
+    assert.deepEqual(JSON.parse(first.written.at(-1) ?? ''), {command: 'set-source-trim', name: 'aux', percent: 80})
 
     // A manager restart resets its levels to the configured defaults, so the
     // client re-asserts the cached ones alongside its route toggles.
@@ -236,9 +236,10 @@ test('voice volume updates optimistically and re-asserts after a reconnect', asy
     assert.ok(second)
     second.emit('connect')
     assert.deepEqual(second.written.map((line) => JSON.parse(line)), [
+        {command: 'set-source-state', name: 'aux', state: 'off'},
         {command: 'set-voice-volume', percent: 100},
         {command: 'set-music-volume', percent: 55},
-        {command: 'set-input-trim', name: 'aux', percent: 80},
+        {command: 'set-source-trim', name: 'aux', percent: 80},
     ])
     client.close()
 })
@@ -258,7 +259,7 @@ test('volume echoes racing newer sets do not walk the readout backwards', () => 
     })
     client.connect()
     fake.emit('connect')
-    fake.emit('data', '{"event":"state","sources":{"aux":true},"music_volume":80,"voice_volume":40}\n')
+    fake.emit('data', '{"event":"state","sources":{"aux":{"enabled":true}},"music_bus":{"volume":80},"voice_bus":{"volume":40}}\n')
     assert.equal(client.state.musicVolume, 80)
 
     client.setMusicVolume(75)
@@ -267,21 +268,21 @@ test('volume echoes racing newer sets do not walk the readout backwards', () => 
 
     // The manager's reply to the first set lands after the second was sent;
     // adopting it would show 75 after 70.
-    fake.emit('data', '{"event":"state","sources":{"aux":false},"music_volume":75,"voice_volume":40}\n')
+    fake.emit('data', '{"event":"state","sources":{"aux":{"enabled":false}},"music_bus":{"volume":75},"voice_bus":{"volume":40}}\n')
     assert.equal(client.state.musicVolume, 70)
     // The rest of the event still applies while the level is held.
-    assert.equal(client.state.sources.aux, false)
+    assert.equal(client.state.sources.aux?.enabled, false)
     assert.equal(client.state.voiceVolume, 40)
 
     // The echo of the newest set settles the hold.
-    fake.emit('data', '{"event":"state","sources":{"aux":false},"music_volume":70,"voice_volume":40}\n')
+    fake.emit('data', '{"event":"state","sources":{"aux":{"enabled":false}},"music_bus":{"volume":70},"voice_bus":{"volume":40}}\n')
     assert.equal(client.state.musicVolume, 70)
 
     // An unconfirmed set stops shielding the cache once the hold lapses, so a
     // genuine move on the manager's side (the USB host's slider) still wins.
     client.setMusicVolume(65)
     now += 5000
-    fake.emit('data', '{"event":"state","sources":{"aux":false},"music_volume":55,"voice_volume":40}\n')
+    fake.emit('data', '{"event":"state","sources":{"aux":{"enabled":false}},"music_bus":{"volume":55},"voice_bus":{"volume":40}}\n')
     assert.equal(client.state.musicVolume, 55)
     client.close()
 })
@@ -317,7 +318,7 @@ test('duck requests are deduplicated and re-asserted after a reconnect', async (
     )
 
     // The manager releases the request when this socket closes, so a reconnect
-    // mid-conversation has to ask again or background audio stays loud.
+    // mid-conversation has to ask again or the music stays quiet.
     first.emit('close')
     await new Promise((resolve) => setTimeout(resolve, 5))
     const second = sockets[1]
@@ -391,7 +392,7 @@ test('malformed audio manager events are ignored', () => {
     })
     client.connect()
     fake.emit('connect')
-    fake.emit('data', 'garbage\n{"event":"state","sources":{"aux":true}}\n{"event":"state","sources":null}\n')
-    assert.deepEqual(client.state, {sources: {aux: true}, routesKnown: true, usbPlayback: false, trims: {}})
+    fake.emit('data', 'garbage\n{"event":"state","sources":{"aux":{"enabled":true}}}\n{"event":"state","sources":null}\n')
+    assert.deepEqual(client.state, {sources: {aux: {enabled: true}}, routesKnown: true, usbPlayback: false})
     client.close()
 })

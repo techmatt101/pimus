@@ -14,7 +14,7 @@ Environment=XDG_CONFIG_HOME={{ smartamp_state_dir }}/sendspin
 {# The ALSA "pulse" output honours PULSE_SINK, which places playback on the
    music bus the audio manager maintains. That bus is also the default sink, so
    this only states what the client would resolve to anyway. #}
-Environment=PULSE_SINK={{ smartamp_background_sink_name }}
+Environment=PULSE_SINK={{ smartamp_music_sink_name }}
 {# --hardware-volume puts the client on the PulseAudio volume backend, which
    sets, reads, and subscribes to its output sink's volume and mute. With the
    music bus as the default sink that sink is the amp's music level, so Music

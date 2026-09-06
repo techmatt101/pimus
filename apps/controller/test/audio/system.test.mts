@@ -34,24 +34,29 @@ test('USB controls, state and reconnect replay stay independent of manager state
     assert.ok(manager && usb)
     manager.emit('connect')
     usb.emit('connect')
-    manager.state({sources: {aux: false}, trims: {aux: 80, background: 90}, music_volume: 40, voice_volume: 60})
+    manager.state({
+        sources: {sendspin: {trim: 90}, aux: {trim: 80, enabled: false}},
+        music_bus: {volume: 40}, voice_bus: {volume: 60},
+    })
     assert.equal(audio.state.routesKnown, false)
-    usb.state({sources: {usb: true}, trims: {usb: 25}, usb_playback: true})
-    assert.deepEqual(audio.state.sources, {aux: false, usb: true})
-    assert.deepEqual(audio.state.trims, {aux: 80, background: 90, usb: 25})
+    usb.state({sources: {usb: {trim: 25, enabled: true}}, usb_playback: true})
+    assert.deepEqual(audio.state.sources, {
+        sendspin: {trim: 90}, aux: {trim: 80, enabled: false}, usb: {trim: 25, enabled: true},
+    })
     assert.equal(audio.state.routesKnown, true)
     assert.equal(audio.state.usbPlayback, true)
     audio.setSourceState('usb', 'off')
-    audio.setInputTrim('usb', 30)
+    audio.setSourceTrim('usb', 30)
     audio.setMusicVolume(50)
     assert.deepEqual(usb.writes.slice(1), [
         {command: 'set-source-state', name: 'usb', state: 'off'},
-        {command: 'set-input-trim', name: 'usb', percent: 30},
+        {command: 'set-source-trim', name: 'usb', percent: 30},
     ])
     assert.deepEqual(manager.writes.slice(1), [{command: 'set-music-volume', percent: 50}])
-    manager.state({sources: {aux: true}, trims: {aux: 80, background: 90}, music_volume: 50})
-    assert.deepEqual(audio.state.sources, {aux: true, usb: false})
-    assert.equal(audio.state.trims.usb, 30)
+    manager.state({sources: {sendspin: {trim: 90}, aux: {trim: 80, enabled: true}}, music_bus: {volume: 50}})
+    assert.deepEqual(audio.state.sources, {
+        sendspin: {trim: 90}, aux: {trim: 80, enabled: true}, usb: {trim: 30, enabled: false},
+    })
     assert.equal(audio.state.usbPlayback, true)
     usb.destroy()
     assert.equal(audio.state.usbPlayback, false)
@@ -65,9 +70,9 @@ test('USB controls, state and reconnect replay stay independent of manager state
     replacement.emit('connect')
     assert.deepEqual(replacement.writes, [
         {command: 'set-source-state', name: 'usb', state: 'off'},
-        {command: 'set-input-trim', name: 'usb', percent: 30},
+        {command: 'set-source-trim', name: 'usb', percent: 30},
     ])
-    replacement.state({sources: {usb: false}, trims: {usb: 30}, usb_playback: true})
+    replacement.state({sources: {usb: {trim: 30, enabled: false}}, usb_playback: true})
     assert.equal(audio.state.musicVolume, 50)
     assert.equal(audio.state.usbPlayback, true)
     assert.equal(audio.connected, true)
@@ -80,11 +85,11 @@ test('a deployment without USB exposes only the manager routes', (t) => {
     t.after(() => audio.close())
     audio.connect()
     socket.emit('connect')
-    socket.state({sources: {}, trims: {background: 100}})
+    socket.state({sources: {sendspin: {trim: 100}}})
     // With no USB service configured there is none to be missing.
     assert.equal(audio.connected, true)
     assert.equal(audio.state.routesKnown, true)
-    assert.deepEqual(audio.state.sources, {})
+    assert.deepEqual(audio.state.sources, {sendspin: {trim: 100}})
     assert.equal(audio.state.usbPlayback, false)
     audio.setSourceState('usb', 'on')
     assert.deepEqual(socket.writes, [{command: 'get-state'}])

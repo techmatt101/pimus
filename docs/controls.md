@@ -64,7 +64,7 @@ without reading the status file over SSH:
 
 ```text
 [ AMP CEILING ][ MUSIC ][ VOICE ][      ]
-[ SENDSPIN    ][ AUX   ][ USB   ][      ]
+[ SENDSPIN    ][ AUX   ][ USB   ][      ]   one key per source the audio services list
 ```
 
 `AMP CEILING` is the HiFiBerry's `Digital` control — the hardware ceiling set
@@ -80,13 +80,18 @@ the level and the level itself still reads where the dial left it.
 
 The bottom row is each input's trim — the share of the music level that input
 plays at, for balancing them so switching input does not change how loud the
-room is. They sit at 100% unless inventory says otherwise. A trim moved here
-lives only in the audio manager's memory: a restart of it comes back to
-`smartamp_sendspin_volume_percent`, `smartamp_aux_volume_percent`, and
-`smartamp_usb_volume_percent`, so settle on a number by ear and then bring it
-back to inventory, exactly as the `BRIGHTNESS` key's `brightLux` works. A unit
-whose hardware has no such input — an Amp100 has no aux — reports no trim for
-it and the key reads `?`.
+room is. The four keys are `SourceTrimTile` slots: each shows whichever source
+sits at its position in the list the audio manager and the USB audio app
+publish, so the layout never names an input and a unit shows exactly the
+inputs it has — an Amp100 has no aux, so no key says AUX, and a unit with
+neither aux nor USB shows only SENDSPIN. The name on the key is the source's
+name upper-cased; `SOURCE_FACES` in `layout.mts` gives the ones it knows an
+icon and a colour, and any other gets a plain face. They sit at 100% unless
+inventory says otherwise. A trim moved here lives only in the audio manager's
+memory: a restart of it comes back to `smartamp_sendspin_volume_percent`,
+`smartamp_aux_volume_percent`, and `smartamp_usb_volume_percent`, so settle
+on a number by ear and then bring it back to inventory, exactly as the
+`BRIGHTNESS` key's `brightLux` works.
 
 ## Tiles
 
@@ -118,7 +123,8 @@ central dispatcher:
 | `MediaTile`        | Play/pause. Draws the play or pause glyph from the playback state, and the glyph breathes while playing.                                                                                                                                                                                                                                                       |
 | `VoiceTile`        | Start Assist, or cancel the pipeline already running. The face follows the pipeline state with the same colours as the ReSpeaker ring: cyan expanding rings while listening, a cyan orbiting spinner reading HEARD YOU while the request is being transcribed, a purple orbiting spinner while thinking, a white pulse while speaking, a red pulse on a pipeline error, and a dimmed OFFLINE face while LVA is unreachable. A ringing timer belongs to `TimerTile`, not this key.                                                                                                                                                                                                                                                                       |
 | `BrightnessTile`   | The panel's own level, and what decides it (see [auto brightness](#auto-brightness)). It reads out the percent the panel is at, captioned `AUTO` while the room's light level is driving it. Press to arm the dynamic dial: turning it tunes `brightLux` — the lux this room counts as fully lit — and the panel answers each notch at once. A second press, key or knob, switches the following off; the caption reads `MANUAL`, the face dims, and the same dial now steps the panel itself in 5% notches, no lower than 5% so the deck never goes dark with no way back. Press again to hand it back to the sensor. A unit with no illuminance sensor configured is manual only. |
-| `LevelTile`        | One gain on the amp's path, as a percentage over a bar. Press to arm, turn the dynamic dial to step it live in 5% notches — clamped at 0 and 100, never wrapping — press again to finish. Shows the audio manager's reported level, `?` while the manager is unreachable. Given no way to apply a change it is a readout instead: the same face in slate, and a press that does nothing, so a level the amp only reports never looks like one that failed to move. It is the `VOICE VOL` key on SETTINGS and every key on [LEVELS](#the-levels-page). |
+| `LevelTile`        | One gain on the amp's path, as a percentage over a bar. Press to arm, turn the dynamic dial to step it live in 5% notches — clamped at 0 and 100, never wrapping — press again to finish. Shows the audio manager's reported level, `?` while the manager is unreachable. Given no way to apply a change it is a readout instead: the same face in slate, and a press that does nothing, so a level the amp only reports never looks like one that failed to move. It is the `VOICE VOL` key on SETTINGS and the top row of [LEVELS](#the-levels-page). |
+| `SourceTrimTile`   | The same face and dial for one input's trim, for whichever source occupies its slot of the list the audio services publish. A slot past the end of the list draws dark. The bottom row of [LEVELS](#the-levels-page). |
 | `PlaylistTile`     | Picks and plays one of a short list of playlists. Press to arm (the key glows and claims the dynamic dial), turn the dynamic dial to choose, press again — the key or the knob — to confirm. A single playlist is just press-then-confirm. The armed state releases itself after 15s, or when any other dial or key is touched — that first touch only cancels the arm and does nothing else.        |
 | `SceneTile`        | Picks one of a short list of scenes. Press to arm, turn to choose, press again — key or knob — to apply. Scenes have no state to read back, so it stays dim until the first apply, then shows the one last applied.                                                                                                                                              |
 | `EntityToggleTile` | The general Home Assistant on/off key — lights, fan, blinds, PC. Its service comes from the entity's own domain, plus an icon and an optional `spin` (the fan turns while it runs) and `level` (how far the blinds are down), so the four are one class configured four ways. Its caption reads its own state rather than repeating the key's name: the icon says which device it is, so the room keys drop the label and show just `ON`/`OFF`, `OPEN`/`CLOSED`, or a percentage when part-way (fan speed, light brightness, blind position); `?` when unreachable. Given the dynamic dial, the first press arms it — glow, strip readout, 15s timeout — turning adjusts the level live and a second press toggles, so a double-press turns it on; a plain switch like PC has nothing to adjust and just toggles at once. |

@@ -23,7 +23,6 @@ export class AudioSystem {
         return {
             ...manager,
             sources: {...manager.sources, ...usb?.sources},
-            trims: {...manager.trims, ...usb?.trims},
             routesKnown: manager.routesKnown && (!usb || usb.routesKnown),
             usbPlayback: this.#usb?.connected === true && usb?.usbPlayback === true,
         }
@@ -54,9 +53,9 @@ export class AudioSystem {
         else this.#manager.setSourceState(name, command)
     }
 
-    setInputTrim(name: string, percent: number): void {
-        if (name === 'usb') this.#usb?.setInputTrim(name, percent)
-        else this.#manager.setInputTrim(name, percent)
+    setSourceTrim(name: string, percent: number): void {
+        if (name === 'usb') this.#usb?.setSourceTrim(name, percent)
+        else this.#manager.setSourceTrim(name, percent)
     }
 
     setMusicVolume(percent: number): void { this.#manager.setMusicVolume(percent) }

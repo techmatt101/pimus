@@ -62,6 +62,15 @@ class EchoReference:
             available = self._pin_stream() and sink_ready
         else:
             self._modules.unload(REFERENCE_ROLE)
+        return self._status(reference_sink, available, endpoints_available)
+
+    def status(self) -> dict[str, Any]:
+        """The section before any pass has looked: nothing found yet."""
+        return self._status(None, False, False)
+
+    def _status(
+        self, reference_sink: Node | None, available: bool, endpoints_available: bool
+    ) -> dict[str, Any]:
         return {
             "enabled": self.config.enabled,
             "available": available,

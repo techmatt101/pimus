@@ -739,7 +739,9 @@
             document.getElementById(`pill-${id}`).classList.toggle('on', Boolean(live))
         }
         const sources = Object.entries(state.sources || {})
-            .map(([name, on]) => `<div class="cell"><div class="k">route ${name}</div>${flag(on)}</div>`).join('')
+            .map(([name, source]) => `<div class="cell"><div class="k">source ${name}</div><div class="v">${
+                source?.trim === undefined ? '?' : source.trim + '%'}${
+                source?.enabled === undefined ? '' : source.enabled ? ' on' : ' off'}</div></div>`).join('')
         stateEl.innerHTML = `
     <div class="cell"><div class="k">assist</div><div class="v">${state.assist}</div></div>
     <div class="cell"><div class="k">music volume</div><div class="v">${state.volMuted ? 'muted' : state.musicVolume === undefined ? '?' : state.musicVolume + '%'}</div></div>

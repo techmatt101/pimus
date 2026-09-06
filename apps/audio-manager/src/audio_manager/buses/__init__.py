@@ -10,8 +10,9 @@ playback with a level of its own is a new `PlaybackBus` subclass and a line in
 the reconcile order.
 
     bus            `PlaybackBus`: the null sink, its bridge, and the gain held on it
-    background     the music bus every music input plays into, dipped while the
-                   assistant talks
+    music          the music bus every music input plays into, dipped while the
+                   assistant talks; its own players are published as a source
+                   with a trim and nothing to switch
     music_volume   that bus's own sink volume, kept agreed with the music level
                    so a player can move the room and be told when something else
                    did
