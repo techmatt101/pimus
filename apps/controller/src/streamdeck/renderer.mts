@@ -236,6 +236,11 @@ export class DeckRenderer implements PageNavigator {
         void this.render()
     }
 
+    showFirstPage(): void {
+        if (this.#pageIndex === 0) return
+        this.changePage(-this.#pageIndex)
+    }
+
     #mountPage(): void {
         this.#unmountPage()
         if (!this.#deck) return

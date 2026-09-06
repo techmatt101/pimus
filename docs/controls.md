@@ -460,7 +460,7 @@ The four dials as shipped:
 |-----------|---------------------------------------------|--------------------|
 | `VOLUME`  | Music level down / up; the voice level while Assist is live | Mute               |
 | `MEDIA`   | Previous / next track                       | Play/pause         |
-| `PAGE`    | Previous / next page of keys                | —                  |
+| `PAGE`    | Previous / next page of keys                | Back to `HOME`     |
 | *dynamic* | Whatever the last room key you pressed does | Toggle that entity |
 
 All media transport — skip, shuffle, and play/pause alike — goes through the
