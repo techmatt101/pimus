@@ -208,7 +208,6 @@ test('voice volume updates optimistically and re-asserts after a reconnect', asy
     first.emit('data', '{"event":"state","sources":{"aux":{"trim":100,"enabled":false}},"voice_bus":{"volume":60},"music_bus":{"volume":25},"output_volume":90}\n')
     assert.equal(client.state.voiceVolume, 60)
     assert.equal(client.state.musicVolume, 25)
-    // The hardware ceiling is reported and never set from here.
     assert.equal(client.state.ampCeiling, 90)
     assert.deepEqual(client.state.sources, {aux: {trim: 100, enabled: false}})
 
@@ -223,6 +222,19 @@ test('voice volume updates optimistically and re-asserts after a reconnect', asy
     client.setMusicVolume(55)
     assert.equal(client.state.musicVolume, 55)
     assert.deepEqual(JSON.parse(first.written.at(-1) ?? ''), {command: 'set-music-volume', percent: 55})
+
+    // The hardware ceiling moves the same way, but never below the floor the
+    // manager would refuse, and a stale echo cannot drag it back mid-turn.
+    client.setAmpCeiling(100)
+    assert.equal(client.state.ampCeiling, 100)
+    assert.deepEqual(JSON.parse(first.written.at(-1) ?? ''), {command: 'set-output-ceiling', percent: 100})
+    first.emit('data', '{"event":"state","sources":{"aux":{"trim":100,"enabled":false}},"output_volume":90}\n')
+    assert.equal(client.state.ampCeiling, 100)
+    first.emit('data', '{"event":"state","sources":{"aux":{"trim":100,"enabled":false}},"output_volume":100}\n')
+    assert.equal(client.state.ampCeiling, 100)
+    client.setAmpCeiling(10)
+    assert.equal(client.state.ampCeiling, 70)
+    assert.deepEqual(JSON.parse(first.written.at(-1) ?? ''), {command: 'set-output-ceiling', percent: 70})
 
     // A source's trim is one more level held only in the manager's memory.
     client.setSourceTrim('aux', 80)

@@ -1137,6 +1137,55 @@ class VolumeTests(ManagerTestCase):
             self.assertFalse(reconcile)
         self.assertEqual(manager.voice_volume, 100)
 
+    def test_output_ceiling_command_writes_the_card_and_reads_it_back(self) -> None:
+        manager = self.make_manager(
+            {"output_ceiling": {"card": "sndrpihifiberry", "control": "Digital"}}
+        )
+        calls: list[tuple[str, ...]] = []
+
+        def run(*args: str, check: bool = True) -> Any:
+            calls.append(args)
+            stdout = ""
+            if args[:2] == ("amixer", "-c"):
+                stdout = "  Front Left: Playback 207 [100%] [0.00dB] [on]\n"
+            return subprocess.CompletedProcess(args, 0, stdout=stdout, stderr="")
+
+        with mock.patch.object(process, "run", side_effect=run):
+            reply, reconcile = manager.commands.apply(
+                mock.Mock(), {"command": "set-output-ceiling", "percent": 100}
+            )
+
+        # A hardware control under every graph gain: nothing to reconcile, and
+        # the reply reports what the card took rather than what was asked.
+        self.assertFalse(reconcile)
+        self.assertEqual(reply["output_volume"], 100)
+        self.assertEqual(
+            calls,
+            [
+                ("amixer", "-q", "-c", "sndrpihifiberry", "sset", "Digital", "100%"),
+                ("amixer", "-c", "sndrpihifiberry", "sget", "Digital"),
+            ],
+        )
+
+    def test_output_ceiling_refuses_a_level_that_would_silence_the_amp(self) -> None:
+        manager = self.make_manager(
+            {"output_ceiling": {"card": "sndrpihifiberry", "control": "Digital"}}
+        )
+        with mock.patch.object(process, "run") as run:
+            for percent in (69, 0, "90", True, 101, None):
+                reply, _ = manager.commands.apply(
+                    mock.Mock(), {"command": "set-output-ceiling", "percent": percent}
+                )
+                self.assertEqual(reply["event"], "error")
+        run.assert_not_called()
+
+        # A unit whose mixer the manager cannot read has no ceiling to move.
+        unreadable = self.make_manager({})
+        reply, _ = unreadable.commands.apply(
+            mock.Mock(), {"command": "set-output-ceiling", "percent": 90}
+        )
+        self.assertEqual(reply["event"], "error")
+
     def test_music_volume_command_moves_the_bus_and_not_its_sources(self) -> None:
         manager = self.make_manager(
             {

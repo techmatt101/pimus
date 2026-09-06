@@ -18,6 +18,11 @@ LOG = logging.getLogger(__name__)
 
 Reply = tuple[dict[str, Any], bool]
 
+# The lowest ceiling the socket may set. The control's percent scale is
+# logarithmic, about a decibel a point, so 70 is already some 30 dB down and
+# anything lower is a dial that can silence the amplifier rather than trim it.
+OUTPUT_CEILING_FLOOR_PERCENT = 70
+
 
 def _error(message: str) -> Reply:
     return {"event": "error", "error": message}, False
@@ -44,6 +49,7 @@ class CommandHandler:
             "set-voice-volume": self._set_voice_volume,
             "set-music-volume": self._set_music_volume,
             "set-music-mute": self._set_music_mute,
+            "set-output-ceiling": self._set_output_ceiling,
             "set-source-trim": self._set_source_trim,
             "set-source-state": self._set_source_state,
             "get-state": self._get_state,
@@ -165,6 +171,18 @@ class CommandHandler:
             return _error("set-music-mute needs a boolean muted")
         # The same stream gains a music volume moves, so it applies directly too.
         self._manager.set_music_mute(muted)
+        return self._state()
+
+    def _set_output_ceiling(self, _: socket.socket, message: dict[str, Any]) -> Reply:
+        if not self._manager.config.output_ceiling.readable:
+            return _error("this unit has no output ceiling to set")
+        percent = message.get("percent")
+        floor = OUTPUT_CEILING_FLOOR_PERCENT
+        if not volume.is_percent(percent) or percent < floor:
+            return _error(f"set-output-ceiling needs a percent between {floor} and 100")
+        # The hardware control under every graph gain, so nothing in the graph
+        # needs reconciling; the reply carries the level the card reads back.
+        self._manager.set_output_ceiling(round(percent))
         return self._state()
 
     def _set_source_trim(self, _: socket.socket, message: dict[str, Any]) -> Reply:

@@ -108,6 +108,9 @@ store() { echo stored; return "$STORE_EXIT"; }
     def test_doctor_checks_every_digital_playback_channel(self) -> None:
         template = (ROLE / "templates/smartamp-doctor.sh.j2").read_text()
         start = template.index("if ! DIGITAL=")
+        # The LEVELS page may move the ceiling from its boot value, so an even
+        # reading elsewhere is a warning; uneven, unreadable, or below the
+        # floor the manager would set is still a failure.
         end = template.index("{% if smartamp_hifiberry_caps.aux_input", start)
         script = template[start:end].replace(
             "{{ hifiberry_card_name | quote }}", "sndrpihifiberry"
@@ -115,6 +118,7 @@ store() { echo stored; return "$STORE_EXIT"; }
         harness = """
 amixer() { printf '%s\\n' "$MIXER_OUTPUT"; return "$MIXER_EXIT"; }
 pass() { printf 'PASS %s\\n' "$1"; }
+warn() { printf 'WARN %s\\n' "$1"; }
 fail() { printf 'FAIL %s\\n' "$1"; FAILED=1; }
 FAILED=0
 """
@@ -123,6 +127,8 @@ FAILED=0
         for output, mixer_exit, expected in (
             (left + "\n" + right, 0, 0),
             ("  Mono: Playback 186 [90%] [-10.50dB] [on]", 0, 0),
+            ((left + "\n" + right).replace("[90%]", "[100%]"), 0, 0),
+            ((left + "\n" + right).replace("[90%]", "[60%]"), 0, 1),
             (left + "\n" + right.replace("[90%]", "[100%]"), 0, 1),
             (left.replace("[90%]", "[80%]") + "\n" + right, 0, 1),
             (left + "\n" + right.replace("[90%]", "[unknown]"), 0, 1),

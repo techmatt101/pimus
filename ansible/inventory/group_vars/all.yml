@@ -113,17 +113,19 @@ hifiberry_card_name: sndrpihifiberry
 # board whose amplifier the Pi can mute (amp100): provisioning refuses it on a
 # DAC2 ADC Pro, whose AAmp60 has no control line.
 hifiberry_auto_mute: false
-# The DAC's hardware output ceiling. The ALSA percent scale is logarithmic
-# across -103.5..0 dB, about -1 dB per point below 100: 90 is a -10 dB
-# ceiling, but 30 is -72.5 dB — inaudible on any speaker. Day-to-day loudness
-# comes from the audio manager's music and voice levels (PipeWire), not this;
-# with the output sink pinned at 100% this ceiling is the one hard cap above
-# those levels — and it is the speaker protection. Every software gain lives in
-# PipeWire, so a transient that escapes them (a client stream in the instant
-# before its gain lands, driver garbage, a graph glitch) otherwise reaches the
-# amplifier at full scale as a genuinely loud pop. The default gives up 10 dB
-# of never-used maximum loudness to cap that worst case; raise it back toward
-# 100 only if an amp truly cannot play loud enough with music at 100%. The
+# The DAC's hardware output ceiling at boot. The ALSA percent scale is
+# logarithmic across -103.5..0 dB, about -1 dB per point below 100: 90 is a
+# -10 dB ceiling, but 30 is -72.5 dB — inaudible on any speaker. Day-to-day
+# loudness comes from the audio manager's music and voice levels (PipeWire),
+# not this; with the output sink pinned at 100% this ceiling is the one hard
+# cap above those levels — and it is the speaker protection. Every software
+# gain lives in PipeWire, so a transient that escapes them (a client stream in
+# the instant before its gain lands, driver garbage, a graph glitch) otherwise
+# reaches the amplifier at full scale as a genuinely loud pop. The default
+# gives up 10 dB of never-used maximum loudness to cap that worst case. The
+# deck's AMP CEILING key can move it between 70 and 100 while the unit runs,
+# and the next boot puts this value back: raise it here only for a unit that
+# truly cannot play loud enough with music at 100%. The
 # WirePlumber soft-mixer rule (tasks/audio.yml) is what makes this hold:
 # without it, PipeWire would fold the pinned sink volume back into this same
 # hardware control and quietly undo the ceiling.

@@ -76,9 +76,12 @@ Loudness is two independent gains on those bridges, not the sink volume: the man
 holds the music level on the music bridge (with aux and any direct route following it, and ducking dipping to a
 share of it) and the voice level on the voice bridge. Music at 5% with voice at 50% plays voice at 50%; music at 80%
 with voice at 30% plays voice at 30%. `set-music-volume` and `set-voice-volume` on the control socket move them, and
-`set-source-trim` moves one input's share of the music level. Beside those the manager reads the card's hardware
-ceiling and reports it as `output_volume`, which nothing here writes: it is set once at boot from inventory and is
-the amplifier's protection rather than a gain.
+`set-source-trim` moves one input's share of the music level. Under all of those sits the card's hardware ceiling,
+the `Digital` control, which the manager reads back on every pass and reports as `output_volume`. It boots at the
+inventory value, written by `hifiberry-init.sh`, and `set-output-ceiling` moves it from there, no lower than 70%
+(the control's scale is about a decibel a point, so lower would be a dial that silences the amp); the card keeps it
+across a manager restart and the next boot puts the inventory value back. It is the amplifier's protection rather
+than a gain, so it is a level to set and leave, not one to ride.
 
 The manager is a mixer, and its channels are the `sources` in `audio.json`: a list of names, each with a trim and,
 for the switchable ones, an on/off. A stream on the music bus belongs to the source its `smartamp.source` property

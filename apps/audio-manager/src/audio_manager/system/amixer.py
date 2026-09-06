@@ -1,4 +1,4 @@
-"""The ALSA mixer surface: reading a card's hardware playback level."""
+"""The ALSA mixer surface: a card's hardware playback level, read and set."""
 
 from __future__ import annotations
 
@@ -30,3 +30,8 @@ def playback_percent(card: str, control: str) -> int | None:
         return None
     levels = [int(match) for match in PLAYBACK_PERCENT.findall(result.stdout)]
     return min(levels) if levels else None
+
+
+def set_playback_percent(card: str, control: str, percent: int) -> None:
+    """Set `control` on every playback channel at once; raises if amixer fails."""
+    process.run("amixer", "-q", "-c", card, "sset", control, f"{percent}%")

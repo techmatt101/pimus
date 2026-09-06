@@ -59,12 +59,14 @@ class EchoReferenceConfig:
 
 @dataclass(frozen=True)
 class OutputCeilingConfig:
-    """The card's hardware playback ceiling, which this daemon only reads.
+    """The card's hardware playback ceiling.
 
-    Every day-to-day gain lives in the graph; the ceiling is the amplifier's
-    protection and is set once at boot from inventory. Reading it is what lets
-    a control surface show the level the speakers are actually driven at
-    beside the ones it can move.
+    Every day-to-day gain lives in the graph; the ceiling sits under all of
+    them and is the amplifier's protection. It boots at the inventory value
+    (hifiberry-init.sh writes it) and the control socket may move it from
+    there, within a floor the daemon holds, until the next boot puts it back.
+    Reading it is what lets a control surface show the level the speakers are
+    actually driven at beside the ones it holds itself.
     """
 
     card: str

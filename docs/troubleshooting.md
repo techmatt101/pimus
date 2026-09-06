@@ -269,13 +269,15 @@ unloaded, or driver garbage during a graph rebuild. The backstop is the DAC's ha
 one of those cases at once. Confirm it is actually holding — WirePlumber must not be managing the same control:
 
 ```sh
-amixer -c sndrpihifiberry sget Digital        # both values should read the configured ceiling, not 100%
+amixer -c sndrpihifiberry sget Digital        # both values should read the boot value, or where AMP CEILING left it
 grep -r soft-mixer /etc/wireplumber/          # the smartamp rule keeping PipeWire volume in software
 ```
 
-If `Digital` reads 100% with a lower ceiling configured, PipeWire has folded the pinned sink volume back into the
-hardware control — re-provision so the soft-mixer rule above is installed, and restart the session. `smartamp-doctor`
-makes the same check. The rule has to match the ALSA *card* (`alsa_card.platform-…`), because `api.alsa.soft-mixer` is
+If `Digital` reads 100% and nobody raised it from the deck's `AMP CEILING` key, PipeWire has folded the pinned sink
+volume back into the hardware control — re-provision so the soft-mixer rule above is installed, and restart the
+session. `smartamp-doctor` makes the same check, and warns rather than fails at 100% because it cannot tell the two
+apart; a reboot puts the inventory value back either way. The rule has to match the ALSA *card*
+(`alsa_card.platform-…`), because `api.alsa.soft-mixer` is
 a device property: an earlier version matched the output node instead, which WirePlumber ignores without a word, and
 would have left the amp playing about 10 dB above its ceiling with no cap on transients. Read `Digital` back on each
 unit after re-provisioning to confirm.

@@ -265,6 +265,9 @@ const layout = createLayout({
         setSourceTrim: (name, percent) => {
             audio.setSourceTrim(name, percent)
         },
+        setAmpCeiling: (percent) => {
+            audio.setAmpCeiling(percent)
+        },
     },
     // The real client speaks the WebSocket API and has its own tests; what the
     // playground is for is watching the keys, so this replaces the whole service.

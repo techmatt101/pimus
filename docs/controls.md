@@ -67,11 +67,15 @@ without reading the status file over SSH:
 [ SOURCE TRIM ][       ][       ][      ]
 ```
 
-`AMP CEILING` is the HiFiBerry's `Digital` control — the hardware ceiling set
-once at boot from `hifiberry_output_volume_percent`, which is the speaker
-protection rather than a day-to-day gain. The audio manager reads it and never
-writes it, so this key is a readout; change the ceiling in inventory and
-provision.
+`AMP CEILING` is the HiFiBerry's `Digital` control — the hardware ceiling
+under every gain the manager holds, and the speaker protection: whatever
+escapes the software gains cannot reach the amplifier above it. It boots at
+`hifiberry_output_volume_percent` and this key moves it from there, between
+70% and 100%, for a room whose amp is too quiet at music 100% or too loud a
+backstop. It is not a day-to-day volume: its scale is about a decibel a point,
+a reboot puts the inventory value back, and each move shifts the echo path the
+microphone array cancels against, so the AEC re-converges on the next thing it
+hears. Set it and leave it; make a change that should stick in `host_vars`.
 
 `MUSIC` and `VOICE` are the two levels the audio manager holds, the same
 numbers the volume dial and the `VOICE VOL` key move. `MUSIC` captions itself

@@ -28,14 +28,15 @@ import {TimerTile} from './tiles/timer-tile.mjs'
 import type {Tile} from './tile.mjs'
 import {VoiceTile} from './tiles/voice-tile.mjs'
 import type {ControlModel} from '../state.mjs'
-import type {
-    AudioControls,
-    BrightnessControls,
-    HomeAssistantService,
-    LvaSender,
-    NotificationFeed,
-    PowerControls,
-    RemoteTileFeed,
+import {
+    AMP_CEILING_FLOOR,
+    type AudioControls,
+    type BrightnessControls,
+    type HomeAssistantService,
+    type LvaSender,
+    type NotificationFeed,
+    type PowerControls,
+    type RemoteTileFeed,
 } from '../types.mjs'
 
 const HA = {
@@ -240,7 +241,9 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
             new LevelTile({
                 ...LEVELS.ceiling,
                 read: () => model.audio.ampCeiling,
-            }),
+                apply: (percent) => audio.setAmpCeiling(percent),
+                floor: AMP_CEILING_FLOOR,
+            }, dynamic),
             new LevelTile({
                 ...LEVELS.music,
                 read: () => model.audio.musicVolume,

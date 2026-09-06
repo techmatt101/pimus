@@ -109,6 +109,9 @@ const surface = config.streamdeck?.enabled
             setSourceTrim: (name, percent) => {
                 audio.setSourceTrim(name, percent)
             },
+            setAmpCeiling: (percent) => {
+                audio.setAmpCeiling(percent)
+            },
         },
         ha: homeAssistant,
         notifications,

@@ -1,7 +1,7 @@
 import net from 'node:net'
 
 import {logger} from '../log.mjs'
-import type {AudioState, SourceState} from '../types.mjs'
+import {AMP_CEILING_FLOOR, type AudioState, type SourceState} from '../types.mjs'
 
 const log = logger('audio')
 
@@ -59,6 +59,7 @@ export class AudioClient {
     #reconnectTimer: NodeJS.Timeout | null = null
     #pendingMusic: PendingLevel | null = null
     #pendingVoice: PendingLevel | null = null
+    #pendingCeiling: PendingLevel | null = null
     readonly #pendingTrims = new Map<string, PendingLevel>()
     readonly #socketPath: string
     readonly #onStateChange: () => void
@@ -191,6 +192,21 @@ export class AudioClient {
     }
 
     /**
+     * Moves the hardware ceiling under every gain. The card keeps it across a
+     * manager restart, and the next boot puts the inventory value back, so it
+     * is never re-asserted from here.
+     */
+    setAmpCeiling(percent: number): void {
+        const level = Math.round(Math.max(AMP_CEILING_FLOOR, Math.min(100, percent)))
+        if (this.state.ampCeiling !== level) {
+            this.state = {...this.state, ampCeiling: level}
+            this.#onStateChange()
+        }
+        this.#pendingCeiling = {level, until: this.#clock() + ECHO_HOLD_MILLISECONDS}
+        this.#write({command: 'set-output-ceiling', percent: level})
+    }
+
+    /**
      * Balances one input against the others, as a share of the music level.
      * Held only in the manager's memory, so a restart there comes back to the
      * configured trim and this cache re-asserts what was set since.
@@ -310,15 +326,17 @@ export class AudioClient {
                 const voiceBus = section(message.voice_bus)
                 const music = this.#settleLevel(this.#pendingMusic, musicBus?.volume, this.state.musicVolume)
                 const voice = this.#settleLevel(this.#pendingVoice, voiceBus?.volume, this.state.voiceVolume)
+                const ceiling = this.#settleLevel(this.#pendingCeiling, message.output_volume, this.state.ampCeiling)
                 this.#pendingMusic = music.pending
                 this.#pendingVoice = voice.pending
+                this.#pendingCeiling = ceiling.pending
                 this.state = {
                     sources: this.#settleSources(sources),
                     routesKnown: true,
                     ...(music.level !== undefined ? {musicVolume: music.level} : {}),
                     ...(voice.level !== undefined ? {voiceVolume: voice.level} : {}),
                     ...(typeof musicBus?.muted === 'boolean' ? {volMuted: musicBus.muted} : {}),
-                    ...(typeof message.output_volume === 'number' ? {ampCeiling: message.output_volume} : {}),
+                    ...(ceiling.level !== undefined ? {ampCeiling: ceiling.level} : {}),
                 }
                 this.#onStateChange()
             } else if (message.event === 'voice_level' && typeof message.level === 'number') {

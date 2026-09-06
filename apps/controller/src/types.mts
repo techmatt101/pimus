@@ -170,6 +170,13 @@ export interface LvaSender {
     send(command: string, data?: Record<string, unknown>): void
 }
 
+/**
+ * The lowest ceiling the audio manager accepts, matching its own floor: the
+ * control's scale is about a decibel a point, so below this a turn would
+ * silence the amplifier rather than trim it.
+ */
+export const AMP_CEILING_FLOOR = 70
+
 export interface AudioControls {
     setVolume(command: string): unknown
 
@@ -181,6 +188,9 @@ export interface AudioControls {
     setMusicVolume(percent: number): unknown
 
     setSourceTrim(name: string, percent: number): unknown
+
+    /** The hardware ceiling as an absolute percent, no lower than `AMP_CEILING_FLOOR`. */
+    setAmpCeiling(percent: number): unknown
 }
 
 export interface HealthState {
@@ -253,8 +263,8 @@ export interface AudioState {
     /** Whether the music paths are muted; unknown until the manager's first state event. */
     volMuted?: boolean
     /**
-     * The amplifier's hardware ceiling in percent, which the manager reads and
-     * never writes. Undefined until its first state event, and on a unit whose
+     * The amplifier's hardware ceiling in percent, read back from the card.
+     * Undefined until the manager's first state event, and on a unit whose
      * mixer cannot be read.
      */
     ampCeiling?: number

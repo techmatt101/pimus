@@ -21,6 +21,8 @@ export interface LevelTileConfig {
     read: () => number | undefined
     /** Omit for a level this amp reports but nothing here may change. */
     apply?: (percent: number) => void
+    /** The lowest the dial may take it, for a level that is a ceiling rather than a gain. */
+    floor?: number
     /** A second line under the reading, for what the level is a share of. */
     caption?: () => string
 }
@@ -30,12 +32,13 @@ export interface LevelFace {
     icon: IconName
     color: string
     level: number | undefined
+    floor?: number
     adjustable: boolean
     armed: boolean
 }
 
 /** The face every level key shares: icon, reading, bar, and caption. */
-export function drawLevelFace(surface: Surface, {label, icon, color, level, adjustable, armed}: LevelFace): void {
+export function drawLevelFace(surface: Surface, {label, icon, color, level, floor = 0, adjustable, armed}: LevelFace): void {
     const x = surface.width / 2
     const ink = adjustable ? '#ffffff' : READONLY_INK
     drawBackground(surface, color)
@@ -48,20 +51,21 @@ export function drawLevelFace(surface: Surface, {label, icon, color, level, adju
         size: fittingSize(value, [30, 26, 22], 112),
         color: ink,
     })
-    drawLevelBar(surface, level, ink)
+    drawLevelBar(surface, level, floor, ink)
     drawCaption(surface, label)
     if (armed) drawActiveGlow(surface)
 }
 
-function drawLevelBar(surface: Surface, level: number | undefined, ink: string): void {
+function drawLevelBar(surface: Surface, level: number | undefined, floor: number, ink: string): void {
     const {ctx} = surface
     const width = surface.width - BAR_INSET * 2
     ctx.save()
     ctx.fillStyle = 'rgba(0,0,0,0.45)'
     ctx.fillRect(BAR_INSET, BAR_Y, width, BAR_HEIGHT)
     if (level !== undefined) {
+        const share = (Math.max(floor, Math.min(100, level)) - floor) / (100 - floor)
         ctx.fillStyle = ink
-        ctx.fillRect(BAR_INSET, BAR_Y, (width * Math.max(0, Math.min(100, level))) / 100, BAR_HEIGHT)
+        ctx.fillRect(BAR_INSET, BAR_Y, width * share, BAR_HEIGHT)
     }
     ctx.restore()
 }
@@ -88,7 +92,7 @@ export class LevelTile implements Tile {
             read: config.read,
             apply,
             onConfirm: () => this.#armed?.release(),
-        })
+        }, {floor: config.floor})
         this.#armed = new ArmedControl(dial, control, () => this.#armed?.release())
     }
 
@@ -105,12 +109,13 @@ export class LevelTile implements Tile {
     }
 
     draw(surface: Surface): void {
-        const {label, icon, color, read, caption} = this.#config
+        const {label, icon, color, read, caption, floor} = this.#config
         drawLevelFace(surface, {
             label: caption ? caption() : label,
             icon,
             color,
             level: read(),
+            ...(floor !== undefined ? {floor} : {}),
             adjustable: this.#armed !== null,
             armed: this.holdsDial(),
         })

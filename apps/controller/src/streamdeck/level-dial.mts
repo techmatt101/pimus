@@ -24,11 +24,18 @@ export class LevelDial implements Dial {
     readonly #step: number
     readonly #handlers: LevelDialHandlers
 
+    readonly #floor: number
+
     /** A label given as a function is read each frame, for a knob whose value moves between levels. */
-    constructor(label: string | (() => string), handlers: LevelDialHandlers, step = 5) {
+    constructor(
+        label: string | (() => string),
+        handlers: LevelDialHandlers,
+        {step = 5, floor = 0}: {step?: number, floor?: number} = {},
+    ) {
         this.#label = label
         this.#handlers = handlers
         this.#step = step
+        this.#floor = floor
         this.left = {action: {type: 'noop'}, run: () => this.#turn(-1)}
         this.right = {action: {type: 'noop'}, run: () => this.#turn(1)}
         this.press = {action: {type: 'noop'}, run: () => this.#handlers.onConfirm()}
@@ -41,7 +48,7 @@ export class LevelDial implements Dial {
     #turn(direction: number): void {
         const current = this.#handlers.read()
         if (current === undefined) return
-        this.#handlers.apply(Math.max(0, Math.min(100, current + direction * this.#step)))
+        this.#handlers.apply(Math.max(this.#floor, Math.min(100, current + direction * this.#step)))
     }
 
     detail(): string {

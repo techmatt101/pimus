@@ -52,9 +52,10 @@ class AudioManager:
         self.vol_muted = False
         self.voice_volume = config.voice_bus.volume_percent
         # The card's hardware volume - the amplifier's ceiling - refreshed by
-        # each reconcile rather than read per query: it is set once at boot
-        # and only a hand at the mixer moves it. None until the first pass,
-        # and on a unit whose card cannot be read at all.
+        # each reconcile rather than read per query: it is set at boot, and
+        # between passes only set-output-ceiling or a hand at the mixer moves
+        # it. None until the first pass, and on a unit whose card cannot be
+        # read at all.
         self.output_volume: int | None = None
 
         self.graph = Graph()
@@ -229,6 +230,15 @@ class AudioManager:
         # Seed the public register from this explicit command.
         self.music_register.forget()
         self._apply_or_retry("Music volume", self._apply_music_volume)
+
+    def set_output_ceiling(self, percent: int) -> None:
+        """Move the hardware ceiling, and read back what the card took."""
+        ceiling = self.config.output_ceiling
+        self._guard(
+            "Output ceiling",
+            lambda: amixer.set_playback_percent(ceiling.card, ceiling.control, percent),
+        )
+        self._read_output_volume()
 
     def set_music_mute(self, muted: bool) -> None:
         self.vol_muted = muted

@@ -30,7 +30,7 @@ export class FakeAudioService {
     musicVolume = 40
     voiceVolume = 60
     volMuted = false
-    /** Read from the card on the Pi; a fixed reading here, as inventory sets it. */
+    /** Read from the card on the Pi, where it boots at the inventory value and the LEVELS page moves it. */
     outputVolume = 90
 
     private readonly bus: PlaygroundBus
@@ -134,6 +134,15 @@ export class FakeAudioService {
             }
             this.musicVolume = Math.round(percent)
             this.bus.log('audio', 'note', `music volume set to ${this.musicVolume}%`)
+            this.broadcastState()
+        } else if (command === 'set-output-ceiling') {
+            const percent = message.percent
+            if (typeof percent !== 'number' || percent < 70 || percent > 100) {
+                this.reject(socket, 'set-output-ceiling needs a percent between 70 and 100')
+                return
+            }
+            this.outputVolume = Math.round(percent)
+            this.bus.log('audio', 'note', `output ceiling set to ${this.outputVolume}%`)
             this.broadcastState()
         } else if (command === 'set-source-trim') {
             const name = String(message.name ?? '')

@@ -32,10 +32,10 @@
     "latency_ms": {{ smartamp_loopback_latency_ms | int }},
     "volume_percent": {{ smartamp_voice_startup_volume_percent | int }}
   },
-{# The amplifier's hardware ceiling, which the manager only ever reads: it is
-     written once at boot by hifiberry-init.sh and is the speaker protection,
-     not a day-to-day gain. Published so a control surface can show the level
-     the speakers are actually driven at beside the ones it can move. #}
+{# The amplifier's hardware ceiling: written at boot by hifiberry-init.sh, read
+     back by the manager on every pass, and moved by set-output-ceiling within
+     the floor the manager holds. It is the speaker protection, not a
+     day-to-day gain, and the next boot restores the inventory value. #}
   "output_ceiling": {
     "card": {{ hifiberry_card_name | to_json }},
     "control": "Digital"
