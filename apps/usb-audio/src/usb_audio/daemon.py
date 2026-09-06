@@ -131,7 +131,7 @@ class UsbAudio:
         if self.enabled and self.available and source is not None and sink is not None:
             self.playback.reconcile(source, sink, self.trim)
             if not self.playback.ready:
-                self._next_reconcile = time.monotonic() + 0.1
+                self._next_reconcile = time.monotonic() + self.playback.retry_seconds
         else:
             self.playback.stop()
 

@@ -514,8 +514,10 @@ turning is no feedback — and the notification comes back when the hold expires
 ### Status icons
 
 The idle clock carries a row of system-health icons at its left edge: network
-(wifi), Home Assistant (home), the microphone (mic), and the audio manager
-(volume). A cyan usb icon joins the row only while a computer is actively
+(wifi), Home Assistant (home), the microphone (mic), and audio (volume). The
+audio icon stands for every audio service this unit runs, not the manager
+alone: a room whose USB input service has stopped answering is not a healthy
+room, and one reading covers whatever input services a deployment gains later. A cyan usb icon joins the row only while a computer is actively
 streaming audio to the USB-C gadget port, and disappears when playback stops
 or the cable is pulled. It cannot mean merely "plugged in": the VBUS-blocked
 port never reports an unplug, so an idle connection and a missing one are

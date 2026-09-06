@@ -55,6 +55,13 @@ then flow in both directions; when both sides changed, the bus wins. Remembering
 read-back values prevents quantisation from causing feedback. Partial writes of
 volume/mute are retried together.
 
+A client that starts and then exits before its stream ever reaches the graph is
+a fault that repeats, so each such death doubles the wait before the next spawn,
+up to five seconds; a client that did play and then died is an ordinary restart
+and is replaced at once. Reaching the graph clears the count, so the next fault
+starts its own, and so does a new target — what went wrong for the old one says
+nothing about this one.
+
 The controller connects independently to:
 
 - `smartamp-audio.sock`: music/voice levels, local routes, ducking and standby.
@@ -62,7 +69,9 @@ The controller connects independently to:
 
 `audio/system.mts` combines these states for the existing UI. Reconnection replays
 each service's own cached controls. Losing the USB socket clears its playback
-indicator while the manager remains usable. The playground models both sockets.
+indicator while the manager remains usable, and turns the strip's audio icon
+red: that icon stands for every audio service a unit runs, so a stopped input
+service is visible rather than silent. The playground models both sockets.
 
 The USB socket uses newline-delimited JSON. Commands are `get-state`,
 `set-source-state` with `name: "usb"` and `state: "on" | "off" | "toggle"`, and

@@ -216,6 +216,37 @@ class PlaybackTests(unittest.TestCase):
         self.child.terminate.assert_called_once()
         self.assertFalse(self.playback.ready)
 
+    def test_a_client_that_never_plays_is_retried_more_slowly_each_time(self) -> None:
+        # A client that starts and dies without reaching the graph would
+        # otherwise be respawned ten times a second for as long as it kept
+        # failing, which on a small board costs more than the route is worth.
+        settle = self.playback.retry_seconds
+        self.child.poll.return_value = 1
+        delays: list[float] = []
+        for _ in range(4):
+            self.playback.reconcile(self.source, self.sink, 25)
+            delays.append(self.playback.retry_seconds)
+        # The first spawn is a fresh start, not a failure; each death after it
+        # doubles the wait.
+        self.assertEqual(delays, [settle, settle * 2, settle * 4, settle * 8])
+        self.assertEqual(self.spawn.call_count, 4)
+
+        # Reaching the graph says the fault did not repeat, so the next one
+        # starts its own count rather than inheriting this one's patience.
+        self.child.poll.return_value = None
+        self.publish()
+        self.playback.reconcile(self.source, self.sink, 25)
+        self.assertTrue(self.playback.ready)
+        self.assertEqual(self.playback.retry_seconds, settle)
+
+    def test_a_moved_target_is_not_charged_for_the_old_ones_failures(self) -> None:
+        self.child.poll.return_value = 1
+        for _ in range(3):
+            self.playback.reconcile(self.source, self.sink, 25)
+        self.assertGreater(self.playback.retry_seconds, 0.1)
+        self.playback.reconcile(self.source, node("music", 3), 25)
+        self.assertEqual(self.playback.retry_seconds, 0.1)
+
 
 class UsbLifecycleTests(unittest.TestCase):
     def setUp(self) -> None:

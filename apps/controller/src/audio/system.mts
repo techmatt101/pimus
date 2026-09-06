@@ -29,7 +29,14 @@ export class AudioSystem {
         }
     }
 
-    get connected(): boolean { return this.#manager.connected }
+    /**
+     * Whether every audio service this unit runs is answering. A room's sound
+     * is only as healthy as the least of them, and one reading covers whatever
+     * input services a deployment gains later.
+     */
+    get connected(): boolean {
+        return this.#manager.connected && (this.#usb === null || this.#usb.connected)
+    }
     get voiceLevel(): number { return this.#manager.voiceLevel }
 
     connect(): void {

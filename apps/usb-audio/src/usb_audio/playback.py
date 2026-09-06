@@ -9,6 +9,14 @@ from smartamp_audio.graph import Graph, Node
 
 PLAYBACK_NODE = "smartamp_usb_playback"
 
+# How soon to look again while the client is starting: its stream takes a
+# moment to reach the graph, and every pass until then is an ordinary wait.
+SETTLE_SECONDS = 0.1
+# A client that exits without ever publishing a stream is a fault that repeats,
+# so back off rather than respawning ten times a second into the journal. One
+# that did publish and then died is an ordinary restart and retries at once.
+MAX_RETRY_SECONDS = 5.0
+
 
 class Playback:
     def __init__(self, view: Graph, latency_ms: int) -> None:
@@ -19,9 +27,17 @@ class Playback:
         self.ready = False
         self._generation = 0
         self._node_name = ""
+        self._published = False
+        self._failures = 0
+
+    @property
+    def retry_seconds(self) -> float:
+        """How long to wait before looking again while not ready."""
+        return min(MAX_RETRY_SECONDS, SETTLE_SECONDS * 2**self._failures)
 
     def stop(self) -> None:
         self.ready = False
+        self._published = False
         running = self._process
         self._process = None
         self._binding = None
@@ -39,8 +55,16 @@ class Playback:
 
     def reconcile(self, source: Node, sink: Node, trim: int) -> None:
         binding = (source["name"], source.get("index"), sink["name"], sink.get("index"))
-        if (self._binding != binding
-                or self._process is None or self._process.poll() is not None):
+        moved = self._binding != binding
+        died = self._process is not None and self._process.poll() is not None
+        if moved or died or self._process is None:
+            # A generation that never reached the graph failed; count it so the
+            # retry widens. A new target starts the count again, because what
+            # went wrong for the old one says nothing about this one.
+            if died and not self._published:
+                self._failures += 1
+            if moved:
+                self._failures = 0
             self.stop()
             self._generation += 1
             self._node_name = f"{PLAYBACK_NODE}_{os.getpid()}_{self._generation}"
@@ -80,6 +104,10 @@ class Playback:
         )
         if stream is None:
             return
+        # The stream reached the graph, so whatever went wrong before did not
+        # repeat: the next fault starts its own count.
+        self._published = True
+        self._failures = 0
         if not graph.volume_is(stream, trim):
             pactl.set_sink_input_volume(int(stream["index"]), trim)
         state = graph.volume_state(stream)

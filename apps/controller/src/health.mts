@@ -11,7 +11,7 @@ const LOST_COLOR = '#b71c1c'
 const BANNERS: ReadonlyArray<{ key: keyof HealthState; label: string }> = [
     {key: 'network', label: 'NETWORK'},
     {key: 'ha', label: 'HOME ASSISTANT'},
-    {key: 'audio', label: 'AUDIO MANAGER'},
+    {key: 'audio', label: 'AUDIO'},
 ]
 
 export function defaultRouteExists(read: (path: string) => string = (path) => readFileSync(path, 'utf8')): boolean {

@@ -55,7 +55,10 @@ test('USB controls, state and reconnect replay stay independent of manager state
     assert.equal(audio.state.usbPlayback, true)
     usb.destroy()
     assert.equal(audio.state.usbPlayback, false)
-    assert.equal(audio.connected, true)
+    // A room whose USB input service has gone is not a healthy room, and
+    // nothing else would say so; the manager's own client is untouched, which
+    // the cached state and its independent reconnect below prove.
+    assert.equal(audio.connected, false)
     for (let attempt = 0; attempt < 30 && sockets.get('usb')?.length !== 2; attempt++) await delay(2)
     const replacement = sockets.get('usb')?.[1]
     assert.ok(replacement)
@@ -67,6 +70,7 @@ test('USB controls, state and reconnect replay stay independent of manager state
     replacement.state({sources: {usb: false}, trims: {usb: 30}, usb_playback: true})
     assert.equal(audio.state.musicVolume, 50)
     assert.equal(audio.state.usbPlayback, true)
+    assert.equal(audio.connected, true)
     assert.equal(sockets.get('manager')?.length, 1)
 })
 
@@ -77,6 +81,8 @@ test('a deployment without USB exposes only the manager routes', (t) => {
     audio.connect()
     socket.emit('connect')
     socket.state({sources: {}, trims: {background: 100}})
+    // With no USB service configured there is none to be missing.
+    assert.equal(audio.connected, true)
     assert.equal(audio.state.routesKnown, true)
     assert.deepEqual(audio.state.sources, {})
     assert.equal(audio.state.usbPlayback, false)
