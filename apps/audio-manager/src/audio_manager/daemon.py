@@ -275,6 +275,11 @@ class AudioManager:
         if not settled:
             self.schedule_reconcile(RECONCILE_RETRY_SECONDS)
         self.output.settle(settled)
+        # Only once the guard has lifted: a fresh bridge is silent while the
+        # output unmutes, and the fade is what brings the music in.
+        if settled:
+            self.music_bus.fade_in()
+            self.voice_bus.fade_in()
         self._publish()
 
     def _sync_music_register(self, music_sink: Node | None) -> None:

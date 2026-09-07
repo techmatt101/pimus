@@ -231,7 +231,13 @@ class RebuildSafetyTests(ManagerTestCase):
             commands.index("set-sink-mute"), commands.index("set-sink-volume")
         )
         self.assertLess(commands.index("set-sink-mute"), commands.index("load-module"))
-        self.assertEqual(self.calls[-1], ("pactl", "set-sink-mute", "hifiberry", "0"))
+        # The bridge comes up from silence only after the unmute, so the lift
+        # itself is silent and the music arrives as a fade.
+        unmuted = self.calls.index(("pactl", "set-sink-mute", "hifiberry", "0"))
+        self.assertTrue(
+            all(call[1] == "set-sink-input-volume" for call in self.calls[unmuted + 1 :])
+        )
+        self.assertGreater(len(self.calls) - unmuted - 1, 1)
         self.assertTrue(graph.volume_is(self.stream, 10))
         self.calls.clear()
         self.manager.reconcile()

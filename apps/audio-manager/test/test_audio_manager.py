@@ -875,8 +875,9 @@ class IdleTeardownTests(ManagerTestCase):
         )
 
         # A client starts playing again: everything rebuilds on the next pass,
-        # behind a mute held on the output sink, because the fresh bridge
-        # streams run at full volume until their gains land.
+        # behind a mute held on the output sink, and the fresh bridge is faded
+        # in only once that mute has lifted, so the music arrives as a ramp
+        # rather than a step.
         listings["sink-inputs"].append(playing)
         clock["now"] = 100.0
         before_rebuild = len(commands)
@@ -888,7 +889,9 @@ class IdleTeardownTests(ManagerTestCase):
         muted = rebuild.index(("pactl", "set-sink-mute", "hifiberry", "1"))
         unmuted = rebuild.index(("pactl", "set-sink-mute", "hifiberry", "0"))
         self.assertLess(muted, unmuted)
-        self.assertEqual(unmuted, len(rebuild) - 1)
+        fade = rebuild[unmuted + 1 :]
+        self.assertGreater(len(fade), 1)
+        self.assertTrue(all(call[1] == "set-sink-input-volume" for call in fade))
 
     def test_a_voice_session_wakes_an_idle_graph_immediately(self) -> None:
         manager = self.make_manager(
@@ -1298,7 +1301,7 @@ class VolumeTests(ManagerTestCase):
 
 
 class BusTests(ManagerTestCase):
-    def test_voice_bus_is_bridged_and_a_new_stream_is_snapped_to_the_gain(self) -> None:
+    def test_voice_bus_is_bridged_and_a_new_stream_is_faded_in_to_the_gain(self) -> None:
         manager = self.make_manager(
             {
                 "voice_bus": {
@@ -1337,19 +1340,31 @@ class BusTests(ManagerTestCase):
             pactl, "list_json", side_effect=listing(listings)
         ), mock.patch.object(pactl, "list_modules", return_value=[]), mock.patch.object(
             pactl, "load_module", side_effect=load_module
-        ), mock.patch.object(process, "run") as run:
+        ), mock.patch.object(process, "run") as run, mock.patch(
+            "smartamp_audio.volume.time.sleep"
+        ):
             selected = manager.voice_bus.reconcile(output_sink)
             manager.voice_bus.apply_gain(manager.voice_volume)
+            # A fresh stream is born silent; one that came up loud anyway is
+            # held at nothing until the output is unguarded and it can fade in.
+            run.assert_called_once_with("pactl", "set-sink-input-volume", "27", "0%")
+            manager.voice_bus.fade_in()
 
         self.assertEqual(selected, voice)
         self.assertEqual(manager.voice_bus.stream_index, 27)
         # The existing sink is adopted by its owner module, so only the bridge
-        # is loaded.
+        # is loaded, and its stream asked to start silent.
         self.assertEqual(loaded[0][0], "module-loopback")
-        self.assertIn(
-            "sink_input_properties=media.name=SmartAmp.voice_bridge", loaded[0][1]
+        self.assertTrue(
+            loaded[0][1][-1].startswith(
+                'sink_input_properties="media.name=SmartAmp.voice_bridge '
+            )
         )
-        run.assert_called_once_with("pactl", "set-sink-input-volume", "27", "40%")
+        self.assertIn("channelVolumes = [ 0.0 0.0 ]", loaded[0][1][-1])
+        levels = [call.args[3] for call in run.call_args_list[1:]]
+        self.assertEqual(levels[-1], "40%")
+        self.assertEqual(levels, sorted(levels, key=lambda level: int(level[:-1])))
+        self.assertGreater(len(levels), 1)
         listings["sink-inputs"][0]["volume"] = {
             "mono": {"value_percent": "40%"}
         }
@@ -1420,9 +1435,12 @@ class BusTests(ManagerTestCase):
         self.assertEqual(loaded[0][0], "module-null-sink")
         self.assertIn("priority.session=1", loaded[0][1][-1])
         self.assertEqual(loaded[1][0], "module-loopback")
-        self.assertIn(
-            "sink_input_properties=media.name=SmartAmp.music_bridge", loaded[1][1]
+        self.assertTrue(
+            loaded[1][1][-1].startswith(
+                'sink_input_properties="media.name=SmartAmp.music_bridge '
+            )
         )
+        self.assertIn("channelVolumes = [ 0.0 0.0 ]", loaded[1][1][-1])
 
 
 if __name__ == "__main__":

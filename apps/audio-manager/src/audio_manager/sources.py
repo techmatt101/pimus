@@ -99,8 +99,9 @@ class SourceMixer:
 
     def reconcile(self, bus: Node | None) -> None:
         """Hold every stream on the bus at its source's level, snapping any
-        that drifted or just appeared. An input's loopback is born silent, so
-        the snap that lands its trim is also what lets it be heard."""
+        that drifted. An input's loopback is born silent, and one just
+        appeared is faded up from that silence rather than snapped, so the
+        computer's first instant of audio arrives as a ramp."""
         self._found = {name: [] for name in self._sources}
         if bus is None:
             self._applied.clear()
@@ -147,8 +148,11 @@ class SourceMixer:
         # level once the write succeeds, so a retry snaps rather than fades
         # from a level that was never reached.
         previous = self._applied.pop(index, None)
+        born_silent = previous is None and graph.volume_is(stream, 0)
         if fade and previous is not None:
             volume.fade_stream(index, previous, level, TOGGLE_FADE_MS)
+        elif born_silent:
+            volume.fade_stream(index, 0, level, TOGGLE_FADE_MS)
         else:
             pactl.set_sink_input_volume(index, level)
         self._applied[index] = level

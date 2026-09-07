@@ -305,7 +305,9 @@ journalctl -u smartamp-audio-manager --since "10 min ago" -o short-precise
 
 A pop that lines up with `releasing the idle bridges` or `Rebuilding the idle bridges` is the idle teardown
 (`smartamp_idle_teardown_seconds`, default 180) — set it to `0` for a day to confirm, at the cost of about a watt of
-standing draw. A pop that lines up with `Holding client stream` is a client that connected loud before the manager
+standing draw. A rebuild is meant to be silent: the journal should show `Found the music playback bridge stream at
+0%` and then `Faded the music bridge in`; a bridge found at `100%` means PipeWire ignored the silent-start property
+and the guard alone caught it, and a pop on the `Faded` line with the bridge found at 0% is the DAC itself waking. A pop that lines up with `Holding client stream` is a client that connected loud before the manager
 caught it; the ceiling is the intended protection for that race.
 
 ## USB audio device does not appear on the computer

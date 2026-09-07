@@ -19,6 +19,13 @@ from ..modules import ModuleRegistry, stream_media_name
 
 LOG = logging.getLogger(__name__)
 
+# How long a fresh bridge takes to come up from silence to its level. The
+# bridge is rebuilt while a client is already playing into the bus, so its
+# first instant is a step from nothing to the music, and on an amplifier that
+# is a pop; a control-rate fade over a quarter second is not. It runs once
+# per wake, after the output's guard has lifted, so the lift itself is silent.
+WAKE_FADE_MS = 250
+
 
 class PlaybackBus:
     def __init__(
@@ -37,6 +44,10 @@ class PlaybackBus:
         self.sink: Node | None = None
         self.stream_index: int | None = None
         self.gain_applied: int | None = None
+        self.gain_wanted: int | None = None
+        # A bridge stream this pass first saw: held silent until the output
+        # is unguarded, then faded in.
+        self.fresh = False
         # A module can finish loading before its stream appears.
         self.settled = True
         self._graph = view
@@ -82,6 +93,7 @@ class PlaybackBus:
             monitor["name"],
             output["name"],
             self.config.latency_ms,
+            silent=True,
         )
         if created:
             LOG.info("Connected %s audio to the output", self.prefix)
@@ -104,6 +116,12 @@ class PlaybackBus:
             if live_gain is not None and graph.volume_is(bridge, live_gain[0])
             else None
         )
+        if self.fresh:
+            LOG.info(
+                "Found the %s playback bridge stream at %s%%",
+                self.prefix,
+                "?" if self.gain_applied is None else self.gain_applied,
+            )
         return self.sink
 
     def release(self) -> None:
@@ -111,9 +129,29 @@ class PlaybackBus:
         self._modules.unload(self.sink_role)
 
     def apply_gain(self, target: int) -> None:
-        if self.stream_index is None or self.gain_applied == target:
+        self.gain_wanted = target
+        if self.stream_index is None:
             return
-        self._write_gain(target, fade_ms=0)
+        if self.fresh:
+            self.hold_silent()
+            return
+        if self.gain_applied != target:
+            self._write_gain(target, fade_ms=0)
+
+    def hold_silent(self) -> None:
+        """Keep a fresh bridge at nothing until it can be faded in. A bridge
+        is born silent, so this normally writes nothing; it is the backstop
+        for a stream that came up loud anyway."""
+        if self.gain_applied != 0:
+            self._write_gain(0, fade_ms=0)
+
+    def fade_in(self) -> None:
+        """Bring a fresh bridge up to its level, once the output is unguarded."""
+        if not self.fresh or self.stream_index is None or self.gain_wanted is None:
+            return
+        self._write_gain(self.gain_wanted, WAKE_FADE_MS)
+        self.fresh = False
+        LOG.info("Faded the %s bridge in to %s%%", self.prefix, self.gain_wanted)
 
     def _write_gain(self, target: int, fade_ms: int) -> None:
         if self.stream_index is None:
@@ -159,9 +197,10 @@ class PlaybackBus:
     def _track_stream(self, stream_index: int | None) -> None:
         if stream_index == self.stream_index:
             return
-        # A recreated bridge stream starts at full volume, so forget what was
-        # applied to the old one and let the next gain snap it into place.
+        # Whatever the old stream was held at says nothing about this one:
+        # forget it, and treat the new stream as fresh until it is faded in.
         self.stream_index = stream_index
+        self.fresh = stream_index is not None
         self._forget_gain()
 
     def _forget_gain(self) -> None:
@@ -170,4 +209,5 @@ class PlaybackBus:
     def _role_released(self, role: str) -> None:
         if role == self.bridge_role:
             self.stream_index = None
+            self.fresh = False
             self._forget_gain()

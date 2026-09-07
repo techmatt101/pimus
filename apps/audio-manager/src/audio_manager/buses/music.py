@@ -33,9 +33,14 @@ class MusicBus(PlaybackBus):
         return volume.scale(music_volume, self.config.duck_volume_percent)
 
     def apply_ducking(self, music_volume: int, ducked: bool) -> None:
+        target = self.target_gain(music_volume, ducked)
+        self.gain_wanted = target
         if self.stream_index is None:
             return
-        target = self.target_gain(music_volume, ducked)
+        if self.fresh:
+            self.hold_silent()
+            self.ducked = ducked
+            return
         if self.ducked == ducked and self.gain_applied == target:
             return
         # A duck transition fades; the music level moving just snaps the gain,

@@ -118,14 +118,18 @@ bridge gives new client streams an already-applied gain. Direct clients on the h
 sink follow the music level both on a volume command and on reconciliation, but can still start playing before the
 manager sees them. The voice bus is never ducked.
 
-A fresh loopback stream plays at full volume until its gain lands. The manager mutes a newly discovered output before
-adjusting gains, and guards every new bridge it loads into the output. The inputs app's streams need no guard: each is
-created at volume zero inside its own PipeWire client, and the manager's first sight of it snaps it to its source's
-trim, so it is never audible before its gain lands. Direct hardware clients still follow the manager's gain
-enforcement. An AEC-only connection does not need the speaker guard.
+A bus bridge is asked to start silent (`node.param.Props` on its stream), and the manager still mutes a newly
+discovered output before adjusting gains and guards every new bridge it loads into the output, as the backstop for a
+stream that came up loud anyway. A fresh bridge is held at nothing while the guard lifts, and only then faded up to
+its level over a quarter of a second, so the first moment of music after an idle spell, a manager restart, or a
+bridge PipeWire recreated arrives as a ramp rather than a step. The inputs app's streams need no guard: each is
+created at volume zero inside its own PipeWire client, and the manager's first sight of it fades it up to its
+source's trim, so it is never audible before its gain lands and never arrives as a step. Direct hardware clients
+still follow the manager's gain enforcement. An AEC-only connection does not need the speaker guard.
 An unpublished playback stream keeps the guard held and schedules another pass a second later while the rest of the
 graph is reconciled and published. A failed command removes readiness status. The guard releases only after playback
-gains are applied and the unmute is successfully written; failed writes retain the guard for retry.
+gains are applied and the unmute is successfully written; failed writes retain the guard for retry, and a bridge
+not yet faded in stays silent until a pass settles.
 
 Because nothing but the guard is meant to mute the sink — the volume mute is a gain, never a sink property — the
 manager keeps no state about it: a sink found muted at

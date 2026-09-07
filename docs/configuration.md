@@ -139,7 +139,7 @@ is `audio-inputs.json`; see [audio inputs](audio-inputs.md).
 The aux stream is on the bus whenever the graph is awake, whether or not the source is on; the toggle fades it
 between silent and its trim. Connecting the stream on demand used to land any DC offset on the line input as a step
 on the speakers — at full amplifier gain, since the volume dial only scales PipeWire — so the pop-prone connect
-always happens silent: the inputs app creates the stream at 0% and the manager snaps it to the source's level only
+always happens silent: the inputs app creates the stream at 0% and the manager fades it up to the source's level only
 once it sees it. The fade is a run of volume writes rather than a sample-level ramp. Stream Deck route toggles last
 until the next reboot; every boot starts from these inventory defaults.
 
@@ -151,9 +151,10 @@ bus bridges and the AEC reference, the inputs app drops its aux loopback, and th
 their PULSE_SINK targets, and the wake-word capture path is untouched. Everything rebuilds within about a second of a
 client stream appearing, a voice session opening (the controller's duck/meter request arrives before the first TTS
 audio), the USB host starting to stream, or a route being toggled on. The rebuild happens behind a mute on the output sink,
-held until every fresh bridge stream carries its gain — a fresh loopback stream plays at full volume until its gain
-lands, which would otherwise pop the first instant of audio through the amp — so the first moment of music after a
-long quiet spell can be delayed. Connections into the music bus are also guarded until their input trims apply.
+held until every fresh bridge stream is seen; the bridges are created silent, and each is faded up to its level
+over a quarter of a second only after that mute has lifted, so the first moment of music after a long quiet spell
+arrives as a ramp rather than a pop, a little delayed. Connections into the music bus are also guarded until their
+input trims apply.
 Failed reconciliation withdraws readiness; delayed streams keep the output guarded for a retry. That guard is the
 only thing that mutes the sink — the volume mute is a gain on the music paths, not a sink property — so a sink found
 muted is simply released once the graph settles. Idle-wake AEC timing and cancellation recovery
