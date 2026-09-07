@@ -46,6 +46,16 @@
   ansible.builtin.set_fact:
     smartamp_board_caps: "{{ smartamp_boards[smartamp_board] }}"
 
+# The graph rounds quantum requests to powers of two. Reject ambiguous values
+# before rendering a timing policy that could silently provide less headroom.
+- name: Validate the audio processing quantum
+  ansible.builtin.assert:
+    that:
+      - smartamp_audio_quantum is integer
+      - smartamp_audio_quantum in [128, 256, 512, 1024]
+    fail_msg: >-
+      smartamp_audio_quantum must be 128, 256, 512 or 1024 frames at 48 kHz.
+
 # The voice capture source is PipeWire configuration - a loopback drop-in and
 # a WirePlumber rule - in the formats PipeWire 1.x and WirePlumber 0.5 read.
 # Bookworm's 0.3 and 0.4 ignore both, which would leave the assistant

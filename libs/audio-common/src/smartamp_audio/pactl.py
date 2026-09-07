@@ -4,25 +4,9 @@ from __future__ import annotations
 
 import json
 import subprocess
-import time
 from typing import Any, cast
 
 from smartamp_audio import process
-
-
-# When this process last moved a level or mute. Every such write comes straight
-# back as a `change` subscribe event, which the event monitor uses this to
-# recognise as an echo rather than a reason to reconcile again.
-_last_level_write = 0.0
-
-
-def last_level_write() -> float:
-    return _last_level_write
-
-
-def _note_level_write() -> None:
-    global _last_level_write
-    _last_level_write = time.monotonic()
 
 
 def server_ready() -> bool:
@@ -73,22 +57,18 @@ def unload_module(module_id: int) -> None:
 
 def set_sink_volume(sink_name: str, percent: int) -> None:
     process.run("pactl", "set-sink-volume", sink_name, f"{percent}%")
-    _note_level_write()
 
 
 def set_sink_mute(sink_name: str, muted: bool) -> None:
     process.run("pactl", "set-sink-mute", sink_name, "1" if muted else "0")
-    _note_level_write()
 
 
 def set_sink_input_volume(stream_index: int, percent: int) -> None:
     process.run("pactl", "set-sink-input-volume", str(stream_index), f"{percent}%")
-    _note_level_write()
 
 
 def set_sink_input_mute(stream_index: int, muted: bool) -> None:
     process.run("pactl", "set-sink-input-mute", str(stream_index), "1" if muted else "0")
-    _note_level_write()
 
 
 def default_sink() -> str:

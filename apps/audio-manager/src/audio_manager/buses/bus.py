@@ -11,8 +11,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from smartamp_audio import graph, volume
+from smartamp_audio import graph
 from ..config import BusConfig
+from ..fades import Fades
 from smartamp_audio.graph import Graph, Node
 from ..modules import ModuleRegistry, stream_media_name
 
@@ -35,6 +36,7 @@ class PlaybackBus:
         description: str,
         view: Graph,
         registry: ModuleRegistry,
+        fades: Fades,
     ) -> None:
         self.prefix = prefix
         self.config = config
@@ -52,6 +54,7 @@ class PlaybackBus:
         self.settled = True
         self._graph = view
         self._modules = registry
+        self._fades = fades
         registry.on_released(self._role_released)
 
     @property
@@ -111,11 +114,14 @@ class PlaybackBus:
         # Reconcile against the graph, not only our last successful write. A
         # stream can be recreated or changed underneath the module that owns it.
         live_gain = graph.volume_state(bridge)
-        self.gain_applied = (
+        actual = (
             live_gain[0]
             if live_gain is not None and graph.volume_is(bridge, live_gain[0])
             else None
         )
+        if actual != self.gain_applied:
+            self._fades.cancel(int(bridge["index"]))
+        self.gain_applied = actual
         if self.fresh:
             LOG.info(
                 "Found the %s playback bridge stream at %s%%",
@@ -135,14 +141,20 @@ class PlaybackBus:
         if self.fresh:
             self.hold_silent()
             return
-        if self.gain_applied != target:
+        pending = self._fades.target(self.stream_index)
+        if pending == target:
+            return
+        if self.gain_applied != target or pending is not None:
             self._write_gain(target, fade_ms=0)
 
     def hold_silent(self) -> None:
         """Keep a fresh bridge at nothing until it can be faded in. A bridge
         is born silent, so this normally writes nothing; it is the backstop
         for a stream that came up loud anyway."""
-        if self.gain_applied != 0:
+        if self.gain_applied != 0 or (
+            self.stream_index is not None
+            and self._fades.target(self.stream_index) is not None
+        ):
             self._write_gain(0, fade_ms=0)
 
     def fade_in(self) -> None:
@@ -151,17 +163,16 @@ class PlaybackBus:
             return
         self._write_gain(self.gain_wanted, WAKE_FADE_MS)
         self.fresh = False
-        LOG.info("Faded the %s bridge in to %s%%", self.prefix, self.gain_wanted)
+        LOG.info("Fading the %s bridge in to %s%%", self.prefix, self.gain_wanted)
 
     def _write_gain(self, target: int, fade_ms: int) -> None:
         if self.stream_index is None:
             return
         start = self.gain_applied if self.gain_applied is not None else target
-        # A failed fade may already have changed the stream. Only cache a
-        # gain once every write succeeds, including when reversing that fade.
-        self.gain_applied = None
-        volume.fade_stream(self.stream_index, start, target, fade_ms)
-        self.gain_applied = target
+        self._fades.set(self.stream_index, start, target, fade_ms, self._record_gain)
+
+    def _record_gain(self, level: int | None) -> None:
+        self.gain_applied = level
 
     def _ensure_sink(self) -> Node | None:
         sink = self._graph.sink_named(self.config.sink_name)
@@ -197,6 +208,8 @@ class PlaybackBus:
     def _track_stream(self, stream_index: int | None) -> None:
         if stream_index == self.stream_index:
             return
+        if self.stream_index is not None:
+            self._fades.cancel(self.stream_index)
         # Whatever the old stream was held at says nothing about this one:
         # forget it, and treat the new stream as fresh until it is faded in.
         self.stream_index = stream_index
@@ -208,6 +221,8 @@ class PlaybackBus:
 
     def _role_released(self, role: str) -> None:
         if role == self.bridge_role:
+            if self.stream_index is not None:
+                self._fades.cancel(self.stream_index)
             self.stream_index = None
             self.fresh = False
             self._forget_gain()

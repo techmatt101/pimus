@@ -13,6 +13,29 @@ first-run walkthrough is in [setup](setup.md).
 
 ## Audio
 
+`smartamp_audio_quantum` sets PipeWire's default and minimum processing quantum
+through `pipewire.conf.d/50-smartamp-clock.conf`. It defaults to 512 frames at
+48 kHz (10.67 ms); accepted values are 128, 256, 512 and 1024. Clients can request
+a larger cycle, but ordinary latency requests cannot pull the graph below this
+floor. This gives the processing threads more scheduling headroom than the
+previous loopback-driven 256-frame cycle. A live metadata override can still
+force a different quantum, so check the actual `QUANT` and `RATE` in `pw-top`.
+
+`smartamp_loopback_latency_ms` remains 20. The manager's `module-loopback`
+interprets it as a target delay, whereas the input clients' `pw-loopback
+--latency` requests a processing cycle. In PipeWire 1.4.2 the former asks for a
+quantum about one third of its delay: 20 ms requests 320 frames at 48 kHz, rounded
+down to 256 without our floor. Neither setting guarantees end-to-end latency,
+and the USB/aux path crosses both types of loopback. `smartamp_aux_latency_ms`
+overrides only the aux client's request.
+
+Changing the quantum can also change the actual AEC reference delay even though
+the configured target stays the same. Validate playback, pops, first-syllable
+delivery and DSP-side AEC causality on each board before accepting a deployment.
+Use 256 to return to the earlier cycle budget while diagnosing a regression;
+do not compensate by changing DSP delay or reference gain from separate
+PipeWire recordings. See [timing validation](troubleshooting.md#audio-timing-validation).
+
 `hifiberry_board` names the fitted board — `dac2adcpro` (DAC2 ADC Pro, the DAC the AAmp60 add-on amplifier sits on) or
 `amp100` (Amp100, an amplifier with its own DAC). It cannot be detected: the recipe sets `force_eeprom_read=0` so the
 chosen overlay configures the HAT rather than whatever its EEPROM claims. The overlay, whether the board has an ADC,
@@ -84,6 +107,22 @@ Two details follow from that. It is the player's volume, never a group command: 
 sends a group command instead, so nothing here writes it, and Music Assistant player groups are unaffected. And the
 register is a control surface rather than the gain — the level itself stays on the bus's bridge — so the round trip
 costs one debounced reconcile: a slider move is heard within a fraction of a second, not instantly.
+
+Graph events coalesce for 300 ms from the first event; later events cannot
+postpone that deadline. Volume-write echoes participate in that check because
+the same event can report another client's volume, mute or playback change.
+Settled graph reconciliation writes only values that differ, so the follow-up
+check becomes quiet. The inputs app also coalesces graph events, while ALSA
+USB capture-rate notifications still schedule immediate work.
+
+Gain fades advance on 50 ms selector deadlines, using elapsed monotonic time.
+The music and voice bridges fade concurrently after the output guard releases;
+the manager services controls and graph events between steps. A late tick skips
+obsolete steps, a reversed fade starts from its last applied level, and music
+mute cancels its ramp immediately. A failed write cancels that ramp and schedules
+reconciliation; removing its stream also cancels it. These are control-rate
+volume writes, not sample-level de-clicking, and each external command still
+uses the existing five-second failure timeout.
 
 Device match expressions search every PipeWire/Pulse node property. Use `pactl list sinks` and `pactl list sources` on
 the Pi if your firmware exposes different names.

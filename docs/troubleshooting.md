@@ -248,7 +248,12 @@ ps -eLo tid,user,cls,rtprio,comm | grep data-loop   # FF 88 is healthy, TS - is 
 ```
 
 Every `data-loop` matters, not only PipeWire's own: the `pw-loopback` children of `smartamp-audio-inputs` carry the
-aux and USB audio into the bus and get their grant from that unit's own `LimitRTPRIO`. An amp that is clean on
+aux and USB audio into the bus and get their grant from that unit's own `LimitRTPRIO`.
+The voice assistant's libmpv uses native PipeWire playback and receives the same
+grant in `smartamp-voice-assistant.service`; a system unit does not inherit the
+user session's resource limits. The grant allows the library to promote its
+audio thread; it does not make the Python assistant or wake-word inference run
+with FIFO scheduling. An amp that is clean on
 Sendspin but snaps every minute or so on the USB input, and distorts while the volume dial turns, is those threads
 timeshared while the dial's burst of `pactl` calls preempts them; the ERR column then climbs on the gadget's
 `alsa_input.platform-…usb` node and the `smartamp_input_usb…_capture` stream first.
@@ -265,6 +270,28 @@ saying exactly what it could not do.
 Crackling that only happens while someone is SSH'd into the Pi is the other classic: each login used to start a second
 PipeWire under the admin user that busy-spun against the missing session infrastructure. Provisioning masks the
 PipeWire user units for the admin account; `pgrep -au matt pipewire` should find nothing.
+
+## Audio timing validation
+
+After deploying scheduling, quantum or fade changes, test each board separately,
+including the Pi Zero 2 W under voice-inference load. Local tests exercise gain
+ordering and deadlines but cannot establish acoustic behaviour or CPU headroom.
+
+1. Record `pw-top`'s `QUANT`, `RATE`, `WAIT`, `BUSY` and starting `ERR` counts,
+   and `ps -eLo pid,tid,user,cls,rtprio,comm` during actual playback. Check the
+   PipeWire, input-loopback and libmpv data threads. The configured 512-frame
+   floor is 10.67 ms at 48 kHz; the actual graph may choose a larger cycle.
+2. Exercise Sendspin, USB and aux where fitted, along with spoken replies,
+   rapid volume changes, mute/unmute and repeated duck/restore. Run a sustained
+   session and compare error-counter deltas, rather than treating an old
+   cumulative error count as a new fault. Watch CPU/memory pressure, temperature
+   and `vcgencmd get_throttled` alongside the graph.
+3. Test idle wake, input unplug/replug and stream recovery. Listen for pops,
+   lost first syllables, delayed controls and stale ramps after a mute.
+4. Recheck DSP-side reference causality and cancellation, including stereo
+   playback and speaking over music, following [the AEC validation procedure](audio-reliability-actions.md).
+   Retaining the 20 ms delay target does not prove its actual delay is unchanged
+   after the processing quantum changes.
 
 ## A rare loud pop from the speakers
 

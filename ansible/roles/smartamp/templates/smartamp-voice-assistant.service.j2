@@ -60,6 +60,11 @@ Restart=always
 RestartSec=5
 TimeoutStartSec=75
 TimeoutStopSec=20
+# libmpv's native PipeWire output has its own realtime data thread. This
+# system service does not inherit the grants on the smartamp user session.
+LimitRTPRIO=95
+LimitNICE=-20
+Environment=DISABLE_RTKIT=1
 # Apply a small, predictable isolation baseline without restricting the network
 # discovery, ESPHome, and local PipeWire APIs used by voice features.
 # ProtectHome=true would also hide /run/user, where the audio manager's status

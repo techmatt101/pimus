@@ -62,6 +62,12 @@ def volume_writes(run: mock.Mock) -> list[tuple[str, str]]:
 
 
 class ManagerTestCase(unittest.TestCase):
+    @staticmethod
+    def finish_fades(manager: AudioManager) -> None:
+        while (deadline := manager.fades.deadline()) is not None:
+            with mock.patch.object(manager.fades, "_clock", return_value=deadline):
+                manager.fades.tick()
+
     def make_manager(
         self, raw_config: dict[str, Any], *, state_path: Path | None = None
     ) -> AudioManager:
@@ -494,20 +500,21 @@ class SubscribeEventTests(unittest.TestCase):
         self.assertFalse(monitors.is_relevant_event("Event 'new' on client #99"))
         self.assertFalse(monitors.is_relevant_event("garbage"))
 
-    def test_a_level_this_process_wrote_echoes_without_a_reconcile(self) -> None:
-        # Every level write comes straight back as a change event; a reconcile
-        # on each one found nothing to do and cost a burst of listings.
-        with mock.patch.object(process, "run", return_value=completed()), mock.patch(
-            "smartamp_audio.pactl.time.monotonic", return_value=100.0
-        ):
-            pactl.set_sink_input_volume(42, 55)
-        self.assertTrue(monitors.is_level_echo("Event 'change' on sink-input #42", now=100.1))
-        self.assertTrue(monitors.is_level_echo("Event 'change' on sink #3", now=100.1))
-        # A stream arriving or leaving is never an echo, whatever was just written.
-        self.assertFalse(monitors.is_level_echo("Event 'new' on sink-input #43", now=100.1))
-        self.assertFalse(monitors.is_level_echo("Event 'remove' on sink-input #42", now=100.1))
-        # Nor is a change from anyone else once the write's own has had time to land.
-        self.assertFalse(monitors.is_level_echo("Event 'change' on sink #3", now=100.5))
+    def test_volume_writes_do_not_hide_other_stream_or_sink_changes(self) -> None:
+        with selectors.DefaultSelector() as selector:
+            schedule = mock.Mock()
+            monitor = monitors.graph_events(selector, schedule, mock.Mock())
+            with mock.patch.object(process, "run", return_value=completed()):
+                pactl.set_sink_input_volume(42, 55)
+            for event in (
+                b"Event 'change' on sink-input #42",
+                b"Event 'change' on sink-input #99",
+                b"Event 'change' on sink #3",
+                b"Event 'new' on sink-input #43",
+                b"Event 'remove' on sink-input #42",
+            ):
+                monitor._on_line(event)
+            self.assertEqual(schedule.call_count, 5)
 
     def test_a_streams_own_change_is_told_apart_from_its_arrival(self) -> None:
         self.assertTrue(monitors.is_stream_change("Event 'change' on sink-input #42"))
@@ -570,11 +577,10 @@ class ReconcileTests(ManagerTestCase):
             return fake_run(*args, check=check)
 
         def writes(action: Callable[[], object]) -> list[str]:
-            with self._patched_graph(listings, run) as run_mock, mock.patch(
-                "smartamp_audio.volume.time.sleep"
-            ):
+            with self._patched_graph(listings, run) as run_mock:
                 manager.graph.invalidate()
                 action()
+                self.finish_fades(manager)
             return [
                 call.args[-1]
                 for call in run_mock.call_args_list
@@ -838,11 +844,10 @@ class IdleTeardownTests(ManagerTestCase):
             with self._patched_graph(listings, run), mock.patch.object(
                 pactl, "load_module", side_effect=load_module
             ), mock.patch(
-                "smartamp_audio.volume.time.sleep"
-            ), mock.patch(
                 "smartamp_audio.status.write"
             ) as status_write:
                 manager.reconcile()
+                self.finish_fades(manager)
             return status_write.call_args.args[1]
 
         # Something is playing: the sink, its bridge, and the AEC reference
@@ -1028,10 +1033,12 @@ class VolumeTests(ManagerTestCase):
         manager.music_bus.ducked = False
         manager.music_bus.gain_applied = 100
 
-        with mock.patch.object(process, "run") as run, mock.patch(
-            "smartamp_audio.volume.time.sleep"
+        with mock.patch.object(process, "run") as run, mock.patch.object(
+            manager.fades, "_clock", return_value=0.0
         ):
             manager.music_bus.apply_ducking(manager.music_volume, True)
+            run.assert_not_called()
+            self.finish_fades(manager)
 
         self.assertEqual([call.args[-1] for call in run.call_args_list], ["58%", "15%"])
         self.assertTrue(manager.music_bus.ducked)
@@ -1232,9 +1239,7 @@ class VolumeTests(ManagerTestCase):
             ],
         }
 
-        with self._patched_graph(listings, fake_run) as run, mock.patch(
-            "smartamp_audio.volume.time.sleep"
-        ):
+        with self._patched_graph(listings, fake_run) as run:
             reply, reconcile = manager.commands.apply(
                 mock.Mock(), {"command": "set-music-volume", "percent": 30}
             )
@@ -1343,15 +1348,14 @@ class BusTests(ManagerTestCase):
             pactl, "list_json", side_effect=listing(listings)
         ), mock.patch.object(pactl, "list_modules", return_value=[]), mock.patch.object(
             pactl, "load_module", side_effect=load_module
-        ), mock.patch.object(process, "run") as run, mock.patch(
-            "smartamp_audio.volume.time.sleep"
-        ):
+        ), mock.patch.object(process, "run") as run:
             selected = manager.voice_bus.reconcile(output_sink)
             manager.voice_bus.apply_gain(manager.voice_volume)
             # A fresh stream is born silent; one that came up loud anyway is
             # held at nothing until the output is unguarded and it can fade in.
             run.assert_called_once_with("pactl", "set-sink-input-volume", "27", "0%")
             manager.voice_bus.fade_in()
+            self.finish_fades(manager)
 
         self.assertEqual(selected, voice)
         self.assertEqual(manager.voice_bus.stream_index, 27)

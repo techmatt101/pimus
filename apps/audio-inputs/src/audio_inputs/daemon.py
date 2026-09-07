@@ -24,6 +24,7 @@ IO_ERRORS = (OSError, subprocess.SubprocessError, RuntimeError, ValueError)
 # event this daemon sees; look at least this often regardless.
 FALLBACK_SECONDS = 2.0
 RETRY_SECONDS = 1.0
+GRAPH_DEBOUNCE_SECONDS = 0.3
 
 
 class AudioInputs:
@@ -39,7 +40,7 @@ class AudioInputs:
         # The manager holds every stream's level; this daemon only needs to
         # see streams and devices come and go, and the bus register move.
         self.graph_events = monitors.graph_events(
-            self.selector, self.schedule, self.schedule, stream_changes=False
+            self.selector, self._schedule_graph, self.schedule, stream_changes=False
         )
         self.monitors = [
             monitor
@@ -53,6 +54,11 @@ class AudioInputs:
 
     def schedule(self) -> None:
         self._next_reconcile = 0.0
+
+    def _schedule_graph(self) -> None:
+        self._next_reconcile = min(
+            self._next_reconcile, time.monotonic() + GRAPH_DEBOUNCE_SECONDS
+        )
 
     def execute(self) -> int:
         try:

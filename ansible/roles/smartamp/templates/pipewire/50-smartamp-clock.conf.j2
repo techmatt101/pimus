@@ -1,0 +1,7 @@
+# Bound audio deadlines independently of each client's requested latency.
+# 512 frames at 48 kHz is 10.67 ms. Larger client requests remain possible.
+context.properties = {
+    default.clock.rate = 48000
+    default.clock.quantum = {{ smartamp_audio_quantum }}
+    default.clock.min-quantum = {{ smartamp_audio_quantum }}
+}

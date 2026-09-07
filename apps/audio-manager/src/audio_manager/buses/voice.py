@@ -5,6 +5,7 @@ from __future__ import annotations
 from .bus import PlaybackBus
 from .voice_meter import VoiceLevelMeter
 from ..config import VoiceBusConfig
+from ..fades import Fades
 from smartamp_audio.graph import Graph, Node
 from ..modules import ModuleRegistry
 
@@ -23,8 +24,9 @@ class VoiceBus(PlaybackBus):
         view: Graph,
         registry: ModuleRegistry,
         meter: VoiceLevelMeter,
+        fades: Fades,
     ) -> None:
-        super().__init__("voice", config, "SmartAmp_Voice_Audio", view, registry)
+        super().__init__("voice", config, "SmartAmp_Voice_Audio", view, registry, fades)
         self.meter = meter
 
     def reconcile(self, output: Node | None, *, bridged: bool = True) -> Node | None:

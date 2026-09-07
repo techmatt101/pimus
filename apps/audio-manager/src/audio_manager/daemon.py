@@ -21,6 +21,7 @@ from .buses.voice_meter import VoiceLevelMeter
 from .config import AudioConfig, SourceConfig
 from .control.commands import CommandHandler
 from .echo_reference import EchoReference
+from .fades import Fades
 from smartamp_audio.server import ControlServer
 from smartamp_audio.graph import Graph, Node
 from .idle import IdleTracker, playing_clients
@@ -67,16 +68,17 @@ class AudioManager:
         self.graph = Graph()
         self.output = output.OutputSink(config.output_match, self.graph)
         self.modules = ModuleRegistry(self.graph, self._guard_output)
-        self.music_bus = MusicBus(config.music_bus, self.graph, self.modules)
+        self.fades = Fades()
+        self.music_bus = MusicBus(config.music_bus, self.graph, self.modules, self.fades)
         self.selector = selectors.DefaultSelector()
         self.voice_meter = VoiceLevelMeter(self.selector, self._publish_voice_level)
         self.voice_bus = VoiceBus(
-            config.voice_bus, self.graph, self.modules, self.voice_meter
+            config.voice_bus, self.graph, self.modules, self.voice_meter, self.fades
         )
         self.echo_reference = EchoReference(
             config.echo_reference, self.graph, self.modules
         )
-        self.mixer = SourceMixer(saved.sources, config.default_source, self.graph)
+        self.mixer = SourceMixer(saved.sources, config.default_source, self.graph, self.fades)
         # What the last pass found of the reference path; the document
         # reports it between passes, as it does everything a pass settles.
         self.aec_reference: dict[str, Any] = self.echo_reference.status()
@@ -131,6 +133,7 @@ class AudioManager:
             self._wait_for_work()
             self.graph_events.tick()
             self._reconcile_when_due()
+            self._apply_or_retry("Audio fade", self.fades.tick)
             # After the reconcile, so a pass that just published the voice
             # monitor can start metering it without waiting for the next wake.
             self.voice_meter.tick()
@@ -140,6 +143,7 @@ class AudioManager:
 
     def _close(self) -> None:
         self.running = False
+        self.fades.clear()
         self._guard(
             "Withdrawing audio status", lambda: self.status_path.unlink(missing_ok=True)
         )
@@ -296,6 +300,9 @@ class AudioManager:
         settled = self.music_bus.settled and self.voice_bus.settled
         if not settled:
             self.schedule_reconcile(RECONCILE_RETRY_SECONDS)
+            for bus in (self.music_bus, self.voice_bus):
+                bus.hold_silent()
+                bus.fresh = bus.stream_index is not None
         self.output.settle(settled)
         # Only once the guard has lifted: a fresh bridge is silent while the
         # output unmutes, and the fade is what brings the music in.
@@ -416,6 +423,9 @@ class AudioManager:
         # request disconnects, and at the end of every reconcile, so the loop
         # needs no poll interval to notice a duck request.
         deadlines = [self.next_resync]
+        fade_deadline = self.fades.deadline()
+        if fade_deadline is not None:
+            deadlines.append(fade_deadline)
         monitor_deadline = self.graph_events.deadline()
         if monitor_deadline is not None:
             deadlines.append(monitor_deadline)

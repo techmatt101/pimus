@@ -199,15 +199,20 @@ smartamp_usb_enabled: false
 smartamp_sendspin_volume_percent: 100
 smartamp_usb_volume_percent: 100
 smartamp_aux_volume_percent: 100
-# Target buffer depth for every PipeWire loopback on the amp: the music and
-# voice bus bridges and the AEC reference the audio manager builds, and the
-# aux and USB loopbacks the inputs app runs into the music bus. Lower tightens
-# sync but risks dropouts. PipeWire's stock quantum on the Pi is ~21 ms
-# (48 kHz / 1024), so ~20 ms is the practical floor: going lower needs a
-# pipewire.conf.d quantum override and on-Pi xrun testing. The USB->speakers
-# path crosses two loopbacks, so its delay is roughly double this. The aux
-# line-in is the one path monitored live, so it inherits this default but can
-# override it.
+# Minimum graph cycle at the fixed 48 kHz default rate: 512 frames is 10.67 ms.
+# Also the default quantum when no client requests one. A client may ask for
+# a larger cycle, but cannot shorten the deadline below this floor. Supported
+# values: 128, 256, 512, 1024. Validate xruns, first audio and AEC on the Pi
+# after changing it; 256 retains the earlier ~5.33 ms loopback-driven cycle.
+smartamp_audio_quantum: 512
+# Target delay for the manager's music/voice bridges and AEC reference. The
+# aux and USB clients also use it for their requested cycle duration. These
+# are different PipeWire APIs: module-loopback's latency_msec sets a target
+# delay and can request a cycle a third that size; pw-loopback --latency asks
+# for node.latency directly. Neither sets a guaranteed end-to-end latency.
+# smartamp_audio_quantum bounds the graph's cycle independently. Keep this
+# delay, especially the AEC reference, unchanged without acoustic validation.
+# Aux inherits this default but can override its client request separately.
 smartamp_loopback_latency_ms: 20
 smartamp_aux_latency_ms: "{{ smartamp_loopback_latency_ms }}"
 smartamp_aec_reference_enabled: true

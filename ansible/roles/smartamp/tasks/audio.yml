@@ -83,6 +83,15 @@
     - /etc/wireplumber/wireplumber.conf.d
     - /etc/wireplumber/main.lua.d
 
+- name: Bound PipeWire processing deadlines
+  ansible.builtin.template:
+    src: pipewire/50-smartamp-clock.conf.j2
+    dest: /etc/pipewire/pipewire.conf.d/50-smartamp-clock.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart service-account session
+
 - name: Keep PipeWire volume off the HiFiBerry hardware mixer
   ansible.builtin.copy:
     src: "wireplumber/{{ item.file }}"

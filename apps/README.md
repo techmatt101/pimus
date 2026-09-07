@@ -81,7 +81,9 @@ either: the voice capture source is PipeWire configuration Ansible deploys
 gain held on each source's streams, `buses/` owns playback sinks and bridge
 gains, `echo_reference.py` owns the far-end reference loopback, and `output.py`
 owns the hardware sink's unity gain and rebuild mute. `modules.py` tracks the
-PipeWire modules the manager creates. `state.py` stores requested levels, music
+PipeWire modules the manager creates. `fades.py` advances gain ramps on selector
+deadlines so controls can interrupt them and removed streams cannot receive stale
+writes. `state.py` stores requested levels, music
 mute, and source settings on clean exit and restores them before playback starts.
 The service keeps this file under `/run`, so a reboot uses inventory defaults.
 

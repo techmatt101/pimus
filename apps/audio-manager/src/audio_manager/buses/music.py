@@ -7,6 +7,7 @@ import logging
 from .bus import PlaybackBus
 from smartamp_audio import volume
 from ..config import MusicBusConfig
+from ..fades import Fades
 from smartamp_audio.graph import Graph
 from ..modules import ModuleRegistry
 
@@ -22,9 +23,10 @@ class MusicBus(PlaybackBus):
     ducked: bool | None = None
 
     def __init__(
-        self, config: MusicBusConfig, view: Graph, registry: ModuleRegistry
+        self, config: MusicBusConfig, view: Graph, registry: ModuleRegistry,
+        fades: Fades,
     ) -> None:
-        super().__init__("music", config, "SmartAmp_Music_Audio", view, registry)
+        super().__init__("music", config, "SmartAmp_Music_Audio", view, registry, fades)
 
     def target_gain(self, music_volume: int, ducked: bool) -> int:
         """The bridge gain for the music level, dipped by the duck share."""
@@ -41,12 +43,19 @@ class MusicBus(PlaybackBus):
             self.hold_silent()
             self.ducked = ducked
             return
-        if self.ducked == ducked and self.gain_applied == target:
+        pending = self._fades.target(self.stream_index)
+        if self.ducked == ducked and (
+            (pending == target and target != 0)
+            or (pending is None and self.gain_applied == target)
+        ):
             return
         # A duck transition fades; the music level moving just snaps the gain,
         # tracking the detent that moved it.
         changed_duck = self.ducked != ducked
-        fade_ms = self.config.fade_ms if changed_duck and self.ducked is not None else 0
+        fade_ms = (
+            self.config.fade_ms
+            if changed_duck and self.ducked is not None and target != 0 else 0
+        )
         self._write_gain(target, fade_ms)
         self.ducked = ducked
         if changed_duck:

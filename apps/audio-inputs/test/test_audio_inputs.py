@@ -405,6 +405,15 @@ class DaemonTests(unittest.TestCase):
         self.assertEqual(set(published["inputs"]["usb"]), {"host", "streaming", "node", "playing"})
         self.assertEqual(set(published["inputs"]["aux"]), {"node", "playing"})
 
+    def test_graph_events_coalesce_but_a_usb_clock_stop_is_immediate(self) -> None:
+        self.daemon._next_reconcile = 102.0
+        for now in (100.0, 100.1, 100.2):
+            with mock.patch("audio_inputs.daemon.time.monotonic", return_value=now):
+                self.daemon.graph_events._on_line(b"Event 'change' on sink #2")
+        self.assertEqual(self.daemon._next_reconcile, 100.3)
+        self.daemon.monitors[0]._on_line(b"value: Capture Rate")
+        self.assertEqual(self.daemon._next_reconcile, 0.0)
+
     def test_failed_reconcile_withdraws_status_stops_every_input_and_retries(self) -> None:
         self.daemon.status_path.write_text("{}")
         self.reconciles["aux"].side_effect = OSError("gone")

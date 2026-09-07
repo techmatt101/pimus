@@ -45,14 +45,14 @@ class SourceStateTests(ManagerTestCase):
             manager.mixer.reconcile(bus)
             return manager.sources()
 
-        with self._patched_graph(listings, run) as commands, mock.patch(
-            "smartamp_audio.volume.time.sleep"
-        ):
+        with self._patched_graph(listings, run) as commands:
             self.assertFalse(reconcile()["aux"]["enabled"])
             self.assertEqual(volume_writes(commands), [("61", "0%")])
             manager.set_source_enabled("aux", True)
+            self.finish_fades(manager)
             self.assertEqual(volume_writes(commands)[-1], ("61", "50%"))
             manager.set_source_enabled("aux", False)
+            self.finish_fades(manager)
             self.assertEqual(volume_writes(commands)[-1], ("61", "0%"))
             commands.reset_mock()
             reconcile()
@@ -64,10 +64,12 @@ class SourceStateTests(ManagerTestCase):
             # and the stream carries it whatever the music level is doing:
             # the bus bridge carries that.
             manager.set_source_enabled("aux", True)
+            self.finish_fades(manager)
             commands.reset_mock()
             manager.set_music_volume(20)
             self.assertEqual(volume_writes(commands), [])
             manager.set_source_trim("aux", 80)
+            self.finish_fades(manager)
             self.assertEqual(volume_writes(commands)[-1], ("62", "80%"))
             self.assertEqual(manager.sources()["aux"]["trim"], 80)
 
@@ -79,15 +81,16 @@ class SourceStateTests(ManagerTestCase):
         }
         with self._patched_graph(
             {"sinks": [bus], "sink-inputs": [stream]}, fake_run
-        ), mock.patch("smartamp_audio.volume.time.sleep"), mock.patch.object(
+        ), mock.patch.object(
             pactl, "set_sink_input_volume"
         ) as write:
             manager.graph.invalidate()
             manager.mixer.reconcile(bus)
             write.assert_called_once_with(61, 0)
             write.side_effect = [None, OSError("stream disappeared")]
+            manager.set_source_enabled("aux", True)
             with self.assertLogs("audio_manager.daemon", level="WARNING"):
-                manager.set_source_enabled("aux", True)
+                manager._apply_or_retry("Audio fade", lambda: self.finish_fades(manager))
             self.assertIsNotNone(manager.pending_reconcile)
             write.side_effect = None
             write.reset_mock()
@@ -142,13 +145,12 @@ class GainRecoveryTests(ManagerTestCase):
     def test_reversing_a_partially_failed_duck_restores_the_requested_gain(self) -> None:
         manager = self.make_manager({"music_bus": {"enabled": True, "fade_ms": 100}})
         manager.music_bus.stream_index = 42
-        with mock.patch.object(pactl, "set_sink_input_volume") as write, mock.patch(
-            "smartamp_audio.volume.time.sleep"
-        ):
+        with mock.patch.object(pactl, "set_sink_input_volume") as write:
             manager.music_bus.apply_ducking(100, False)
             write.side_effect = [None, OSError("write failed mid-fade")]
+            manager.music_bus.apply_ducking(100, True)
             with self.assertRaises(OSError):
-                manager.music_bus.apply_ducking(100, True)
+                self.finish_fades(manager)
             write.side_effect = None
             write.reset_mock()
             manager.music_bus.apply_ducking(100, False)

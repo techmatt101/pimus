@@ -16,9 +16,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from smartamp_audio import graph, pactl, volume
+from smartamp_audio import graph
 from smartamp_audio.graph import Graph, Node
 from .config import SourceConfig
+from .fades import Fades
 from .modules import STREAM_PREFIX
 
 
@@ -36,11 +37,13 @@ class SourceMixer:
     changed through the control socket."""
 
     def __init__(
-        self, sources: dict[str, SourceConfig], default_source: str, view: Graph
+        self, sources: dict[str, SourceConfig], default_source: str, view: Graph,
+        fades: Fades,
     ) -> None:
         self._sources = sources
         self._default = default_source
         self._graph = view
+        self._fades = fades
         self.trims = {name: source.volume_percent for name, source in sources.items()}
         self.enabled = {
             name: bool(source.enabled)
@@ -103,6 +106,8 @@ class SourceMixer:
         computer's first instant of audio arrives as a ramp."""
         self._found = {name: [] for name in self._sources}
         if bus is None:
+            for index in self._applied:
+                self._fades.cancel(index)
             self._applied.clear()
             return
         for stream in self._streams_on(bus):
@@ -115,6 +120,7 @@ class SourceMixer:
                 live.add(self._hold(stream, self.level_of(name), fade=False))
         for index in list(self._applied):
             if index not in live:
+                self._fades.cancel(index)
                 del self._applied[index]
 
     def apply(self, name: str, bus: Node | None) -> None:
@@ -141,19 +147,30 @@ class SourceMixer:
     def _hold(self, stream: Node, level: int, *, fade: bool) -> int:
         index = int(stream["index"])
         if graph.volume_is(stream, level):
+            self._fades.cancel(index)
             self._applied[index] = level
             return index
+        if self._fades.target(index) == level and graph.volume_is(
+            stream, self._applied.get(index, -1)
+        ):
+            return index
+        self._fades.cancel(index)
         # A failed write may already have changed the stream. Only cache a
         # level once the write succeeds, so a retry snaps rather than fades
         # from a level that was never reached.
         previous = self._applied.pop(index, None)
         born_silent = previous is None and graph.volume_is(stream, 0)
-        if fade and previous is not None:
-            volume.fade_stream(index, previous, level, TOGGLE_FADE_MS)
-        elif born_silent:
-            volume.fade_stream(index, 0, level, TOGGLE_FADE_MS)
-        else:
-            pactl.set_sink_input_volume(index, level)
-        self._applied[index] = level
+        fading = (fade and previous is not None) or born_silent
+        start = previous if previous is not None else (0 if born_silent else level)
+        self._fades.set(
+            index, start, level, TOGGLE_FADE_MS if fading else 0,
+            lambda applied: self._record_gain(index, applied),
+        )
         LOG.info("Holding stream %s at %s%%", index, level)
         return index
+
+    def _record_gain(self, index: int, level: int | None) -> None:
+        if level is None:
+            self._applied.pop(index, None)
+        else:
+            self._applied[index] = level

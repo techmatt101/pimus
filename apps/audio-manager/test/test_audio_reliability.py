@@ -226,6 +226,7 @@ class RebuildSafetyTests(ManagerTestCase):
         self,
     ) -> None:
         self.manager.reconcile()
+        self.finish_fades(self.manager)
         commands = [call[1] for call in self.calls]
         self.assertLess(
             commands.index("set-sink-mute"), commands.index("set-sink-volume")
@@ -245,6 +246,7 @@ class RebuildSafetyTests(ManagerTestCase):
 
     def test_a_bridge_rebuilt_while_active_is_also_protected(self) -> None:
         self.manager.reconcile()
+        self.finish_fades(self.manager)
         # PipeWire drops the bridge module underneath the daemon; the fresh
         # one starts at full volume, so the output is guarded while it lands.
         self.listings["modules"] = [
@@ -254,6 +256,7 @@ class RebuildSafetyTests(ManagerTestCase):
         self.stream.update(stereo(100, 100))
         self.calls.clear()
         self.manager.reconcile()
+        self.finish_fades(self.manager)
         commands = [call[1] for call in self.calls]
         self.assertLess(commands.index("set-sink-mute"), commands.index("load-module"))
         self.assertFalse(self.sink["mute"])
@@ -271,6 +274,27 @@ class RebuildSafetyTests(ManagerTestCase):
         self.assertTrue(self.manager.safe_reconcile())
         self.assertFalse(self.sink["mute"])
 
+    def test_a_new_output_guard_pauses_an_existing_wake_fade_until_all_buses_settle(self) -> None:
+        self.manager.reconcile()
+        deadline = self.manager.fades.deadline()
+        self.assertIsNotNone(deadline)
+        with mock.patch.object(self.manager.fades, "_clock", return_value=deadline):
+            self.manager.fades.tick()
+        self.assertFalse(graph.volume_is(self.stream, 0))
+        self.manager.output.guard()
+        self.manager.voice_bus.settled = False
+        with mock.patch.object(self.manager, "_reconcile_graph"):
+            self.manager.reconcile()
+        self.assertTrue(self.sink["mute"])
+        self.assertTrue(graph.volume_is(self.stream, 0))
+        self.assertIsNone(self.manager.fades.deadline())
+        self.assertTrue(self.manager.music_bus.fresh)
+        self.manager.reconcile()
+        self.assertFalse(self.sink["mute"])
+        self.assertTrue(graph.volume_is(self.stream, 0))
+        self.finish_fades(self.manager)
+        self.assertTrue(graph.volume_is(self.stream, 10))
+
     def test_unpublished_bridge_keeps_the_guard_and_the_rest_of_the_pass(self) -> None:
         # The stream not being listed yet is not a failure: the pass completes,
         # publishes, and books a retry, with the output held muted meanwhile.
@@ -281,6 +305,7 @@ class RebuildSafetyTests(ManagerTestCase):
         self.assertEqual(self.manager.pending_reconcile, 101.0)
         self.listings["sink-inputs"].append(self.stream)
         self.assertTrue(self.manager.safe_reconcile())
+        self.finish_fades(self.manager)
         self.assertFalse(self.sink["mute"])
         self.assertTrue(graph.volume_is(self.stream, 10))
 

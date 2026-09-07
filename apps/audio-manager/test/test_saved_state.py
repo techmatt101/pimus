@@ -157,7 +157,7 @@ class SavedStateTests(ManagerTestCase):
                 bridge["volume"] = {"mono": {"value_percent": args[3]}}
             return fake_run(*args, check=check)
 
-        with self._patched_graph(listings, run), mock.patch("smartamp_audio.volume.time.sleep"):
+        with self._patched_graph(listings, run):
             manager.reconcile()
         self.assertFalse(output["mute"])
         self.assertTrue(graph.volume_is(bridge, 0))

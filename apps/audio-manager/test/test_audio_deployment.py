@@ -18,6 +18,15 @@ FILES = ROLE / "files"
 
 
 class AudioDeploymentTests(unittest.TestCase):
+    def test_every_native_audio_client_has_its_own_realtime_grant(self) -> None:
+        for name in ("audio-inputs", "voice-assistant"):
+            service = (ROLE / f"templates/smartamp-{name}.service.j2").read_text()
+            with self.subTest(service=name):
+                self.assertIn("LimitRTPRIO=95", service)
+                self.assertIn("LimitNICE=-20", service)
+                self.assertIn("Environment=DISABLE_RTKIT=1", service)
+                self.assertNotIn("CPUSchedulingPolicy=fifo", service)
+
     def test_soft_mixer_rule_targets_the_platform_card_device(self) -> None:
         # api.alsa.soft-mixer is a device property: a rule matching the output
         # node instead is ignored without a word, and the hardware ceiling

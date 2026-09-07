@@ -10,7 +10,7 @@ import subprocess
 import time
 from typing import Callable
 
-from smartamp_audio import pactl, process
+from smartamp_audio import process
 
 
 LOG = logging.getLogger(__name__)
@@ -22,16 +22,7 @@ RELEVANT_FACILITIES = frozenset(
     {"sink", "source", "sink-input", "module", "server", "card"}
 )
 
-# A level this process writes comes straight back as a `change` event on the
-# sink or stream it wrote. Reconciling on it found nothing to do but cost a
-# burst of pactl listings per dial detent, enough CPU to trip a timeshared
-# audio thread. A change arriving this soon after an own write is taken as
-# its echo; one from anyone else lands in the same window only by coincidence
-# and is caught by the next event or the periodic resync.
-LEVEL_ECHO_SECONDS = 0.25
-
 _EVENT = re.compile(r"Event '([\w-]+)' on ([\w-]+)")
-_LEVEL_FACILITIES = frozenset({"sink", "sink-input"})
 
 
 def is_relevant_event(line: str) -> bool:
@@ -44,16 +35,6 @@ def is_stream_change(line: str) -> bool:
     a stream appearing or leaving."""
     match = _EVENT.match(line)
     return match is not None and match.groups() == ("change", "sink-input")
-
-
-def is_level_echo(line: str, now: float | None = None) -> bool:
-    match = _EVENT.match(line)
-    if match is None or match.group(1) != "change":
-        return False
-    if match.group(2) not in _LEVEL_FACILITIES:
-        return False
-    now = time.monotonic() if now is None else now
-    return now - pactl.last_level_write() < LEVEL_ECHO_SECONDS
 
 
 class LineMonitor:
@@ -163,11 +144,13 @@ def graph_events(
 ) -> LineMonitor:
     """The subscribe feed, filtered to what can move the reconciled graph.
     A daemon that holds no stream level passes `stream_changes=False` and
-    is left alone while another one moves them."""
+    is left alone while another one moves them. Owners coalesce notifications
+    with a bounded reconcile deadline; a change can also mean playback resumed,
+    so even an event immediately following our own volume write must arrive."""
 
     def relevant(line: bytes) -> None:
         text = line.decode("utf-8", "replace")
-        if not is_relevant_event(text) or is_level_echo(text):
+        if not is_relevant_event(text):
             return
         if not stream_changes and is_stream_change(text):
             return
@@ -181,4 +164,3 @@ def graph_events(
         on_line=relevant,
         on_restart=on_restart,
     )
-
