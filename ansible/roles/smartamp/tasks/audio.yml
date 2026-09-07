@@ -50,13 +50,6 @@
     python_package_handlers: [Restart audio manager]
     python_package_entrypoint: __main__.py
 
-# The daemon used to be a single script deployed beside the shell helpers.
-- name: Remove the superseded single-file audio manager
-  ansible.builtin.file:
-    path: "{{ smartamp_app_dir }}/audio_manager.py"
-    state: absent
-  notify: Restart audio manager
-
 # ALSA mixer defaults are not guaranteed after a clean image. Apply the chosen
 # ADC pins/gain and a conservative amplifier level on every boot.
 - name: Install HiFiBerry mixer initialisation

@@ -58,28 +58,6 @@
   notify: Reload systemd
   when: not (smartamp_audio_inputs_enabled | bool)
 
-# The inputs app replaced a USB-only client with its own socket. A unit
-# provisioned before the change still has that client installed, importable,
-# and enabled, so it is retired on every run rather than only when USB is off.
-- name: Stop the superseded USB audio client
-  ansible.builtin.systemd_service:
-    name: smartamp-usb-audio.service
-    enabled: false
-    state: stopped
-  failed_when: false
-
-- name: Remove the superseded USB audio client
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: absent
-  loop:
-    - /etc/systemd/system/smartamp-usb-audio.service
-    - "{{ smartamp_app_dir }}/usb-audio"
-    - "{{ smartamp_config_dir }}/usb-audio.json"
-    - "/run/user/{{ smartamp_uid }}/smartamp-usb-audio.sock"
-    - "/run/user/{{ smartamp_uid }}/smartamp-usb-audio-status.json"
-  notify: Reload systemd
-
 # Feature flags must be reversible. Removing the overlay returns USB-C to its
 # normal role rather than leaving stale boot configuration from an earlier run.
 - name: Remove USB-C peripheral overlay when disabled

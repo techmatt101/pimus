@@ -295,8 +295,7 @@ gains settle; a failed unmute keeps the guard held for retry. If the output stay
 reading first (`MUTED` means the volume mute, and a press of the dial ends it; a computer on the USB port can set it
 with its mute key too), then the journal for repeated gain or mute failures. Hard
 reconciliation failures remove readiness status, so a missing status file can also indicate active recovery rather
-than a stopped manager. A `mute.json` left in `/var/lib/smartamp-audio-manager` by an older manager is unread and
-harmless.
+than a stopped manager.
 
 To catch the culprit rather than just cap it, note the clock time of the next pop and read what the graph was doing:
 

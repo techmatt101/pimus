@@ -84,16 +84,6 @@
     state: absent
   when: not ((streamdeck_enabled | bool) and (smartamp_sleep_usb_power_off | bool))
 
-# Rules from approaches that turned out not to work on this hardware.
-- name: Remove legacy USB power udev rules
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: absent
-  loop:
-    - /etc/udev/rules.d/60-smartamp-usb-hubs.rules
-    - /etc/udev/rules.d/60-smartamp-usb-ports.rules
-  notify: Reload udev
-
 # A board with a dedicated power button makes it the amp's sleep/wake toggle,
 # read by the controller from its gpio-keys input device. logind has to be told
 # to ignore the key or every press would also begin a graceful shutdown; halting

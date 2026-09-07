@@ -177,8 +177,7 @@ under that name.
 Ansible renders `audio-inputs.json`, installs the shared `smartamp_audio`
 primitives and the app's exact package tree, and manages the service, which is
 `PartOf` the audio manager and restarts with it. A unit with neither input
-gets none of that, and an amp provisioned before this app existed has its old
-`smartamp-usb-audio` client stopped and removed. The doctor checks the inputs
+gets none of that. The doctor checks the inputs
 status file for each configured input's capture node under "Audio inputs",
 and the service under "Services".
 
