@@ -274,8 +274,8 @@ class ControlSocketTests(ManagerTestCase):
         manager = self.make_manager({"sources": {"aux": {"volume_percent": 90}}})
         # Only the sources inventory listed exist, whatever the bus's default
         # source is called.
-        self.assertEqual(list(manager.sources()), ["aux"])
-        self.assertEqual(manager.sources()["aux"]["trim"], 90)
+        self.assertEqual(list(manager.mixer.status()), ["aux"])
+        self.assertEqual(manager.mixer.status()["aux"]["trim"], 90)
 
         for message in (
             {"command": "set-source-trim", "name": "players", "percent": 50},
@@ -284,7 +284,7 @@ class ControlSocketTests(ManagerTestCase):
             reply, reconcile = manager.commands.apply(mock.Mock(), message)
             self.assertEqual(reply["event"], "error")
             self.assertFalse(reconcile)
-        self.assertEqual(manager.sources()["aux"]["trim"], 90)
+        self.assertEqual(manager.mixer.status()["aux"]["trim"], 90)
 
     def test_inventory_names_the_default_source(self) -> None:
         # Sendspin plays into the bus by its own unit's PULSE_SINK and carries
@@ -296,7 +296,7 @@ class ControlSocketTests(ManagerTestCase):
              "sources": {"sendspin": {"volume_percent": 70}}}
         )
         self.assertEqual(
-            manager.sources(), {"sendspin": {"trim": 70, "available": False}}
+            manager.mixer.status(), {"sendspin": {"trim": 70, "available": False}}
         )
         bus: graph.Node = {"name": "background", "index": 2}
         stream: graph.Node = {
@@ -427,11 +427,11 @@ class VoiceLevelTests(ManagerTestCase):
         manager.commands.apply(
             connection, {"command": "set-voice-meter", "active": True}
         )
-        self.assertEqual(manager.commands.meter_listeners, frozenset({connection}))
+        self.assertEqual(manager.leases.meter_listeners, frozenset({connection}))
 
         # Losing the socket releases the capture, exactly as it releases a duck.
         manager.control.drop(connection)
-        self.assertEqual(manager.commands.meter_listeners, frozenset())
+        self.assertEqual(manager.leases.meter_listeners, frozenset())
 
     def test_set_voice_meter_rejects_a_non_boolean_request(self) -> None:
         manager = self.make_manager({})
@@ -440,7 +440,7 @@ class VoiceLevelTests(ManagerTestCase):
         )
         self.assertEqual(reply["event"], "error")
         self.assertFalse(reconcile)
-        self.assertEqual(manager.commands.meter_listeners, frozenset())
+        self.assertEqual(manager.leases.meter_listeners, frozenset())
 
     def test_levels_reach_only_the_connections_that_asked_for_them(self) -> None:
         manager = self.make_manager({})
@@ -598,7 +598,7 @@ class ReconcileTests(ManagerTestCase):
         volumes = writes(lambda: manager.set_source_enabled("aux", True))
         self.assertGreater(len(volumes), 1)
         self.assertEqual(volumes[-1], "100%")
-        self.assertTrue(manager.sources()["aux"]["enabled"])
+        self.assertTrue(manager.mixer.status()["aux"]["enabled"])
 
         volumes = writes(lambda: manager.set_source_enabled("aux", False))
         self.assertEqual(volumes[-1], "0%")
@@ -1022,8 +1022,8 @@ class VolumeTests(ManagerTestCase):
                 Path(base) / "status.json",
             )
             self.addCleanup(manager.selector.close)
-        self.assertEqual(manager.music_volume, 20)
-        self.assertEqual(manager.voice_volume, 50)
+        self.assertEqual(manager.music.volume, 20)
+        self.assertEqual(manager.voice_bus.volume, 50)
 
     def test_music_bridge_fades_without_changing_client_volumes(self) -> None:
         manager = self.make_manager(
@@ -1036,7 +1036,7 @@ class VolumeTests(ManagerTestCase):
         with mock.patch.object(process, "run") as run, mock.patch.object(
             manager.fades, "_clock", return_value=0.0
         ):
-            manager.music_bus.apply_ducking(manager.music_volume, True)
+            manager.music_bus.apply_ducking(manager.music.volume, True)
             run.assert_not_called()
             self.finish_fades(manager)
 
@@ -1054,7 +1054,7 @@ class VolumeTests(ManagerTestCase):
                 "voice_bus": {"enabled": True, "volume_percent": 50},
             }
         )
-        manager.music_volume = 60
+        manager.music.volume = 60
         manager.music_bus.stream_index = 42
         manager.music_bus.ducked = False
         manager.music_bus.gain_applied = 60
@@ -1082,9 +1082,9 @@ class VolumeTests(ManagerTestCase):
         self.assertIn(("42", "0%"), writes)
         self.assertIn(("7", "0%"), writes)
         self.assertNotIn("43", [stream for stream, _ in writes])
-        self.assertTrue(manager.vol_muted)
-        self.assertEqual(manager.music_volume, 60)
-        self.assertEqual(manager.music_level, 0)
+        self.assertTrue(manager.music.muted)
+        self.assertEqual(manager.music.volume, 60)
+        self.assertEqual(manager.music.level, 0)
         self.assertTrue(manager.state_event()["music_bus"]["muted"])
 
         # Ducking a muted amp stays silent, and unmuting lands back on the
@@ -1094,7 +1094,7 @@ class VolumeTests(ManagerTestCase):
                 mock.Mock(), {"command": "set-duck", "active": True}
             )
         )
-        self.assertEqual(manager.music_bus.target_gain(manager.music_level, True), 0)
+        self.assertEqual(manager.music_bus.target_gain(manager.music.level, True), 0)
         writes = gains(
             lambda: manager.commands.apply(
                 mock.Mock(), {"command": "set-music-mute", "muted": False}
@@ -1102,7 +1102,7 @@ class VolumeTests(ManagerTestCase):
         )
         self.assertIn(("42", "9%"), writes)
         self.assertIn(("7", "60%"), writes)
-        self.assertFalse(manager.vol_muted)
+        self.assertFalse(manager.music.muted)
 
         reply, _ = manager.commands.apply(
             mock.Mock(), {"command": "set-music-mute", "muted": "yes"}
@@ -1113,7 +1113,7 @@ class VolumeTests(ManagerTestCase):
         manager = self.make_manager(
             {"music_bus": {"enabled": True, "duck_volume_percent": 15}}
         )
-        manager.music_volume = 60
+        manager.music.volume = 60
         self.assertEqual(manager.music_bus.target_gain(60, False), 60)
         self.assertEqual(manager.music_bus.target_gain(60, True), 9)
 
@@ -1161,7 +1161,7 @@ class VolumeTests(ManagerTestCase):
             )
             self.assertEqual(reply["event"], "error")
             self.assertFalse(reconcile)
-        self.assertEqual(manager.voice_volume, 100)
+        self.assertEqual(manager.voice_bus.volume, 100)
 
     def test_output_ceiling_command_writes_the_card_and_reads_it_back(self) -> None:
         manager = self.make_manager(
@@ -1292,7 +1292,7 @@ class VolumeTests(ManagerTestCase):
             volume_writes(run), [("81", "70%"), ("61", "50%"), ("71", "0%")]
         )
         self.assertEqual(
-            manager.sources(),
+            manager.mixer.status(),
             {
                 "sendspin": {"trim": 70, "available": True},
                 "aux": {"trim": 50, "enabled": True, "available": True},
@@ -1350,7 +1350,7 @@ class BusTests(ManagerTestCase):
             pactl, "load_module", side_effect=load_module
         ), mock.patch.object(process, "run") as run:
             selected = manager.voice_bus.reconcile(output_sink)
-            manager.voice_bus.apply_gain(manager.voice_volume)
+            manager.voice_bus.apply_level()
             # A fresh stream is born silent; one that came up loud anyway is
             # held at nothing until the output is unguarded and it can fade in.
             run.assert_called_once_with("pactl", "set-sink-input-volume", "27", "0%")
@@ -1383,7 +1383,7 @@ class BusTests(ManagerTestCase):
             process, "run"
         ) as run:
             manager.voice_bus.reconcile(output_sink)
-            manager.voice_bus.apply_gain(manager.voice_volume)
+            manager.voice_bus.apply_level()
         run.assert_not_called()
 
         # A live change on the same stream is reconciled back to the owned gain.
@@ -1396,7 +1396,7 @@ class BusTests(ManagerTestCase):
             process, "run"
         ) as run:
             manager.voice_bus.reconcile(output_sink)
-            manager.voice_bus.apply_gain(manager.voice_volume)
+            manager.voice_bus.apply_level()
         run.assert_called_once_with(
             "pactl", "set-sink-input-volume", "27", "40%"
         )

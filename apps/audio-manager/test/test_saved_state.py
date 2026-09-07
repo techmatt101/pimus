@@ -54,11 +54,11 @@ class SavedStateTests(ManagerTestCase):
             },
         })
         restored = self.make_manager(self.config, state_path=self.state_path)
-        self.assertEqual((restored.music_volume, restored.vol_muted), (12, True))
-        self.assertEqual(restored.voice_volume, 18)
+        self.assertEqual((restored.music.volume, restored.music.muted), (12, True))
+        self.assertEqual(restored.voice_bus.volume, 18)
         self.assertEqual(restored.mixer.trims["aux"], 45)
         self.assertFalse(restored.mixer.enabled["aux"])
-        self.assertFalse(restored.commands.duck_requested)
+        self.assertFalse(restored.leases.duck_requested)
 
     def test_stopping_while_waiting_for_pipewire_saves_without_starting_playback(self) -> None:
         manager = self.make_manager(self.config, state_path=self.state_path)
@@ -73,7 +73,7 @@ class SavedStateTests(ManagerTestCase):
         previous = self._saved_document()
         self.state_path.write_text(json.dumps(previous))
         manager = self.make_manager(self.config, state_path=self.state_path)
-        manager.music_volume = 99
+        manager.music.volume = 99
         with mock.patch.object(manager, "_run", side_effect=RuntimeError("crashed")):
             with self.assertRaisesRegex(RuntimeError, "crashed"):
                 manager.execute()
@@ -96,8 +96,8 @@ class SavedStateTests(ManagerTestCase):
                     self.state_path.write_text(content)
                 with mock.patch("audio_manager.state.LOG.warning"):
                     manager = self.make_manager(self.config, state_path=self.state_path)
-                self.assertEqual((manager.music_volume, manager.vol_muted), (30, False))
-                self.assertEqual(manager.voice_volume, 25)
+                self.assertEqual((manager.music.volume, manager.music.muted), (30, False))
+                self.assertEqual(manager.voice_bus.volume, 25)
                 self.assertEqual(manager.mixer.trims["aux"], 80)
                 self.assertTrue(manager.mixer.enabled["aux"])
 
@@ -115,7 +115,7 @@ class SavedStateTests(ManagerTestCase):
         previous = self._saved_document()
         self.state_path.write_text(json.dumps(previous))
         manager = self.make_manager(self.config, state_path=self.state_path)
-        manager.music_volume = 99
+        manager.music.volume = 99
         with mock.patch.object(manager, "_run", return_value=0), mock.patch(
             "smartamp_audio.status.os.replace", side_effect=OSError("disk unavailable")
         ), self.assertLogs("audio_manager.daemon", level="WARNING"):
@@ -161,7 +161,7 @@ class SavedStateTests(ManagerTestCase):
             manager.reconcile()
         self.assertFalse(output["mute"])
         self.assertTrue(graph.volume_is(bridge, 0))
-        self.assertTrue(manager.vol_muted)
+        self.assertTrue(manager.music.muted)
 
     @staticmethod
     def _saved_document() -> dict[str, Any]:

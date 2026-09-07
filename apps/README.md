@@ -79,8 +79,13 @@ either: the voice capture source is PipeWire configuration Ansible deploys
 
 `daemon.py` holds the reconcile order, `sources.py` owns the source list and the
 gain held on each source's streams, `buses/` owns playback sinks and bridge
-gains, `echo_reference.py` owns the far-end reference loopback, and `output.py`
-owns the hardware sink's unity gain and rebuild mute. `modules.py` tracks the
+gains (the music level and its mute in `buses/music_level.py`, the voice level
+on the voice bus itself), `echo_reference.py` owns the far-end reference
+loopback, and `output.py` owns the hardware sink's unity gain and rebuild mute
+and the card's hardware ceiling. `control/` is the socket's vocabulary:
+`commands.py` validates and applies each command, `leases.py` holds the duck
+and meter requests against the connection that asked; the transport is the
+shared `smartamp_audio.server`. `modules.py` tracks the
 PipeWire modules the manager creates. `fades.py` advances gain ramps on selector
 deadlines so controls can interrupt them and removed streams cannot receive stale
 writes. `state.py` stores requested levels, music

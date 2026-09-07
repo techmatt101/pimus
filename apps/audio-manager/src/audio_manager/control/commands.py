@@ -8,6 +8,7 @@ import socket
 from typing import TYPE_CHECKING, Any, Callable, cast
 
 from smartamp_audio import volume
+from .leases import Leases
 
 
 if TYPE_CHECKING:
@@ -29,18 +30,16 @@ def _error(message: str) -> Reply:
 
 
 class CommandHandler:
-    """Applies socket commands to the manager, and holds the ducking leases.
+    """Validates socket commands and applies them to the manager.
 
-    A duck request is held against the connection that asked for it, which
-    makes the socket itself the liveness signal: if the controller crashes
-    mid-conversation the kernel closes its socket and the music restores
-    immediately, with no timestamped lease file to expire.
+    The commands that outlast their reply - ducking and metering - are held
+    in the manager's leases against the requesting connection, and released
+    here when it goes.
     """
 
-    def __init__(self, manager: AudioManager) -> None:
+    def __init__(self, manager: AudioManager, leases: Leases) -> None:
         self._manager = manager
-        self._duck_requests: set[socket.socket] = set()
-        self._meter_requests: set[socket.socket] = set()
+        self._leases = leases
         self._handlers: dict[str, Callable[[socket.socket, dict[str, Any]], Reply]] = {
             "set-duck": self._set_duck,
             "set-voice-meter": self._set_voice_meter,
@@ -55,15 +54,6 @@ class CommandHandler:
             "resync": self._resync,
         }
 
-    @property
-    def duck_requested(self) -> bool:
-        return bool(self._duck_requests)
-
-    @property
-    def meter_listeners(self) -> frozenset[socket.socket]:
-        """The connections that asked for voice levels, and get them addressed."""
-        return frozenset(self._meter_requests)
-
     def apply(self, connection: socket.socket, message: Any) -> Reply:
         if not isinstance(message, dict):
             return _error("message must be a JSON object")
@@ -77,28 +67,24 @@ class CommandHandler:
         return handler(connection, cast(dict[str, Any], message))
 
     def client_gone(self, connection: socket.socket) -> None:
-        if connection in self._meter_requests:
-            self._meter_requests.discard(connection)
-            if self._manager.running:
-                self._manager.request_voice_meter(bool(self._meter_requests))
-        if connection not in self._duck_requests:
+        released = self._leases.release(connection)
+        if not self._manager.running:
             return
-        self._duck_requests.discard(connection)
-        if self._manager.running:
+        if released.meter:
+            self._manager.apply_voice_meter()
+        if released.duck:
             self._manager.safe_apply_ducking()
 
     def _set_duck(self, connection: socket.socket, message: dict[str, Any]) -> Reply:
         active = message.get("active")
         if not isinstance(active, bool):
             return _error("set-duck needs a boolean active")
+        self._leases.request_duck(connection, active)
         if active:
-            self._duck_requests.add(connection)
             # A duck request opens a voice session seconds before its first
             # TTS stream exists — the earliest moment an idle teardown can
             # start rebuilding, so the reply plays through a ready bridge.
             self._manager.notice_voice_activity()
-        else:
-            self._duck_requests.discard(connection)
         # Ducking only touches the music bridge's volume, so apply it
         # directly instead of asking for a full graph reconcile.
         self._manager.safe_apply_ducking()
@@ -115,16 +101,14 @@ class CommandHandler:
         active = message.get("active")
         if not isinstance(active, bool):
             return _error("set-voice-meter needs a boolean active")
+        self._leases.request_meter(connection, active)
         if active:
-            self._meter_requests.add(connection)
             # A meter request marks a live voice session, exactly as a duck
             # request does.
             self._manager.notice_voice_activity()
-        else:
-            self._meter_requests.discard(connection)
         # Metering only starts or stops a capture of the voice monitor; it
         # changes nothing about the graph the daemon reconciles.
-        self._manager.request_voice_meter(bool(self._meter_requests))
+        self._manager.apply_voice_meter()
         return self._state()
 
     def _set_voice_volume(self, _: socket.socket, message: dict[str, Any]) -> Reply:
@@ -154,7 +138,7 @@ class CommandHandler:
         return self._state()
 
     def _set_output_ceiling(self, _: socket.socket, message: dict[str, Any]) -> Reply:
-        if not self._manager.config.output_ceiling.readable:
+        if not self._manager.ceiling.readable:
             return _error("this unit has no output ceiling to set")
         percent = message.get("percent")
         floor = OUTPUT_CEILING_FLOOR_PERCENT
@@ -168,7 +152,7 @@ class CommandHandler:
     def _set_source_trim(self, _: socket.socket, message: dict[str, Any]) -> Reply:
         name = message.get("name")
         percent = message.get("percent")
-        if not isinstance(name, str) or not self._manager.knows_source(name):
+        if not isinstance(name, str) or not self._manager.mixer.knows(name):
             return _error("unknown source trim")
         if not volume.is_percent(percent):
             return _error("set-source-trim needs a percent between 0 and 100")

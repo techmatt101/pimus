@@ -13,6 +13,9 @@ the reconcile order.
     music          the music bus every music input plays into, dipped while the
                    assistant talks; the streams on it are the mixer's
                    (sources.py), each held at its source's trim
+    music_level    the music level and its mute: the one number the music
+                   bridge carries, dipped by the duck share, and every direct
+                   client is held at
     music_volume   that bus's own sink volume, kept agreed with the music level
                    so a player can move the room and be told when something else
                    did

@@ -12,14 +12,14 @@ from typing import Any, Callable
 
 from . import output
 from smartamp_audio import status, volume
-from .system import amixer
 from smartamp_audio import monitors, pactl
 from .buses.music import MusicBus
-from .buses.music_volume import MusicVolumeSync
+from .buses.music_level import MusicLevel
 from .buses.voice import VoiceBus
 from .buses.voice_meter import VoiceLevelMeter
 from .config import AudioConfig, SourceConfig
 from .control.commands import CommandHandler
+from .control.leases import Leases
 from .echo_reference import EchoReference
 from .fades import Fades
 from smartamp_audio.server import ControlServer
@@ -55,25 +55,19 @@ class AudioManager:
         self.state_path = state_path
         self.running = True
         saved = SavedState.load(config, state_path)
-        self.music_volume = saved.music_volume
-        self.vol_muted = saved.music_muted
-        self.voice_volume = saved.voice_volume
-        # The card's hardware volume - the amplifier's ceiling - refreshed by
-        # each reconcile rather than read per query: it is set at boot, and
-        # between passes only set-output-ceiling or a hand at the mixer moves
-        # it. None until the first pass, and on a unit whose card cannot be
-        # read at all.
-        self.output_volume: int | None = None
+        self.music = MusicLevel(saved.music_volume, saved.music_muted)
 
         self.graph = Graph()
         self.output = output.OutputSink(config.output_match, self.graph)
+        self.ceiling = output.OutputCeiling(config.output_ceiling)
         self.modules = ModuleRegistry(self.graph, self._guard_output)
         self.fades = Fades()
         self.music_bus = MusicBus(config.music_bus, self.graph, self.modules, self.fades)
         self.selector = selectors.DefaultSelector()
         self.voice_meter = VoiceLevelMeter(self.selector, self._publish_voice_level)
         self.voice_bus = VoiceBus(
-            config.voice_bus, self.graph, self.modules, self.voice_meter, self.fades
+            config.voice_bus, self.graph, self.modules, self.voice_meter, self.fades,
+            saved.voice_volume,
         )
         self.echo_reference = EchoReference(
             config.echo_reference, self.graph, self.modules
@@ -82,10 +76,10 @@ class AudioManager:
         # What the last pass found of the reference path; the document
         # reports it between passes, as it does everything a pass settles.
         self.aec_reference: dict[str, Any] = self.echo_reference.status()
-        self.music_register = MusicVolumeSync()
         self.idle = IdleTracker(config.idle_teardown_seconds)
 
-        self.commands = CommandHandler(self)
+        self.leases = Leases()
+        self.commands = CommandHandler(self, self.leases)
         self.control = ControlServer(
             socket_path, self.selector, self.commands, self._reconcile_and_broadcast
         )
@@ -113,9 +107,9 @@ class AudioManager:
         if self.state_path is None:
             return
         SavedState(
-            self.music_volume,
-            self.vol_muted,
-            self.voice_volume,
+            self.music.volume,
+            self.music.muted,
+            self.voice_bus.volume,
             {
                 name: SourceConfig(self.mixer.trims[name], self.mixer.enabled.get(name))
                 for name in self.config.sources
@@ -176,29 +170,25 @@ class AudioManager:
         """
         return {
             "sink": self.output.name,
-            "output_volume": self.output_volume,
+            "output_volume": self.ceiling.volume,
             "music_bus": {
                 **self.music_bus.status(),
                 "ducked": self.desired_ducking(),
-                "volume": self.music_volume,
-                "muted": self.vol_muted,
+                "volume": self.music.volume,
+                "muted": self.music.muted,
             },
             "voice_bus": {
                 "enabled": self.config.voice_bus.enabled,
                 **self.voice_bus.status(),
-                "volume": self.voice_volume,
+                "volume": self.voice_bus.volume,
             },
             "aec_reference": self.aec_reference,
-            "sources": self.sources(),
+            "sources": self.mixer.status(),
             "idle": self.idle.idle,
         }
 
     def state_event(self) -> dict[str, Any]:
         return {"event": "state", **self.document()}
-
-    def sources(self) -> dict[str, dict[str, Any]]:
-        """Every music input this unit has, each with its own trim."""
-        return self.mixer.status()
 
     def set_source_trim(self, name: str, percent: float) -> None:
         self.mixer.set_trim(name, volume.clamp(percent))
@@ -215,58 +205,35 @@ class AudioManager:
         self._apply_or_retry("Source toggle", lambda: self._apply_source(name))
         return True
 
-    def knows_source(self, name: str) -> bool:
-        return self.mixer.knows(name)
-
-    @property
-    def music_level(self) -> int:
-        """The gain every music path plays at: the music level, or silence.
-
-        The volume mute is this one substitution. The buses and the mixer never
-        learn of it, the voice bus keeps its own level, and the music level
-        itself is untouched so an unmute lands exactly where the dial was.
-        """
-        return 0 if self.vol_muted else self.music_volume
-
     def desired_ducking(self) -> bool:
-        return self.config.music_bus.ducking_enabled and self.commands.duck_requested
+        return self.config.music_bus.ducking_enabled and self.leases.duck_requested
 
     def apply_ducking(self) -> bool:
         ducked = self.desired_ducking()
-        self.music_bus.apply_ducking(self.music_level, ducked)
+        self.music_bus.apply_ducking(self.music.level, ducked)
         return ducked
 
     def safe_apply_ducking(self) -> None:
         self._apply_or_retry("Audio ducking", self.apply_ducking)
 
-    def request_voice_meter(self, wanted: bool) -> None:
-        self.voice_meter.request(wanted)
+    def apply_voice_meter(self) -> None:
+        self.voice_meter.request(bool(self.leases.meter_listeners))
         self.voice_meter.tick()
 
     def set_voice_volume(self, percent: float) -> None:
-        self.voice_volume = volume.clamp(percent)
         self._apply_or_retry(
-            "Voice volume", lambda: self.voice_bus.apply_gain(self.voice_volume)
+            "Voice volume", lambda: self.voice_bus.set_volume(percent)
         )
 
     def set_music_volume(self, percent: float) -> None:
-        self.music_volume = volume.clamp(percent)
-        # Seed the public register from this explicit command.
-        self.music_register.forget()
+        self.music.set_volume(percent)
         self._apply_or_retry("Music volume", self._apply_music_volume)
 
     def set_output_ceiling(self, percent: int) -> None:
-        """Move the hardware ceiling, and read back what the card took."""
-        ceiling = self.config.output_ceiling
-        self._guard(
-            "Output ceiling",
-            lambda: amixer.set_playback_percent(ceiling.card, ceiling.control, percent),
-        )
-        self._read_output_volume()
+        self._guard("Output ceiling", lambda: self.ceiling.set(percent))
 
     def set_music_mute(self, muted: bool) -> None:
-        self.vol_muted = muted
-        self.music_register.forget()
+        self.music.set_muted(muted)
         self._apply_or_retry("Volume mute", self._apply_music_volume)
 
     def schedule_reconcile(self, delay: float = EVENT_DEBOUNCE_SECONDS) -> None:
@@ -294,7 +261,7 @@ class AudioManager:
         self.graph.invalidate()
         self.modules.drop_released()
         sink = self.output.prepare()
-        self._read_output_volume()
+        self.ceiling.read()
         idle = self.idle.update(self._audio_active())
         self._reconcile_graph(sink, idle)
         settled = self.music_bus.settled and self.voice_bus.settled
@@ -311,19 +278,6 @@ class AudioManager:
             self.voice_bus.fade_in()
         self._publish()
 
-    def _sync_music_register(self, music_sink: Node | None) -> None:
-        before = (self.music_volume, self.vol_muted)
-        after = self.music_register.sync(music_sink, before, self.graph)
-        if after == before:
-            return
-        self.music_volume, self.vol_muted = after
-
-    def _read_output_volume(self) -> None:
-        ceiling = self.config.output_ceiling
-        if not ceiling.readable:
-            return
-        self.output_volume = amixer.playback_percent(ceiling.card, ceiling.control)
-
     def _guard_output(self, sink_name: str) -> None:
         if sink_name in (
             self.output.name,
@@ -335,14 +289,14 @@ class AudioManager:
     def _reconcile_graph(self, sink: Node | None, idle: bool) -> None:
         """Put the buses, echo reference and mixer back where they belong."""
         music_sink = self.music_bus.reconcile(sink, bridged=not idle)
-        self._sync_music_register(music_sink)
+        self.music.sync_register(music_sink, self.graph)
         self.voice_bus.reconcile(sink, bridged=not idle)
-        self.voice_bus.apply_gain(self.voice_volume)
+        self.voice_bus.apply_level()
         self.aec_reference = self.echo_reference.reconcile(sink, wanted=not idle)
         self.apply_ducking()
         self._adopt_default_sink(sink, music_sink)
         self.mixer.reconcile(music_sink)
-        output.hold_client_streams(self.graph, sink, self.music_level)
+        output.hold_client_streams(self.graph, sink, self.music.level)
 
     def _publish(self) -> None:
         published = self.document()
@@ -358,7 +312,7 @@ class AudioManager:
         silence, however busy the computer behind it: it must not keep the
         bridges up.
         """
-        if self.commands.duck_requested or self.commands.meter_listeners:
+        if self.leases.held:
             return True
         owned = {str(self.modules.id_of(role)) for role in self.modules.roles()}
         audible = [
@@ -387,17 +341,17 @@ class AudioManager:
     # broadcast to every client.
     def _publish_voice_level(self, level: float) -> None:
         event = {"event": "voice_level", "level": round(level, 3)}
-        for connection in self.commands.meter_listeners:
+        for connection in self.leases.meter_listeners:
             self.control.send(connection, event)
 
     def _apply_music_volume(self) -> None:
         self.graph.invalidate()
         if self.config.music_bus.enabled:
-            self._sync_music_register(
-                self.graph.sink_named(self.config.music_bus.sink_name)
+            self.music.sync_register(
+                self.graph.sink_named(self.config.music_bus.sink_name), self.graph
             )
         self.apply_ducking()
-        output.hold_client_streams(self.graph, self.output.find(), self.music_level)
+        output.hold_client_streams(self.graph, self.output.find(), self.music.level)
 
     def _apply_source(self, name: str) -> None:
         self.graph.invalidate()

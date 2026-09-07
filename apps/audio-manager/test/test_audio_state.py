@@ -43,7 +43,7 @@ class SourceStateTests(ManagerTestCase):
         def reconcile() -> dict[str, dict[str, Any]]:
             manager.graph.invalidate()
             manager.mixer.reconcile(bus)
-            return manager.sources()
+            return manager.mixer.status()
 
         with self._patched_graph(listings, run) as commands:
             self.assertFalse(reconcile()["aux"]["enabled"])
@@ -71,7 +71,7 @@ class SourceStateTests(ManagerTestCase):
             manager.set_source_trim("aux", 80)
             self.finish_fades(manager)
             self.assertEqual(volume_writes(commands)[-1], ("62", "80%"))
-            self.assertEqual(manager.sources()["aux"]["trim"], 80)
+            self.assertEqual(manager.mixer.status()["aux"]["trim"], 80)
 
     def test_a_failed_toggle_fade_is_retried_as_a_snap(self) -> None:
         manager = self._mixer_manager()
@@ -175,13 +175,13 @@ class MusicRegisterTests(ManagerTestCase):
 
     def test_the_register_carries_the_level_both_ways(self) -> None:
         manager = self.make_manager({"music_bus": {"enabled": True}})
-        manager.music_volume = 40
+        manager.music.volume = 40
         sink = self._sink(100)
         with self._patched_graph({"sinks": [sink]}, fake_run) as commands:
             # Nothing has agreed yet, so the amp seeds the register with the
             # level it already holds rather than adopting whatever it reads.
-            manager._sync_music_register(sink)
-            self.assertEqual(manager.music_volume, 40)
+            manager.music.sync_register(sink, manager.graph)
+            self.assertEqual(manager.music.volume, 40)
             self.assertIn(
                 ("pactl", "set-sink-volume", "background", "40%"),
                 [call.args for call in commands.call_args_list],
@@ -193,34 +193,34 @@ class MusicRegisterTests(ManagerTestCase):
             with mock.patch.object(
                 manager.graph, "sink_named", return_value=moved
             ):
-                manager._sync_music_register(moved)
-            self.assertEqual(manager.music_volume, 75)
+                manager.music.sync_register(moved, manager.graph)
+            self.assertEqual(manager.music.volume, 75)
 
     def test_an_agreed_register_is_left_alone(self) -> None:
         manager = self.make_manager({"music_bus": {"enabled": True}})
-        manager.music_volume = 40
+        manager.music.volume = 40
         sink = self._sink(40)
         with self._patched_graph({"sinks": [sink]}, fake_run) as commands:
-            manager._sync_music_register(sink)
+            manager.music.sync_register(sink, manager.graph)
             commands.reset_mock()
             # Writing an unchanged register every pass would emit a subscribe
             # event that schedules the pass that writes it again.
-            manager._sync_music_register(sink)
+            manager.music.sync_register(sink, manager.graph)
             self.assertEqual(commands.call_args_list, [])
-            self.assertEqual(manager.music_volume, 40)
+            self.assertEqual(manager.music.volume, 40)
 
     def test_a_replacement_bus_is_seeded_with_the_requested_level_and_mute(self) -> None:
         manager = self.make_manager({"music_bus": {"enabled": True}})
-        manager.music_volume = 35
-        manager.vol_muted = True
+        manager.music.volume = 35
+        manager.music.muted = True
         sink = self._sink(35, muted=True)
         with self._patched_graph({"sinks": [sink]}, fake_run) as commands:
-            manager._sync_music_register(sink)
+            manager.music.sync_register(sink, manager.graph)
             commands.reset_mock()
             sink.update(index=2, volume={"mono": {"value_percent": "100%"}}, mute=False)
             manager.graph.invalidate()
-            manager._sync_music_register(sink)
-        self.assertEqual((manager.music_volume, manager.vol_muted), (35, True))
+            manager.music.sync_register(sink, manager.graph)
+        self.assertEqual((manager.music.volume, manager.music.muted), (35, True))
         self.assertEqual(
             [call.args for call in commands.call_args_list],
             [
@@ -246,13 +246,13 @@ class ManagerLifecycleTests(ManagerTestCase):
             manager.graph_events, "start"
         ) as subscribe, mock.patch.object(
             manager, "safe_reconcile"
-        ) as reconcile, mock.patch.object(manager, "request_voice_meter") as meter:
+        ) as reconcile, mock.patch.object(manager, "apply_voice_meter") as meter:
             self.assertEqual(manager.execute(), 0)
         start.assert_not_called()
         subscribe.assert_not_called()
         reconcile.assert_not_called()
         meter.assert_not_called()
-        self.assertFalse(manager.commands.meter_listeners)
+        self.assertFalse(manager.leases.meter_listeners)
 
     def test_cleanup_continues_after_a_monitor_fails_to_stop(self) -> None:
         manager = self.make_manager({})

@@ -7,7 +7,9 @@ import logging
 from smartamp_audio import graph
 from smartamp_audio import pactl
 from smartamp_audio.graph import Graph, Node
+from .config import OutputCeilingConfig
 from .modules import STREAM_PREFIX
+from .system import amixer
 
 
 LOG = logging.getLogger(__name__)
@@ -113,3 +115,31 @@ class OutputSink:
         # restored or another client left is undone rather than read back.
         if mute_state(sink) is True:
             set_mute(sink, False)
+
+
+class OutputCeiling:
+    """The card's hardware volume, the amplifier's ceiling under every graph gain.
+
+    Refreshed by each reconcile rather than read per query: it is set at boot,
+    and between passes only a set-output-ceiling command or a hand at the mixer
+    moves it. None until the first pass, and on a unit whose card cannot be
+    read at all.
+    """
+
+    def __init__(self, config: OutputCeilingConfig) -> None:
+        self.config = config
+        self.volume: int | None = None
+
+    @property
+    def readable(self) -> bool:
+        return self.config.readable
+
+    def read(self) -> None:
+        if not self.config.readable:
+            return
+        self.volume = amixer.playback_percent(self.config.card, self.config.control)
+
+    def set(self, percent: int) -> None:
+        """Move the ceiling, and read back what the card took."""
+        amixer.set_playback_percent(self.config.card, self.config.control, percent)
+        self.read()
