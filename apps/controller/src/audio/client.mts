@@ -100,8 +100,9 @@ export class AudioClient {
             this.connected = true
             this.#lastErrorMessage = null
             this.#flights.clear()
-            // A manager restart resets its sources to configured defaults, so
-            // re-assert the cache; with no cache yet, adopt what the manager has.
+            // The manager restores its clean-exit snapshot before playback.
+            // Re-assert our cache too, including choices made while disconnected;
+            // with no cache yet, adopt what the manager has.
             if (this.state.routesKnown) {
                 for (const [name, source] of Object.entries(this.state.sources)) {
                     if (source?.enabled !== undefined) {

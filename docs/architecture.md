@@ -208,9 +208,17 @@ straight back as a `change` event, which it treats as an echo for a quarter of
 a second rather than a reason to reconcile, so a volume detent costs the run
 of `pactl` calls that applies it and nothing more; the controller sends one
 level command per kind at a time and only the newest asked for meanwhile, so
-a fast turn never queues a detent behind the last. Route state lives in memory: the
-controller re-asserts its cached toggles when it reconnects after a manager
-restart, and a reboot returns every route to its configured default.
+a fast turn never queues a detent behind the last. On clean exit the manager
+atomically saves music volume and mute, voice volume, and source trims and
+toggles to `/run/user/<uid>/smartamp-audio-state.json`. It restores those settings
+before its first graph reconciliation, so playback never waits for the controller
+to restore a mute after a clean restart. The controller also re-asserts its cache
+on reconnect, including choices made while disconnected. Missing or invalid state
+uses the inventory defaults; an abrupt exit leaves the last clean snapshot, and
+a reboot clears the runtime file. Ducking, metering, idle state, graph identities,
+and the hardware ceiling are not saved. Recreating a music bus seeds its volume
+register from the manager's current level and mute instead of adopting the new
+sink's defaults.
 
 One piece of upstream timing is corrected as events arrive rather than in each
 thing that reacts to them. Linux Voice Assistant answers `tts_finished` as soon

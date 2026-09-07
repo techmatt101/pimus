@@ -62,7 +62,9 @@ def volume_writes(run: mock.Mock) -> list[tuple[str, str]]:
 
 
 class ManagerTestCase(unittest.TestCase):
-    def make_manager(self, raw_config: dict[str, Any]) -> AudioManager:
+    def make_manager(
+        self, raw_config: dict[str, Any], *, state_path: Path | None = None
+    ) -> AudioManager:
         base: dict[str, Any] = {"output_match": "HiFiBerry", "sources": {}}
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
@@ -71,6 +73,7 @@ class ManagerTestCase(unittest.TestCase):
             AudioConfig.from_mapping({**base, **raw_config}),
             path / "control.sock",
             path / "status.json",
+            state_path=state_path,
         )
         self.addCleanup(manager.selector.close)
         return manager

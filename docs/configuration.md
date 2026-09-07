@@ -69,7 +69,8 @@ tag is `default_source`, which is `sendspin`), and the manager holds each stream
 balance the sources against each other and the bus's level is what they all follow. Every source shares that bus, so
 all of them are dipped when the assistant speaks. The manager publishes each source with its trim, and the deck's
 [LEVELS page](controls.md#the-levels-page) shows one key per source, which is the way to find a balance by ear; the
-audio manager holds that only in memory, so bring the number that works back to inventory.
+audio manager saves that on clean exit for service restarts; reboot restores inventory,
+so bring the number that works back to inventory for a permanent change.
 
 Music Assistant's volume for this player is the music level, in both directions. The Sendspin client runs with
 `--hardware-volume`, which puts it on the PulseAudio volume backend: it sets, reads, and subscribes to its output
@@ -212,12 +213,22 @@ Voice playback has a bus of its own, `smartamp_voice_sink_name`, so how loud the
 of the music level: TTS, timer chimes, and announcements play at `smartamp_voice_startup_volume_percent` whether the
 music sits at 5% or 80%. From boot onwards the level belongs to the deck: the VOICE VOL key on the INFO page sets it,
 and the volume dial adjusts it live whenever Assist is listening, thinking, speaking, or ringing a timer. Like the
-route toggles both levels survive an audio manager restart (the controller re-asserts them) but return to the
+route toggles both levels survive a clean audio manager restart (the manager restores them before playback) but return to the
 inventory defaults on reboot. The volume mute keeps that independence: it silences the music paths and leaves the
 voice bus alone, so a muted amp still answers, rings, and announces out loud — provided the announcement is made
 through the assist satellite (`assist_satellite.announce`), which plays on the voice bus. An announcement sent to the
-Music Assistant player travels with the music and is muted with it. Like the levels, the mute is re-asserted by the
-controller after an audio manager restart and clears on reboot.
+Music Assistant player travels with the music and is muted with it. Like the levels, the mute is restored by the
+manager before playback after a clean restart and clears on reboot.
+
+The manager's `--state` file is `/run/user/<uid>/smartamp-audio-state.json` in the
+deployed service. It saves requested music volume and mute, voice volume, and source
+trims and toggles only when exiting normally (including SIGTERM and SIGINT), using
+an atomic replacement. There are no settings writes on volume changes or graph
+reconciliation. A crash or forced kill keeps the previous clean snapshot, if any;
+a missing, unreadable, or invalid file falls back to inventory defaults. The file
+is in RAM and disappears on reboot. Hardware ceiling and temporary voice-session
+requests are not saved. New sources use their configured defaults and removed
+sources are ignored. The separate status file remains a live graph report.
 
 ## SD-card endurance
 

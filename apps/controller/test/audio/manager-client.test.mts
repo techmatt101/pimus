@@ -241,8 +241,8 @@ test('voice volume updates optimistically and re-asserts after a reconnect', asy
     assert.deepEqual(client.state.sources, {aux: {trim: 80, enabled: false}})
     assert.deepEqual(JSON.parse(first.written.at(-1) ?? ''), {command: 'set-source-trim', name: 'aux', percent: 80})
 
-    // A manager restart resets its levels to the configured defaults, so the
-    // client re-asserts the cached ones alongside its route toggles.
+    // Re-assert cached levels alongside route toggles, including choices made
+    // while disconnected that the manager's snapshot does not contain.
     first.emit('close')
     await new Promise((resolve) => setTimeout(resolve, 5))
     const second = sockets[1]

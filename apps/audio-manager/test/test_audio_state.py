@@ -207,6 +207,26 @@ class MusicRegisterTests(ManagerTestCase):
             self.assertEqual(commands.call_args_list, [])
             self.assertEqual(manager.music_volume, 40)
 
+    def test_a_replacement_bus_is_seeded_with_the_requested_level_and_mute(self) -> None:
+        manager = self.make_manager({"music_bus": {"enabled": True}})
+        manager.music_volume = 35
+        manager.vol_muted = True
+        sink = self._sink(35, muted=True)
+        with self._patched_graph({"sinks": [sink]}, fake_run) as commands:
+            manager._sync_music_register(sink)
+            commands.reset_mock()
+            sink.update(index=2, volume={"mono": {"value_percent": "100%"}}, mute=False)
+            manager.graph.invalidate()
+            manager._sync_music_register(sink)
+        self.assertEqual((manager.music_volume, manager.vol_muted), (35, True))
+        self.assertEqual(
+            [call.args for call in commands.call_args_list],
+            [
+                ("pactl", "set-sink-volume", "background", "35%"),
+                ("pactl", "set-sink-mute", "background", "1"),
+            ],
+        )
+
 
 class ManagerLifecycleTests(ManagerTestCase):
     def test_stop_while_waiting_for_pulse_does_not_start_services(self) -> None:

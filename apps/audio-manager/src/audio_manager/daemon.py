@@ -18,7 +18,7 @@ from .buses.music import MusicBus
 from .buses.music_volume import MusicVolumeSync
 from .buses.voice import VoiceBus
 from .buses.voice_meter import VoiceLevelMeter
-from .config import AudioConfig
+from .config import AudioConfig, SourceConfig
 from .control.commands import CommandHandler
 from .echo_reference import EchoReference
 from smartamp_audio.server import ControlServer
@@ -26,6 +26,7 @@ from smartamp_audio.graph import Graph, Node
 from .idle import IdleTracker, playing_clients
 from .modules import ModuleRegistry
 from .sources import SourceMixer
+from .state import SavedState
 
 
 LOG = logging.getLogger(__name__)
@@ -44,13 +45,18 @@ GRAPH_ERRORS = (subprocess.SubprocessError, json.JSONDecodeError, RuntimeError, 
 
 
 class AudioManager:
-    def __init__(self, config: AudioConfig, socket_path: Path, status_path: Path) -> None:
+    def __init__(
+        self, config: AudioConfig, socket_path: Path, status_path: Path,
+        *, state_path: Path | None = None,
+    ) -> None:
         self.config = config
         self.status_path = status_path
+        self.state_path = state_path
         self.running = True
-        self.music_volume = config.startup_volume_percent
-        self.vol_muted = False
-        self.voice_volume = config.voice_bus.volume_percent
+        saved = SavedState.load(config, state_path)
+        self.music_volume = saved.music_volume
+        self.vol_muted = saved.music_muted
+        self.voice_volume = saved.voice_volume
         # The card's hardware volume - the amplifier's ceiling - refreshed by
         # each reconcile rather than read per query: it is set at boot, and
         # between passes only set-output-ceiling or a hand at the mixer moves
@@ -70,7 +76,7 @@ class AudioManager:
         self.echo_reference = EchoReference(
             config.echo_reference, self.graph, self.modules
         )
-        self.mixer = SourceMixer(config.sources, config.default_source, self.graph)
+        self.mixer = SourceMixer(saved.sources, config.default_source, self.graph)
         # What the last pass found of the reference path; the document
         # reports it between passes, as it does everything a pass settles.
         self.aec_reference: dict[str, Any] = self.echo_reference.status()
@@ -94,9 +100,25 @@ class AudioManager:
 
     def execute(self) -> int:
         try:
-            return self._run()
+            result = self._run()
+            if result == 0:
+                self._guard("Saving audio state", self._save_state)
+            return result
         finally:
             self._close()
+
+    def _save_state(self) -> None:
+        if self.state_path is None:
+            return
+        SavedState(
+            self.music_volume,
+            self.vol_muted,
+            self.voice_volume,
+            {
+                name: SourceConfig(self.mixer.trims[name], self.mixer.enabled.get(name))
+                for name in self.config.sources
+            },
+        ).save(self.state_path)
 
     def _run(self) -> int:
         self.wait_for_pulse()

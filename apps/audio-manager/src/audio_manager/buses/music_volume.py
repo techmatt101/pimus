@@ -41,15 +41,21 @@ class MusicVolumeSync:
         # The last (register, amp) states the two sides agreed on, each as read
         # from its own side.
         self._agreed: tuple[VolumeState, VolumeState] | None = None
+        self._identity: tuple[object, ...] | None = None
 
     def forget(self) -> None:
         """Drop the agreement so the amp's level seeds the register again."""
         self._agreed = None
+        self._identity = None
 
     def sync(self, sink: Node | None, amp: VolumeState, view: Graph) -> VolumeState:
         if sink is None:
             self.forget()
             return amp
+        identity = (sink["name"], sink.get("index"))
+        if identity != self._identity:
+            self.forget()
+            self._identity = identity
         register = graph.volume_state(sink)
         if register is None:
             return amp

@@ -32,9 +32,8 @@ TOGGLE_FADE_MS = 200
 
 
 class SourceMixer:
-    """Desired trims and toggles live in memory; the controller owns them
-    through the control socket and re-asserts them after either process
-    restarts, and a restart comes back to the configured share."""
+    """Desired trims and toggles, restored by the manager before playback and
+    changed through the control socket."""
 
     def __init__(
         self, sources: dict[str, SourceConfig], default_source: str, view: Graph
