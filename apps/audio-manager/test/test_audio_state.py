@@ -91,7 +91,7 @@ class SourceStateTests(ManagerTestCase):
             manager.set_source_enabled("aux", True)
             with self.assertLogs("audio_manager.daemon", level="WARNING"):
                 manager._apply_or_retry("Audio fade", lambda: self.finish_fades(manager))
-            self.assertIsNotNone(manager.pending_reconcile)
+            self.assertIsNotNone(manager.schedule.booked)
             write.side_effect = None
             write.reset_mock()
             manager.graph.invalidate()
@@ -349,7 +349,7 @@ class ExternalClientTests(ManagerTestCase):
 
     def test_monitor_restart_deadline_wakes_an_otherwise_idle_selector(self) -> None:
         manager = self.make_manager({})
-        manager.next_resync = 900
+        manager.schedule.resync = 900
         with mock.patch.object(manager.graph_events, "deadline", return_value=101), mock.patch(
             "audio_manager.daemon.time.monotonic", return_value=100
         ), mock.patch.object(manager.selector, "select", return_value=[]) as select:

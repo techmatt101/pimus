@@ -85,7 +85,9 @@ loopback, and `output.py` owns the hardware sink's unity gain and rebuild mute
 and the card's hardware ceiling. `control/` is the socket's vocabulary:
 `commands.py` validates and applies each command, `leases.py` holds the duck
 and meter requests against the connection that asked; the transport is the
-shared `smartamp_audio.server`. `modules.py` tracks the
+shared `smartamp_audio.server`. `schedule.py` decides when the next
+pass runs: an event's debounced booking, the retry after a failed pass, and
+the safety resync behind both. `modules.py` tracks the
 PipeWire modules the manager creates. `fades.py` advances gain ramps on selector
 deadlines so controls can interrupt them and removed streams cannot receive stale
 writes. `state.py` stores requested levels, music

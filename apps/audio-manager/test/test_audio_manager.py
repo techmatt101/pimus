@@ -540,7 +540,7 @@ class ReconcileTests(ManagerTestCase):
 
     def test_failed_reconcile_retries_after_one_second(self) -> None:
         manager = self.make_manager({"resync_seconds": 900})
-        manager.pending_reconcile = 50.0
+        manager.schedule.booked = 50.0
 
         with mock.patch.object(
             manager, "reconcile", side_effect=RuntimeError("graph moved")
@@ -552,8 +552,8 @@ class ReconcileTests(ManagerTestCase):
             succeeded = manager.safe_reconcile()
 
         self.assertFalse(succeeded)
-        self.assertIsNone(manager.pending_reconcile)
-        self.assertEqual(manager.next_resync, 101.0)
+        self.assertIsNone(manager.schedule.booked)
+        self.assertEqual(manager.schedule.resync, 101.0)
 
 
 
@@ -906,12 +906,12 @@ class IdleTeardownTests(ManagerTestCase):
             {"idle_teardown_seconds": 60, "music_bus": {"enabled": True}}
         )
         manager.idle.idle = True
-        self.assertIsNone(manager.pending_reconcile)
+        self.assertIsNone(manager.schedule.booked)
 
         # The duck request arrives seconds before the first TTS stream exists,
         # so it must start the rebuild rather than wait for audio to appear.
         manager.commands.apply(mock.Mock(), {"command": "set-duck", "active": True})
-        self.assertIsNotNone(manager.pending_reconcile)
+        self.assertIsNotNone(manager.schedule.booked)
 
     def test_a_forced_idle_skips_the_silence_timeout(self) -> None:
         manager = self.make_manager(
@@ -922,7 +922,7 @@ class IdleTeardownTests(ManagerTestCase):
         # Forcing it releases on the next pass instead of waiting out the
         # timeout, so the idle state can be looked at without the wait.
         manager.commands.apply(mock.Mock(), {"command": "force-idle"})
-        self.assertIsNotNone(manager.pending_reconcile)
+        self.assertIsNotNone(manager.schedule.booked)
         self.assertTrue(manager.idle.update(False))
 
         # Something playing wins, and the request is forgotten rather than
@@ -1145,7 +1145,7 @@ class VolumeTests(ManagerTestCase):
             manager.set_voice_volume(40)
 
         self.assertIsNone(manager.voice_bus.gain_applied)
-        self.assertIsNotNone(manager.pending_reconcile)
+        self.assertIsNotNone(manager.schedule.booked)
 
         with mock.patch.object(process, "run") as run:
             manager.voice_bus.apply_gain(40)

@@ -26,19 +26,12 @@ from smartamp_audio.server import ControlServer
 from smartamp_audio.graph import Graph, Node
 from .idle import IdleTracker, playing_clients
 from .modules import ModuleRegistry
+from .schedule import EVENT_DEBOUNCE_SECONDS, ReconcileSchedule
 from .sources import SourceMixer
 from .state import SavedState
 
 
 LOG = logging.getLogger(__name__)
-
-# A burst of pactl subscribe events (device hotplug, PipeWire restart) settles
-# into one reconcile scheduled this far ahead of the first event.
-EVENT_DEBOUNCE_SECONDS = 0.3
-
-# A transient graph race should heal promptly rather than waiting for the
-# normal fifteen-minute safety resync.
-RECONCILE_RETRY_SECONDS = 1.0
 
 # Failures that mean the graph moved under us or a helper is missing: log them
 # and try again on the next pass rather than terminating the daemon.
@@ -87,8 +80,12 @@ class AudioManager:
             self.selector, self.schedule_reconcile, self._subscribe_restarted
         )
 
-        self.pending_reconcile: float | None = None
-        self.next_resync = 0.0
+        self.schedule = ReconcileSchedule(config.resync_seconds)
+        # Everything the loop must wake for without an event: a fade step, a
+        # monitor restart, the meter starting once its monitor appears or
+        # stopping once its hold lapses, and the quiet spell that earns an
+        # idle teardown.
+        self._timed = (self.fades, self.graph_events, self.voice_meter, self.idle)
         self._last_broadcast = self.state_event()
 
     def stop(self, *_args: object) -> None:
@@ -237,24 +234,17 @@ class AudioManager:
         self._apply_or_retry("Volume mute", self._apply_music_volume)
 
     def schedule_reconcile(self, delay: float = EVENT_DEBOUNCE_SECONDS) -> None:
-        deadline = time.monotonic() + delay
-        if self.pending_reconcile is None or deadline < self.pending_reconcile:
-            self.pending_reconcile = deadline
+        self.schedule.book(time.monotonic(), delay)
 
     def safe_reconcile(self) -> bool:
-        # Cleared first, so a pass that finds a bridge unsettled can book its
-        # own follow-up.
-        self.pending_reconcile = None
+        self.schedule.begin()
         succeeded = self._guard("Audio reconciliation", self.reconcile)
         if not succeeded:
             self._guard(
                 "Clearing stale audio status",
                 lambda: self.status_path.unlink(missing_ok=True),
             )
-        delay = (
-            self.config.resync_seconds if succeeded else RECONCILE_RETRY_SECONDS
-        )
-        self.next_resync = time.monotonic() + delay
+        self.schedule.settle(time.monotonic(), succeeded)
         return succeeded
 
     def reconcile(self) -> None:
@@ -266,7 +256,7 @@ class AudioManager:
         self._reconcile_graph(sink, idle)
         settled = self.music_bus.settled and self.voice_bus.settled
         if not settled:
-            self.schedule_reconcile(RECONCILE_RETRY_SECONDS)
+            self.schedule.retry(time.monotonic())
             for bus in (self.music_bus, self.voice_bus):
                 bus.hold_silent()
                 bus.fresh = bus.stream_index is not None
@@ -376,38 +366,22 @@ class AudioManager:
         # Ducking is applied when a set-duck arrives, when a client holding a
         # request disconnects, and at the end of every reconcile, so the loop
         # needs no poll interval to notice a duck request.
-        deadlines = [self.next_resync]
-        fade_deadline = self.fades.deadline()
-        if fade_deadline is not None:
-            deadlines.append(fade_deadline)
-        monitor_deadline = self.graph_events.deadline()
-        if monitor_deadline is not None:
-            deadlines.append(monitor_deadline)
-        if self.pending_reconcile is not None:
-            deadlines.append(self.pending_reconcile)
-        # The meter has to be started once its monitor appears, and stopped once
-        # its hold past the last utterance lapses; neither is an event the
-        # selector would otherwise wake for.
-        meter_deadline = self.voice_meter.deadline()
-        if meter_deadline is not None:
-            deadlines.append(meter_deadline)
-        # The quiet spell that earns an idle teardown ends without any event,
-        # so the loop must wake itself when the bridges fall due for release.
-        idle_deadline = self.idle.deadline()
-        if idle_deadline is not None:
-            deadlines.append(idle_deadline)
-        deadline = min(deadlines)
+        deadline = min(
+            deadline
+            for deadline in (
+                self.schedule.deadline(), *(timed.deadline() for timed in self._timed)
+            )
+            if deadline is not None
+        )
         for key, _ in self.selector.select(max(0.0, deadline - time.monotonic())):
             key.data()
 
     def _reconcile_when_due(self) -> None:
         now = time.monotonic()
+        # An idle spell lapsing is a pass wanted, not a tick: it is the pass
+        # that releases the bridges.
         idle_deadline = self.idle.deadline()
-        if (
-            now >= self.next_resync
-            or (self.pending_reconcile is not None and now >= self.pending_reconcile)
-            or (idle_deadline is not None and now >= idle_deadline)
-        ):
+        if self.schedule.due(now) or (idle_deadline is not None and now >= idle_deadline):
             self.safe_reconcile()
 
     def _broadcast_changes(self) -> None:
@@ -427,7 +401,7 @@ class AudioManager:
         self, description: str, action: Callable[[], object]
     ) -> None:
         if not self._guard(description, action):
-            self.schedule_reconcile(RECONCILE_RETRY_SECONDS)
+            self.schedule.retry(time.monotonic())
 
     def _guard(self, description: str, action: Callable[[], object]) -> bool:
         try:

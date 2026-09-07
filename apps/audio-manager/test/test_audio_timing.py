@@ -7,6 +7,7 @@ from __future__ import annotations
 from unittest import mock
 
 from test_audio_manager import ManagerTestCase, fake_run
+from audio_manager.schedule import ReconcileSchedule
 from smartamp_audio import graph, pactl
 
 
@@ -72,7 +73,7 @@ class AudioTimingTests(ManagerTestCase):
 
     def test_selector_wakes_for_fades_without_a_graph_event(self) -> None:
         manager = self.make_manager({"idle_teardown_seconds": 0})
-        manager.next_resync = 900.0
+        manager.schedule.resync = 900.0
         manager.music_bus.stream_index = 42
         manager.music_bus.gain_applied = 0
         manager.music_bus.gain_wanted = 60
@@ -144,4 +145,22 @@ class AudioTimingTests(ManagerTestCase):
         ):
             with mock.patch("audio_manager.daemon.time.monotonic", return_value=now):
                 manager.graph_events._on_line(event)
-            self.assertEqual(manager.pending_reconcile, 100.3)
+            self.assertEqual(manager.schedule.booked, 100.3)
+
+    def test_a_booking_is_cleared_as_the_pass_begins_and_the_resync_outlasts_it(self) -> None:
+        schedule = ReconcileSchedule(900.0)
+        self.assertTrue(schedule.due(0.0))
+        schedule.settle(100.0, succeeded=True)
+        self.assertEqual(schedule.deadline(), 1000.0)
+        schedule.book(100.0)
+        schedule.book(100.0, 0.0)
+        schedule.book(100.0)
+        self.assertEqual(schedule.deadline(), 100.0)
+        self.assertTrue(schedule.due(100.0))
+        schedule.begin()
+        # The pass itself may book the follow-up that the unsettled bridge needs.
+        schedule.retry(100.0)
+        schedule.settle(100.0, succeeded=False)
+        self.assertEqual((schedule.booked, schedule.resync), (101.0, 101.0))
+        self.assertFalse(schedule.due(100.5))
+        self.assertTrue(schedule.due(101.0))

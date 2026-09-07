@@ -94,7 +94,7 @@ class AudioReliabilityTests(ManagerTestCase):
             manager.schedule_reconcile(0.3)
             manager.schedule_reconcile(0.0)
             manager.schedule_reconcile(0.3)
-        self.assertEqual(manager.pending_reconcile, 100.0)
+        self.assertEqual(manager.schedule.booked, 100.0)
 
     def test_aec_readiness_requires_a_stream_and_repairs_every_channel_and_mute(
         self,
@@ -302,7 +302,7 @@ class RebuildSafetyTests(ManagerTestCase):
         with mock.patch("audio_manager.daemon.time.monotonic", return_value=100.0):
             self.assertTrue(self.manager.safe_reconcile())
         self.assertTrue(self.sink["mute"])
-        self.assertEqual(self.manager.pending_reconcile, 101.0)
+        self.assertEqual(self.manager.schedule.booked, 101.0)
         self.listings["sink-inputs"].append(self.stream)
         self.assertTrue(self.manager.safe_reconcile())
         self.finish_fades(self.manager)
