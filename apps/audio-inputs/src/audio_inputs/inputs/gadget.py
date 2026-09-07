@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import time
 from pathlib import Path
 
 from smartamp_audio import process
@@ -13,6 +14,17 @@ from smartamp_audio import process
 # mute changes land on this card's "PCM Capture" mixer controls, and writing
 # them from this side sends the host a UAC2 interrupt so its slider follows.
 CARD = "UAC2Gadget"
+
+# When this process last wrote the mixer. The write comes straight back out of
+# alsactl monitor as a control event, which the input reads as its own echo
+# for this long rather than as the host moving its slider.
+MIXER_ECHO_SECONDS = 0.25
+_last_mixer_write = 0.0
+
+
+def is_mixer_echo(now: float | None = None) -> bool:
+    now = time.monotonic() if now is None else now
+    return now - _last_mixer_write < MIXER_ECHO_SECONDS
 
 
 def host_attached(base: Path = Path("/sys/class/udc")) -> bool:
@@ -73,6 +85,7 @@ def read_mixer() -> tuple[int, bool] | None:
 
 
 def write_mixer(percent: int, muted: bool) -> None:
+    global _last_mixer_write
     process.run(
         "amixer",
         "-c",
@@ -83,6 +96,7 @@ def write_mixer(percent: int, muted: bool) -> None:
         f"{percent}%",
         "nocap" if muted else "cap",
     )
+    _last_mixer_write = time.monotonic()
 
 
 def volumes_match(a: tuple[int, bool], b: tuple[int, bool]) -> bool:

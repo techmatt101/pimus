@@ -86,7 +86,17 @@ recommended VBUS-blocking adapter the port never reports a disconnect, so the
 file stays `configured` after an unplug. It is reported in the status file
 for what it is worth and gates nothing. The app listens to `alsactl monitor`
 for the rate control, subscribes to PipeWire graph changes, and reconciles at
-least every two seconds as a fallback.
+least every two seconds as a fallback. It holds no stream level, so a stream's
+volume moving — every detent of the volume or trim dial — is not an event it
+reconciles on; and a write of its own, to the gadget mixer or the bus
+register, comes back through those feeds as an echo it recognises for a
+quarter of a second rather than reacts to.
+
+The loopbacks the app spawns carry the audio on data threads of their own,
+which need `SCHED_FIFO` exactly as PipeWire's does. The unit grants it
+(`LimitRTPRIO`, `LimitNICE`, `DISABLE_RTKIT=1`, as the service-account session
+does for PipeWire); a loopback data-loop reading `TS` in `ps` is the fault
+behind an amp that snaps every minute or so on the USB input.
 
 The gadget's card boots parked on no profile, with no capture node; the input
 switches it to `pro-audio` itself and lets the resulting graph event schedule

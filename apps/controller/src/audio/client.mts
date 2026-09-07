@@ -6,10 +6,16 @@ import {AMP_CEILING_FLOOR, type AudioState, type SourceState} from '../types.mjs
 const log = logger('audio')
 
 const ECHO_HOLD_MILLISECONDS = 2000
+const IN_FLIGHT_MILLISECONDS = 1000
 
 interface PendingLevel {
     level: number
     until: number
+}
+
+interface Flight {
+    until: number
+    deferred: Record<string, unknown> | null
 }
 
 interface AudioEvent {
@@ -60,6 +66,7 @@ export class AudioClient {
     #pendingVoice: PendingLevel | null = null
     #pendingCeiling: PendingLevel | null = null
     readonly #pendingTrims = new Map<string, PendingLevel>()
+    readonly #flights = new Map<string, Flight>()
     readonly #socketPath: string
     readonly #onStateChange: () => void
     readonly #reconnectMilliseconds: number
@@ -92,6 +99,7 @@ export class AudioClient {
         socket.on('connect', () => {
             this.connected = true
             this.#lastErrorMessage = null
+            this.#flights.clear()
             // A manager restart resets its sources to configured defaults, so
             // re-assert the cache; with no cache yet, adopt what the manager has.
             if (this.state.routesKnown) {
@@ -167,7 +175,7 @@ export class AudioClient {
             this.#onStateChange()
         }
         this.#pendingVoice = {level, until: this.#clock() + ECHO_HOLD_MILLISECONDS}
-        this.#write({command: 'set-voice-volume', percent: level})
+        this.#writeLevel('voice', {command: 'set-voice-volume', percent: level})
     }
 
     /** Forwards the resolved absolute state, so a replayed message cannot invert a toggle. */
@@ -186,7 +194,7 @@ export class AudioClient {
             this.#onStateChange()
         }
         this.#pendingMusic = {level, until: this.#clock() + ECHO_HOLD_MILLISECONDS}
-        this.#write({command: 'set-music-volume', percent: level})
+        this.#writeLevel('music', {command: 'set-music-volume', percent: level})
     }
 
     /**
@@ -201,7 +209,7 @@ export class AudioClient {
             this.#onStateChange()
         }
         this.#pendingCeiling = {level, until: this.#clock() + ECHO_HOLD_MILLISECONDS}
-        this.#write({command: 'set-output-ceiling', percent: level})
+        this.#writeLevel('ceiling', {command: 'set-output-ceiling', percent: level})
     }
 
     /**
@@ -217,7 +225,7 @@ export class AudioClient {
             this.#onStateChange()
         }
         this.#pendingTrims.set(name, {level, until: this.#clock() + ECHO_HOLD_MILLISECONDS})
-        this.#write({command: 'set-source-trim', name, percent: level})
+        this.#writeLevel(`trim:${name}`, {command: 'set-source-trim', name, percent: level})
     }
 
     /**
@@ -289,6 +297,29 @@ export class AudioClient {
         return sources
     }
 
+    // The manager applies each level with a run of pactl calls and answers
+    // each command in turn, so a dial turned faster than that would queue every
+    // detent and walk the level through them seconds behind the hand. One
+    // level command per kind is in flight at a time; the newest asked for
+    // meanwhile goes as soon as the manager answers, or the wait lapses.
+    #writeLevel(kind: string, message: Record<string, unknown>): void {
+        const flight = this.#flights.get(kind)
+        if (flight && this.#clock() < flight.until) {
+            flight.deferred = message
+            return
+        }
+        this.#flights.set(kind, {until: this.#clock() + IN_FLIGHT_MILLISECONDS, deferred: null})
+        this.#write(message)
+    }
+
+    #landFlights(): void {
+        const landed = [...this.#flights]
+        this.#flights.clear()
+        for (const [kind, flight] of landed) {
+            if (flight.deferred) this.#writeLevel(kind, flight.deferred)
+        }
+    }
+
     #write(message: Record<string, unknown>): void {
         if (!this.connected || !this.#socket) return
         log.debug('send', JSON.stringify(message))
@@ -307,6 +338,7 @@ export class AudioClient {
             } catch {
                 continue
             }
+            if (message.event === 'state' || message.event === 'error') this.#landFlights()
             const sources = message.event === 'state' ? section(message.sources) : null
             if (sources) {
                 const musicBus = section(message.music_bus)

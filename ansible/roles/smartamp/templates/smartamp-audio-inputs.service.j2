@@ -26,6 +26,17 @@ RestartSec=3
 # Kill the whole service group even if Python crashes, releasing the gadget
 # clock and the aux capture.
 KillMode=control-group
+# Each loopback carries its input's audio on a data thread of its own, which
+# needs SCHED_FIFO exactly as PipeWire's does: left timeshared, an ordinary
+# CPU burst (a burst of pactl calls on a dial turn) preempts it past its
+# deadline and the amp snaps. The service-account session holds the same grant
+# for PipeWire (base.yml), but a system unit inherits nothing from it, and
+# module-rt wants nice -11 as well as the realtime class. DISABLE_RTKIT makes a
+# refused grant fail aloud in the journal rather than be routed to the removed
+# RealtimeKit and silently demoted.
+LimitRTPRIO=95
+LimitNICE=-20
+Environment=DISABLE_RTKIT=1
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=tmpfs

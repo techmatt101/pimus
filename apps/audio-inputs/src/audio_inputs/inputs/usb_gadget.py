@@ -38,9 +38,13 @@ class UsbGadgetInput(Input):
         # see; alsactl monitor is the ALSA equivalent, one line per control
         # event. The kernel notifies "Capture Rate" as the host starts or
         # stops streaming, which is what makes the input react faster than
-        # the fallback poll.
+        # the fallback poll. The mixer this side writes to follow the bus
+        # comes back through the same feed; only the rate control, which the
+        # host alone moves, is read during that echo.
         def capture_control(line: bytes) -> None:
-            if b"Capture" in line:
+            if b"Capture Rate" in line or (
+                b"Capture" in line and not gadget.is_mixer_echo()
+            ):
                 schedule()
 
         return [

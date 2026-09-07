@@ -199,7 +199,12 @@ The controller switches routes and requests ducking by sending commands over
 the audio manager's Unix control socket in the runtime directory, and mirrors
 the state events it receives back onto the Stream Deck. The manager reconciles
 immediately on `pactl subscribe` events and on route commands, with a 15-minute
-safety-net resync in case an event is missed. Route state lives in memory: the
+safety-net resync in case an event is missed. A level it wrote itself comes
+straight back as a `change` event, which it treats as an echo for a quarter of
+a second rather than a reason to reconcile, so a volume detent costs the run
+of `pactl` calls that applies it and nothing more; the controller sends one
+level command per kind at a time and only the newest asked for meanwhile, so
+a fast turn never queues a detent behind the last. Route state lives in memory: the
 controller re-asserts its cached toggles when it reconnects after a manager
 restart, and a reboot returns every route to its configured default.
 

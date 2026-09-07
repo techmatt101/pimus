@@ -491,6 +491,26 @@ class SubscribeEventTests(unittest.TestCase):
         self.assertFalse(monitors.is_relevant_event("Event 'new' on client #99"))
         self.assertFalse(monitors.is_relevant_event("garbage"))
 
+    def test_a_level_this_process_wrote_echoes_without_a_reconcile(self) -> None:
+        # Every level write comes straight back as a change event; a reconcile
+        # on each one found nothing to do and cost a burst of listings.
+        with mock.patch.object(process, "run", return_value=completed()), mock.patch(
+            "smartamp_audio.pactl.time.monotonic", return_value=100.0
+        ):
+            pactl.set_sink_input_volume(42, 55)
+        self.assertTrue(monitors.is_level_echo("Event 'change' on sink-input #42", now=100.1))
+        self.assertTrue(monitors.is_level_echo("Event 'change' on sink #3", now=100.1))
+        # A stream arriving or leaving is never an echo, whatever was just written.
+        self.assertFalse(monitors.is_level_echo("Event 'new' on sink-input #43", now=100.1))
+        self.assertFalse(monitors.is_level_echo("Event 'remove' on sink-input #42", now=100.1))
+        # Nor is a change from anyone else once the write's own has had time to land.
+        self.assertFalse(monitors.is_level_echo("Event 'change' on sink #3", now=100.5))
+
+    def test_a_streams_own_change_is_told_apart_from_its_arrival(self) -> None:
+        self.assertTrue(monitors.is_stream_change("Event 'change' on sink-input #42"))
+        self.assertFalse(monitors.is_stream_change("Event 'new' on sink-input #42"))
+        self.assertFalse(monitors.is_stream_change("Event 'change' on sink #3"))
+
 
 
 

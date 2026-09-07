@@ -36,8 +36,10 @@ class AudioInputs:
         self.inputs = {
             name: create(name, entry, self.graph) for name, entry in config.inputs.items()
         }
+        # The manager holds every stream's level; this daemon only needs to
+        # see streams and devices come and go, and the bus register move.
         self.graph_events = monitors.graph_events(
-            self.selector, self.schedule, self.schedule
+            self.selector, self.schedule, self.schedule, stream_changes=False
         )
         self.monitors = [
             monitor

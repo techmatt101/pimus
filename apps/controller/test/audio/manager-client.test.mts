@@ -275,14 +275,24 @@ test('volume echoes racing newer sets do not walk the readout backwards', () => 
     fake.emit('data', '{"event":"state","sources":{"aux":{"enabled":true}},"music_bus":{"volume":80},"voice_bus":{"volume":40}}\n')
     assert.equal(client.state.musicVolume, 80)
 
+    const sent = () => fake.written.map((line) => JSON.parse(line) as {command: string, percent?: number})
+        .filter((message) => message.command === 'set-music-volume')
+        .map((message) => message.percent)
+
+    // Detents turned faster than the manager applies them are coalesced: one
+    // command in flight, and only the newest level waiting behind it.
     client.setMusicVolume(75)
+    client.setMusicVolume(72)
     client.setMusicVolume(70)
     assert.equal(client.state.musicVolume, 70)
+    assert.deepEqual(sent(), [75])
 
-    // The manager's reply to the first set lands after the second was sent;
-    // adopting it would show 75 after 70.
+    // The manager's reply to the first set lands after the second was asked
+    // for; adopting it would show 75 after 70, and answering releases the
+    // level waiting behind it.
     fake.emit('data', '{"event":"state","sources":{"aux":{"enabled":false}},"music_bus":{"volume":75},"voice_bus":{"volume":40}}\n')
     assert.equal(client.state.musicVolume, 70)
+    assert.deepEqual(sent(), [75, 70])
     // The rest of the event still applies while the level is held.
     assert.equal(client.state.sources.aux?.enabled, false)
     assert.equal(client.state.voiceVolume, 40)
@@ -290,6 +300,17 @@ test('volume echoes racing newer sets do not walk the readout backwards', () => 
     // The echo of the newest set settles the hold.
     fake.emit('data', '{"event":"state","sources":{"aux":{"enabled":false}},"music_bus":{"volume":70},"voice_bus":{"volume":40}}\n')
     assert.equal(client.state.musicVolume, 70)
+
+    // A manager that never answers does not hold the dial hostage: the wait
+    // lapses and the next detent goes out on its own.
+    client.setMusicVolume(68)
+    client.setMusicVolume(66)
+    assert.deepEqual(sent(), [75, 70, 68])
+    now += 1500
+    client.setMusicVolume(64)
+    assert.deepEqual(sent(), [75, 70, 68, 64])
+    fake.emit('data', '{"event":"state","sources":{"aux":{"enabled":false}},"music_bus":{"volume":64},"voice_bus":{"volume":40}}\n')
+    assert.deepEqual(sent(), [75, 70, 68, 64])
 
     // An unconfirmed set stops shielding the cache once the hold lapses, so a
     // genuine move on the manager's side (the USB host's slider) still wins.

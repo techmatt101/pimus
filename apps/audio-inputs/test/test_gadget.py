@@ -30,6 +30,16 @@ class UsbGadgetTests(unittest.TestCase):
 
         self.assertFalse(usb_gadget.host_attached(root / "missing"))
 
+    def test_the_mixer_write_is_recognised_as_its_own_control_event(self) -> None:
+        # alsactl monitor reports the write this side makes exactly as it
+        # reports the host moving its slider; only the latter is a change.
+        with mock.patch.object(process, "run", return_value=completed()), mock.patch(
+            "audio_inputs.inputs.gadget.time.monotonic", return_value=50.0
+        ):
+            usb_gadget.write_mixer(42, False)
+        self.assertTrue(usb_gadget.is_mixer_echo(now=50.1))
+        self.assertFalse(usb_gadget.is_mixer_echo(now=50.5))
+
     def test_usb_streaming_detection_reads_the_gadget_rate_control(self) -> None:
         listing = (
             "numid=4,iface=PCM,name='Capture Rate'\n"

@@ -247,7 +247,13 @@ run realtime; check its class:
 ps -eLo tid,user,cls,rtprio,comm | grep data-loop   # FF 88 is healthy, TS - is the fault
 ```
 
-`TS` means PipeWire could not take SCHED_FIFO. Provisioning installs
+Every `data-loop` matters, not only PipeWire's own: the `pw-loopback` children of `smartamp-audio-inputs` carry the
+aux and USB audio into the bus and get their grant from that unit's own `LimitRTPRIO`. An amp that is clean on
+Sendspin but snaps every minute or so on the USB input, and distorts while the volume dial turns, is those threads
+timeshared while the dial's burst of `pactl` calls preempts them; the ERR column then climbs on the gadget's
+`alsa_input.platform-…usb` node and the `smartamp_input_usb…_capture` stream first.
+
+`TS` means the thread could not take SCHED_FIFO. Provisioning installs
 `/etc/systemd/system/user@<uid>.service.d/realtime.conf` raising `LimitRTPRIO` and `LimitNICE` and setting
 `DISABLE_RTKIT=1`; re-provision if it is missing, and restart the session
 (`sudo systemctl restart user@$(id -u smartamp)`) after changing it. All three lines matter: rtkit itself refuses
