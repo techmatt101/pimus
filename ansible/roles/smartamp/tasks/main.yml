@@ -171,6 +171,11 @@
 - name: Install diagnostics
   ansible.builtin.import_tasks: diagnostics.yml
 
+# The on-demand self-test needs the controller flag and the service list the
+# tasks above settle, so it is rendered last.
+- name: Install the self-test suite
+  ansible.builtin.import_tasks: selftest.yml
+
 # Apply deferred daemon reloads and restarts before Ansible reports success. This
 # also surfaces service-start problems during provisioning rather than later.
 # "always" keeps this flush active during tag-limited runs; an untagged meta

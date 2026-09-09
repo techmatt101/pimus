@@ -1,0 +1,4 @@
+#!/bin/sh
+# The on-demand self-test; see docs/e2e.md. Run with sudo.
+export PYTHONPATH={{ smartamp_app_dir }}/selftest:{{ smartamp_app_dir }}/audio-common
+exec /usr/bin/python3 -m selftest --config {{ smartamp_config_dir }}/selftest.json "$@"

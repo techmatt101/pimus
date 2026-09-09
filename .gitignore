@@ -8,3 +8,5 @@ __pycache__/
 .idea
 # Local playground credentials for a real Home Assistant.
 .env
+# Reports make e2e writes for each run.
+tools/e2e/reports/

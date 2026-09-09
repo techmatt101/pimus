@@ -38,6 +38,7 @@ an OS-image build pipeline unless the user explicitly changes that scope.
 | The microphone array: capture channels, echo reference, `xvf_host`, tuning | `docs/xvf3800.md`; `docs/respeaker-lite.md` for the two-mic array |
 | Boards, power, wiring, what each Pi can do | `docs/hardware.md`, then `ansible/roles/smartamp/vars/boards.yml` |
 | A symptom on a live amp | `docs/troubleshooting.md` |
+| Proving a live amp works end to end | `docs/e2e.md`, then `tools/e2e/selftest/tiers/` |
 | Running the controller here with fake hardware | `docs/playground.md` |
 | Module-by-module map of each app | `apps/README.md` |
 
@@ -46,11 +47,13 @@ an OS-image build pipeline unless the user explicitly changes that scope.
 None contacts a Pi.
 
 **Commands that touch the real amps.** `make provision`, `make check`,
-`make verify`, `make doctor`, `make deploy-controller`, and anything over SSH.
-They run against every unit unless `LIMIT` names one. Do not run them unless
-the user asks for remote deployment or verification; provisioning can reboot a
-Pi. Stopping `smartamp-audio-manager` on a Pi also stops Sendspin and the voice
-assistant, and they do not come back on their own.
+`make verify`, `make doctor`, `make e2e`, `make deploy-controller`, and anything
+over SSH. They run against every unit unless `LIMIT` names one. Do not run them
+unless the user asks for remote deployment or verification; provisioning can
+reboot a Pi, and `make e2e` moves levels, plays sound, and with `--restart` or
+`--reboot` restarts daemons or the Pi. Stopping `smartamp-audio-manager` on a Pi
+also stops Sendspin and the voice assistant, and they do not come back on their
+own.
 
 **Commands that never return.** `make playground` and `make dev` start the fake
 amp and run until interrupted. They are not checks; never run them to validate
@@ -136,7 +139,9 @@ libs/                    Code more than one app needs, owned by none of them
     src/smartamp_audio/  Graph queries, pactl, process and event monitors, the
                          JSON control server, status publication, volume
                          arithmetic; primitives only, never policy
-tools/                   Development-only; never deployed to a Pi
+tools/                   Development-only; nothing here runs as a service on
+                         a Pi (e2e/selftest is copied there, but only make
+                         e2e ever runs it)
   bundle-controller.mjs  The generators make build, make icons, and
   generate-icons.mjs     make update-versions run
   update-versions.mjs
@@ -145,6 +150,13 @@ tools/                   Development-only; never deployed to a Pi
     ui/                  The browser page the fake deck is drawn on
   remote-demo/           Development-only example client for the controller's
                          remote-tile socket; runs on the control computer
+  e2e/                   make e2e, in two halves: src/e2e.mjs runs here and
+                         makes the checks only this computer can (USB audio,
+                         a Home Assistant event, the satellite, Sendspin);
+    selftest/            the Pi half, smartamp-selftest, deployed by Ansible
+      tiers/             and run over SSH: one module per tier, in order;
+                         observe.py is what the dev half asks the amp to
+                         watch for. test/ holds its hardware-free unit tests
 ansible/
   inventory/
     hosts.yml            The units, one entry per amp
@@ -412,7 +424,14 @@ runtime validation, and relevant documentation together.
 - The audio manager is the `audio_manager` package, run as `python3 -m
   audio_manager` with its parent directory on `PYTHONPATH`; the inputs app is
   the `audio_inputs` package beside it, run the same way, and both import the
-  shared `smartamp_audio` primitives from `libs/audio-common`. `daemon.py`
+  shared `smartamp_audio` primitives from `libs/audio-common`. The self-test
+  (`tools/e2e/selftest`) is the `selftest` package deployed the same way but
+  kept under `tools/`, because it is a test the control computer runs on
+  demand as `smartamp-selftest`, not an app of the Pi's; it runs as root and
+  re-runs everything that touches PipeWire as the service account through one
+  seam, `runtime.py`. A new tier is a module in `tiers/` and a line in its
+  list; it must snapshot and restore any level it moves, and skip itself by
+  name on a unit without the feature. `daemon.py`
   owns the reconcile order and nothing else; each concern it drives (a bus,
   the source mixer, the AEC reference, the control socket) lives in its own
   module and holds its own state. Reach the outside world through the shared
@@ -500,10 +519,10 @@ finished:
 make test
 ```
 
-This compiles Python and type-checks the audio manager with pyright in strict
-mode, type-checks and compiles the TypeScript controller, bundles it, runs
-Python and Node tests, checks the bundles, and performs an Ansible syntax check
-without contacting the Pi. A type error in either language fails the run
+This compiles Python and type-checks the audio manager, the inputs app, and
+the self-test with pyright in strict mode, type-checks and compiles the
+TypeScript controller, bundles it, runs Python and Node tests, checks the
+bundles, and performs an Ansible syntax check without contacting the Pi. A type error in either language fails the run
 before any test does, and so does a bundle that crossed a deployment boundary.
 The audio manager's source and tests are both held to strict pyright
 (`apps/audio-manager/pyrightconfig.json`, checked against Bookworm's Python
@@ -564,12 +583,14 @@ playground; it may only replace boundaries the controller already injects.
 run until interrupted. Never run either to validate a change — they never
 return.
 
-Commands such as `make provision`, `make check`, `make verify`, and `make doctor`
-contact or change the real Pis, and run against every unit in the inventory
-unless `LIMIT` names one (`make provision LIMIT=kitchen-amp`). Do not run them
-unless the user asks for remote deployment/verification and the targets are
-expected to be reachable. Provisioning can reboot a Pi when boot overlays
-change.
+Commands such as `make provision`, `make check`, `make verify`, `make doctor`,
+and `make e2e` contact or change the real Pis, and run against every unit in
+the inventory unless `LIMIT` names one (`make provision LIMIT=kitchen-amp`). Do
+not run them unless the user asks for remote deployment/verification and the
+targets are expected to be reachable. Provisioning can reboot a Pi when boot
+overlays change. `make e2e` is the hardware check (`docs/e2e.md`): it moves
+levels and plays sound on the amp, so it is run when the user asks for it,
+never to validate a local change.
 
 ## Hardware constraints
 

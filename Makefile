@@ -11,7 +11,7 @@ export ANSIBLE_CONFIG
 LIMIT ?=
 ANSIBLE_LIMIT := $(if $(LIMIT),--limit $(LIMIT),)
 
-.PHONY: help install build icons update-versions playground playground-check dev provision deploy-controller check test verify doctor
+.PHONY: help install build icons update-versions playground playground-check dev provision deploy-controller check test verify doctor e2e
 
 help:
 	@awk 'BEGIN {FS = ":.*## "; printf "Usage: make <target>\n\n"} /^[a-zA-Z_-]+:.*## / {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -81,14 +81,16 @@ test: build ## Run local source and Ansible checks without contacting the Pi
 	@# never installs them, but the playground always draws, so it pins all of
 	@# them as plain dependencies and both maps are compared against it.
 	@python3 -c 'import json,sys; m=json.load(open("apps/controller/package.json")); c={**m["dependencies"], **m["optionalDependencies"]}; p=json.load(open("tools/playground/package.json"))["dependencies"]; d=sorted(k for k,v in c.items() if p.get(k)!=v); sys.exit(f"tools/playground pins different versions than apps/controller: {d}" if d else 0)'
-	python3 -m compileall -q apps/audio-manager/src apps/audio-inputs/src libs/audio-common/src
+	python3 -m compileall -q apps/audio-manager/src apps/audio-inputs/src tools/e2e/selftest libs/audio-common/src
 	@# Strict pyright is the audio manager's type check; the daemon runs on
 	@# Bookworm's Python 3.11, so that is the version it checks against.
 	pnpm exec pyright --project apps/audio-manager
 	pnpm exec pyright --project apps/audio-inputs
+	pnpm exec pyright --project tools/e2e
 	python3 -m compileall -q ansible/roles/smartamp/files/smartamp_lva.py ansible/roles/smartamp/files/smartamp_audio_recovery.py
 	python3 -m unittest discover -s apps/audio-manager/test
 	python3 -m unittest discover -s apps/audio-inputs/test
+	python3 -m unittest discover -s tools/e2e/test
 	node --test $$(find apps/controller/dist/test -name '*.test.mjs' | sort)
 	@# The tests import the tsc modules; the Pi runs the bundle, so check that
 	@# artifact too. The entry can only be parsed - importing it would load
@@ -110,3 +112,13 @@ verify: test ## Run local checks, then inspect the configured Pi
 
 doctor: ## Run the diagnostic report on the Pi
 	ansible smartamp $(ANSIBLE_LIMIT) -b -a smartamp-doctor
+
+# The end-to-end run: the on-demand self-test on each Pi over SSH, then the
+# checks only this computer can make - playing into the USB-C sound card,
+# firing a Home Assistant event, announcing through the voice satellite, and
+# streaming to the Sendspin player. Needs HOME_ASSISTANT_TOKEN in the
+# environment for the Home Assistant parts and sox for the USB one; see
+# docs/e2e.md. Extra flags go in E2E_ARGS, e.g. E2E_ARGS="--restart --reboot".
+E2E_ARGS ?=
+e2e: ## Run the hardware self-test on the Pi and the checks driven from here
+	node tools/e2e/src/e2e.mjs $(if $(LIMIT),--limit $(LIMIT),) $(E2E_ARGS)

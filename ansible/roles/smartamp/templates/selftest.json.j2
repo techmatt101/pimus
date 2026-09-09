@@ -1,0 +1,69 @@
+{# What smartamp-selftest needs to know about this unit, from the same
+     inventory the daemons are configured from: the session paths, the sinks
+     and sources the mixer publishes, and which optional hardware is fitted,
+     so a feature the unit lacks is skipped by name rather than failing as
+     missing. No secrets: the suite never talks to Home Assistant itself. #}
+{% set selftest_services = ['smartamp-hifiberry', 'smartamp-audio-manager']
+   + (['smartamp-usb-audio-gadget'] if usb_audio_gadget_enabled else [])
+   + (['smartamp-audio-inputs'] if smartamp_audio_inputs_enabled | bool else [])
+   + (['smartamp-sendspin'] if sendspin_enabled else [])
+   + (['smartamp-voice-assistant'] if voice_assistant_enabled else []) %}
+{% set voice_ducking_enabled = (voice_assistant_enabled | bool) and (smartamp_voice_ducking_enabled | bool) %}
+{
+  "service_user": {{ smartamp_service_user | to_json }},
+  "uid": {{ smartamp_uid | int }},
+  "runtime_dir": "/run/user/{{ smartamp_uid }}",
+  "socket": "/run/user/{{ smartamp_uid }}/smartamp-audio.sock",
+  "status": "/run/user/{{ smartamp_uid }}/smartamp-audio-status.json",
+  "inputs_status": {{ ("/run/user/" ~ smartamp_uid ~ "/smartamp-audio-inputs-status.json") | to_json if smartamp_audio_inputs_enabled | bool else 'null' }},
+  "output_match": {{ smartamp_output_match | to_json }},
+  "music_sink": {{ smartamp_music_sink_name | to_json }},
+  "voice_sink": {{ smartamp_voice_sink_name | to_json }},
+  "duck_volume_percent": {{ smartamp_voice_duck_volume_percent | int }},
+  "idle_teardown": {{ (smartamp_idle_teardown_seconds | int > 0) | to_json }},
+  "ceiling": {
+    "card": {{ hifiberry_card_name | to_json }},
+    "control": "Digital",
+    "percent": {{ hifiberry_output_volume_percent | int }}
+  },
+{# The same source list audio.json carries, by the same conditions. #}
+  "sources": {
+    "sendspin": {"switchable": false}{% if smartamp_hifiberry_caps.aux_input | bool %},
+    "aux": {"switchable": true}{% endif %}{% if usb_audio_gadget_enabled | bool %},
+    "usb": {"switchable": true}{% endif %}
+
+  },
+  "voice": {
+    "enabled": {{ voice_assistant_enabled | bool | to_json }},
+    "input_name": {{ smartamp_voice_input_name | to_json }},
+    "capture_name": {{ smartamp_voice_capture_name | to_json if smartamp_voice_capture_channel is not none else 'null' }},
+    "ducking": {{ voice_ducking_enabled | to_json }}
+  },
+  "aec_reference": {{ smartamp_aec_reference_enabled | bool | to_json }},
+{# The array is looked for whenever something on this unit uses it. #}
+{% if voice_assistant_enabled or respeaker_led_enabled or smartamp_aec_reference_enabled %}
+  "respeaker": {
+    "label": {{ smartamp_respeaker_caps.label | to_json }},
+    "usb_id": {{ (smartamp_respeaker_caps.usb_vendor_id ~ ':' ~ smartamp_respeaker_caps.usb_product_id) | to_json }},
+    "host_control": {{ smartamp_respeaker_caps.host_control | bool | to_json }},
+    "led": {{ respeaker_led_enabled | bool | to_json }}
+  },
+{% else %}
+  "respeaker": null,
+{% endif %}
+{% if streamdeck_enabled | bool %}
+  "streamdeck": {"label": "Elgato Stream Deck+", "usb_id": "0fd9:0084"},
+{% else %}
+  "streamdeck": null,
+{% endif %}
+{# The port controls the controller writes in sleep, on a unit that cuts USB
+     power; the service account must be able to write every one. #}
+  "usb_ports": {{ (smartamp_board_caps.usb_port_disables if (streamdeck_enabled | bool and smartamp_sleep_usb_power_off | bool) else []) | to_json }},
+  "services": {{ selftest_services | to_json }},
+  "controller": {{ smartamp_controller_enabled | bool | to_json }},
+  "home_assistant": {{ (home_assistant_url | length > 0) | to_json }},
+{# The audible tier: a listening level, a few seconds of noise, and how far
+     the array's ASR output must rise over the quiet room. Overridable on the
+     command line; not inventory, because they describe the test, not the amp. #}
+  "acoustic": {"music_volume": 40, "noise_seconds": 5, "min_rise_db": 6}
+}

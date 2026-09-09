@@ -85,6 +85,7 @@ make deploy-controller LIMIT=office-amp,bedroom-amp
 | `make deploy-controller` | Rebuild and push **only** the controller to an already-provisioned Pi |
 | `make doctor` | Run the diagnostic report on the Pi |
 | `make verify` | Local checks, then inspect the configured Pi |
+| `make e2e` | Exercise a live amp end to end, from the Pi and from here — see [e2e](e2e.md) |
 | `make check` | Ansible dry run |
 | `make test` | Every local check, without contacting a Pi |
 | `make playground` / `make dev` | Run the controller here against fake hardware — see [playground](playground.md) |
@@ -96,5 +97,5 @@ inventory, copies the bundles, dependencies, and generated `controller.json`, an
 restarts `smartamp-controller` — without touching audio, voice, or boot
 configuration. Use the full `make provision` after changing anything else.
 
-Something wrong? [troubleshooting](troubleshooting.md), and `sudo smartamp-doctor`
-on the Pi.
+Something wrong? [troubleshooting](troubleshooting.md), `sudo smartamp-doctor`
+on the Pi for what is there, and `sudo smartamp-selftest` for what works.

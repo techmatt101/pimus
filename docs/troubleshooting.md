@@ -33,6 +33,11 @@ starts at "now" and misses startup.
 The other units are `smartamp-audio-manager`, `smartamp-voice-assistant`,
 `smartamp-sendspin`, `smartamp-audio-inputs`, and `smartamp-usb-audio-gadget`.
 
+Before reading logs, ask the amp what works: `sudo smartamp-doctor` reports
+what is present, and `sudo smartamp-selftest` (or `make e2e LIMIT=<unit>` from
+the control computer) drives every feature and names the first thing that does
+not behave — see [e2e](e2e.md). Both leave the amp as they found it.
+
 The controller is deployed as three bundles rather than one module per source
 file, so a raw stack trace would name a line in `index.mjs` and tell you nothing.
 Their source maps are deployed beside them and the unit runs Node with

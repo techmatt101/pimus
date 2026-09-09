@@ -1,0 +1,37 @@
+---
+# The on-demand self-test: one command that drives every feature this unit is
+# configured with - the mixer's socket, the buses, idle teardown, the inputs,
+# the devices, and, audibly, the speaker and the microphone array - and reports
+# what worked. It is the Pi half of tools/e2e - the one thing under tools/
+# that is deployed - because it is a test, not a service: nothing runs it but
+# "make e2e" from the control computer. It has no handlers to notify because
+# nothing long-running depends on it.
+- name: Install self-test suite
+  ansible.builtin.include_tasks: python_package.yml
+  vars:
+    python_package_source: "{{ smartamp_tools_dir }}/e2e/selftest"
+    python_package_dir: "{{ smartamp_app_dir }}/selftest/selftest"
+    python_package_handlers: []
+    python_package_entrypoint: __main__.py
+
+# What the suite knows about this unit, from inventory, so it never has to
+# guess which features to expect. Root-owned: it holds no secret, but the
+# service account never needs to change it.
+- name: Configure self-test suite
+  ansible.builtin.template:
+    src: selftest.json.j2
+    dest: "{{ smartamp_config_dir }}/selftest.json"
+    owner: root
+    group: root
+    mode: "0644"
+
+# A wrapper on the PATH, like smartamp-doctor. The suite restarts units and
+# reads the array's control endpoint, so it runs as root; everything that
+# touches PipeWire it re-runs as the service account itself.
+- name: Install self-test command
+  ansible.builtin.template:
+    src: smartamp-selftest.sh.j2
+    dest: /usr/local/bin/smartamp-selftest
+    owner: root
+    group: root
+    mode: "0755"

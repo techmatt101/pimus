@@ -62,7 +62,10 @@ export class NotificationCenter implements NotificationFeed {
 
     start(): void {
         if (this.#unlisten) return
-        this.#unlisten = this.#ha.listen(this.#eventType, (data) => this.post(data))
+        this.#unlisten = this.#ha.listen(this.#eventType, (data) => {
+            this.#logger.log(`${this.#eventType} "${text(data.message) || text(data.title)}"`)
+            this.post(data)
+        })
     }
 
     stop(): void {
