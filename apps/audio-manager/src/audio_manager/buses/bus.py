@@ -141,10 +141,7 @@ class PlaybackBus:
         if self.fresh:
             self.hold_silent()
             return
-        pending = self._fades.target(self.stream_index)
-        if pending == target:
-            return
-        if self.gain_applied != target or pending is not None:
+        if not self._at_or_fading_to(target):
             self._write_gain(target, fade_ms=0)
 
     def hold_silent(self) -> None:
@@ -174,6 +171,14 @@ class PlaybackBus:
         self._write_gain(self.gain_wanted, WAKE_FADE_MS)
         self.fresh = False
         LOG.info("Fading the %s bridge in to %s%%", self.prefix, self.gain_wanted)
+
+    def _at_or_fading_to(self, target: int) -> bool:
+        """Whether the bridge already holds the target, or a fade already in
+        flight is taking it there; either way there is nothing to write."""
+        if self.stream_index is None:
+            return False
+        pending = self._fades.target(self.stream_index)
+        return pending == target or (pending is None and self.gain_applied == target)
 
     def _write_gain(self, target: int, fade_ms: int) -> None:
         if self.stream_index is None:

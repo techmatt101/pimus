@@ -43,11 +43,7 @@ class MusicBus(PlaybackBus):
             self.hold_silent()
             self.ducked = ducked
             return
-        pending = self._fades.target(self.stream_index)
-        if self.ducked == ducked and (
-            (pending == target and target != 0)
-            or (pending is None and self.gain_applied == target)
-        ):
+        if self.ducked == ducked and self._at_or_fading_to(target):
             return
         # A duck transition fades; the music level moving just snaps the gain,
         # tracking the detent that moved it.
