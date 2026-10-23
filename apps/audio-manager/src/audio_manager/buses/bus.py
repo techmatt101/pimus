@@ -157,6 +157,16 @@ class PlaybackBus:
         ):
             self._write_gain(0, fade_ms=0)
 
+    def hold_until_settled(self, output_guarded: bool) -> None:
+        """Wait out a pass that left a bus unsettled. Behind a guarded output
+        every bridge is held silent and faded in once the guard lifts, so the
+        unmute is not a step into the music; a bridge already playing to an
+        open output is left alone, since cutting it would be the step."""
+        if self.stream_index is None or not (output_guarded or self.fresh):
+            return
+        self.hold_silent()
+        self.fresh = True
+
     def fade_in(self) -> None:
         """Bring a fresh bridge up to its level, once the output is unguarded."""
         if not self.fresh or self.stream_index is None or self.gain_wanted is None:

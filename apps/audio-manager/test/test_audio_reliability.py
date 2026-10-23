@@ -295,6 +295,22 @@ class RebuildSafetyTests(ManagerTestCase):
         self.finish_fades(self.manager)
         self.assertTrue(graph.volume_is(self.stream, 10))
 
+    def test_an_unsettled_voice_bus_leaves_music_playing_to_an_open_output(self) -> None:
+        self.manager.reconcile()
+        self.finish_fades(self.manager)
+        self.assertTrue(graph.volume_is(self.stream, 10))
+        # The voice bridge's stream is missing for a pass with nothing
+        # guarding the output: cutting the music would be the very step the
+        # wake fade exists to avoid.
+        self.manager.voice_bus.settled = False
+        self.calls.clear()
+        with mock.patch.object(self.manager, "_reconcile_graph"):
+            self.manager.reconcile()
+        self.assertFalse(self.sink["mute"])
+        self.assertTrue(graph.volume_is(self.stream, 10))
+        self.assertFalse(self.manager.music_bus.fresh)
+        self.assertNotIn("set-sink-input-volume", {call[1] for call in self.calls})
+
     def test_unpublished_bridge_keeps_the_guard_and_the_rest_of_the_pass(self) -> None:
         # The stream not being listed yet is not a failure: the pass completes,
         # publishes, and books a retry, with the output held muted meanwhile.

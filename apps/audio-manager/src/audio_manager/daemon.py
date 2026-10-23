@@ -259,8 +259,7 @@ class AudioManager:
         if not settled:
             self.schedule.retry(time.monotonic())
             for bus in (self.music_bus, self.voice_bus):
-                bus.hold_silent()
-                bus.fresh = bus.stream_index is not None
+                bus.hold_until_settled(self.output.guarded)
         self.output.settle(settled)
         # Only once the guard has lifted: a fresh bridge is silent while the
         # output unmutes, and the fade is what brings the music in.
