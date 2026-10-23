@@ -30,6 +30,10 @@ class Leases:
         return bool(self._duck)
 
     @property
+    def meter_requested(self) -> bool:
+        return bool(self._meter)
+
+    @property
     def meter_listeners(self) -> frozenset[socket.socket]:
         """The connections that asked for voice levels, and get them addressed."""
         return frozenset(self._meter)

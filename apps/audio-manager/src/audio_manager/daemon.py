@@ -211,7 +211,7 @@ class AudioManager:
         self._apply_or_retry("Audio ducking", self.apply_ducking)
 
     def apply_voice_meter(self) -> None:
-        self.voice_meter.request(bool(self.leases.meter_listeners))
+        self.voice_meter.request(self.leases.meter_requested)
         self.voice_meter.tick()
 
     def set_voice_volume(self, percent: float) -> None:
