@@ -63,8 +63,8 @@ export class NotificationCenter implements NotificationFeed {
     start(): void {
         if (this.#unlisten) return
         this.#unlisten = this.#ha.listen(this.#eventType, (data) => {
-            this.#logger.log(`${this.#eventType} "${text(data.message) || text(data.title)}"`)
-            this.post(data)
+            const queued = this.post(data)
+            if (queued) this.#logger.log(`${this.#eventType} "${queued}"`)
         })
     }
 
@@ -73,26 +73,27 @@ export class NotificationCenter implements NotificationFeed {
         this.#unlisten = null
     }
 
-    post(data: Record<string, unknown>): void {
-        const message = text(data.message) || text(data.title)
+    post(data: Record<string, unknown>): string | undefined {
+        const message = (text(data.message) || text(data.title)).slice(0, MAX_MESSAGE)
         if (!message) {
             this.#logger.log(`${this.#eventType} carried no message; ignored`)
-            return
+            return undefined
         }
         if (this.#pending.length >= MAX_QUEUED) {
             this.#logger.log(`${this.#eventType} queue is full; dropped "${message}"`)
-            return
+            return undefined
         }
         const seconds = Number(data.seconds)
         this.#pending.push({
             // With only one of title/message given, that text is the message and
             // the banner has no heading.
             title: text(data.message) ? text(data.title) : '',
-            message: message.slice(0, MAX_MESSAGE),
+            message,
             color: text(data.color) || DEFAULT_COLOR,
             milliseconds: (Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds, MAX_SECONDS) : DEFAULT_SECONDS) * 1000,
         })
         this.#onChange()
+        return message
     }
 
     // Retiring an expired banner and starting the next one's clock happen here,
