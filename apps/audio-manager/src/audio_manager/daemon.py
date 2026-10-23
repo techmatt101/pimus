@@ -82,10 +82,10 @@ class AudioManager:
 
         self.schedule = ReconcileSchedule(config.resync_seconds)
         # Everything the loop must wake for without an event: a fade step, a
-        # monitor restart, the meter starting once its monitor appears or
-        # stopping once its hold lapses, and the quiet spell that earns an
-        # idle teardown.
-        self._timed = (self.fades, self.graph_events, self.voice_meter, self.idle)
+        # monitor restart, and the meter starting once its monitor appears or
+        # stopping once its hold lapses. The quiet spell that earns an idle
+        # teardown is a booked pass instead (see reconcile).
+        self._timed = (self.fades, self.graph_events, self.voice_meter)
         self._last_broadcast = self.state_event()
 
     def stop(self, *_args: object) -> None:
@@ -253,6 +253,7 @@ class AudioManager:
         sink = self.output.prepare()
         self.ceiling.read()
         idle = self.idle.update(self._audio_active())
+        self._book_idle_teardown()
         self._reconcile_graph(sink, idle)
         settled = self.music_bus.settled and self.voice_bus.settled
         if not settled:
@@ -267,6 +268,15 @@ class AudioManager:
             self.music_bus.fade_in()
             self.voice_bus.fade_in()
         self._publish()
+
+    def _book_idle_teardown(self) -> None:
+        # Booked by the pass that measured it, not tested by the loop: a pass
+        # that fails before measuring the quiet spell again must fall back to
+        # the schedule's retry, not find the lapsed instant still due and
+        # reconcile on every wake.
+        remaining = self.idle.remaining()
+        if remaining is not None:
+            self.schedule.book(time.monotonic(), max(0.0, remaining))
 
     def _guard_output(self, sink_name: str) -> None:
         if sink_name in (
@@ -377,11 +387,7 @@ class AudioManager:
             key.data()
 
     def _reconcile_when_due(self) -> None:
-        now = time.monotonic()
-        # An idle spell lapsing is a pass wanted, not a tick: it is the pass
-        # that releases the bridges.
-        idle_deadline = self.idle.deadline()
-        if self.schedule.due(now) or (idle_deadline is not None and now >= idle_deadline):
+        if self.schedule.due(time.monotonic()):
             self.safe_reconcile()
 
     def _broadcast_changes(self) -> None:

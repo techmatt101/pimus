@@ -87,8 +87,10 @@ class IdleTracker:
         state without waiting for it, not a second reason to be idle."""
         self._last_active = self._clock() - self.timeout_seconds
 
-    def deadline(self) -> float | None:
-        """When the bridges fall due for release, if they still are loaded."""
+    def remaining(self) -> float | None:
+        """Seconds until the bridges fall due for release, if they still are
+        loaded. Measured on this tracker's own clock, so a caller books the
+        pass that releases them rather than comparing instants."""
         if not self.enabled or self.idle:
             return None
-        return self._last_active + self.timeout_seconds
+        return self._last_active + self.timeout_seconds - self._clock()

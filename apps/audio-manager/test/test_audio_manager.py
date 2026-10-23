@@ -877,7 +877,7 @@ class IdleTeardownTests(ManagerTestCase):
         for role in ("_music_bridge", "_aec"):
             self.assertNotIn(role, manager.modules)
         self.assertIn("_music_sink", manager.modules)
-        self.assertIsNone(manager.idle.deadline())
+        self.assertIsNone(manager.idle.remaining())
         self.assertNotIn(
             "set-sink-mute", {arg for args in commands[before_teardown:] for arg in args}
         )
@@ -936,11 +936,36 @@ class IdleTeardownTests(ManagerTestCase):
         disabled.commands.apply(mock.Mock(), {"command": "force-idle"})
         self.assertFalse(disabled.idle.update(False))
 
+    def test_a_lapsed_quiet_spell_books_one_pass_and_a_failed_one_waits_for_the_retry(
+        self,
+    ) -> None:
+        manager = self.make_manager({"idle_teardown_seconds": 60})
+        clock = {"now": 0.0}
+        manager.idle = IdleTracker(60, clock=lambda: clock["now"])
+        with self._patched_graph({}, fake_run), mock.patch(
+            "audio_manager.daemon.time.monotonic", return_value=100.0
+        ), mock.patch("smartamp_audio.status.write"):
+            manager.safe_reconcile()
+        self.assertEqual(manager.schedule.booked, 160.0)
+
+        # PipeWire goes away as the spell lapses: the pass fails before it can
+        # measure the spell again, and the loop must wait out the retry rather
+        # than find the lapsed instant still due on every wake.
+        clock["now"] = 61.0
+        with mock.patch.object(
+            manager.output, "prepare", side_effect=subprocess.SubprocessError("down")
+        ), mock.patch("audio_manager.daemon.time.monotonic", return_value=161.0), self.assertLogs(
+            "audio_manager.daemon", level="WARNING"
+        ):
+            self.assertFalse(manager.safe_reconcile())
+        self.assertFalse(manager.schedule.due(161.5))
+        self.assertTrue(manager.schedule.due(162.0))
+
     def test_teardown_stays_off_by_default(self) -> None:
         manager = self.make_manager({})
         self.assertFalse(manager.idle.enabled)
         self.assertFalse(manager.idle.update(False))
-        self.assertIsNone(manager.idle.deadline())
+        self.assertIsNone(manager.idle.remaining())
 
 
 class VolumeTests(ManagerTestCase):
