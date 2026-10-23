@@ -111,7 +111,7 @@ class AudioManager:
                 name: SourceConfig(self.mixer.trims[name], self.mixer.enabled.get(name))
                 for name in self.config.sources
             },
-        ).save(self.state_path)
+        ).save(self.state_path, SavedState.defaults(self.config))
 
     def _run(self) -> int:
         self.wait_for_pulse()

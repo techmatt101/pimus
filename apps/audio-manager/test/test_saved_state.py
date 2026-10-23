@@ -44,13 +44,22 @@ class SavedStateTests(ManagerTestCase):
         with mock.patch.object(manager, "_run", return_value=0):
             self.assertEqual(manager.execute(), 0)
         self.assertEqual(json.loads(self.state_path.read_text()), {
-            "version": 1,
+            "version": 2,
             "music_volume": 12,
             "music_muted": True,
             "voice_volume": 18,
             "sources": {
                 "aux": {"trim": 45, "enabled": False},
                 "sendspin": {"trim": 100},
+            },
+            "defaults": {
+                "music_volume": 30,
+                "music_muted": False,
+                "voice_volume": 25,
+                "sources": {
+                    "aux": {"trim": 80, "enabled": True},
+                    "sendspin": {"trim": 100},
+                },
             },
         })
         restored = self.make_manager(self.config, state_path=self.state_path)
@@ -82,6 +91,8 @@ class SavedStateTests(ManagerTestCase):
     def test_missing_or_invalid_state_uses_configuration_defaults(self) -> None:
         cases = [
             None, "{", "[]", '{"version": 2}',
+            json.dumps({**self._saved_document(), "version": 1}),
+            json.dumps({k: v for k, v in self._saved_document().items() if k != "defaults"}),
             json.dumps({**self._saved_document(), "music_volume": 101}),
             json.dumps({**self._saved_document(), "music_volume": True}),
             json.dumps({**self._saved_document(), "music_muted": "false"}),
@@ -110,6 +121,19 @@ class SavedStateTests(ManagerTestCase):
         manager = self.make_manager(self.config, state_path=self.state_path)
         self.assertEqual(manager.mixer.trims, {"aux": 45, "usb": 60})
         self.assertEqual(manager.mixer.enabled, {"usb": False})
+
+    def test_a_default_moved_since_the_save_wins_over_the_saved_setting(self) -> None:
+        # A provision moves two defaults and restarts the daemon, whose exit
+        # saved the levels as they were: those two take the new defaults, and
+        # what the deck moved under unchanged defaults comes back.
+        self.state_path.write_text(json.dumps(self._saved_document()))
+        self.config["startup_volume_percent"] = 40
+        self.config["sources"]["aux"]["volume_percent"] = 70
+        manager = self.make_manager(self.config, state_path=self.state_path)
+        self.assertEqual((manager.music.volume, manager.music.muted), (40, True))
+        self.assertEqual(manager.voice_bus.volume, 18)
+        self.assertEqual(manager.mixer.trims, {"aux": 70, "sendspin": 100})
+        self.assertFalse(manager.mixer.enabled["aux"])
 
     def test_failed_save_preserves_the_old_file_and_still_closes_resources(self) -> None:
         previous = self._saved_document()
@@ -166,6 +190,10 @@ class SavedStateTests(ManagerTestCase):
     @staticmethod
     def _saved_document() -> dict[str, Any]:
         return {
-            "version": 1, "music_volume": 12, "music_muted": True, "voice_volume": 18,
+            "version": 2, "music_volume": 12, "music_muted": True, "voice_volume": 18,
             "sources": {"aux": {"trim": 45, "enabled": False}, "sendspin": {"trim": 100}},
+            "defaults": {
+                "music_volume": 30, "music_muted": False, "voice_volume": 25,
+                "sources": {"aux": {"trim": 80, "enabled": True}, "sendspin": {"trim": 100}},
+            },
         }

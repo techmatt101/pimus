@@ -213,9 +213,11 @@ atomically saves music volume and mute, voice volume, and source trims and
 toggles to `/run/user/<uid>/smartamp-audio-state.json`. It restores those settings
 before its first graph reconciliation, so playback never waits for the controller
 to restore a mute after a clean restart. The controller also re-asserts its cache
-on reconnect, including choices made while disconnected. Missing or invalid state
-uses the inventory defaults; an abrupt exit leaves the last clean snapshot, and
-a reboot clears the runtime file. Ducking, metering, idle state, graph identities,
+on reconnect, including choices made while disconnected. Each setting is saved
+beside the inventory default it was saved under, and one whose default has moved
+since takes the new default, so the restart a provision causes never undoes the
+provision. Missing or invalid state uses the inventory defaults; an abrupt exit
+leaves the last clean snapshot, and a reboot clears the runtime file. Ducking, metering, idle state, graph identities,
 and the hardware ceiling are not saved. Recreating a music bus seeds its volume
 register from the manager's current level and mute instead of adopting the new
 sink's defaults.

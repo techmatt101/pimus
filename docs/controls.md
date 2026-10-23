@@ -95,7 +95,8 @@ on the key is the source's name upper-cased; `SOURCE_FACES` in `layout.mts`
 gives the ones it knows an icon and a colour, and any other gets a plain face.
 Before the audio manager has answered it reads `TRIM` and `?`. Trims sit at
 100% unless inventory says otherwise. A trim moved here is saved on the audio
-manager's clean exit and restored before playback on a service restart. Reboot returns to
+manager's clean exit and restored before playback on a service restart, unless
+inventory has moved that trim's default since. Reboot returns to
 `smartamp_sendspin_volume_percent`, `smartamp_aux_volume_percent`, and
 `smartamp_usb_volume_percent`, so settle on a number by ear and then bring it
 back to inventory, exactly as the `BRIGHTNESS` key's `brightLux` works.

@@ -93,7 +93,8 @@ balance the sources against each other and the bus's level is what they all foll
 all of them are dipped when the assistant speaks. The manager publishes each source with its trim, and the deck's
 [LEVELS page](controls.md#the-levels-page) shows one key per source, which is the way to find a balance by ear; the
 audio manager saves that on clean exit for service restarts; reboot restores inventory,
-so bring the number that works back to inventory for a permanent change.
+so bring the number that works back to inventory for a permanent change. Provisioning a changed trim takes effect on
+the restart it causes, because a saved setting whose inventory default has moved is dropped.
 
 Music Assistant's volume for this player is the music level, in both directions. The Sendspin client runs with
 `--hardware-volume`, which puts it on the PulseAudio volume backend: it sets, reads, and subscribes to its output
@@ -264,7 +265,10 @@ deployed service. It saves requested music volume and mute, voice volume, and so
 trims and toggles only when exiting normally (including SIGTERM and SIGINT), using
 an atomic replacement. There are no settings writes on volume changes or graph
 reconciliation. A crash or forced kill keeps the previous clean snapshot, if any;
-a missing, unreadable, or invalid file falls back to inventory defaults. The file
+a missing, unreadable, or invalid file falls back to inventory defaults. Each
+setting is saved beside the inventory default it was saved under; one whose default
+has changed since takes the new default and the rest are restored, so a provision
+that moves a level is not undone by the restart it causes. The file
 is in RAM and disappears on reboot. Hardware ceiling and temporary voice-session
 requests are not saved. New sources use their configured defaults and removed
 sources are ignored. The separate status file remains a live graph report.
