@@ -169,7 +169,9 @@ class SourceMixer:
         previous = self._applied.pop(index, None)
         born_silent = previous is None and graph.volume_is(stream, 0)
         fading = (fade and previous is not None) or born_silent
-        start = previous if previous is not None else (0 if born_silent else level)
+        # A fade starts from the level last written, or from the silence the
+        # loopback was born at; a snap ignores where it starts.
+        start = 0 if previous is None else previous
         self._fades.set(
             index, start, level, TOGGLE_FADE_MS if fading else 0,
             lambda applied: self._record_gain(index, applied),
