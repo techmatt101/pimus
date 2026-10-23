@@ -1,6 +1,6 @@
 import {isEntityOn, numericAttribute} from '../home-assistant/entity.mjs'
 import {type Binding, voiceBinding} from './bindings.mjs'
-import type {Dial} from './dial.mjs'
+import {AUDIO_WAITING, type Dial} from './dial.mjs'
 import {DynamicDial} from './dials/dynamic-dial.mjs'
 import {MediaDial} from './dials/media-dial.mjs'
 import {PageDial} from './dials/page-dial.mjs'
@@ -25,7 +25,7 @@ import {SourceTrimTile} from './tiles/source-trim-tile.mjs'
 import type {SourceFaces} from './source-face.mjs'
 import {TemperatureTile} from './tiles/temperature-tile.mjs'
 import {TimerTile} from './tiles/timer-tile.mjs'
-import type {Tile} from './tile.mjs'
+import {AUDIO_WAITING_CAPTION, type Tile} from './tile.mjs'
 import {VoiceTile} from './tiles/voice-tile.mjs'
 import type {ControlModel} from '../state.mjs'
 import {
@@ -236,27 +236,36 @@ export function createLayout(services: ControllerServices): StreamDeckLayout {
         ],
     ]
 
+    const audioLevel = (read: () => number | undefined) => () => (model.audio.connected ? read() : undefined)
+    const audioCaption = (caption: () => string) => () => (model.audio.connected ? caption() : AUDIO_WAITING_CAPTION)
+    const audioUnknown = (): string => (model.audio.connected ? '?' : AUDIO_WAITING)
+
     const levelsGrid: PageGrid = [
         [
             new LevelTile({
                 ...LEVELS.ceiling,
-                read: () => model.audio.ampCeiling,
+                read: audioLevel(() => model.audio.ampCeiling),
                 apply: (percent) => audio.setAmpCeiling(percent),
                 floor: AMP_CEILING_FLOOR,
+                caption: audioCaption(() => LEVELS.ceiling.label),
+                unknown: audioUnknown,
             }, dynamic),
             new LevelTile({
                 ...LEVELS.music,
-                read: () => model.audio.musicVolume,
+                read: audioLevel(() => model.audio.musicVolume),
                 apply: (percent) => audio.setMusicVolume(percent),
                 // The mute is a gain beside the level, so the level itself
                 // still reads where the dial left it while everything is
                 // silent; say which of the two is showing.
-                caption: () => (model.audio.volMuted === true ? 'MUSIC MUTED' : LEVELS.music.label),
+                caption: audioCaption(() => (model.audio.volMuted === true ? 'MUSIC MUTED' : LEVELS.music.label)),
+                unknown: audioUnknown,
             }, dynamic),
             new LevelTile({
                 ...LEVELS.voice,
-                read: () => model.audio.voiceVolume,
+                read: audioLevel(() => model.audio.voiceVolume),
                 apply: (percent) => audio.setVoiceVolume(percent),
+                caption: audioCaption(() => LEVELS.voice.label),
+                unknown: audioUnknown,
             }, dynamic),
             null,
         ],

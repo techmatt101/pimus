@@ -3,7 +3,8 @@ import {DynamicDial} from '../dials/dynamic-dial.mjs'
 import {LevelDial} from '../level-dial.mjs'
 import {faceOf, labelOf, type SourceFaces} from '../source-face.mjs'
 import type {Surface} from '../surface.mjs'
-import {drawDots, type Tile, type TileHost} from '../tile.mjs'
+import {AUDIO_WAITING} from '../dial.mjs'
+import {AUDIO_WAITING_CAPTION, drawDots, type Tile, type TileHost} from '../tile.mjs'
 import {drawLevelFace} from './level-tile.mjs'
 import type {ControlModel} from '../../state.mjs'
 import type {AudioControls} from '../../types.mjs'
@@ -40,6 +41,7 @@ export class SourceTrimTile implements Tile {
                 if (name !== undefined) audio.setSourceTrim(name, percent)
             },
             onConfirm: () => this.#armed.release(),
+            unknown: () => (this.#model.audio.connected ? '?' : AUDIO_WAITING),
         })
         this.#armed = new ArmedControl(dial, level, () => this.#next())
     }
@@ -79,7 +81,8 @@ export class SourceTrimTile implements Tile {
     }
 
     #names(): string[] {
-        return Object.keys(this.#model.audio.sources)
+        const {audio} = this.#model
+        return audio.connected ? Object.keys(audio.sources) : []
     }
 
     #name(): string | undefined {
@@ -89,6 +92,7 @@ export class SourceTrimTile implements Tile {
 
     #label(): string {
         const name = this.#name()
+        if (!this.#model.audio.connected) return AUDIO_WAITING_CAPTION
         return name === undefined ? WAITING_LABEL : labelOf(this.#faces, name)
     }
 

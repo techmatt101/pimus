@@ -30,6 +30,9 @@ const audio = new AudioClient({
     socketPath: config.audio_socket,
     onStateChange: () => {
         state.volMuted = audio.state.volMuted === true
+        // The deck refuses audio changes while the manager is away, so the
+        // status icon has to say so now, not at the next five-second sample.
+        if (audio.connected !== state.health.audio) health.sample()
         model.notify()
     },
 })

@@ -212,8 +212,10 @@ a fast turn never queues a detent behind the last. On clean exit the manager
 atomically saves music volume and mute, voice volume, and source trims and
 toggles to `/run/user/<uid>/smartamp-audio-state.json`. It restores those settings
 before its first graph reconciliation, so playback never waits for the controller
-to restore a mute after a clean restart. The controller also re-asserts its cache
-on reconnect, including choices made while disconnected. Each setting is saved
+to restore a mute after a clean restart. While the socket is down the
+controller refuses every audio change instead of queuing it, and the deck says
+it is waiting; on reconnect it adopts the manager's state rather than
+re-asserting its cache. Each setting is saved
 beside the inventory default it was saved under, and one whose default has moved
 since takes the new default, so the restart a provision causes never undoes the
 provision. Missing or invalid state uses the inventory defaults; an abrupt exit

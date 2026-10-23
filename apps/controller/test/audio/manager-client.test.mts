@@ -71,15 +71,15 @@ test('route toggles travel over the audio manager socket and survive reconnects'
     await waitFor(() => received.length >= 2)
     assert.deepEqual(JSON.parse(received[1] ?? ''), {command: 'set-source-state', name: 'usb', state: 'on'})
 
-    // After a manager restart the client re-asserts its cached toggles, one
-    // route at a time and as absolute states.
+    // A restarted manager restores its own levels, under any default a
+    // provision has moved, so the client adopts them rather than its cache.
     const changesBeforeDrop = changes
     connections[0]?.destroy()
-    await waitFor(() => received.length >= 4)
-    assert.deepEqual(received.slice(2, 4).map((line) => JSON.parse(line)), [
-        {command: 'set-source-state', name: 'aux', state: 'on'},
-        {command: 'set-source-state', name: 'usb', state: 'on'},
-    ])
+    await waitFor(() => received.length >= 3)
+    assert.deepEqual(JSON.parse(received[2] ?? ''), {command: 'get-state'})
+    connections[1]?.write(`${JSON.stringify({event: 'state', sources: {aux: {enabled: false}, usb: {enabled: true}}})}\n`)
+    await waitFor(() => client.state.sources.aux?.enabled === false)
+    assert.equal(received.length, 3)
     assert.ok(changes > changesBeforeDrop)
 })
 
@@ -105,7 +105,7 @@ test('toggles before the first state sync defer to the manager', () => {
         name: 'aux',
         state: 'toggle',
     })
-    assert.deepEqual(client.state, {sources: {}, routesKnown: false})
+    assert.deepEqual(client.state, {sources: {}, routesKnown: false, connected: true})
 
     // Once synced, toggles resolve locally and travel as absolute states.
     fake.emit('data', '{"event":"state","sources":{"aux":{"enabled":true}}}\n')
@@ -115,7 +115,7 @@ test('toggles before the first state sync defer to the manager', () => {
         name: 'aux',
         state: 'off',
     })
-    assert.deepEqual(client.state, {sources: {aux: {enabled: false}}, routesKnown: true})
+    assert.deepEqual(client.state, {sources: {aux: {enabled: false}}, routesKnown: true, connected: true})
     client.close()
 })
 
@@ -143,8 +143,8 @@ test('the manager\'s route list says which routes this unit has at all', () => {
     assert.equal(client.state.routesKnown, true)
     assert.equal('aux' in client.state.sources, false)
 
-    // A manager restart re-asserts the cache rather than re-reading it, so what
-    // this unit has stays known across the drop.
+    // What this unit has stays known across a drop, until the manager answers
+    // the reconnect's get-state.
     fake.emit('data', '{"event":"state","sources":{"usb":{"enabled":false,"available":true}}}\n')
     assert.equal(client.state.sources.usb?.available, true)
     fake.emit('close')
@@ -181,7 +181,7 @@ test('the volume mute travels as an absolute state and follows the manager', () 
     client.close()
 })
 
-test('voice volume updates optimistically and re-asserts after a reconnect', async () => {
+test('levels update optimistically, are refused while disconnected, and are adopted after a reconnect', async () => {
     const sockets: FakeSocket[] = []
     const client = new AudioClient({
         socketPath: '/nowhere/audio.sock',
@@ -241,19 +241,27 @@ test('voice volume updates optimistically and re-asserts after a reconnect', asy
     assert.deepEqual(client.state.sources, {aux: {trim: 80, enabled: false}})
     assert.deepEqual(JSON.parse(first.written.at(-1) ?? ''), {command: 'set-source-trim', name: 'aux', percent: 80})
 
-    // Re-assert cached levels alongside route toggles, including choices made
-    // while disconnected that the manager's snapshot does not contain.
+    // While the manager is away a change is refused, not queued: the cache
+    // keeps the last level heard, so the deck never shows one nothing applied.
     first.emit('close')
+    assert.equal(client.state.connected, false)
+    client.setSourceState('aux', 'on')
+    client.setMusicVolume(40)
+    client.setSourceTrim('aux', 20)
+    assert.equal(client.state.musicVolume, 55)
+    assert.deepEqual(client.state.sources, {aux: {trim: 80, enabled: false}})
+
+    // The restarted manager restores its own levels, under any default a
+    // provision has moved, so a reconnect asks for them and adopts them.
     await new Promise((resolve) => setTimeout(resolve, 5))
     const second = sockets[1]
     assert.ok(second)
     second.emit('connect')
-    assert.deepEqual(second.written.map((line) => JSON.parse(line)), [
-        {command: 'set-source-state', name: 'aux', state: 'off'},
-        {command: 'set-voice-volume', percent: 100},
-        {command: 'set-music-volume', percent: 55},
-        {command: 'set-source-trim', name: 'aux', percent: 80},
-    ])
+    assert.deepEqual(second.written.map((line) => JSON.parse(line)), [{command: 'get-state'}])
+    second.emit('data', '{"event":"state","sources":{"aux":{"trim":70,"enabled":true}},"voice_bus":{"volume":60},"music_bus":{"volume":40}}\n')
+    assert.equal(client.state.voiceVolume, 60)
+    assert.equal(client.state.musicVolume, 40)
+    assert.deepEqual(client.state.sources, {aux: {trim: 70, enabled: true}})
     client.close()
 })
 
@@ -382,6 +390,6 @@ test('malformed audio manager events are ignored', () => {
     client.connect()
     fake.emit('connect')
     fake.emit('data', 'garbage\n{"event":"state","sources":{"aux":{"enabled":true}}}\n{"event":"state","sources":null}\n')
-    assert.deepEqual(client.state, {sources: {aux: {enabled: true}}, routesKnown: true})
+    assert.deepEqual(client.state, {sources: {aux: {enabled: true}}, routesKnown: true, connected: true})
     client.close()
 })

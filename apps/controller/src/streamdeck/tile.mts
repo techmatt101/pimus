@@ -12,6 +12,9 @@ const CAPTION_WIDTH = KEY_SIZE - 8
 /** The centre of the area above the caption, where a tile's subject goes. */
 export const FACE_CENTER = 44
 
+/** The caption of a key that controls the audio manager while its socket is down. */
+export const AUDIO_WAITING_CAPTION = 'WAITING'
+
 export interface TileHost {
     /** Repaint just this tile's key face, outside the shared render schedule. */
     invalidate(): void

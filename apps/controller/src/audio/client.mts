@@ -45,13 +45,13 @@ export interface AudioClientOptions {
 
 /**
  * Mirrors one audio service's state over its Unix control socket. The
- * cache updates optimistically so the Stream Deck reacts instantly and keeps
- * working while the manager restarts; reconnecting re-asserts the cached
- * toggles so user choices survive a manager restart within a boot.
+ * cache updates optimistically so the Stream Deck reacts instantly, and keeps
+ * its last reading while the manager restarts. A change asked for while
+ * disconnected is refused rather than queued, so the deck never shows a level
+ * nothing applied; the manager restores its own levels, which a reconnect adopts.
  */
 export class AudioClient {
-    state: AudioState = {sources: {}, routesKnown: false}
-    connected = false
+    state: AudioState = {sources: {}, routesKnown: false, connected: false}
     /** The metered voice-playback level, 0..1, and zero unless metering is on. */
     voiceLevel = 0
 
@@ -97,27 +97,16 @@ export class AudioClient {
         this.#socket = socket
         this.#buffer = ''
         socket.on('connect', () => {
-            this.connected = true
+            this.state = {...this.state, connected: true}
             this.#lastErrorMessage = null
             this.#flights.clear()
-            // The manager restores its clean-exit snapshot before playback.
-            // Re-assert our cache too, including choices made while disconnected;
-            // with no cache yet, adopt what the manager has.
-            if (this.state.routesKnown) {
-                for (const [name, source] of Object.entries(this.state.sources)) {
-                    if (source?.enabled !== undefined) {
-                        this.#write({command: 'set-source-state', name, state: source.enabled ? 'on' : 'off'})
-                    }
-                }
-                if (this.state.voiceVolume !== undefined) this.setVoiceVolume(this.state.voiceVolume)
-                if (this.state.musicVolume !== undefined) this.setMusicVolume(this.state.musicVolume)
-                if (this.state.volMuted !== undefined) this.setMusicMute(this.state.volMuted)
-                for (const [name, source] of Object.entries(this.state.sources)) {
-                    if (source?.trim !== undefined) this.setSourceTrim(name, source.trim)
-                }
-            } else {
-                this.#write({command: 'get-state'})
-            }
+            this.#pendingMusic = null
+            this.#pendingVoice = null
+            this.#pendingCeiling = null
+            this.#pendingTrims.clear()
+            // The manager restores its clean-exit snapshot, under any default a
+            // provision has since moved, so its state wins over this cache.
+            this.#write({command: 'get-state'})
             // The manager ties a duck request, and a meter request, to the
             // connection that made it, so a reconnect during a conversation has
             // to ask again.
@@ -138,7 +127,7 @@ export class AudioClient {
             if (this.#socket !== socket) return
             this.#socket = null
             const wasConnected = this.connected
-            this.connected = false
+            this.state = {...this.state, connected: false}
             this.voiceLevel = 0
             if (wasConnected) this.#onStateChange()
             if (this.#closed) return
@@ -156,6 +145,7 @@ export class AudioClient {
      * for the manager to resolve against its own live state.
      */
     setSourceState(name: string, command: string): void {
+        if (!this.connected) return
         if (!this.state.routesKnown) {
             this.#write({command: 'set-source-state', name, state: command})
             return
@@ -170,6 +160,7 @@ export class AudioClient {
     }
 
     setVoiceVolume(percent: number): void {
+        if (!this.connected) return
         const level = Math.round(Math.max(0, Math.min(100, percent)))
         if (this.state.voiceVolume !== level) {
             this.state = {...this.state, voiceVolume: level}
@@ -181,6 +172,7 @@ export class AudioClient {
 
     /** Forwards the resolved absolute state, so a replayed message cannot invert a toggle. */
     setMusicMute(muted: boolean): void {
+        if (!this.connected) return
         if (this.state.volMuted !== muted) {
             this.state = {...this.state, volMuted: muted}
             this.#onStateChange()
@@ -189,6 +181,7 @@ export class AudioClient {
     }
 
     setMusicVolume(percent: number): void {
+        if (!this.connected) return
         const level = Math.round(Math.max(0, Math.min(100, percent)))
         if (this.state.musicVolume !== level) {
             this.state = {...this.state, musicVolume: level}
@@ -200,10 +193,10 @@ export class AudioClient {
 
     /**
      * Moves the hardware ceiling under every gain. The card keeps it across a
-     * manager restart, and the next boot puts the inventory value back, so it
-     * is never re-asserted from here.
+     * manager restart, and the next boot puts the inventory value back.
      */
     setAmpCeiling(percent: number): void {
+        if (!this.connected) return
         const level = Math.round(Math.max(AMP_CEILING_FLOOR, Math.min(100, percent)))
         if (this.state.ampCeiling !== level) {
             this.state = {...this.state, ampCeiling: level}
@@ -213,12 +206,9 @@ export class AudioClient {
         this.#writeLevel('ceiling', {command: 'set-output-ceiling', percent: level})
     }
 
-    /**
-     * Balances one input against the others, as a share of the music level.
-     * Held only in the manager's memory, so a restart there comes back to the
-     * configured trim and this cache re-asserts what was set since.
-     */
+    /** Balances one input against the others, as a share of the music level. */
     setSourceTrim(name: string, percent: number): void {
+        if (!this.connected) return
         const level = Math.round(Math.max(0, Math.min(100, percent)))
         const source = this.state.sources[name]
         if (source?.trim !== level) {
@@ -250,6 +240,10 @@ export class AudioClient {
         // syllable measured.
         if (!active) this.voiceLevel = 0
         this.#write({command: 'set-voice-meter', active})
+    }
+
+    get connected(): boolean {
+        return this.state.connected
     }
 
     close(): void {
@@ -353,6 +347,7 @@ export class AudioClient {
                 this.state = {
                     sources: this.#settleSources(sources),
                     routesKnown: true,
+                    connected: this.connected,
                     ...(music.level !== undefined ? {musicVolume: music.level} : {}),
                     ...(voice.level !== undefined ? {voiceVolume: voice.level} : {}),
                     ...(typeof musicBus?.muted === 'boolean' ? {volMuted: musicBus.muted} : {}),

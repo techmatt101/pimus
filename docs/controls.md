@@ -93,7 +93,8 @@ showing; while armed, press the key again to step to the next source (dots
 along the top say which of how many), and press the knob to finish. The name
 on the key is the source's name upper-cased; `SOURCE_FACES` in `layout.mts`
 gives the ones it knows an icon and a colour, and any other gets a plain face.
-Before the audio manager has answered it reads `TRIM` and `?`. Trims sit at
+Before the audio manager has answered it reads `TRIM` and `?`, and while the
+manager is unreachable it reads `WAITING` and cannot be armed. Trims sit at
 100% unless inventory says otherwise. A trim moved here is saved on the audio
 manager's clean exit and restored before playback on a service restart, unless
 inventory has moved that trim's default since. Reboot returns to
@@ -131,7 +132,7 @@ central dispatcher:
 | `MediaTile`        | Play/pause. Draws the play or pause glyph from the playback state, and the glyph breathes while playing.                                                                                                                                                                                                                                                       |
 | `VoiceTile`        | Start Assist, or cancel the pipeline already running. The face follows the pipeline state with the same colours as the ReSpeaker ring: cyan expanding rings while listening, a cyan orbiting spinner reading HEARD YOU while the request is being transcribed, a purple orbiting spinner while thinking, a white pulse while speaking, a red pulse on a pipeline error, and a dimmed OFFLINE face while LVA is unreachable. A ringing timer belongs to `TimerTile`, not this key.                                                                                                                                                                                                                                                                       |
 | `BrightnessTile`   | The panel's own level, and what decides it (see [auto brightness](#auto-brightness)). It reads out the percent the panel is at, captioned `AUTO` while the room's light level is driving it. Press to arm the dynamic dial: turning it tunes `brightLux` — the lux this room counts as fully lit — and the panel answers each notch at once. A second press, key or knob, switches the following off; the caption reads `MANUAL`, the face dims, and the same dial now steps the panel itself in 5% notches, no lower than 5% so the deck never goes dark with no way back. Press again to hand it back to the sensor. A unit with no illuminance sensor configured is manual only. |
-| `LevelTile`        | One gain on the amp's path, as a percentage over a bar. Press to arm, turn the dynamic dial to step it live in 5% notches — clamped at 0 and 100, never wrapping — press again to finish. Shows the audio manager's reported level, `?` while the manager is unreachable. Given no way to apply a change it is a readout instead: the same face in slate, and a press that does nothing, so a level the amp only reports never looks like one that failed to move. It is the `VOICE VOL` key on SETTINGS and the top row of [LEVELS](#the-levels-page). |
+| `LevelTile`        | One gain on the amp's path, as a percentage over a bar. Press to arm, turn the dynamic dial to step it live in 5% notches — clamped at 0 and 100, never wrapping — press again to finish. Shows the audio manager's reported level. While the manager is unreachable it captions itself `WAITING`, reads `?`, and the dial reads `WAITING FOR AUDIO` and refuses to move. Given no way to apply a change it is a readout instead: the same face in slate, and a press that does nothing, so a level the amp only reports never looks like one that failed to move. It is the `VOICE VOL` key on SETTINGS and the top row of [LEVELS](#the-levels-page). |
 | `SourceTrimTile`   | The same face and dial for every input's trim, walking the list of sources the audio services publish: press to arm, press again to step to the next source, press the knob to finish. Dots along the top say which of how many. The `SOURCE TRIM` key on [LEVELS](#the-levels-page). |
 | `SourceRouteTile`  | Every switchable input on one key, walking the routes in that same list: press to arm, turn the dial to choose, press the key to switch the route showing, press the knob to finish. Green with ` ON` while on; dark and inert on a unit with nothing to switch. The `ROUTE` key on SETTINGS (see [audio routes](#audio-routes--type-audio-with-a-source)). |
 | `PlaylistTile`     | Picks and plays one of a short list of playlists. Press to arm (the key glows and claims the dynamic dial), turn the dynamic dial to choose, press again — the key or the knob — to confirm. A single playlist is just press-then-confirm. The armed state releases itself after 15s, or when any other dial or key is touched — that first touch only cancels the arm and does nothing else.        |
@@ -314,9 +315,9 @@ press to arm the dynamic dial, turn it to choose a route (dots along the top
 say which of how many), press the key to switch the one showing, and press
 the knob to finish. The key wears the route's face — `AUX` on cable purple,
 `USB` on blue — turning green with the caption gaining ` ON` while the route
-is on. A unit with nothing to switch, or one whose audio manager has not yet
-answered, draws it dark and inert, so a manager that is merely unreachable
-never looks like a route that failed.
+is on. A unit with nothing to switch draws it dark and inert. While the audio
+manager is unreachable it is dark and inert too, captioned `WAITING`, so a
+manager that is merely restarting never looks like a route that failed.
 
 A fixed key still works for a route you want on its own:
 
@@ -446,7 +447,7 @@ the content of that face:
 | Dial          | What it is                                                                                                                                           |
 |---------------|------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `ActionDial`  | The default: a fixed name, up to three bindings, and a readout it is told. Also how a knob is held open — bound to nothing and saying so.            |
-| `VolumeDial`  | The music level, read from the audio manager's reported state (`?` while it is unreachable). `MUTED` is its own reading, and an empty bar. While Assist is live (wake through TTS, or a ringing timer) it relabels to `VOICE` and steers the voice level instead, so a shout can be turned down as it happens without touching the music. |
+| `VolumeDial`  | The music level, read from the audio manager's reported state. While the manager is unreachable it reads `WAITING FOR AUDIO` and a turn or press does nothing. `MUTED` is its own reading, and an empty bar. While Assist is live (wake through TTS, or a ringing timer) it relabels to `VOICE` and steers the voice level instead, so a shout can be turned down as it happens without touching the music. |
 | `MediaDial`   | Transport through the Music Assistant player: skip with a turn, play or pause with a press, and read `PLAYING` / `PAUSED` from the player.           |
 | `PageDial`    | Pages the key grid — turn to move between pages — and reads out the page you land on. Takes over the job the bottom-corner keys used to do.          |
 | `BrightnessDial` | The panel's own knob, lent by the `BRIGHTNESS` key. It turns whichever number is deciding the level: `brightLux` while auto brightness is following the room (reading `FULL AT 500 LX`, stepping through notches that crowd near an unlit room and open out towards daylight), and the panel percent itself once auto is off. Pressing switches between the two. |
@@ -559,6 +560,14 @@ are drawn crossed out while the microphone or the volume is muted. The
 now-playing face has no room for the full row and shows only the red icons,
 tucked under the clock. A deployment without Home Assistant configured keeps
 that icon healthy rather than flagging an integration that was never set up.
+
+While the audio manager is unreachable, usually for the few seconds a deploy
+or provision restarts it, the deck refuses every audio change rather than
+queuing it. The audio icon turns red and the `AUDIO LOST` banner shows the
+moment the socket drops, not at the next health sample. Every audio key and
+dial says it is waiting, and none of them moves. A press made then is lost, so
+press again once the icon stops flashing. On reconnect the deck adopts the
+levels the manager restored, which is what lets a provisioned default win.
 
 Each screen is a class in `streamdeck/screens/`, the strip's equivalent of a
 tile: it paints the whole 800×100 face and may run the same `mount`/`unmount`

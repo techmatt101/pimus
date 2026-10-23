@@ -1,9 +1,18 @@
 import {ArmedControl} from '../armed-control.mjs'
-import type {Dial} from '../dial.mjs'
+import {AUDIO_WAITING, type Dial} from '../dial.mjs'
 import {DynamicDial} from '../dials/dynamic-dial.mjs'
 import {faceOf, labelOf, type SourceFaces} from '../source-face.mjs'
 import {drawIcon, type Surface} from '../surface.mjs'
-import {drawActiveGlow, drawBackground, drawCaption, drawDots, FACE_CENTER, type Tile, type TileHost} from '../tile.mjs'
+import {
+    AUDIO_WAITING_CAPTION,
+    drawActiveGlow,
+    drawBackground,
+    drawCaption,
+    drawDots,
+    FACE_CENTER,
+    type Tile,
+    type TileHost,
+} from '../tile.mjs'
 import type {ControlModel} from '../../state.mjs'
 import type {AudioControls} from '../../types.mjs'
 
@@ -46,7 +55,8 @@ export class SourceRouteTile implements Tile {
             press: {action: {type: 'noop'}, run: () => this.#armed.release()},
             detail: () => {
                 const name = this.#name()
-                return name === undefined ? '--' : this.#caption(name)
+                if (name !== undefined) return this.#caption(name)
+                return this.#model.audio.connected ? '--' : AUDIO_WAITING
             },
         }
         this.#armed = new ArmedControl(dial, picker, () => this.#toggle())
@@ -76,7 +86,7 @@ export class SourceRouteTile implements Tile {
         if (name === undefined) {
             drawBackground(surface, NONE_BACKGROUND)
             drawIcon(surface, 'cable', {x, y: FACE_CENTER, size: ICON_SIZE, color: NONE_INK})
-            drawCaption(surface, DIAL_LABEL, NONE_INK)
+            drawCaption(surface, this.#model.audio.connected ? DIAL_LABEL : AUDIO_WAITING_CAPTION, NONE_INK)
             return
         }
         const face = faceOf(this.#faces, name)
@@ -89,6 +99,7 @@ export class SourceRouteTile implements Tile {
     }
 
     #names(): string[] {
+        if (!this.#model.audio.connected) return []
         return Object.entries(this.#model.audio.sources)
             .filter(([, source]) => source?.enabled !== undefined)
             .map(([name]) => name)

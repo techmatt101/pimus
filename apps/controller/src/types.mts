@@ -256,6 +256,12 @@ export interface AudioState {
      * cache does.
      */
     routesKnown: boolean
+    /**
+     * Whether the manager's socket is up. While it is down every reading is
+     * the last one heard and every change is refused, so the deck says it is
+     * waiting rather than showing a level nothing applied.
+     */
+    connected: boolean
     /** The music level in percent; unknown until the manager's first state event. */
     musicVolume?: number
     /** The voice bus level in percent; unknown until the manager's first state event. */

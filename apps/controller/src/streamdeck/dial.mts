@@ -27,6 +27,9 @@ export interface Dial {
     autoRelease?(): void
 }
 
+/** The readout of a knob whose level lives in the audio manager while its socket is down. */
+export const AUDIO_WAITING = 'WAITING FOR AUDIO'
+
 export function fraction(value: number | undefined, full: number): number | undefined {
     return value === undefined ? undefined : Math.max(0, Math.min(1, value / full))
 }

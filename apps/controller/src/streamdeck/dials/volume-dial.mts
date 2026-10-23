@@ -1,6 +1,6 @@
 import {isVoiceActive} from '../../actions/catalog.mjs'
 import {type Binding, volumeBinding} from '../bindings.mjs'
-import {type Dial, percent} from '../dial.mjs'
+import {AUDIO_WAITING, type Dial, percent} from '../dial.mjs'
 import type {ControlModel} from '../../state.mjs'
 import type {AudioControls} from '../../types.mjs'
 
@@ -53,6 +53,7 @@ export class VolumeDial implements Dial {
     }
 
     detail(): string {
+        if (!this.#model.audio.connected) return AUDIO_WAITING
         if (!this.#voiceHolds() && this.#model.state.volMuted) return 'MUTED'
         const reading = this.#reading()
         return reading === undefined ? '?' : percent(reading / 100)
@@ -60,6 +61,7 @@ export class VolumeDial implements Dial {
 
     /** A muted bar reads as empty, which is what muted sounds like. */
     level(): number | undefined {
+        if (!this.#model.audio.connected) return undefined
         if (!this.#voiceHolds() && this.#model.state.volMuted) return 0
         const reading = this.#reading()
         return reading === undefined ? undefined : reading / 100

@@ -67,7 +67,7 @@ export class ControlModel {
 
     constructor(
         state: ControlState,
-        readAudio: () => AudioState = () => ({sources: {}, routesKnown: false}),
+        readAudio: () => AudioState = () => ({sources: {}, routesKnown: false, connected: false}),
     ) {
         this.state = state
         this.#readAudio = readAudio

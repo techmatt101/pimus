@@ -25,6 +25,8 @@ export interface LevelTileConfig {
     floor?: number
     /** A second line under the reading, for what the level is a share of. */
     caption?: () => string
+    /** What the dial reads out while `read` answers undefined; "?" when omitted. */
+    unknown?: () => string
 }
 
 export interface LevelFace {
@@ -88,10 +90,12 @@ export class LevelTile implements Tile {
             this.#armed = null
             return
         }
+        const {unknown} = config
         const control = new LevelDial(config.label, {
             read: config.read,
             apply,
             onConfirm: () => this.#armed?.release(),
+            ...(unknown ? {unknown} : {}),
         }, {floor: config.floor})
         this.#armed = new ArmedControl(dial, control, () => this.#armed?.release())
     }

@@ -118,9 +118,9 @@ const routeIndicator: KeyIndicator = {
     // The manager's source list is what this deployment's hardware actually
     // offers: no aux without an ADC, no usb without the gadget. A name missing
     // from a list we have is a route this unit cannot have, and a source with
-    // no toggle is not a route at all.
-    isAvailable: ({audio, source}) =>
-        !audio.routesKnown || !source || audio.sources[source]?.enabled !== undefined,
+    // no toggle is not a route at all. While the manager is away nothing is.
+    isAvailable: ({audio, source}) => audio.connected
+        && (!audio.routesKnown || !source || audio.sources[source]?.enabled !== undefined),
 }
 
 export const ROUTE_ACTIONS = {

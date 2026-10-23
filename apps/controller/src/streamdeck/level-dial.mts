@@ -7,6 +7,9 @@ export interface LevelDialHandlers {
     apply(percent: number): void
 
     onConfirm(): void
+
+    /** What the readout says while the level cannot be read; "?" when omitted. */
+    unknown?(): string
 }
 
 /**
@@ -53,7 +56,7 @@ export class LevelDial implements Dial {
 
     detail(): string {
         const value = this.#handlers.read()
-        return value === undefined ? '?' : `${value}%`
+        return value === undefined ? this.#handlers.unknown?.() ?? '?' : `${value}%`
     }
 
     level(): number | undefined {
