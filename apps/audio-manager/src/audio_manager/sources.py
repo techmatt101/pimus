@@ -71,6 +71,14 @@ class SourceMixer:
         self.enabled[name] = enabled
         return changed
 
+    def requested(self) -> dict[str, SourceConfig]:
+        """Each source's trim and toggle as asked for, in the shape the
+        configuration gave them, which is what a clean exit saves."""
+        return {
+            name: SourceConfig(self.trims[name], self.enabled.get(name))
+            for name in self._sources
+        }
+
     def level_of(self, name: str) -> int:
         """The gain a source's streams are held at: its trim, or silence
         while it is switched off."""

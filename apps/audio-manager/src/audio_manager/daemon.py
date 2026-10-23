@@ -17,7 +17,7 @@ from .buses.music import MusicBus
 from .buses.music_level import MusicLevel
 from .buses.voice import VoiceBus
 from .buses.voice_meter import VoiceLevelMeter
-from .config import AudioConfig, SourceConfig
+from .config import AudioConfig
 from .control.commands import CommandHandler
 from .control.leases import Leases
 from .echo_reference import EchoReference
@@ -107,10 +107,7 @@ class AudioManager:
             self.music.volume,
             self.music.muted,
             self.voice_bus.volume,
-            {
-                name: SourceConfig(self.mixer.trims[name], self.mixer.enabled.get(name))
-                for name in self.config.sources
-            },
+            self.mixer.requested(),
         ).save(self.state_path, SavedState.defaults(self.config))
 
     def _run(self) -> int:
