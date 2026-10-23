@@ -118,28 +118,79 @@ class Session:
             self.control.close()
 
     def restore(self) -> None:
+        """Puts back every level found, each on its own, so one that fails
+        cannot leave the rest at the test's values for the daemon to save."""
         levels = self.levels
-        if levels is None or not self.control.connected:
+        if levels is None:
             return
+        failures: list[str] = []
+        for what, action in self._restorations(levels):
+            try:
+                self._attempt(action)
+            except Exception as error:  # noqa: BLE001 - restore the rest regardless
+                failures.append(f"{what}: {type(error).__name__}: {error}")
+        if failures:
+            raise RuntimeError("; ".join(failures))
+
+    def _restorations(self, levels: Levels) -> list[tuple[str, Callable[[], object]]]:
         control = self.control
-        control.command("set-duck", active=False)
-        control.command("set-voice-meter", active=False)
-        control.command("set-music-volume", percent=levels.music_volume)
-        control.command("set-music-mute", muted=levels.music_muted)
-        if levels.voice_volume is not None:
-            control.command("set-voice-volume", percent=levels.voice_volume)
-        if levels.output_volume is not None and levels.output_volume >= SILENT_CEILING_PERCENT:
-            control.command("set-output-ceiling", percent=levels.output_volume)
+        steps: list[tuple[str, Callable[[], object]]] = [
+            ("duck", lambda: control.command("set-duck", active=False)),
+            ("voice meter", lambda: control.command("set-voice-meter", active=False)),
+            ("music level", lambda: control.command("set-music-volume", percent=levels.music_volume)),
+            ("music mute", lambda: control.command("set-music-mute", muted=levels.music_muted)),
+        ]
+        voice_volume = levels.voice_volume
+        if voice_volume is not None:
+            steps.append(("voice level",
+                          lambda: control.command("set-voice-volume", percent=voice_volume)))
+        output_volume = levels.output_volume
+        if output_volume is not None:
+            steps.append(("output ceiling", lambda: self.set_ceiling(output_volume)))
         for name, trim in levels.trims.items():
-            control.command("set-source-trim", name=name, percent=trim)
+            steps.append((f"{name} trim", lambda name=name, trim=trim: control.command(
+                "set-source-trim", name=name, percent=trim)))
         for name, enabled in levels.enabled.items():
-            control.command("set-source-state", name=name, state="on" if enabled else "off")
+            steps.append((f"{name} switch", lambda name=name, enabled=enabled: control.command(
+                "set-source-state", name=name, state="on" if enabled else "off")))
+        return steps
+
+    def _attempt(self, action: Callable[[], object]) -> None:
+        """Runs one command, reconnecting once if the manager has gone away."""
+        control = self.control
+        try:
+            if not control.connected:
+                control.connect()
+            action()
+        except ConnectionError:
+            control.close()
+            control.connect()
+            action()
+
+    def set_ceiling(self, percent: int) -> None:
+        """Moves the hardware ceiling, under the socket's floor too.
+
+        The manager refuses a ceiling below its floor, but a unit may be
+        configured under it, and the level found there must still be put
+        back; root writes that one to the card directly, and the manager
+        reads the card on its next pass.
+        """
+        ceiling = self.config.ceiling
+        if ceiling is None:
+            return
+        if percent >= SILENT_CEILING_PERCENT:
+            self.control.command("set-output-ceiling", percent=percent)
+        elif not self.runtime.amixer_set_percent(ceiling.card, ceiling.control, percent):
+            raise RuntimeError(f"amixer could not set {ceiling.control} to {percent}%")
 
     def quieten(self) -> None:
-        """Parks the amplifier where a measurement is inaudible."""
+        """Parks the amplifier where a measurement is inaudible, never above
+        the ceiling it was found at."""
         control = self.control
         if self.config.ceiling is not None:
-            control.command("set-output-ceiling", percent=SILENT_CEILING_PERCENT)
+            found = self.levels.output_volume if self.levels else None
+            self.set_ceiling(SILENT_CEILING_PERCENT if found is None
+                             else min(found, SILENT_CEILING_PERCENT))
         control.command("set-music-mute", muted=False)
         control.command("set-music-volume", percent=QUIET_MUSIC_VOLUME)
         if self.config.voice.enabled:
@@ -173,7 +224,27 @@ class Session:
         return streams
 
     def playing(self) -> bool:
-        return any(not stream.get("corked", False) for stream in self.client_streams())
+        """Whether a listener would hear a test. As the manager judges it, a
+        stream of a source that is switched off is silence: the inputs app
+        keeps its loopback on the bus, held at nothing, while it is off."""
+        switched_off = self._switched_off_sources()
+        return any(
+            not stream.get("corked", False)
+            and graph.properties_of(stream).get("smartamp.source") not in switched_off
+            for stream in self.client_streams()
+        )
+
+    def _switched_off_sources(self) -> set[str]:
+        if not self.control.connected:
+            return set()
+        sources = self.control.state().get("sources")
+        if not isinstance(sources, dict):
+            return set()
+        return {
+            str(name)
+            for name, entry in cast(dict[str, Any], sources).items()
+            if isinstance(entry, dict) and cast(dict[str, Any], entry).get("enabled") is False
+        }
 
     def in_use(self, tier: str) -> bool:
         """Records a skip and answers True when a listener would notice a test."""

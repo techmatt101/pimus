@@ -61,8 +61,12 @@ a `SKIP` names the reason, most often a feature the unit does not have.
   what `make provision` already uses.
 - `HOME_ASSISTANT_TOKEN` in the environment for the Home Assistant, voice and
   player checks: a long-lived access token, the same kind the office amp's
-  `secrets.env` holds. Without it those checks skip. `HOME_ASSISTANT_URL`
-  overrides the inventory's URL.
+  `secrets.env` holds. Without it those checks skip. The checks reach Home
+  Assistant at the group-wide `home_assistant_url` in `all.yml`, and
+  `HOME_ASSISTANT_URL` overrides it. A unit that sets its own URL empty still
+  gets the voice and player checks, because its satellite and player are still
+  Home Assistant's; only the `smartamp_notify` check skips, since that unit's
+  controller does not listen.
 - `sox` (`brew install sox`) and the amp's USB-C cable plugged into this
   computer for the USB check, which plays a tone into the sound card named
   `usb_audio_product`. Without either it skips.
@@ -85,8 +89,13 @@ In the order they run:
 
 Every level the suite moves is snapshotted first and put back last: the music
 and voice levels, the mute, the hardware ceiling, every trim and toggle, and
-the duck and meter leases. A tier that raises is recorded as one failed check
-and the run continues.
+the duck and meter leases. Each is put back on its own, reconnecting once if
+the manager has gone away, so one that fails leaves the rest restored and is
+named in a single failed check. The ceiling is never parked above the level it
+was found at, and a ceiling configured under the socket's floor is written
+back to the card directly. A switched-off aux input's loopback does not count
+as something playing. A tier that raises is recorded as one failed check and
+the run continues.
 
 ### What the levels mean
 

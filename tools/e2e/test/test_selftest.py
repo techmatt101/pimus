@@ -128,6 +128,12 @@ class RuntimeTests(unittest.TestCase):
         with mock.patch.object(process, "run", return_value=completed(returncode=1)):
             self.assertIsNone(runtime.amixer_percent("sndrpihifiberry", "Digital"))
 
+    def test_a_restart_is_given_longer_than_a_pactl_call(self) -> None:
+        runtime = Runtime(SelftestConfig.from_mapping(OFFICE))
+        with mock.patch.object(process, "run", return_value=completed()) as run:
+            self.assertTrue(runtime.systemctl("restart", "smartamp-audio-manager"))
+        self.assertGreater(run.call_args.kwargs["timeout"], process.COMMAND_TIMEOUT_SECONDS)
+
     def test_a_failed_child_is_a_result_not_an_exception(self) -> None:
         runtime = Runtime(SelftestConfig.from_mapping(OFFICE))
         with mock.patch.object(process, "run", side_effect=OSError("no such binary")):
@@ -203,6 +209,12 @@ class ControlClientTests(unittest.TestCase):
         self.assertEqual(section(second, "music_bus", "volume"), 55)
         self.assertEqual(self.control.command("no-such")["event"], "error")
 
+    def test_a_broadcast_waiting_unread_is_not_taken_for_the_answer(self) -> None:
+        self.manager.state["music_bus"]["volume"] = 99
+        self.manager._send({"event": "state", **self.manager.state})  # pyright: ignore[reportPrivateUsage]
+        answer = self.control.command("set-music-volume", percent=42)
+        self.assertEqual(section(answer, "music_bus", "volume"), 42)
+
     def test_a_reconciling_command_is_answered_by_its_broadcast(self) -> None:
         toggled = self.control.command("set-source-state", name="usb", state="toggle")
         self.assertTrue(section(toggled, "sources", "usb", "enabled"))
@@ -274,6 +286,59 @@ class SessionTests(unittest.TestCase):
         self.assertIn({"command": "set-source-trim", "name": "usb", "percent": 60}, sent)
         self.assertIn({"command": "set-source-state", "name": "usb", "state": "on"}, sent)
         self.assertEqual(sent[0], {"command": "set-duck", "active": False})
+
+    def test_a_ceiling_found_under_the_floor_is_never_raised_and_is_put_back(self) -> None:
+        config = SelftestConfig.from_mapping(OFFICE)
+        session = Session(config, Runtime(config), Report("office-amp"), Options())
+        session.levels = Levels(30, False, None, 60, {}, {})
+        sent: list[dict[str, Any]] = []
+
+        def record(name: str, /, **fields: Any) -> dict[str, Any]:
+            sent.append({"command": name, **fields})
+            return {}
+
+        with mock.patch.object(session.control, "command", side_effect=record), \
+                mock.patch.object(type(session.control), "connected", new=True), \
+                mock.patch.object(session.runtime, "amixer_set_percent", return_value=True) as amixer, \
+                mock.patch("time.sleep"):
+            session.quieten()
+            session.restore()
+        self.assertFalse(any(m["command"] == "set-output-ceiling" for m in sent))
+        self.assertEqual([c.args for c in amixer.call_args_list],
+                         [("sndrpihifiberry", "Digital", 60), ("sndrpihifiberry", "Digital", 60)])
+
+    def test_one_failed_restore_does_not_stop_the_rest(self) -> None:
+        config = SelftestConfig.from_mapping(OFFICE)
+        session = Session(config, Runtime(config), Report("office-amp"), Options())
+        session.levels = Levels(45, False, 30, 90, {"usb": 60}, {"usb": True})
+        sent: list[str] = []
+
+        def record(name: str, /, **_: Any) -> dict[str, Any]:
+            if name == "set-music-volume":
+                raise TimeoutError("no answer to set-music-volume")
+            sent.append(name)
+            return {}
+
+        with mock.patch.object(session.control, "command", side_effect=record), \
+                mock.patch.object(type(session.control), "connected", new=True):
+            with self.assertRaisesRegex(RuntimeError, "music level"):
+                session.restore()
+        self.assertIn("set-source-trim", sent)
+        self.assertIn("set-source-state", sent)
+
+    def test_a_switched_off_input_is_not_somebody_playing(self) -> None:
+        config = SelftestConfig.from_mapping(OFFICE)
+        session = Session(config, Runtime(config), Report("office-amp"), Options())
+        loopback = [{"index": 9, "sink": 3, "corked": False,
+                     "properties": {"media.name": "aux", "smartamp.source": "aux"}}]
+        aux: dict[str, Any] = {"enabled": False}
+        state: dict[str, Any] = {"event": "state", "sources": {"aux": aux}}
+        with mock.patch.object(session, "client_streams", return_value=loopback), \
+                mock.patch.object(type(session.control), "connected", new=True), \
+                mock.patch.object(session.control, "state", return_value=state):
+            self.assertFalse(session.playing())
+            aux["enabled"] = True
+            self.assertTrue(session.playing())
 
     def test_a_playing_amp_skips_a_tier_unless_forced(self) -> None:
         config = SelftestConfig.from_mapping(OFFICE)

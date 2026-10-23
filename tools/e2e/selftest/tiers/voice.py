@@ -59,6 +59,8 @@ def run(session: Session) -> None:
                               abs(heard.tone_db - expected) <= TOLERANCE_DB,
                               f"{heard.describe()}, expected tone {expected:.1f} dBFS")
         session.settle()
+        # Levels from while the tone played are still queued unread.
+        control.discard()
         quiet = [
             float(event["level"])
             for event in control.drain(1.0)

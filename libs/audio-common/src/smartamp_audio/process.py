@@ -13,13 +13,15 @@ LOG = logging.getLogger(__name__)
 COMMAND_TIMEOUT_SECONDS = 5.0
 
 
-def run(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+def run(
+    *args: str, check: bool = True, timeout: float = COMMAND_TIMEOUT_SECONDS
+) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         args,
         check=check,
         text=True,
         capture_output=True,
-        timeout=COMMAND_TIMEOUT_SECONDS,
+        timeout=timeout,
     )
     # Every pactl and amixer mutation and query passes through here, so the
     # debug journal is the full trace of what the manager did and when.

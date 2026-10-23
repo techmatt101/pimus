@@ -85,16 +85,38 @@ class ControlClient:
                 raise ConnectionError("the audio manager closed the socket")
             self._buffer += data
 
+    def discard(self) -> None:
+        """Drops every whole event that has already arrived, read or not.
+
+        The socket is read without blocking until the kernel has nothing left,
+        so a broadcast still waiting there is dropped too; a partial line is
+        kept for the event it begins.
+        """
+        if self._socket is None:
+            raise ConnectionError("not connected")
+        self._socket.setblocking(False)
+        try:
+            while True:
+                try:
+                    data = self._socket.recv(65536)
+                except (BlockingIOError, InterruptedError):
+                    break
+                if not data:
+                    raise ConnectionError("the audio manager closed the socket")
+                self._buffer += data
+        finally:
+            self._socket.settimeout(self.timeout)
+        _, _, self._buffer = self._buffer.rpartition(b"\n")
+
     def command(self, name: str, /, **fields: Any) -> Event:
         """Sends a command and answers with the state or error it produced.
 
         A state the daemon broadcast earlier would otherwise be taken for the
-        answer, so whatever has already arrived is read off first; a check
+        answer, so whatever has already arrived is dropped first; a check
         that must see a change land polls `wait_for` rather than trusting
         one reply.
         """
-        while self.next_event(0.0) is not None:
-            pass
+        self.discard()
         self.send({"command": name, **fields})
         deadline = time.monotonic() + self.timeout
         while True:

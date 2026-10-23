@@ -28,6 +28,9 @@ def run(session: Session) -> None:
         return
     config = session.config
     runtime = session.runtime
+    # The manager saves its levels on the clean exit a restart makes, so the
+    # user's go back first or the test's would be the ones it restores.
+    session.restore()
     session.control.close()
 
     wanted = [unit for unit in DEPENDANTS if unit in config.services]

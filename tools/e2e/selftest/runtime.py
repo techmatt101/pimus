@@ -21,6 +21,11 @@ from smartamp_audio import process
 from .config import SelftestConfig
 
 
+# A synchronous restart waits for the unit, and every unit bound to it, to
+# stop and start again, which on a Pi takes far longer than a pactl call.
+SYSTEMD_TIMEOUT_SECONDS = 120.0
+
+
 class Runtime:
     def __init__(self, config: SelftestConfig) -> None:
         self.config = config
@@ -42,9 +47,10 @@ class Runtime:
             return command
         return ["runuser", "-u", self.config.service_user, "--", *command]
 
-    def run(self, *argv: str) -> subprocess.CompletedProcess[str]:
+    def run(self, *argv: str, timeout: float = process.COMMAND_TIMEOUT_SECONDS
+            ) -> subprocess.CompletedProcess[str]:
         try:
-            return process.run(*argv, check=False)
+            return process.run(*argv, check=False, timeout=timeout)
         except (subprocess.SubprocessError, OSError) as error:
             return subprocess.CompletedProcess(argv, 1, stdout="", stderr=str(error))
 
@@ -97,11 +103,12 @@ class Runtime:
         return self.run("systemctl", "is-active", "--quiet", unit).returncode == 0
 
     def systemctl(self, *argv: str) -> bool:
-        return self.run("systemctl", *argv).returncode == 0
+        return self.run("systemctl", *argv, timeout=SYSTEMD_TIMEOUT_SECONDS).returncode == 0
 
     def journal(self, unit: str, since: str) -> str:
         result = self.run(
-            "journalctl", "-u", unit, "--since", since, "--no-pager", "-o", "cat"
+            "journalctl", "-u", unit, "--since", since, "--no-pager", "-o", "cat",
+            timeout=SYSTEMD_TIMEOUT_SECONDS,
         )
         return result.stdout if result.returncode == 0 else ""
 
@@ -112,7 +119,8 @@ class Runtime:
         if not invocation:
             return None
         result = self.run(
-            "journalctl", f"_SYSTEMD_INVOCATION_ID={invocation}", "--no-pager", "-o", "cat"
+            "journalctl", f"_SYSTEMD_INVOCATION_ID={invocation}", "--no-pager", "-o", "cat",
+            timeout=SYSTEMD_TIMEOUT_SECONDS,
         )
         return result.stdout if result.returncode == 0 else None
 
@@ -131,6 +139,9 @@ class Runtime:
         if result.returncode != 0:
             return None
         return result.stdout.strip()
+
+    def amixer_set_percent(self, card: str, control: str, percent: int) -> bool:
+        return self.run("amixer", "-c", card, "sset", control, f"{percent}%").returncode == 0
 
     def amixer_percent(self, card: str, control: str) -> int | None:
         result = self.run("amixer", "-c", card, "sget", control)

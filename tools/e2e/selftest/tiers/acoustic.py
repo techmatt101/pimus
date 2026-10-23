@@ -44,7 +44,7 @@ def run(session: Session) -> None:
     min_rise = session.options.min_rise_db or config.acoustic.min_rise_db
     control = session.control
     if config.ceiling is not None:
-        control.command("set-output-ceiling", percent=config.ceiling.percent)
+        session.set_ceiling(config.ceiling.percent)
     control.command("set-music-mute", muted=False)
     control.command("set-music-volume", percent=level)
     for name in config.sources:

@@ -76,13 +76,22 @@ async function inventory(host) {
         user: raw.ansible_user ?? os.userInfo().username,
         usbGadget: Boolean(raw.usb_audio_gadget_enabled),
         usbProduct: render(raw.usb_audio_product || '{{ smartamp_hostname }} USB'),
-        homeAssistantUrl: process.env.HOME_ASSISTANT_URL || render(raw.home_assistant_url),
+        controllerUsesHomeAssistant: Boolean(render(raw.home_assistant_url)),
         voice: Boolean(raw.voice_assistant_enabled),
         voiceName: render(raw.voice_assistant_name || '{{ smartamp_hostname }} Voice'),
         ducking: Boolean(raw.voice_assistant_enabled) && raw.smartamp_voice_ducking_enabled !== false,
         sendspin: Boolean(raw.sendspin_enabled),
         sendspinName: render(raw.sendspin_name || '{{ smartamp_hostname }}'),
     }
+}
+
+// Where Home Assistant is, whichever unit asks: a unit that leaves its own
+// URL empty only keeps its controller off it, and its satellite and player
+// are still Home Assistant's.
+async function homeAssistantUrl() {
+    if (process.env.HOME_ASSISTANT_URL) return process.env.HOME_ASSISTANT_URL
+    const {stdout} = await execFileAsync('ansible-inventory', ['--list', '--export'], {env: ANSIBLE_ENV})
+    return String(JSON.parse(stdout).all?.vars?.home_assistant_url ?? '')
 }
 
 async function hosts(limit) {
@@ -94,7 +103,9 @@ async function hosts(limit) {
     return limit
 }
 
-// SSH.
+// SSH. The remote shell re-splits the command, so every argument is quoted.
+
+const shellQuote = (argument) => `'${String(argument).replace(/'/g, `'\\''`)}'`
 
 function ssh(unit, command, {timeoutMs = 600_000} = {}) {
     return new Promise((resolve) => {
@@ -112,7 +123,7 @@ function ssh(unit, command, {timeoutMs = 600_000} = {}) {
 }
 
 async function selftest(unit, flags) {
-    const command = ['sudo', 'smartamp-selftest', '--json', ...flags].join(' ')
+    const command = ['sudo', 'smartamp-selftest', '--json', ...flags].map(shellQuote).join(' ')
     const result = await ssh(unit, command)
     const start = result.stdout.indexOf('{')
     if (start < 0) {
@@ -122,15 +133,23 @@ async function selftest(unit, flags) {
     return JSON.parse(result.stdout.slice(start))
 }
 
+// Never rejects: it is left pending while the stimulus plays, and a rejection
+// with no handler yet would end the whole run.
 function observe(unit, what, seconds, marker = '') {
     const command = ['sudo', 'smartamp-selftest', 'observe', what, '--seconds', String(seconds),
-        ...(marker ? ['--marker', marker] : [])].join(' ')
+        ...(marker ? ['--marker', marker] : [])].map(shellQuote).join(' ')
     return ssh(unit, command, {timeoutMs: (seconds + 60) * 1000}).then((result) => {
         const start = result.stdout.indexOf('{')
-        if (start < 0) throw new Error((result.stderr || result.stdout).trim() || `observe ${what} exit ${result.code}`)
-        return JSON.parse(result.stdout.slice(start))
+        if (start < 0) return {failed: (result.stderr || result.stdout).trim() || `observe ${what} exit ${result.code}`}
+        try {
+            return JSON.parse(result.stdout.slice(start))
+        } catch (error) {
+            return {failed: `observe ${what} printed unreadable JSON: ${error.message}`}
+        }
     })
 }
+
+const unobserved = (tier, seen) => check(tier, 'the amp observed it', false, seen.failed)
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -279,8 +298,10 @@ async function usbCheck(unit) {
         played = String(error.message ?? error).split('\n')[0]
     }
     const seen = await observation
+    const playedCheck = check(tier, 'this computer played into the sound card', played === null, played ?? '')
+    if (seen.failed) return [playedCheck, unobserved(tier, seen)]
     return [
-        check(tier, 'this computer played into the sound card', played === null, played ?? ''),
+        playedCheck,
         check(tier, 'the amp saw a host attached and streaming', seen.host && seen.streaming, describe(seen)),
         check(tier, 'the USB stream reached the music bus', Boolean(seen.stream_on_bus), describe(seen)),
         check(tier, 'the tone reached the output', typeof seen.tone_db === 'number' && seen.tone_db >= USB_MIN_TONE_DB,
@@ -290,7 +311,7 @@ async function usbCheck(unit) {
 
 async function notifyCheck(unit, ha) {
     const tier = 'home-assistant'
-    if (!unit.homeAssistantUrl) return [check(tier, 'smartamp_notify', true, 'no Home Assistant on this unit', {skip: true})]
+    if (!unit.controllerUsesHomeAssistant) return [check(tier, 'smartamp_notify', true, "this unit's controller does not use Home Assistant", {skip: true})]
     if (!ha) return [check(tier, 'smartamp_notify', true, 'HOME_ASSISTANT_TOKEN is not set', {skip: true})]
     const marker = `SELFTEST ${Date.now().toString(36).toUpperCase()}`
     const observation = observe(unit, 'notify', OBSERVE_SECONDS.notify, marker)
@@ -298,10 +319,11 @@ async function notifyCheck(unit, ha) {
     try {
         await ha.fireEvent('smartamp_notify', {title: 'SELF TEST', message: marker, seconds: 3})
     } catch (error) {
-        await observation.catch(() => null)
+        await observation
         return [check(tier, 'smartamp_notify was fired', false, String(error.message ?? error))]
     }
     const seen = await observation
+    if (seen.failed) return [unobserved(tier, seen)]
     return [check(tier, 'smartamp_notify reached the controller', Boolean(seen.seen),
         seen.seen ? marker : `no "${marker}" in the controller journal within ${OBSERVE_SECONDS.notify}s`)]
 }
@@ -317,10 +339,11 @@ async function voiceCheck(unit, ha) {
     try {
         await ha.call('assist_satellite', 'announce', {entity_id: entity, message: 'Self test. The voice bus is working.'})
     } catch (error) {
-        await observation.catch(() => null)
+        await observation
         return [check(tier, 'the satellite accepted an announcement', false, String(error.message ?? error))]
     }
     const seen = await observation
+    if (seen.failed) return [check(tier, `${entity} accepted an announcement`, true), unobserved(tier, seen)]
     return [
         check(tier, `${entity} accepted an announcement`, true),
         check(tier, 'the announcement played on the voice bus', Boolean(seen.voice_stream), describe(seen)),
@@ -344,11 +367,12 @@ async function playerCheck(unit, ha) {
         try {
             await ha.call('media_player', 'play_media', {entity_id: entity, media_content_id: tone.url, media_content_type: 'music'})
         } catch (error) {
-            await observation.catch(() => null)
+            await observation
             return [check(tier, 'the player accepted a stream', false, String(error.message ?? error))]
         }
         const seen = await observation
         await ha.call('media_player', 'media_stop', {entity_id: entity}).catch(() => null)
+        if (seen.failed) return [check(tier, `${entity} accepted a stream from ${tone.url}`, true), unobserved(tier, seen)]
         return [
             check(tier, `${entity} accepted a stream from ${tone.url}`, true),
             check(tier, 'the player streamed onto the music bus', Boolean(seen.stream_on_bus) && Boolean(seen.source_available), describe(seen)),
@@ -396,9 +420,8 @@ function render(host, checks) {
     return lines.join('\n')
 }
 
-async function runHost(name, options, token) {
+async function runHost(name, options, ha) {
     const unit = await inventory(name)
-    const ha = unit.homeAssistantUrl && token ? new HomeAssistant(unit.homeAssistantUrl, token) : null
     const pi = await selftest(unit, options.pi)
     const checks = [...pi.checks]
     if (!options.piOnly) {
@@ -418,11 +441,13 @@ async function main() {
     const options = parseArguments(process.argv.slice(2))
     const token = process.env.HOME_ASSISTANT_TOKEN ?? ''
     if (!token) console.log('HOME_ASSISTANT_TOKEN is not set; the Home Assistant, voice and player checks will be skipped')
+    const url = token ? await homeAssistantUrl() : ''
+    const ha = url && token ? new HomeAssistant(url, token) : null
     mkdirSync(REPORTS, {recursive: true})
     let failed = false
     for (const name of await hosts(options.limit)) {
         console.log(`\nRunning the self-test on ${name} ...`)
-        const result = await runHost(name, options, token)
+        const result = await runHost(name, options, ha)
         console.log(render(name, result.checks))
         const file = path.join(REPORTS, `${name}-${new Date().toISOString().replace(/[:.]/g, '-')}.json`)
         writeFileSync(file, JSON.stringify(result, null, 2))
