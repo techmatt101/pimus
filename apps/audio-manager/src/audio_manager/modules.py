@@ -109,7 +109,12 @@ class ModuleRegistry:
         source: str,
         sink: str,
         latency_ms: int,
+        *,
+        channels: int | None = None,
     ) -> bool:
+        """`channels` narrows the loopback's own streams: a mono loopback from
+        a stereo source has PipeWire mix both channels into one, and plays
+        that one mix on every channel of the sink."""
         return self._ensure(
             role,
             "module-loopback",
@@ -119,6 +124,7 @@ class ModuleRegistry:
                 f"source={source}",
                 f"sink={sink}",
                 f"latency_msec={latency_ms}",
+                *(() if channels is None else (f"channels={channels}",)),
                 "source_dont_move=true",
                 "sink_dont_move=true",
                 stream_properties(role),

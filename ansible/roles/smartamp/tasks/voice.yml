@@ -179,6 +179,21 @@
   when: smartamp_voice_capture_channel is none
   notify: Restart service-account session
 
+# The echo reference's timing: the array's USB playback period, which is what
+# keeps the reference from wandering, and the amplifier's output headroom,
+# which is what makes the reference arrive ahead of the echo. Both are ALSA
+# node properties WirePlumber applies when the node is created, so a change
+# restarts the service-account session. The DSP delay register below was
+# measured against these two values and goes with them.
+- name: Hold the echo reference's timing
+  ansible.builtin.template:
+    src: wireplumber/52-smartamp-aec-timing.conf.j2
+    dest: /etc/wireplumber/wireplumber.conf.d/52-smartamp-aec-timing.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart service-account session
+
 # LVA must start after the audio manager has selected the output defaults and
 # PipeWire has published the capture sources above. This small gate checks the
 # manager's fresh status file and the source list, and produces a clear systemd
@@ -235,6 +250,46 @@
     state: link
   when: smartamp_respeaker_caps.host_control | bool
 
+# The echo canceller's own settings - the reference-versus-microphone delay and
+# the two gains - are volatile on the array, and this firmware must never be
+# asked to save them (docs/xvf3800.md). They live in inventory instead, and a
+# udev rule starts this one-shot on every enumeration of the device: at boot,
+# and again after the controller restores USB power on wake. The values are
+# ALSA-side and DSP-side, so the script also sets the card's second playback
+# volume, which the firmware reads its external-gain figure from.
+- name: Install XVF3800 echo-canceller tuning
+  ansible.builtin.copy:
+    src: scripts/xvf3800-tuning.sh
+    dest: "{{ smartamp_app_dir }}/xvf3800-tuning.sh"
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart XVF3800 tuning
+  when: smartamp_respeaker_caps.host_control | bool
+
+- name: Install XVF3800 echo-canceller tuning service
+  ansible.builtin.template:
+    src: smartamp-xvf3800-tuning.service.j2
+    dest: /etc/systemd/system/smartamp-xvf3800-tuning.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart XVF3800 tuning
+  when: smartamp_respeaker_caps.host_control | bool
+
+- name: Start the XVF3800 tuning whenever the array enumerates
+  ansible.builtin.copy:
+    dest: /etc/udev/rules.d/61-smartamp-xvf3800-tuning.rules
+    content: |
+      ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="{{ smartamp_respeaker_caps.usb_vendor_id }}", ATTR{idProduct}=="{{ smartamp_respeaker_caps.usb_product_id }}", TAG+="systemd", ENV{SYSTEMD_WANTS}+="smartamp-xvf3800-tuning.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload udev
+  when: smartamp_respeaker_caps.host_control | bool
+
 - name: Remove the host-control tool when the array has no control interface
   ansible.builtin.file:
     path: "{{ item }}"
@@ -242,6 +297,12 @@
   loop:
     - "{{ smartamp_app_dir }}/xvf3800-host-control"
     - /usr/local/bin/xvf_host
+    - "{{ smartamp_app_dir }}/xvf3800-tuning.sh"
+    - /etc/systemd/system/smartamp-xvf3800-tuning.service
+    - /etc/udev/rules.d/61-smartamp-xvf3800-tuning.rules
+  notify:
+    - Reload systemd
+    - Reload udev
   when: not (smartamp_respeaker_caps.host_control | bool)
 
 # The unit runs under the same account as PipeWire so it can use the private

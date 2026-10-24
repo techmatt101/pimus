@@ -205,17 +205,52 @@ smartamp_aux_volume_percent: 100
 # values: 128, 256, 512, 1024. Validate xruns, first audio and AEC on the Pi
 # after changing it; 256 retains the earlier ~5.33 ms loopback-driven cycle.
 smartamp_audio_quantum: 512
-# Target delay for the manager's music/voice bridges and AEC reference. The
-# aux and USB clients also use it for their requested cycle duration. These
-# are different PipeWire APIs: module-loopback's latency_msec sets a target
-# delay and can request a cycle a third that size; pw-loopback --latency asks
-# for node.latency directly. Neither sets a guaranteed end-to-end latency.
-# smartamp_audio_quantum bounds the graph's cycle independently. Keep this
-# delay, especially the AEC reference, unchanged without acoustic validation.
+# The latency the manager's music/voice bridges and AEC reference ask
+# module-loopback for, and the cycle the aux and USB clients request. These
+# are different PipeWire APIs: module-loopback's latency_msec asks for a cycle
+# a third that size, and pw-loopback --latency asks for node.latency directly.
+# Neither sets a guaranteed end-to-end latency, and under the 512-frame
+# minimum quantum above the reference's value has no measurable effect at all
+# (20, 10 and 5 ms measured identical inside the DSP on office-amp). The echo
+# reference's real timing is set by the two buffer sizes below.
 # Aux inherits this default but can override its client request separately.
 smartamp_loopback_latency_ms: 20
 smartamp_aux_latency_ms: "{{ smartamp_loopback_latency_ms }}"
 smartamp_aec_reference_enabled: true
+# The echo canceller inside the array needs the reference it is sent to arrive
+# before the acoustic echo and to stay put once it has; with PipeWire's
+# defaults it did neither, and the canceller did nothing (docs/xvf3800.md).
+# These four settings are one measured set: the two buffer sizes decide how
+# early the reference arrives, and the delay register trims the remainder, so
+# change one and the others need re-measuring with the mux procedure the guide
+# describes. They are shared defaults measured on office-amp (DAC2 ADC Pro,
+# Pi 4B); a unit whose measurement differs puts its own values in host_vars.
+#
+# Extra frames held in the amplifier's output buffer (1920 is 40 ms at 48 kHz),
+# so the echo leaves the speaker later than the reference reaches the array.
+# Without it the reference was 25 to 33 ms late, past what the delay register
+# can correct. It is that much added latency on everything the amp plays.
+smartamp_output_headroom_frames: 1920
+# The array's USB playback period, in frames at the device's rate. PipeWire's
+# default let the reference wander about 150 ppm and snap back a hundred
+# samples at a time; 64 brings that to a few ppm.
+smartamp_aec_reference_period_frames: 64
+# The array's own reference-versus-microphone delay (AUDIO_MGR_SYS_DELAY), in
+# 16 kHz samples; positive delays the reference, negative the microphones,
+# -64 to 256. With the two buffers above, 184 lands the reference 28 to 42
+# samples ahead of the echo, where XMOS wants it. The firmware's own default
+# is 12. XVF3800 only; the Lite has no control interface.
+respeaker_sys_delay_samples: 184
+# The gains the canceller sees, following the XMOS tuning procedure: the
+# reference (AUDIO_MGR_REF_GAIN) set so it peaks just under full scale at the
+# loudest playback, the microphones (AUDIO_MGR_MIC_GAIN) so they peak about
+# 6 dB below it. Seeed ships 8 and 90, which clip the microphones on loud
+# music and hand the canceller a reference 9 dB quieter than the echo; these
+# leave 1.7 dB and 7.4 dB of margin at full-scale music with the bus at 100%.
+# The ASR output the assistant hears is about 9 dB quieter than with Seeed's
+# values; the wake word was not re-measured after the change.
+respeaker_reference_gain: 1.5
+respeaker_mic_gain: 32
 # With nothing playing for this many seconds, the audio manager unloads its
 # persistent loopbacks (the bus bridges, the AEC reference, and the muted aux
 # bridge) so the HiFiBerry path and the XVF3800 playback endpoint suspend -

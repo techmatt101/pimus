@@ -110,30 +110,26 @@ loopback latency have deliberately not been retuned.
 
 ### AEC and microphone validation
 
-- [ ] **P0 — Record the exact baseline.** Per unit, save firmware version,
-  USB/ALSA formats and channel maps, DSP output muxes, reference/mic gains,
-  system delay and LVA preferences. Verify that the configured capture channel
-  really is ASR on that firmware. Do not flash newer firmware or write
-  `save_configuration` as part of this check. See the [Seeed device guide](https://wiki.seeedstudio.com/respeaker_xvf3800_introduction/).
-- [ ] **P0 — Test reference channel coverage.** Play short, attenuated
-  left-only, right-only and dual-mono signals through each relevant source.
-  The XVF3800 consumes only the left reference channel, while the current
-  loopback preserves stereo. Compare reference and microphone residuals;
-  determine whether playback should become mono or another reference strategy
-  is needed. Downmixing a reference alone does not guarantee cancellation of
-  two independent stereo acoustic paths. See the [XMOS datasheet, section 3.3.3](https://www.xmos.ai/download/XVF3800-Device-Datasheet%282_0_0%29.pdf).
-- [ ] **P0 — Measure causal timing inside the DSP.** Capture the reference
-  and microphone diagnostic taps together using the vendor mux procedure.
-  Do not align independently started PipeWire recordings. The reference must
-  precede its acoustic echo; a long filter tail is not permission for a late
-  reference. Read the baseline before any signed system-delay change.
-- [ ] **P0 — Measure headroom and cancellation, not only convergence.** Use
-  a bounded, attenuated stimulus on an explicitly selected, verified bus;
-  never unbounded full-scale `/dev/urandom` into the default output. Record
-  reference, microphone and ASR peaks/clipping plus residual echo during
-  far-end-only and simultaneous speech/music tests. `AEC_AECCONVERGED` is
-  latched and does not certify the current path. Follow the
-  [XMOS tuning procedure](https://www.xmos.com/documentation/XM-014888-PC/html/modules/fwk_xvf/doc/user_guide/04_tuning_the_application.html).
+- [x] **P0 — Record the exact baseline** (office-amp, October 2026; the
+  results are in [the XVF3800 guide](xvf3800.md#measured-on-office-amp-october-2026)).
+  Firmware 2.0.10, USB 16 kHz s16 stereo synchronous, mux `(8,0)`/`(7,3)` so
+  channel 1 is the ASR output, start-up values `SYS_DELAY 12`, `REF_GAIN 8`,
+  `MIC_GAIN 90`, `AEC_FAR_EXTGAIN −20` from the card's second playback volume.
+  Bedroom and kitchen still to be read.
+- [x] **P0 — Test reference channel coverage.** Right-only playback reached
+  the reference tap as digital zero. The reference is now mixed to mono; with
+  stereo playback kept, centred content cancels fully and hard-panned content
+  partially, which is the accepted trade.
+- [x] **P0 — Measure causal timing inside the DSP.** The reference arrived 25
+  to 33 ms after the echo and wandered 150 ppm. Fixed with the output headroom,
+  the array's playback period and `SYS_DELAY 184`; the reference now leads by
+  28 to 42 samples with a few ppm of drift.
+- [x] **P0 — Measure headroom and cancellation, not only convergence.** Stock
+  gains put the microphones 9 dB above the reference and clipping on
+  full-scale music; `REF_GAIN 1.5` and `MIC_GAIN 32` follow the XMOS procedure.
+  Echo at the ASR output fell from −31 dBFS to −62 to −68 dBFS at 60% bus. Still
+  to do: a wake-word count at the new (9 dB quieter) ASR level, and a soak of
+  the 64-frame period for underruns before the other units get it.
 - [ ] **P1 — Validate placement and wake pickup.** Keep microphone openings
   unobstructed and check orientation, distance and speaker vibration coupling.
   Establish repeated wake/miss/false-wake counts at fixed positions and music

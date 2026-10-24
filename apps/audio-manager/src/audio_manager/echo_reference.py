@@ -25,9 +25,18 @@ LOG = logging.getLogger(__name__)
 
 REFERENCE_ROLE = "_aec"
 
+# The echo canceller reads one reference channel (the XVF3800 takes the left
+# and ignores the right). A stereo loopback would hand it only the left half
+# of the room's playback, so anything panned right was never cancelled; a mono
+# loopback has PipeWire mix both output channels into the one reference and
+# play it on both endpoint channels. Measured on office-amp: centred content
+# reaches the DSP at the same level as before, one-sided content 5.7 dB lower.
+REFERENCE_CHANNELS = 1
+
 
 class EchoReference:
-    """The output's monitor, looped into the reference sink at unity."""
+    """The output's monitor, mixed to mono and looped into the reference sink
+    at unity."""
 
     def __init__(
         self, config: EchoReferenceConfig, view: Graph, registry: ModuleRegistry
@@ -48,14 +57,15 @@ class EchoReference:
         endpoints_available = bool(reference_sink and monitor)
         available = False
         if self.config.enabled and wanted and reference_sink and monitor:
-            # Unity restores a stable reference baseline; DSP headroom and
-            # cancellation quality still need measurement.
+            # Unity end to end: the DSP's own reference gain, applied at
+            # start-up from inventory, is the one place the level is set.
             sink_ready = self._pin_sink(reference_sink)
             created = self._modules.ensure_loopback(
                 REFERENCE_ROLE,
                 monitor["name"],
                 reference_sink["name"],
                 self.config.latency_ms,
+                channels=REFERENCE_CHANNELS,
             )
             if created:
                 LOG.info("Enabled the echo-cancellation far-end reference")

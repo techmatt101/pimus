@@ -1,0 +1,21 @@
+[Unit]
+Description=Apply {{ smartamp_respeaker_caps.label }} echo-canceller tuning
+# Started by the udev rule 61-smartamp-xvf3800-tuning.rules whenever the array
+# enumerates - at boot, and again after the controller restores USB power on
+# wake - because every value it writes is lost with the device's power.
+
+[Service]
+# Injected into the plain xvf3800-tuning.sh (in the role's files/scripts).
+Environment=XVF3800_SYS_DELAY={{ respeaker_sys_delay_samples }}
+Environment=XVF3800_REF_GAIN={{ respeaker_reference_gain }}
+Environment=XVF3800_MIC_GAIN={{ respeaker_mic_gain }}
+Environment=XVF3800_CARD_MATCH=XVF3800
+Type=oneshot
+ExecStart={{ smartamp_app_dir }}/xvf3800-tuning.sh
+# Not RemainAfterExit: a finished run must count as inactive so the next
+# enumeration's udev event starts it again.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+UMask=0027

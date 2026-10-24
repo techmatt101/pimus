@@ -1,0 +1,48 @@
+# The two buffers the echo reference's timing depends on (WirePlumber 0.5+,
+# Trixie). The array's canceller needs the reference to reach it before the
+# acoustic echo does, and to stay put once it has. Measured inside the DSP on
+# office-amp (docs/xvf3800.md), neither held with PipeWire's defaults:
+#
+# 1. The array's USB playback node, where the reference arrives. PipeWire's
+#    default period on this 16 kHz device left ~45 ms queued and let its rate
+#    matching wander about 150 ppm, snapping back a hundred samples at a time;
+#    a canceller cannot hold a filter against a reference that slides. A
+#    small period with no extra headroom brought the wander down to a few ppm
+#    and the queue to ~34 ms.
+# 2. The amplifier's output, where the echo leaves. With the two queues as
+#    they were the reference arrived 25 to 33 ms after the echo, further than
+#    the DSP's own delay register can reach (it delays the microphones by at
+#    most 64 samples, 4 ms). Extra headroom here holds the output back so the
+#    reference leads; the register then trims the remainder. The cost is that
+#    much added latency on everything the amp plays.
+#
+# The register value in smartamp-xvf3800-tuning.service was measured against
+# exactly these two numbers; change one and re-measure the other.
+monitor.alsa.rules = [
+  {
+    matches = [
+      {
+        node.name = "~alsa_output[.]usb-.*({{ smartamp_aec_reference_match }}).*"
+      }
+    ]
+    actions = {
+      update-props = {
+        api.alsa.period-size = {{ smartamp_aec_reference_period_frames | int }}
+        api.alsa.headroom = 0
+      }
+    }
+  }
+  {
+    matches = [
+      {
+        node.name = "~alsa_output[.]platform-.*"
+        api.alsa.card.name = "~snd_rpi_hifiberry.*"
+      }
+    ]
+    actions = {
+      update-props = {
+        api.alsa.headroom = {{ smartamp_output_headroom_frames | int }}
+      }
+    }
+  }
+]

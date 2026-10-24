@@ -22,19 +22,30 @@ previous loopback-driven 256-frame cycle. A live metadata override can still
 force a different quantum, so check the actual `QUANT` and `RATE` in `pw-top`.
 
 `smartamp_loopback_latency_ms` remains 20. The manager's `module-loopback`
-interprets it as a target delay, whereas the input clients' `pw-loopback
---latency` requests a processing cycle. In PipeWire 1.4.2 the former asks for a
-quantum about one third of its delay: 20 ms requests 320 frames at 48 kHz, rounded
+asks for a quantum about one third of it, whereas the input clients' `pw-loopback
+--latency` requests a processing cycle: 20 ms requests 320 frames at 48 kHz, rounded
 down to 256 without our floor. Neither setting guarantees end-to-end latency,
-and the USB/aux path crosses both types of loopback. `smartamp_aux_latency_ms`
-overrides only the aux client's request.
+and the USB/aux path crosses both types of loopback. Under the 512-frame floor the
+reference's value has no measurable effect at all (20, 10 and 5 ms measured
+identical inside the DSP). `smartamp_aux_latency_ms` overrides only the aux
+client's request.
 
-Changing the quantum can also change the actual AEC reference delay even though
-the configured target stays the same. Validate playback, pops, first-syllable
-delivery and DSP-side AEC causality on each board before accepting a deployment.
-Use 256 to return to the earlier cycle budget while diagnosing a regression;
-do not compensate by changing DSP delay or reference gain from separate
-PipeWire recordings. See [timing validation](troubleshooting.md#audio-timing-validation).
+The echo reference's timing is set by two buffers instead, and by one register in
+the array. `smartamp_output_headroom_frames` (1920, 40 ms) holds the amplifier's
+output back so the echo leaves the speaker after the reference reaches the array;
+without it the reference was 25 to 33 ms late, past what the array can correct,
+and the canceller did nothing. `smartamp_aec_reference_period_frames` (64) is the
+array's USB playback period; PipeWire's default let the reference wander about
+150 ppm, which the canceller cannot follow. `respeaker_sys_delay_samples` (184)
+then trims the reference to 28 to 42 samples ahead of the echo, and
+`respeaker_reference_gain` (1.5) and `respeaker_mic_gain` (32) set the two gains
+the canceller sees by the XMOS procedure. The four are one measured set, taken on
+office-amp; a unit that measures differently overrides them in its `host_vars`.
+Changing the quantum, the headroom or the period moves the reference, so re-measure
+with the mux procedure in [the XVF3800 guide](xvf3800.md#the-reference-path-and-its-timing)
+rather than from separate PipeWire recordings. The headroom is that much added
+latency on everything the amp plays, and is installed only with voice. See
+[timing validation](troubleshooting.md#audio-timing-validation).
 
 `hifiberry_board` names the fitted board — `dac2adcpro` (DAC2 ADC Pro, the DAC the AAmp60 add-on amplifier sits on) or
 `amp100` (Amp100, an amplifier with its own DAC). It cannot be detected: the recipe sets `force_eeprom_read=0` so the

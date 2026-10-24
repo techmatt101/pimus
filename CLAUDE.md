@@ -685,17 +685,20 @@ controller opens whichever USB ids it is given.
   device it is not.
 - The XVF3800 playback endpoint carries the far-end AEC reference even though
   its physical speaker jack is unused. Do not remove that route as "unused."
-  The DSP uses only the left channel; the reference must precede the acoustic
-  echo, and stereo coverage is an open validation item. The audio manager pins
-  the whole path at 100% when active.
+  The DSP uses only the left channel, so the audio manager mixes the reference
+  to mono; the reference must precede the acoustic echo, which two buffer
+  sizes (`smartamp_output_headroom_frames`, `smartamp_aec_reference_period_frames`)
+  and the delay register (`respeaker_sys_delay_samples`) hold together as one
+  measured set. The audio manager pins the whole host path at 100% when active.
 - `AEC_AECCONVERGED` is latched, not proof of present cancellation quality.
-  Validate stereo reference coverage, clipping, and DSP-side causality before
-  changing wake-word gain. Do not tune `AUDIO_MGR_SYS_DELAY`, loopback latency,
-  or reference gain from independently recorded PipeWire streams: those include
-  capture latency the DSP never sees. Follow `docs/audio-reliability-actions.md`.
-- Values written with `xvf_host` are volatile. Never run `save_configuration`
-  on this firmware; a setting that proves out is applied from the repository
-  at start-up instead.
+  Do not tune `AUDIO_MGR_SYS_DELAY`, the buffers, or the gains from
+  independently recorded PipeWire streams: those include capture latency the
+  DSP never sees. Measure inside the DSP with the mux procedure in
+  `docs/xvf3800.md`, and re-measure whenever one of the set changes.
+- Values written with `xvf_host` are volatile, and the array loses them with
+  its power (the controller cuts USB power in sleep). Never run
+  `save_configuration` on this firmware; the tuned registers live in inventory
+  and `smartamp-xvf3800-tuning.service` writes them on every enumeration.
 - The controller and `xvf_host` share the device's control endpoint from
   different processes, so an implausible reading during tuning may be the
   other's answer; repeat it.

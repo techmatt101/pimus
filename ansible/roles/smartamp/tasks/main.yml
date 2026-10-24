@@ -145,18 +145,25 @@
     - "{{ smartamp_app_dir }}/wait-audio-ready.sh"
     - "{{ smartamp_app_dir }}/xvf3800-host-control"
     - /usr/local/bin/xvf_host
-  notify: Reload systemd
+    - "{{ smartamp_app_dir }}/xvf3800-tuning.sh"
+    - /etc/systemd/system/smartamp-xvf3800-tuning.service
+    - /etc/udev/rules.d/61-smartamp-xvf3800-tuning.rules
+  notify:
+    - Reload systemd
+    - Reload udev
   when: not (voice_assistant_enabled | bool)
 
-# The capture source and the array's fixed node name are PipeWire configuration
-# only the assistant needs; left behind, a unit without voice would keep a
-# virtual source published and the default source pointed at it.
+# The capture source, the array's fixed node name, and the echo reference's
+# buffer sizes are PipeWire configuration only the assistant needs; left
+# behind, a unit without voice would keep a virtual source published, the
+# default source pointed at it, and 40 ms of output latency it gains nothing from.
 - name: Remove voice capture PipeWire configuration when disabled
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
   loop:
     - /etc/wireplumber/wireplumber.conf.d/60-smartamp-voice-input.conf
+    - /etc/wireplumber/wireplumber.conf.d/52-smartamp-aec-timing.conf
     - /etc/pipewire/pipewire.conf.d/60-smartamp-voice-capture.conf
   notify: Restart service-account session
   when: not (voice_assistant_enabled | bool)

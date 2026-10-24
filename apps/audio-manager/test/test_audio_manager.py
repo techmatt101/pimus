@@ -665,7 +665,8 @@ class ReconcileTests(ManagerTestCase):
             manager.reconcile()
 
         # The far-end reference is what the room hears: the output sink's
-        # monitor looped into the XVF3800 playback endpoint.
+        # monitor looped into the XVF3800 playback endpoint, mixed to mono
+        # because the DSP reads one reference channel.
         self.assertEqual(
             loaded,
             [
@@ -675,6 +676,7 @@ class ReconcileTests(ManagerTestCase):
                         "source=hifiberry.monitor",
                         "sink=xvf_playback",
                         "latency_msec=40",
+                        "channels=1",
                         "source_dont_move=true",
                         "sink_dont_move=true",
                         "sink_input_properties=media.name=SmartAmp.aec",

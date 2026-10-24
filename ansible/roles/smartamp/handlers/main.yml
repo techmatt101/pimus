@@ -65,6 +65,17 @@
     state: restarted
   notify: Restart audio manager
 
+# Re-run the one-shot that writes the array's echo-canceller registers whenever
+# its script, unit, or inventory values change, so a retuned delay or gain takes
+# effect now rather than at the array's next enumeration. Nothing depends on
+# it: the audio path is the same with or without the registers written.
+- name: Restart XVF3800 tuning
+  ansible.builtin.systemd_service:
+    name: smartamp-xvf3800-tuning.service
+    state: restarted
+    daemon_reload: true
+  when: (voice_assistant_enabled | bool) and (smartamp_respeaker_caps.host_control | bool)
+
 - name: Restart audio manager
   ansible.builtin.systemd_service:
     name: smartamp-audio-manager.service

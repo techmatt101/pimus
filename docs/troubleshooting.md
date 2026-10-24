@@ -100,10 +100,15 @@ Start with read-only parameter checks:
 
 ```sh
 sudo xvf_host VERSION                    # confirms the device responds
-sudo xvf_host AUDIO_MGR_SYS_DELAY        # read the current system delay, in 16 kHz samples
+sudo xvf_host AUDIO_MGR_SYS_DELAY        # 184 from inventory; 12 means the tuning service has not run since the array enumerated
 sudo xvf_host AEC_AECCONVERGED           # historical convergence, not a live health verdict
-sudo xvf_host AUDIO_MGR_REF_GAIN         # far-end reference gain
+sudo xvf_host AUDIO_MGR_REF_GAIN         # far-end reference gain, 1.5 from inventory
+systemctl status smartamp-xvf3800-tuning # the last tuning run and its read-back
 ```
+
+The array forgets every register with its power, and the controller cuts USB power in sleep, so the registers are
+written by `smartamp-xvf3800-tuning.service` from a udev rule on each enumeration. If `AUDIO_MGR_SYS_DELAY` reads 12,
+check that unit's journal first.
 
 Do not stream full-scale `/dev/urandom` into the default sink. Use a bounded, attenuated stimulus through an explicitly
 selected, verified bus; direct playback can precede the manager's gain correction. Delay or gain writes are volatile,

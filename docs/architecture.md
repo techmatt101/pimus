@@ -164,6 +164,8 @@ policy and readiness gate to reopen the device. Silent or blocked capture withou
 ## Service boundaries
 
 - `smartamp-hifiberry`: applies hardware mixer settings after ALSA detects the HAT.
+- `smartamp-xvf3800-tuning`: writes the XVF3800's echo-canceller delay and gains, and the card's second playback
+  volume, every time the array enumerates (a udev rule starts it), because the array forgets them with its power.
 - `smartamp-usb-audio-gadget`: creates the stereo UAC2 peripheral on the board's USB-C controller.
 - `smartamp-audio-inputs`: brings the local inputs onto the music bus — the aux capture while the graph is awake,
   the USB gadget's capture while a computer streams to it — as tagged client streams born at volume zero, and keeps
