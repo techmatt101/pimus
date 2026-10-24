@@ -118,9 +118,12 @@ bridge gives new client streams an already-applied gain. Direct clients on the h
 sink follow the music level both on a volume command and on reconciliation, but can still start playing before the
 manager sees them. The voice bus is never ducked.
 
-A bus bridge is asked to start silent (`node.param.Props` on its stream), and the manager still mutes a newly
-discovered output before adjusting gains and guards every new bridge it loads into the output, as the backstop for a
-stream that came up loud anyway. A fresh bridge is held at nothing while the guard lifts, and only then faded up to
+A bus bridge cannot be asked to start silent: a `node.param.Props` entry in its stream properties makes
+pipewire-pulse 1.4 refuse the stream's node ("can't set node param: Operation not permitted"), and the module then
+loads with no stream behind it, so the bus never becomes available and the output stays muted. Instead the manager
+mutes a newly discovered output before adjusting gains and guards every new bridge it loads into the output; the
+bridge comes up behind that mute at whatever level WirePlumber restores for its name, and the manager holds it at
+nothing the moment it sees it. A fresh bridge is held at nothing while the guard lifts, and only then faded up to
 its level over a quarter of a second, so the first moment of music after an idle spell, a manager restart, or a
 bridge PipeWire recreated arrives as a ramp rather than a step. The inputs app's streams need no guard: each is
 created at volume zero inside its own PipeWire client, and the manager's first sight of it fades it up to its

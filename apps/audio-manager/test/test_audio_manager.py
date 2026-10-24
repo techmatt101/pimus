@@ -1376,8 +1376,9 @@ class BusTests(ManagerTestCase):
         ), mock.patch.object(process, "run") as run:
             selected = manager.voice_bus.reconcile(output_sink)
             manager.voice_bus.apply_level()
-            # A fresh stream is born silent; one that came up loud anyway is
-            # held at nothing until the output is unguarded and it can fade in.
+            # A fresh stream comes up at whatever level was restored for it
+            # and is held at nothing until the output is unguarded and it can
+            # fade in.
             run.assert_called_once_with("pactl", "set-sink-input-volume", "27", "0%")
             manager.voice_bus.fade_in()
             self.finish_fades(manager)
@@ -1385,14 +1386,12 @@ class BusTests(ManagerTestCase):
         self.assertEqual(selected, voice)
         self.assertEqual(manager.voice_bus.stream_index, 27)
         # The existing sink is adopted by its owner module, so only the bridge
-        # is loaded, and its stream asked to start silent.
+        # is loaded. Its stream is named and nothing more: pipewire-pulse
+        # refuses a stream asked to start silent through node.param.Props.
         self.assertEqual(loaded[0][0], "module-loopback")
-        self.assertTrue(
-            loaded[0][1][-1].startswith(
-                'sink_input_properties="media.name=SmartAmp.voice_bridge '
-            )
+        self.assertEqual(
+            loaded[0][1][-1], "sink_input_properties=media.name=SmartAmp.voice_bridge"
         )
-        self.assertIn("channelVolumes = [ 0.0 0.0 ]", loaded[0][1][-1])
         levels = [call.args[3] for call in run.call_args_list[1:]]
         self.assertEqual(levels[-1], "40%")
         self.assertEqual(levels, sorted(levels, key=lambda level: int(level[:-1])))
@@ -1467,12 +1466,9 @@ class BusTests(ManagerTestCase):
         self.assertEqual(loaded[0][0], "module-null-sink")
         self.assertIn("priority.session=1", loaded[0][1][-1])
         self.assertEqual(loaded[1][0], "module-loopback")
-        self.assertTrue(
-            loaded[1][1][-1].startswith(
-                'sink_input_properties="media.name=SmartAmp.music_bridge '
-            )
+        self.assertEqual(
+            loaded[1][1][-1], "sink_input_properties=media.name=SmartAmp.music_bridge"
         )
-        self.assertIn("channelVolumes = [ 0.0 0.0 ]", loaded[1][1][-1])
 
 
 if __name__ == "__main__":

@@ -23,21 +23,17 @@ def stream_media_name(role: str) -> str:
     return f"{STREAM_PREFIX}{role.strip('_')}"
 
 
-# A loopback's playback stream is created at full volume. Asked for as a node
-# property, PipeWire's adapter applies these before the stream is exported, so
-# a bridge born with them plays nothing until the daemon brings its gain up;
-# the inputs app creates its streams the same way.
-SILENT_STREAM_PROPS = "node.param.Props={ mute = false channelVolumes = [ 0.0 0.0 ] }"
-
-
-def stream_properties(role: str, *, silent: bool) -> str:
-    """The `sink_input_properties` module argument for a role's stream. A
-    value with spaces has to be quoted, because the module argument string
-    is parsed again on the server."""
-    properties = f"media.name={stream_media_name(role)}"
-    if not silent:
-        return f"sink_input_properties={properties}"
-    return f'sink_input_properties="{properties} {SILENT_STREAM_PROPS}"'
+# A loopback's playback stream is created at whatever volume WirePlumber
+# restores for its media.name, full volume the first time. It cannot be asked
+# to start silent: a `node.param.Props` entry in sink_input_properties makes
+# pipewire-pulse 1.4 refuse the stream's node outright ("can't set node param:
+# Operation not permitted"), so the module loads with no stream behind it and
+# the bus never becomes available. The bridge is instead loaded behind the
+# output's mute, held at nothing by its bus as soon as it is seen, and faded
+# in once the mute lifts.
+def stream_properties(role: str) -> str:
+    """The `sink_input_properties` module argument for a role's stream."""
+    return f"sink_input_properties=media.name={stream_media_name(role)}"
 
 
 class ModuleRegistry:
@@ -113,8 +109,6 @@ class ModuleRegistry:
         source: str,
         sink: str,
         latency_ms: int,
-        *,
-        silent: bool = False,
     ) -> bool:
         return self._ensure(
             role,
@@ -127,7 +121,7 @@ class ModuleRegistry:
                 f"latency_msec={latency_ms}",
                 "source_dont_move=true",
                 "sink_dont_move=true",
-                stream_properties(role, silent=silent),
+                stream_properties(role),
             ),
             before_load=lambda: self._announce_bridging(sink),
         )

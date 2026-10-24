@@ -192,7 +192,7 @@ bus bridges and the AEC reference, the inputs app drops its aux loopback, and th
 their PULSE_SINK targets, and the wake-word capture path is untouched. Everything rebuilds within about a second of a
 client stream appearing, a voice session opening (the controller's duck/meter request arrives before the first TTS
 audio), the USB host starting to stream, or a route being toggled on. The rebuild happens behind a mute on the output sink,
-held until every fresh bridge stream is seen; the bridges are created silent, and each is faded up to its level
+held until every fresh bridge stream is seen; each bridge is held at nothing as soon as it is seen, and faded up to its level
 over a quarter of a second only after that mute has lifted, so the first moment of music after a long quiet spell
 arrives as a ramp rather than a pop, a little delayed. Connections into the music bus are also guarded until their
 input trims apply.

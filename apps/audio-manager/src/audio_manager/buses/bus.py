@@ -96,7 +96,6 @@ class PlaybackBus:
             monitor["name"],
             output["name"],
             self.config.latency_ms,
-            silent=True,
         )
         if created:
             LOG.info("Connected %s audio to the output", self.prefix)
@@ -146,8 +145,8 @@ class PlaybackBus:
 
     def hold_silent(self) -> None:
         """Keep a fresh bridge at nothing until it can be faded in. A bridge
-        is born silent, so this normally writes nothing; it is the backstop
-        for a stream that came up loud anyway."""
+        is born at whatever level WirePlumber restores for it, behind the
+        output's mute; this is what makes it silent before that mute lifts."""
         if self.gain_applied != 0 or (
             self.stream_index is not None
             and self._fades.target(self.stream_index) is not None
